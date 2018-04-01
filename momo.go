@@ -23,7 +23,7 @@ func main() {
     impersonationPtr := flag.String("imp", "client", "server or client")
     serverIpPtr := flag.String("ip", "0.0.0.0", "server ip")
     portPtr := flag.Int("port", 3333, "server port to listen for connections")
-    filePathPtr := flag.String("file", "/dev/momo/null", "file path")
+    filePathPtr := flag.String("file", "/dev/momo/null", "file path to upload")
     debugPtr := flag.Bool("debug", true, "log to stdout")
     flag.Parse()
 
