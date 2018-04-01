@@ -31,10 +31,10 @@ func main() {
 
     switch *impersonationPtr {
     case "client":
-        log.Printf("*** CLIENT CODE ***")
+        log.Printf("*** CLIENT CODE")
         momo_client.Connect(*serverIpPtr, *portPtr, *filePathPtr)
     case "server":
-        log.Printf("*** SERVER CODE ***")
+        log.Printf("*** SERVER CODE")
     default:
         log.Println("*** ERROR: Option unknown ***")
     }
