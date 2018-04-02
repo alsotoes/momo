@@ -47,7 +47,7 @@ func Connect(ip string, port int, filePath string) {
         os.Exit(1)
     }
 
-	fileMD5 := fillString(hash, LENGTHINFO)
+	fileMD5 := fillString(hash, 32)
 	fileName := fillString(fileInfo.Name(), LENGTHINFO)
 
 	log.Printf("Sending filename and filesize!")
@@ -56,6 +56,8 @@ func Connect(ip string, port int, filePath string) {
 	sendBuffer := make([]byte, BUFFERSIZE)
 
 	log.Printf("Start sending file!")
+	log.Printf("=> MD5: " + fileMD5)
+	log.Printf("=> Name: " + fileName)
 	for {
 		_, err = file.Read(sendBuffer)
 		if err == io.EOF {
