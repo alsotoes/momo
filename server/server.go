@@ -51,8 +51,9 @@ func getFile(connection net.Conn) {
 	fileSize, _ := strconv.ParseInt(strings.Trim(string(bufferFileSize), ":"), 10, LENGTHINFO)
 
     /* 
-        FIXME: destiny can not be hardcoded
+        FIXME: Path can not be hardcoded
         TRELLO CARD: https://trello.com/c/seWPJXSn
+        GITHUB ISSUE: https://github.com/alsotoes/momo/issues/1
     */
 	newFile, err := os.Create("./received_files/"+fileName)
 
@@ -75,6 +76,7 @@ func getFile(connection net.Conn) {
     /*
         FIXME: Path can not be hardcoded
         TRELLO CARD: https://trello.com/c/WihEmAVs
+        GITHUB ISSUE: https://github.com/alsotoes/momo/issues/2
     */
     hash, err := momo_common.HashFile_md5("./received_files/"+fileName)
     if err != nil {
