@@ -49,10 +49,12 @@ func Connect(ip string, port int, filePath string) {
 
 	fileMD5 := fillString(hash, 32)
 	fileName := fillString(fileInfo.Name(), LENGTHINFO)
+    fileSize := fillString(strconv.FormatInt(fileInfo.Size(), 10), LENGTHINFO)
 
 	log.Printf("Sending filename and filesize!")
 	connection.Write([]byte(fileMD5))
 	connection.Write([]byte(fileName))
+    connection.Write([]byte(fileSize))
 	sendBuffer := make([]byte, BUFFERSIZE)
 
 	log.Printf("Start sending file!")

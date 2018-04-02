@@ -6,6 +6,7 @@ import (
     "io/ioutil"
 
     momo_client "github.com/alsotoes/momo/client"
+    momo_server "github.com/alsotoes/momo/server"
 )
 
 func LogStdOut(logApp bool) {
@@ -35,6 +36,7 @@ func main() {
         momo_client.Connect(*serverIpPtr, *portPtr, *filePathPtr)
     case "server":
         log.Printf("*** SERVER CODE")
+        momo_server.Daemon(*serverIpPtr, *portPtr)
     default:
         log.Println("*** ERROR: Option unknown ***")
     }
