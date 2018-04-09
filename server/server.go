@@ -1,10 +1,12 @@
 package momo
 
 import(
+    _ "reflect"
     "strconv"
     "strings"
     "log"
     "net"
+    "fmt"
     "os"
     "io"
 
@@ -32,11 +34,12 @@ func Daemon(ip string, port int) {
 			os.Exit(1)
 		}
 		log.Printf("Client connected")
-		go getFile(connection)
+
+		go getFile(connection, "./received_files/dir1/")
 	}
 }
 
-func getFile(connection net.Conn) {
+func getFile(connection net.Conn, path string) {
 	bufferFileMD5 := make([]byte, 32)
 	bufferFileName := make([]byte, LENGTHINFO)
 	bufferFileSize := make([]byte, LENGTHINFO)
@@ -47,15 +50,12 @@ func getFile(connection net.Conn) {
 	connection.Read(bufferFileName)
 	fileName := strings.Trim(string(bufferFileName), ":")
 
+    fmt.Printf("fileName: " + path+fileName)
+
     connection.Read(bufferFileSize)
 	fileSize, _ := strconv.ParseInt(strings.Trim(string(bufferFileSize), ":"), 10, LENGTHINFO)
 
-    /* 
-        FIXME: Path can not be hardcoded
-        TRELLO CARD: https://trello.com/c/seWPJXSn
-        GITHUB ISSUE: https://github.com/alsotoes/momo/issues/1
-    */
-	newFile, err := os.Create("./received_files/"+fileName)
+	newFile, err := os.Create(path+fileName)
 
 	if err != nil {
 		panic(err)
@@ -73,12 +73,7 @@ func getFile(connection net.Conn) {
 		receivedBytes += BUFFERSIZE
 	}
 
-    /*
-        FIXME: Path can not be hardcoded
-        TRELLO CARD: https://trello.com/c/WihEmAVs
-        GITHUB ISSUE: https://github.com/alsotoes/momo/issues/2
-    */
-    hash, err := momo_common.HashFile_md5("./received_files/"+fileName)
+    hash, err := momo_common.HashFile_md5(path+fileName)
     if err != nil {
         log.Printf(err.Error())
         os.Exit(1)
@@ -86,6 +81,6 @@ func getFile(connection net.Conn) {
 
     log.Printf("=> MD5:     " + fileMD5)
     log.Printf("=> New MD5: " + hash)
-    log.Printf("=> Name:    " + fileName)
+    log.Printf("=> Name:    " + path + fileName)
 	log.Printf("Received file completely!")
 }
