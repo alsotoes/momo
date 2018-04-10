@@ -114,6 +114,8 @@ func getFile(connection net.Conn, path string, fileName string, fileMD5 string, 
         os.Exit(1)
     }
 
+    connection.Write([]byte("ACK"))
+
     log.Printf("=> MD5:     " + fileMD5)
     log.Printf("=> New MD5: " + hash)
     log.Printf("=> Name:    " + path + fileName)
