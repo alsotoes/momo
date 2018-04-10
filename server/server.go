@@ -24,21 +24,21 @@ type FileMetadata struct {
 func Daemon(ip string, port int, path string, replicationType int) {
     servAddr := ip + ":" + strconv.Itoa(port)
     server, err := net.Listen("tcp", servAddr)
-	if err != nil {
-		log.Printf("Error listetning: ", err)
-		os.Exit(1)
-	}
+    if err != nil {
+        log.Printf("Error listetning: ", err)
+        os.Exit(1)
+    }
 
-	defer server.Close()
-	log.Printf("Server started... waiting for connections...")
+    defer server.Close()
+    log.Printf("Server started... waiting for connections...")
 
-	for {
-		connection, err := server.Accept()
-		if err != nil {
-			log.Printf("Error: ", err)
-			os.Exit(1)
-		}
-		log.Printf("Client connected")
+    for {
+        connection, err := server.Accept()
+        if err != nil {
+            log.Printf("Error: ", err)
+            os.Exit(1)
+        }
+        log.Printf("Client connected")
 
         go func() {
             metadata := getMetadata(connection)
@@ -59,7 +59,7 @@ func Daemon(ip string, port int, path string, replicationType int) {
 
             }
         }()
-	}
+    }
 }
 
 func getMetadata(connection net.Conn) FileMetadata {
@@ -88,25 +88,25 @@ func getMetadata(connection net.Conn) FileMetadata {
 
 func getFile(connection net.Conn, path string, fileName string, fileMD5 string, fileSize int64) {
 
-	newFile, err := os.Create(path+fileName)
+    newFile, err := os.Create(path+fileName)
 
-	if err != nil {
-		panic(err)
-	}
+    if err != nil {
+        panic(err)
+    }
 
     defer connection.Close()
-	defer newFile.Close()
-	var receivedBytes int64
+    defer newFile.Close()
+    var receivedBytes int64
 
-	for {
-		if (fileSize - receivedBytes) < BUFFERSIZE {
-			io.CopyN(newFile, connection, (fileSize - receivedBytes))
-			connection.Read(make([]byte, (receivedBytes+BUFFERSIZE)-fileSize))
-			break
-		}
-		io.CopyN(newFile, connection, BUFFERSIZE)
-		receivedBytes += BUFFERSIZE
-	}
+    for {
+        if (fileSize - receivedBytes) < BUFFERSIZE {
+            io.CopyN(newFile, connection, (fileSize - receivedBytes))
+            connection.Read(make([]byte, (receivedBytes+BUFFERSIZE)-fileSize))
+            break
+        }
+        io.CopyN(newFile, connection, BUFFERSIZE)
+        receivedBytes += BUFFERSIZE
+    }
 
     hash, err := momo_common.HashFile_md5(path+fileName)
     if err != nil {
@@ -119,6 +119,6 @@ func getFile(connection net.Conn, path string, fileName string, fileMD5 string, 
     log.Printf("=> MD5:     " + fileMD5)
     log.Printf("=> New MD5: " + hash)
     log.Printf("=> Name:    " + path + fileName)
-	log.Printf("Received file completely!")
+    log.Printf("Received file completely!")
 
 }
