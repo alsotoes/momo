@@ -1,22 +1,27 @@
 package momo
 
 import(
-    _ "reflect"
-    "strconv"
-    "strings"
-    "log"
-    "net"
-    "fmt"
     "os"
     "io"
+    "log"
+    "net"
+    "strconv"
+    "strings"
 
     momo_common "github.com/alsotoes/momo/common"
+    momo_client "github.com/alsotoes/momo/client"
 )
 
 const BUFFERSIZE = 1024
 const LENGTHINFO = 64
 
-func Daemon(ip string, port int) {
+type FileMetadata struct {
+    name string
+    md5  string
+    size int64
+}
+
+func Daemon(ip string, port int, path string, replicationType int) {
     servAddr := ip + ":" + strconv.Itoa(port)
     server, err := net.Listen("tcp", servAddr)
 	if err != nil {
@@ -35,31 +40,61 @@ func Daemon(ip string, port int) {
 		}
 		log.Printf("Client connected")
 
-		go getFile(connection, "./received_files/dir1/")
+        go func() {
+            metadata := getMetadata(connection)
+            switch replicationType {
+                case 0:
+                    getFile(connection, path, metadata.name, metadata.md5, metadata.size)
+                case 1:
+                    getFile(connection, path, metadata.name, metadata.md5, metadata.size)
+                    momo_client.Connect("0.0.0.0", 3334, "./received_files/dir1/"+metadata.name)
+                    momo_client.Connect("0.0.0.0", 3335, "./received_files/dir1/"+metadata.name)
+                case 2:
+                    getFile(connection, path, metadata.name, metadata.md5, metadata.size)
+                    go momo_client.Connect("0.0.0.0", 3334, "./received_files/dir1/"+metadata.name)
+                    go momo_client.Connect("0.0.0.0", 3335, "./received_files/dir1/"+metadata.name)
+                default:
+                    log.Println("*** ERROR: Unknown replication type")
+                    os.Exit(1)
+
+            }
+        }()
 	}
 }
 
-func getFile(connection net.Conn, path string) {
-	bufferFileMD5 := make([]byte, 32)
-	bufferFileName := make([]byte, LENGTHINFO)
-	bufferFileSize := make([]byte, LENGTHINFO)
+func getMetadata(connection net.Conn) FileMetadata {
+    var metadata FileMetadata
 
-	connection.Read(bufferFileMD5)
-	fileMD5 := string(bufferFileMD5)
+    bufferFileMD5 := make([]byte, 32)
+    bufferFileName := make([]byte, LENGTHINFO)
+    bufferFileSize := make([]byte, LENGTHINFO)
 
-	connection.Read(bufferFileName)
-	fileName := strings.Trim(string(bufferFileName), ":")
+    connection.Read(bufferFileMD5)
+    fileMD5 := string(bufferFileMD5)
 
-    fmt.Printf("fileName: " + path+fileName)
+    connection.Read(bufferFileName)
+    fileName := strings.Trim(string(bufferFileName), ":")
 
     connection.Read(bufferFileSize)
-	fileSize, _ := strconv.ParseInt(strings.Trim(string(bufferFileSize), ":"), 10, LENGTHINFO)
+    fileSize, _ := strconv.ParseInt(strings.Trim(string(bufferFileSize), ":"), 10, LENGTHINFO)
+
+    metadata.name = fileName
+    metadata.md5 = fileMD5
+    metadata.size = fileSize
+
+    return metadata
+
+}
+
+func getFile(connection net.Conn, path string, fileName string, fileMD5 string, fileSize int64) {
 
 	newFile, err := os.Create(path+fileName)
 
 	if err != nil {
 		panic(err)
 	}
+
+    defer connection.Close()
 	defer newFile.Close()
 	var receivedBytes int64
 
@@ -83,4 +118,5 @@ func getFile(connection net.Conn, path string) {
     log.Printf("=> New MD5: " + hash)
     log.Printf("=> Name:    " + path + fileName)
 	log.Printf("Received file completely!")
+
 }

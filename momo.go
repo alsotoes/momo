@@ -21,10 +21,13 @@ func LogStdOut(logApp bool) {
 
 func main() {
 
-    impersonationPtr := flag.String("imp", "client", "server or client")
-    serverIpPtr := flag.String("ip", "0.0.0.0", "server ip")
-    portPtr := flag.Int("port", 3333, "server port to listen for connections")
-    filePathPtr := flag.String("file", "/dev/momo/null", "file path to upload")
+    impersonationPtr := flag.String("imp", "client", "Server or client impersonation")
+    serverIpPtr := flag.String("ip", "0.0.0.0", "Server ip")
+    portPtr := flag.Int("port", 3333, "Server port to listen for connections")
+    dirPtr := flag.String("dir", "./received_files/dir1/", "Path where to save the files")
+    replicationPtr := flag.Int("replication", 1, "Replicaton type: 0=>no replica, 1=>chain, 2=>splay, 3=>primary splay")
+    daemonIdPtr := flag.Int("id", 1, "Daemon id, usable to check primary affinity")
+    filePathPtr := flag.String("file", "/dev/momo/null", "File path to upload")
     debugPtr := flag.Bool("debug", true, "log to stdout")
     flag.Parse()
 
@@ -36,7 +39,7 @@ func main() {
         momo_client.Connect(*serverIpPtr, *portPtr, *filePathPtr)
     case "server":
         log.Printf("*** SERVER CODE")
-        momo_server.Daemon(*serverIpPtr, *portPtr)
+        momo_server.Daemon(*serverIpPtr, *portPtr, *dirPtr, *replicationPtr)
     default:
         log.Println("*** ERROR: Option unknown ***")
     }
