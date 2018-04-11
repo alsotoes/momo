@@ -5,6 +5,7 @@ import (
     "io"
     "log"
     "net"
+    "sync"
     "strconv"
 
     momo_common "github.com/alsotoes/momo/common"
@@ -13,7 +14,7 @@ import (
 const BUFFERSIZE = 1024
 const LENGTHINFO = 64
 
-func Connect(ip string, port int, filePath string) {
+func Connect(wg *sync.WaitGroup, ip string, port int, filePath string) {
 
     servAddr := ip + ":" + strconv.Itoa(port)
     tcpAddr, err := net.ResolveTCPAddr("tcp", servAddr)
@@ -28,6 +29,7 @@ func Connect(ip string, port int, filePath string) {
         os.Exit(1)
     }
 
+    defer wg.Done()
     defer connection.Close()
 
     file, err := os.Open(filePath)

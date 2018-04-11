@@ -5,6 +5,7 @@ import(
     "io"
     "log"
     "net"
+    "sync"
     "strconv"
     "strings"
 
@@ -42,17 +43,20 @@ func Daemon(ip string, port int, path string, replicationType int) {
 
         go func() {
             metadata := getMetadata(connection)
+            var wg sync.WaitGroup
             switch replicationType {
                 case 0:
                     getFile(connection, path, metadata.name, metadata.md5, metadata.size)
                 case 1:
                     getFile(connection, path, metadata.name, metadata.md5, metadata.size)
-                    momo_client.Connect("0.0.0.0", 3334, "./received_files/dir1/"+metadata.name)
-                    momo_client.Connect("0.0.0.0", 3335, "./received_files/dir1/"+metadata.name)
+                    wg.Add(2)
+                    momo_client.Connect(&wg, "0.0.0.0", 3334, "./received_files/dir1/"+metadata.name)
+                    momo_client.Connect(&wg, "0.0.0.0", 3335, "./received_files/dir1/"+metadata.name)
                 case 2:
                     getFile(connection, path, metadata.name, metadata.md5, metadata.size)
-                    go momo_client.Connect("0.0.0.0", 3334, "./received_files/dir1/"+metadata.name)
-                    go momo_client.Connect("0.0.0.0", 3335, "./received_files/dir1/"+metadata.name)
+                    wg.Add(2)
+                    go momo_client.Connect(&wg, "0.0.0.0", 3334, "./received_files/dir1/"+metadata.name)
+                    go momo_client.Connect(&wg, "0.0.0.0", 3335, "./received_files/dir1/"+metadata.name)
                 default:
                     log.Println("*** ERROR: Unknown replication type")
                     os.Exit(1)

@@ -3,6 +3,7 @@ package main
 import (
     "log"
     "flag"
+    "sync"
     "io/ioutil"
 
     momo_client "github.com/alsotoes/momo/client"
@@ -36,10 +37,24 @@ func main() {
     switch *impersonationPtr {
     case "client":
         log.Printf("*** CLIENT CODE")
-        momo_client.Connect(*serverIpPtr, *portPtr, *filePathPtr)
+        var wg sync.WaitGroup
+        if 3 == *replicationPtr {
+            wg.Add(3)
+            go momo_client.Connect(&wg, *serverIpPtr, *portPtr, *filePathPtr)
+            go momo_client.Connect(&wg, "0.0.0.0", 3334, *filePathPtr)
+            go momo_client.Connect(&wg, "0.0.0.0", 3335, *filePathPtr)
+            wg.Wait()
+        } else {
+            wg.Add(1)
+            momo_client.Connect(&wg, *serverIpPtr, *portPtr, *filePathPtr)
+        }
     case "server":
         log.Printf("*** SERVER CODE")
-        momo_server.Daemon(*serverIpPtr, *portPtr, *dirPtr, *replicationPtr)
+        if 3 == *replicationPtr {
+            momo_server.Daemon(*serverIpPtr, *portPtr, *dirPtr, 0)
+        } else {
+            momo_server.Daemon(*serverIpPtr, *portPtr, *dirPtr, *replicationPtr)
+        }
     default:
         log.Println("*** ERROR: Option unknown ***")
     }
