@@ -6,8 +6,12 @@ import(
     "log"
     "net"
     "sync"
+    _ "bytes"
+    _ "bufio"
     "strconv"
     "strings"
+    _ "io/ioutil"
+    _ "reflect"
 
     momo_common "github.com/alsotoes/momo/common"
     momo_client "github.com/alsotoes/momo/client"
@@ -42,8 +46,13 @@ func Daemon(ip string, port int, path string, replicationType int) {
         log.Printf("Client connected")
 
         go func() {
+
+            mode := replicationMode()
+            connection.Write([]byte(strconv.FormatInt(mode, 10)))
+
             metadata := getMetadata(connection)
             var wg sync.WaitGroup
+
             switch replicationType {
                 case 0:
                     getFile(connection, path, metadata.name, metadata.md5, metadata.size)
@@ -64,6 +73,10 @@ func Daemon(ip string, port int, path string, replicationType int) {
             }
         }()
     }
+}
+
+func replicationMode() int64 {
+    return 3
 }
 
 func getMetadata(connection net.Conn) FileMetadata {

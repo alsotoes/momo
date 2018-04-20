@@ -11,9 +11,6 @@ import (
     momo_common "github.com/alsotoes/momo/common"
 )
 
-const BUFFERSIZE = 1024
-const LENGTHINFO = 64
-
 func Connect(wg *sync.WaitGroup, ip string, port int, filePath string) {
 
     servAddr := ip + ":" + strconv.Itoa(port)
@@ -49,15 +46,22 @@ func Connect(wg *sync.WaitGroup, ip string, port int, filePath string) {
         os.Exit(1)
     }
 
+    bufferReplicationMode := make([]byte, 1)
+    connection.Read(bufferReplicationMode)
+
+    if strconv.Itoa(momo_common.PRIMARY_SPLAY_REPLICATION) == string(bufferReplicationMode) {
+        log.Printf(string(bufferReplicationMode))
+    }
+
     fileMD5 := fillString(hash, 32)
-    fileName := fillString(fileInfo.Name(), LENGTHINFO)
-    fileSize := fillString(strconv.FormatInt(fileInfo.Size(), 10), LENGTHINFO)
+    fileName := fillString(fileInfo.Name(), momo_common.LENGTHINFO)
+    fileSize := fillString(strconv.FormatInt(fileInfo.Size(), 10), momo_common.LENGTHINFO)
 
     log.Printf("Sending filename and filesize!")
     connection.Write([]byte(fileMD5))
     connection.Write([]byte(fileName))
     connection.Write([]byte(fileSize))
-    sendBuffer := make([]byte, BUFFERSIZE)
+    sendBuffer := make([]byte, momo_common.BUFFERSIZE)
 
     log.Printf("Start sending file!")
     log.Printf("=> MD5: " + fileMD5)
@@ -78,6 +82,7 @@ func Connect(wg *sync.WaitGroup, ip string, port int, filePath string) {
 }
 
 func fillString(retunString string, toLength int) string {
+
     for {
         lengtString := len(retunString)
         if lengtString < toLength {
@@ -87,4 +92,5 @@ func fillString(retunString string, toLength int) string {
         break
     }
     return retunString
+
 }
