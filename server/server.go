@@ -17,9 +17,6 @@ import(
     momo_client "github.com/alsotoes/momo/client"
 )
 
-const BUFFERSIZE = 1024
-const LENGTHINFO = 64
-
 type FileMetadata struct {
     name string
     md5  string
@@ -83,8 +80,8 @@ func getMetadata(connection net.Conn) FileMetadata {
     var metadata FileMetadata
 
     bufferFileMD5 := make([]byte, 32)
-    bufferFileName := make([]byte, LENGTHINFO)
-    bufferFileSize := make([]byte, LENGTHINFO)
+    bufferFileName := make([]byte, momo_common.LENGTHINFO)
+    bufferFileSize := make([]byte, momo_common.LENGTHINFO)
 
     connection.Read(bufferFileMD5)
     fileMD5 := string(bufferFileMD5)
@@ -93,7 +90,7 @@ func getMetadata(connection net.Conn) FileMetadata {
     fileName := strings.Trim(string(bufferFileName), ":")
 
     connection.Read(bufferFileSize)
-    fileSize, _ := strconv.ParseInt(strings.Trim(string(bufferFileSize), ":"), 10, LENGTHINFO)
+    fileSize, _ := strconv.ParseInt(strings.Trim(string(bufferFileSize), ":"), 10, momo_common.LENGTHINFO)
 
     metadata.name = fileName
     metadata.md5 = fileMD5
@@ -116,13 +113,13 @@ func getFile(connection net.Conn, path string, fileName string, fileMD5 string, 
     var receivedBytes int64
 
     for {
-        if (fileSize - receivedBytes) < BUFFERSIZE {
+        if (fileSize - receivedBytes) < momo_common.BUFFERSIZE {
             io.CopyN(newFile, connection, (fileSize - receivedBytes))
-            connection.Read(make([]byte, (receivedBytes+BUFFERSIZE)-fileSize))
+            connection.Read(make([]byte, (receivedBytes+momo_common.BUFFERSIZE)-fileSize))
             break
         }
-        io.CopyN(newFile, connection, BUFFERSIZE)
-        receivedBytes += BUFFERSIZE
+        io.CopyN(newFile, connection, momo_common.BUFFERSIZE)
+        receivedBytes += momo_common.BUFFERSIZE
     }
 
     hash, err := momo_common.HashFile_md5(path+fileName)
