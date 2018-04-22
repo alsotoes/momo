@@ -14,7 +14,7 @@ import (
 */
 
 //func hash_file_md5(filePath string) (string, error) {
-func HashFile_md5(filePath string) (string, error) {
+func HashFile(filePath string) (string, error) {
     var returnMD5String string
     file, err := os.Open(filePath)
     if err != nil {

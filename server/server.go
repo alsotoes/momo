@@ -122,7 +122,7 @@ func getFile(connection net.Conn, path string, fileName string, fileMD5 string, 
         receivedBytes += momo_common.BUFFERSIZE
     }
 
-    hash, err := momo_common.HashFile_md5(path+fileName)
+    hash, err := momo_common.HashFile(path+fileName)
     if err != nil {
         log.Printf(err.Error())
         os.Exit(1)

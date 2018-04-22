@@ -40,7 +40,7 @@ func Connect(wg *sync.WaitGroup, ip string, port int, filePath string) {
         os.Exit(1)
     }
 
-    hash, err := momo_common.HashFile_md5(filePath)
+    hash, err := momo_common.HashFile(filePath)
     if err != nil {
         log.Printf(err.Error())
         os.Exit(1)
