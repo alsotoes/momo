@@ -2,23 +2,16 @@ package main
 
 import (
     "log"
+    _ "fmt"
     "flag"
     "sync"
-    "io/ioutil"
+    _ "strconv"
+    _ "io/ioutil"
 
     momo_client "github.com/alsotoes/momo/client"
     momo_server "github.com/alsotoes/momo/server"
+    momo_common "github.com/alsotoes/momo/common"
 )
-
-func LogStdOut(logApp bool) {
-
-    if logApp {
-        log.SetFlags(log.LstdFlags | log.Lmicroseconds)
-    } else {
-        log.SetOutput(ioutil.Discard)
-    }
-
-}
 
 func main() {
 
@@ -28,10 +21,19 @@ func main() {
     dirPtr := flag.String("dir", "./received_files/dir1/", "Path where to save the files")
     replicationPtr := flag.Int("replication", 1, "Replicaton type: 0=>no replica, 1=>chain, 2=>splay, 3=>primary splay")
     filePathPtr := flag.String("file", "/dev/momo/null", "File path to upload")
-    debugPtr := flag.Bool("debug", true, "log to stdout")
     flag.Parse()
 
-    LogStdOut(*debugPtr)
+    cfg := momo_common.GetConfig()
+    momo_common.LogStdOut(cfg.Debug)
+
+    /*
+    fmt.Println(len(cfg.Daemons))
+    for i := range(cfg.Daemons) {
+        daemon := cfg.Daemons[i]
+        fmt.Println("host: " + daemon.Host)
+        fmt.Println("data: " + daemon.Data)
+    }
+    */
 
     switch *impersonationPtr {
     case "client":
