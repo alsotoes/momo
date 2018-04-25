@@ -32,7 +32,7 @@ func Daemon(ip string, port int, path string, replicationType int) {
     }
 
     defer server.Close()
-    log.Printf("Server started... waiting for connections...")
+    log.Printf("Server primary Daemon started... waiting for connections...")
 
     for {
         connection, err := server.Accept()
@@ -40,12 +40,12 @@ func Daemon(ip string, port int, path string, replicationType int) {
             log.Printf("Error: ", err)
             os.Exit(1)
         }
-        log.Printf("Client connected")
+        log.Printf("Client connected to primary Daemon")
 
         go func() {
 
-            mode := replicationMode()
-            connection.Write([]byte(strconv.FormatInt(mode, 10)))
+            log.Printf("Primary Daemon replicationMode: " + strconv.Itoa(momo_common.ReplicationMode))
+            connection.Write([]byte(strconv.FormatInt(int64(momo_common.ReplicationMode), 10)))
 
             metadata := getMetadata(connection)
             var wg sync.WaitGroup
@@ -72,8 +72,33 @@ func Daemon(ip string, port int, path string, replicationType int) {
     }
 }
 
-func replicationMode() int64 {
-    return 3
+func ChangeReplicationMode(servAddr string) {
+
+    server, err := net.Listen("tcp", servAddr)
+    if err != nil {
+        log.Printf("Error listetning: ", err)
+        os.Exit(1)
+    }
+
+    defer server.Close()
+    log.Printf("Server changeReplicationMode started... waiting for connections...")
+    log.Printf("default ReplicationMode value: " + strconv.Itoa(momo_common.ReplicationMode))
+
+    for {
+        connection, err := server.Accept()
+        if err != nil {
+            log.Printf("Error: ", err)
+            os.Exit(1)
+        }
+        log.Printf("Client connected to changeReplicationMode")
+        go func() {
+            bufferReplicationMode := make([]byte, 1)
+            connection.Read(bufferReplicationMode)
+            momo_common.ReplicationMode, _ = strconv.Atoi(string(bufferReplicationMode))
+            log.Printf("go ChangeReplicationMode new value: " + strconv.Itoa(momo_common.ReplicationMode))
+        }()
+    }
+
 }
 
 func getMetadata(connection net.Conn) FileMetadata {
