@@ -16,6 +16,7 @@ type Daemon struct {
 
 type Configuration struct {
     Debug bool
+    MetricsInterval int
     Daemons []*Daemon
 }
 
@@ -48,6 +49,7 @@ func GetConfig() Configuration {
     }
 
     configuration.Debug, _ = strconv.ParseBool(cfg.Section("global").Key("debug").String())
+    configuration.MetricsInterval, _ = strconv.Atoi(cfg.Section("global").Key("metrics_interval").String())
     configuration.Daemons = daemonArr
 
     return configuration

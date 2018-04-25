@@ -50,7 +50,7 @@ func main() {
         momo_server.Daemon(*serverIpPtr, *portPtr, *dirPtr, *replicationPtr)
     case "metric":
         log.Printf("*** METRIC CODE")
-        momo_metrics.GetMetrics()
+        momo_metrics.GetMetrics(cfg.MetricsInterval)
     default:
         log.Println("*** ERROR: Option unknown ***")
     }

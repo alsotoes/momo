@@ -10,7 +10,7 @@ import (
     "github.com/shirou/gopsutil/disk"
 )
 
-func GetMetrics() {
+func GetMetrics(interval int) {
 
     for {
         v, _ := mem.VirtualMemory()
@@ -25,7 +25,9 @@ func GetMetrics() {
         disk, _ := disk.IOCounters("/dev/sda")
         fmt.Println(disk["sda"])
 
-        time.Sleep(500 * time.Millisecond)
+        fmt.Println("")
+
+        time.Sleep(time.Duration(interval) * time.Millisecond)
     }
 
 }
