@@ -11,11 +11,12 @@ import (
     momo_client "github.com/alsotoes/momo/client"
     momo_server "github.com/alsotoes/momo/server"
     momo_common "github.com/alsotoes/momo/common"
+    momo_metrics "github.com/alsotoes/momo/metrics"
 )
 
 func main() {
 
-    impersonationPtr := flag.String("imp", "client", "Server or client impersonation")
+    impersonationPtr := flag.String("imp", "client", "Server, client or metric server impersonation")
     serverIpPtr := flag.String("ip", "0.0.0.0", "Server ip")
     portPtr := flag.Int("port", 3333, "Server port to listen for connections")
     metricsPtr := flag.String("metric", "0.0.0.0:3323", "Server metric to change replicationMode")
@@ -32,6 +33,7 @@ func main() {
     for i := range(cfg.Daemons) {
         daemon := cfg.Daemons[i]
         fmt.Println("host: " + daemon.Host)
+        fmt.Println("metric: " + daemon.Metric)
         fmt.Println("data: " + daemon.Data)
     }
     */
@@ -46,6 +48,9 @@ func main() {
         log.Printf("*** SERVER CODE")
         go momo_server.ChangeReplicationMode(*metricsPtr)
         momo_server.Daemon(*serverIpPtr, *portPtr, *dirPtr, *replicationPtr)
+    case "metric":
+        log.Printf("*** METRIC CODE")
+        momo_metrics.GetMetrics()
     default:
         log.Println("*** ERROR: Option unknown ***")
     }

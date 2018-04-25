@@ -10,6 +10,7 @@ import (
 
 type Daemon struct {
     Host string
+    Metric string
     Data string
 }
 
@@ -38,6 +39,7 @@ func GetConfig() Configuration {
 
         daemon := new(Daemon)
         daemon.Host = sec.Key("host").String()
+        daemon.Metric = sec.Key("metric").String()
         daemon.Data = sec.Key("data").String()
         daemonArr = append(daemonArr, daemon)
 
