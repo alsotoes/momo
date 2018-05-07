@@ -11,9 +11,8 @@ import (
     momo_common "github.com/alsotoes/momo/common"
 )
 
-func Connect(wg *sync.WaitGroup, ip string, port int, filePath string) {
+func Connect(wg *sync.WaitGroup, servAddr string, filePath string) {
 
-    servAddr := ip + ":" + strconv.Itoa(port)
     tcpAddr, err := net.ResolveTCPAddr("tcp", servAddr)
     if err != nil {
         println("ResolveTCPAddr failed:", err.Error())

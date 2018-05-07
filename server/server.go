@@ -23,8 +23,7 @@ type FileMetadata struct {
     size int64
 }
 
-func Daemon(ip string, port int, path string, replicationType int) {
-    servAddr := ip + ":" + strconv.Itoa(port)
+func Daemon(servAddr string, path string, replicationType int) {
     server, err := net.Listen("tcp", servAddr)
     if err != nil {
         log.Printf("Error listetning: ", err)
@@ -56,13 +55,13 @@ func Daemon(ip string, port int, path string, replicationType int) {
                 case 1:
                     getFile(connection, path, metadata.name, metadata.md5, metadata.size)
                     wg.Add(2)
-                    momo_client.Connect(&wg, "0.0.0.0", 3334, "./received_files/dir1/"+metadata.name)
-                    momo_client.Connect(&wg, "0.0.0.0", 3335, "./received_files/dir1/"+metadata.name)
+                    momo_client.Connect(&wg, "0.0.0.0:3334", "./received_files/dir1/"+metadata.name)
+                    momo_client.Connect(&wg, "0.0.0.0:3335", "./received_files/dir1/"+metadata.name)
                 case 2:
                     getFile(connection, path, metadata.name, metadata.md5, metadata.size)
                     wg.Add(2)
-                    go momo_client.Connect(&wg, "0.0.0.0", 3334, "./received_files/dir1/"+metadata.name)
-                    go momo_client.Connect(&wg, "0.0.0.0", 3335, "./received_files/dir1/"+metadata.name)
+                    go momo_client.Connect(&wg, "0.0.0.0:3334", "./received_files/dir1/"+metadata.name)
+                    go momo_client.Connect(&wg, "0.0.0.0:3335", "./received_files/dir1/"+metadata.name)
                 default:
                     log.Println("*** ERROR: Unknown replication type")
                     os.Exit(1)

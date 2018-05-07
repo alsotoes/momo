@@ -8,6 +8,7 @@ import (
     "github.com/shirou/gopsutil/mem"
     "github.com/shirou/gopsutil/cpu"
     "github.com/shirou/gopsutil/disk"
+    "github.com/shirou/gopsutil/net"
 )
 
 func GetMetrics(interval int) {
@@ -24,6 +25,9 @@ func GetMetrics(interval int) {
 
         disk, _ := disk.IOCounters("/dev/sda")
         fmt.Println(disk["sda"])
+
+        network, _ := net.IOCounters(false)
+        fmt.Println(network)
 
         fmt.Println("")
 
