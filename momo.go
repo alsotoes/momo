@@ -2,7 +2,7 @@ package main
 
 import (
     "log"
-    _ "fmt"
+    _"fmt"
     "flag"
     "sync"
     _ "strconv"
@@ -17,10 +17,8 @@ import (
 func main() {
 
     impersonationPtr := flag.String("imp", "client", "Server, client or metric server impersonation")
-    serverAddrPtr := flag.String("ip", "0.0.0.0:3333", "Server ip")
-    metricsPtr := flag.String("metric", "0.0.0.0:3323", "Server metric to change replicationMode")
-    dirPtr := flag.String("dir", "./received_files/dir1/", "Path where to save the files")
-    replicationPtr := flag.Int("replication", 1, "Replicaton type: 0=>no replica, 1=>chain, 2=>splay, 3=>primary splay")
+    //metricsPtr := flag.String("metric", "0.0.0.0:3323", "Server metric to change replicationMode")
+    serverIdPtr := flag.Int("id", 0, "Server daemon id")
     filePathPtr := flag.String("file", "/dev/momo/null", "File path to upload")
     flag.Parse()
 
@@ -39,21 +37,27 @@ func main() {
 
     //fmt.Println("host: " + cfg.Daemons[0].Host)
 
+    // Important:
+    //  Affinity work in this order [0,1,2] thats why a lot of lines are bonded to ServerId 0
+    //  ServerId 0 choose and change replication.
+
     switch *impersonationPtr {
-    case "client":
-        log.Printf("*** CLIENT CODE")
-        var wg sync.WaitGroup
-        wg.Add(1)
-        momo_client.Connect(&wg, *serverAddrPtr, *filePathPtr)
-    case "server":
-        log.Printf("*** SERVER CODE")
-        go momo_server.ChangeReplicationMode(*metricsPtr)
-        momo_server.Daemon(*serverAddrPtr, *dirPtr, *replicationPtr)
-    case "metric":
-        log.Printf("*** METRIC CODE")
-        momo_metrics.GetMetrics(cfg.MetricsInterval)
-    default:
-        log.Println("*** ERROR: Option unknown ***")
+        case "client":
+            log.Printf("*** CLIENT CODE")
+            var wg sync.WaitGroup
+            wg.Add(1)
+            momo_client.Connect(&wg, cfg.Daemons[0].Host, *filePathPtr)
+        case "server":
+            log.Printf("*** SERVER CODE")
+            if 0 == *serverIdPtr {
+                go momo_server.ChangeReplicationMode(cfg.MetricsHost)
+            }
+            momo_server.Daemon(cfg.Daemons[*serverIdPtr].Host, cfg.Daemons[*serverIdPtr].Data, *serverIdPtr)
+        case "metric":
+            log.Printf("*** METRIC CODE")
+            momo_metrics.GetMetrics(cfg.MetricsInterval)
+        default:
+            log.Println("*** ERROR: Option unknown ***")
     }
 
 }
