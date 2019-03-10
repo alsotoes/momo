@@ -149,8 +149,10 @@ func getFile(connection net.Conn, path string, fileName string, fileMD5 string, 
 
     for {
         if (fileSize - receivedBytes) < momo_common.BUFFERSIZE {
-            io.CopyN(newFile, connection, (fileSize - receivedBytes))
-            connection.Read(make([]byte, (receivedBytes+momo_common.BUFFERSIZE)-fileSize))
+            if (fileSize - receivedBytes) != 0 {
+                io.CopyN(newFile, connection, (fileSize - receivedBytes))
+                connection.Read(make([]byte, (receivedBytes+momo_common.BUFFERSIZE)-fileSize))
+            }
             break
         }
         io.CopyN(newFile, connection, momo_common.BUFFERSIZE)
@@ -163,6 +165,7 @@ func getFile(connection net.Conn, path string, fileName string, fileMD5 string, 
         os.Exit(1)
     }
 
+    log.Printf("Sending ACK to server")
     connection.Write([]byte("ACK"))
 
     log.Printf("=> MD5:     " + fileMD5)

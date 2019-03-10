@@ -73,6 +73,7 @@ func Connect(wg *sync.WaitGroup, servAddr string, filePath string) {
         connection.Write(sendBuffer)
     }
 
+    log.Printf("Waiting ACK from server")
     bufferACK := make([]byte, 10)
     connection.Read(bufferACK)
     log.Printf(string(bufferACK))
