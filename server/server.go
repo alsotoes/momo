@@ -60,13 +60,25 @@ func Daemon(servAddr string, path string, serverId int) {
 
             switch replicationMode {
                 case momo_common.NO_REPLICATION:
+                    defer func(){ 
+                        connection.Write([]byte("ACK"+strconv.Itoa(serverId)))
+                        connection.Close()
+                    }()
                     getFile(connection, path+"/", metadata.name, metadata.md5, metadata.size)
                 case momo_common.CHAIN_REPLICATION:
+                    defer func(){ 
+                        connection.Write([]byte("ACK"+strconv.Itoa(serverId)))
+                        connection.Close()
+                    }()
                     wg.Add(2) // Not needed, same execution thread, but client.Connect needs a waiting group variable
                     getFile(connection, path+"/", metadata.name, metadata.md5, metadata.size)
                     momo_client.Connect(&wg, "0.0.0.0:3334", "./received_files/dir1/"+metadata.name)
                     momo_client.Connect(&wg, "0.0.0.0:3335", "./received_files/dir1/"+metadata.name)
                 case momo_common.SPLAY_REPLICATION:
+                    defer func(){ 
+                        connection.Write([]byte("ACK"+strconv.Itoa(serverId)))
+                        connection.Close()
+                    }()
                     wg.Add(2)
                     getFile(connection, path+"/", metadata.name, metadata.md5, metadata.size)
                     go momo_client.Connect(&wg, "0.0.0.0:3334", "./received_files/dir1/"+metadata.name)
@@ -140,10 +152,14 @@ func getFile(connection net.Conn, path string, fileName string, fileMD5 string, 
     newFile, err := os.Create(path+fileName)
 
     if err != nil {
-        panic(err)
+        log.Printf(err.Error())
+        connection.Close()
+        os.Exit(1)
     }
 
-    defer connection.Close()
+    // TODO: Check on error inside this procedure for posible exit with the connection open :(
+    // https://stackoverflow.com/questions/12741386/how-to-know-tcp-connection-is-closed-in-golang-net-package
+    // defer connection.Close()
     defer newFile.Close()
     var receivedBytes int64
 
@@ -162,15 +178,13 @@ func getFile(connection net.Conn, path string, fileName string, fileMD5 string, 
     hash, err := momo_common.HashFile(path+fileName)
     if err != nil {
         log.Printf(err.Error())
+        connection.Close()
         os.Exit(1)
     }
-
-    log.Printf("Sending ACK to server")
-    connection.Write([]byte("ACK"))
 
     log.Printf("=> MD5:     " + fileMD5)
     log.Printf("=> New MD5: " + hash)
     log.Printf("=> Name:    " + path + fileName)
     log.Printf("Received file completely!")
-
+    log.Printf("Sending ACK to client connection")
 }

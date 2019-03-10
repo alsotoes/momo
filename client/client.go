@@ -78,7 +78,6 @@ func Connect(wg *sync.WaitGroup, servAddr string, filePath string) {
     connection.Read(bufferACK)
     log.Printf(string(bufferACK))
     log.Printf("File has been sent, closing connection!")
-
 }
 
 func fillString(retunString string, toLength int) string {
