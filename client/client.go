@@ -13,10 +13,7 @@ import (
 
 func Connect(wg *sync.WaitGroup, daemons []*momo_common.Daemon, filePath string, serverId int) {
     var connArr [3]net.Conn
-    connArr[0] = dialSocket(daemons[serverId].Host)
-
-    defer wg.Done()
-    defer connArr[0].Close()
+    var fileMetadata momo_common.FileMetadata
 
     file, err := os.Open(filePath)
     if err != nil {
@@ -35,37 +32,50 @@ func Connect(wg *sync.WaitGroup, daemons []*momo_common.Daemon, filePath string,
         os.Exit(1)
     }
 
+    fileMetadata.MD5 = hash
+    fileMetadata.Name = fileInfo.Name()
+    fileMetadata.Size = fileInfo.Size()
+
+    connArr[0] = dialSocket(daemons[serverId].Host)
+
+    defer wg.Done()
+    defer connArr[0].Close()
+
     bufferReplicationMode := make([]byte, 1)
     connArr[0].Read(bufferReplicationMode)
 
     if strconv.Itoa(momo_common.PRIMARY_SPLAY_REPLICATION) == string(bufferReplicationMode) {
-        log.Printf(string(bufferReplicationMode))
+        log.Printf("Daemon replicationMode: " + string(bufferReplicationMode))
     }
 
-    fileMD5 := fillString(hash, 32)
-    fileName := fillString(fileInfo.Name(), momo_common.LENGTHINFO)
-    fileSize := fillString(strconv.FormatInt(fileInfo.Size(), 10), momo_common.LENGTHINFO)
+    sendFile(connArr[0], filePath, file, fileMetadata)
+}
+
+func sendFile(connection net.Conn, filePath string, file *os.File, fileMetadata momo_common.FileMetadata) {
+    fileMD5 := fillString(fileMetadata.MD5, 32)
+    fileName := fillString(fileMetadata.Name, momo_common.LENGTHINFO)
+    fileSize := fillString(strconv.FormatInt(fileMetadata.Size, 10), momo_common.LENGTHINFO)
 
     log.Printf("Sending filename and filesize!")
-    connArr[0].Write([]byte(fileMD5))
-    connArr[0].Write([]byte(fileName))
-    connArr[0].Write([]byte(fileSize))
+    connection.Write([]byte(fileMD5))
+    connection.Write([]byte(fileName))
+    connection.Write([]byte(fileSize))
     sendBuffer := make([]byte, momo_common.BUFFERSIZE)
 
     log.Printf("Start sending file!")
     log.Printf("=> MD5: " + fileMD5)
     log.Printf("=> Name: " + fileName)
     for {
-        _, err = file.Read(sendBuffer)
+        _, err := file.Read(sendBuffer)
         if err == io.EOF {
             break
         }
-        connArr[0].Write(sendBuffer)
+        connection.Write(sendBuffer)
     }
 
     log.Printf("Waiting ACK from server")
     bufferACK := make([]byte, 10)
-    connArr[0].Read(bufferACK)
+    connection.Read(bufferACK)
     log.Printf(string(bufferACK))
     log.Printf("File has been sent, closing connection!")
 }

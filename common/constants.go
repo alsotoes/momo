@@ -12,3 +12,9 @@ const PRIMARY_SPLAY_REPLICATION = 3
 
 // ReplicationMode global variable
 var ReplicationMode = 1
+
+type FileMetadata struct {
+    Name string
+    MD5  string
+    Size int64
+}
