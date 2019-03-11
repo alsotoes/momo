@@ -17,7 +17,6 @@ import (
 func main() {
 
     impersonationPtr := flag.String("imp", "client", "Server, client or metric server impersonation")
-    //metricsPtr := flag.String("metric", "0.0.0.0:3323", "Server metric to change replicationMode")
     serverIdPtr := flag.Int("id", 0, "Server daemon id")
     filePathPtr := flag.String("file", "/dev/momo/null", "File path to upload")
     flag.Parse()
@@ -46,13 +45,13 @@ func main() {
             log.Printf("*** CLIENT CODE")
             var wg sync.WaitGroup
             wg.Add(1)
-            momo_client.Connect(&wg, cfg.Daemons[0].Host, *filePathPtr)
+            momo_client.Connect(&wg, cfg.Daemons, *filePathPtr, 0)
         case "server":
             log.Printf("*** SERVER CODE")
             if 0 == *serverIdPtr {
                 go momo_server.ChangeReplicationMode(cfg.MetricsHost)
             }
-            momo_server.Daemon(cfg.Daemons[*serverIdPtr].Host, cfg.Daemons[*serverIdPtr].Data, *serverIdPtr)
+            momo_server.Daemon(cfg.Daemons, *serverIdPtr)
         case "metric":
             log.Printf("*** METRIC CODE")
             momo_metrics.GetMetrics(cfg.MetricsInterval)

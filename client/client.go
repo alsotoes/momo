@@ -11,22 +11,13 @@ import (
     momo_common "github.com/alsotoes/momo/common"
 )
 
-func Connect(wg *sync.WaitGroup, servAddr string, filePath string) {
+func Connect(wg *sync.WaitGroup, daemons []*momo_common.Daemon, filePath string, serverId int) {
 
-    tcpAddr, err := net.ResolveTCPAddr("tcp", servAddr)
-    if err != nil {
-        println("ResolveTCPAddr failed:", err.Error())
-        os.Exit(1)
-    }
-
-    connection, err := net.DialTCP("tcp", nil, tcpAddr)
-    if err != nil {
-        println("Dial failed:", err.Error())
-        os.Exit(1)
-    }
+    var connArr [3]net.Conn
+    connArr[0] = dialSocket(daemons[serverId].Host)
 
     defer wg.Done()
-    defer connection.Close()
+    defer connArr[0].Close()
 
     file, err := os.Open(filePath)
     if err != nil {
@@ -46,7 +37,7 @@ func Connect(wg *sync.WaitGroup, servAddr string, filePath string) {
     }
 
     bufferReplicationMode := make([]byte, 1)
-    connection.Read(bufferReplicationMode)
+    connArr[0].Read(bufferReplicationMode)
 
     if strconv.Itoa(momo_common.PRIMARY_SPLAY_REPLICATION) == string(bufferReplicationMode) {
         log.Printf(string(bufferReplicationMode))
@@ -57,9 +48,9 @@ func Connect(wg *sync.WaitGroup, servAddr string, filePath string) {
     fileSize := fillString(strconv.FormatInt(fileInfo.Size(), 10), momo_common.LENGTHINFO)
 
     log.Printf("Sending filename and filesize!")
-    connection.Write([]byte(fileMD5))
-    connection.Write([]byte(fileName))
-    connection.Write([]byte(fileSize))
+    connArr[0].Write([]byte(fileMD5))
+    connArr[0].Write([]byte(fileName))
+    connArr[0].Write([]byte(fileSize))
     sendBuffer := make([]byte, momo_common.BUFFERSIZE)
 
     log.Printf("Start sending file!")
@@ -70,18 +61,33 @@ func Connect(wg *sync.WaitGroup, servAddr string, filePath string) {
         if err == io.EOF {
             break
         }
-        connection.Write(sendBuffer)
+        connArr[0].Write(sendBuffer)
     }
 
     log.Printf("Waiting ACK from server")
     bufferACK := make([]byte, 10)
-    connection.Read(bufferACK)
+    connArr[0].Read(bufferACK)
     log.Printf(string(bufferACK))
     log.Printf("File has been sent, closing connection!")
 }
 
-func fillString(retunString string, toLength int) string {
+func dialSocket(servAddr string) net.Conn {
+    tcpAddr, err := net.ResolveTCPAddr("tcp", servAddr)
+    if err != nil {
+        println("ResolveTCPAddr failed:", err.Error())
+        os.Exit(1)
+    }
 
+    connection, err := net.DialTCP("tcp", nil, tcpAddr)
+    if err != nil {
+        println("Dial failed:", err.Error())
+        os.Exit(1)
+    }
+
+    return connection
+}
+
+func fillString(retunString string, toLength int) string {
     for {
         lengtString := len(retunString)
         if lengtString < toLength {
@@ -91,5 +97,4 @@ func fillString(retunString string, toLength int) string {
         break
     }
     return retunString
-
 }

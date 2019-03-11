@@ -23,15 +23,15 @@ type FileMetadata struct {
     size int64
 }
 
-func Daemon(servAddr string, path string, serverId int) {
-    server, err := net.Listen("tcp", servAddr)
+func Daemon(daemons []*momo_common.Daemon, serverId int) {
+    server, err := net.Listen("tcp", daemons[serverId].Host)
     if err != nil {
         log.Printf("Error listetning: ", err)
         os.Exit(1)
     }
 
     defer server.Close()
-    log.Printf("Server primary Daemon started... at " + servAddr)
+    log.Printf("Server primary Daemon started... at " + daemons[serverId].Host)
     log.Printf("...Waiting for connections...")
 
     for {
@@ -64,25 +64,25 @@ func Daemon(servAddr string, path string, serverId int) {
                         connection.Write([]byte("ACK"+strconv.Itoa(serverId)))
                         connection.Close()
                     }()
-                    getFile(connection, path+"/", metadata.name, metadata.md5, metadata.size)
+                    getFile(connection, daemons[serverId].Data+"/", metadata.name, metadata.md5, metadata.size)
                 case momo_common.CHAIN_REPLICATION:
                     defer func(){ 
                         connection.Write([]byte("ACK"+strconv.Itoa(serverId)))
                         connection.Close()
                     }()
                     wg.Add(2) // Not needed, same execution thread, but client.Connect needs a waiting group variable
-                    getFile(connection, path+"/", metadata.name, metadata.md5, metadata.size)
-                    momo_client.Connect(&wg, "0.0.0.0:3334", "./received_files/dir1/"+metadata.name)
-                    momo_client.Connect(&wg, "0.0.0.0:3335", "./received_files/dir1/"+metadata.name)
+                    getFile(connection, daemons[serverId].Data+"/", metadata.name, metadata.md5, metadata.size)
+                    momo_client.Connect(&wg, daemons, daemons[0].Data+"/"+metadata.name, 1)
+                    momo_client.Connect(&wg, daemons, daemons[0].Data+"/"+metadata.name, 2)
                 case momo_common.SPLAY_REPLICATION:
                     defer func(){ 
                         connection.Write([]byte("ACK"+strconv.Itoa(serverId)))
                         connection.Close()
                     }()
                     wg.Add(2)
-                    getFile(connection, path+"/", metadata.name, metadata.md5, metadata.size)
-                    go momo_client.Connect(&wg, "0.0.0.0:3334", "./received_files/dir1/"+metadata.name)
-                    go momo_client.Connect(&wg, "0.0.0.0:3335", "./received_files/dir1/"+metadata.name)
+                    getFile(connection, daemons[serverId].Data+"/", metadata.name, metadata.md5, metadata.size)
+                    go momo_client.Connect(&wg, daemons, daemons[0].Data+"/"+metadata.name, 1)
+                    go momo_client.Connect(&wg, daemons, daemons[0].Data+"/"+metadata.name, 2)
                     wg.Wait()
                 default:
                     log.Println("*** ERROR: Unknown replication type")
@@ -94,7 +94,6 @@ func Daemon(servAddr string, path string, serverId int) {
 }
 
 func ChangeReplicationMode(servAddr string) {
-
     server, err := net.Listen("tcp", servAddr)
     if err != nil {
         log.Printf("Error listetning: ", err)
@@ -120,7 +119,6 @@ func ChangeReplicationMode(servAddr string) {
             log.Printf("go ChangeReplicationMode new value: " + strconv.Itoa(momo_common.ReplicationMode))
         }()
     }
-
 }
 
 func getMetadata(connection net.Conn) FileMetadata {
