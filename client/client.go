@@ -12,7 +12,6 @@ import (
 )
 
 func Connect(wg *sync.WaitGroup, daemons []*momo_common.Daemon, filePath string, serverId int) {
-
     var connArr [3]net.Conn
     connArr[0] = dialSocket(daemons[serverId].Host)
 
