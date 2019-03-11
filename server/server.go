@@ -17,14 +17,6 @@ import(
     momo_client "github.com/alsotoes/momo/client"
 )
 
-/*
-type FileMetadata struct {
-    name string
-    md5  string
-    size int64
-}
-*/
-
 func Daemon(daemons []*momo_common.Daemon, serverId int) {
     server, err := net.Listen("tcp", daemons[serverId].Host)
     if err != nil {
@@ -47,6 +39,10 @@ func Daemon(daemons []*momo_common.Daemon, serverId int) {
         go func() {
 
             var replicationMode int
+            defer func(){
+                connection.Write([]byte("ACK"+strconv.Itoa(serverId)))
+                connection.Close()
+            }()
 
             if 0 == serverId {
                 replicationMode = momo_common.ReplicationMode
@@ -54,33 +50,22 @@ func Daemon(daemons []*momo_common.Daemon, serverId int) {
                 replicationMode = momo_common.NO_REPLICATION
             }
 
-            log.Printf("Primary Daemon replicationMode: " + strconv.Itoa(replicationMode))
+            log.Printf("Server Daemon replicationMode: " + strconv.Itoa(replicationMode))
             connection.Write([]byte(strconv.FormatInt(int64(replicationMode), 10)))
 
             metadata := getMetadata(connection)
             var wg sync.WaitGroup
 
             switch replicationMode {
-                case momo_common.NO_REPLICATION:
-                    defer func(){ 
-                        connection.Write([]byte("ACK"+strconv.Itoa(serverId)))
-                        connection.Close()
-                    }()
+                case momo_common.NO_REPLICATION, momo_common.PRIMARY_SPLAY_REPLICATION:
                     getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
                 case momo_common.CHAIN_REPLICATION:
-                    defer func(){ 
-                        connection.Write([]byte("ACK"+strconv.Itoa(serverId)))
-                        connection.Close()
-                    }()
-                    wg.Add(2) // Not needed, same execution thread, but client.Connect needs a waiting group variable
+                    wg.Add(2)
                     getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
                     momo_client.Connect(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 1)
                     momo_client.Connect(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 2)
+                    wg.Wait()
                 case momo_common.SPLAY_REPLICATION:
-                    defer func(){ 
-                        connection.Write([]byte("ACK"+strconv.Itoa(serverId)))
-                        connection.Close()
-                    }()
                     wg.Add(2)
                     getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
                     go momo_client.Connect(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 1)

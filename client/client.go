@@ -14,6 +14,7 @@ import (
 func Connect(wg *sync.WaitGroup, daemons []*momo_common.Daemon, filePath string, serverId int) {
     var connArr [3]net.Conn
     var fileMetadata momo_common.FileMetadata
+    var wgSendFile sync.WaitGroup
 
     file, err := os.Open(filePath)
     if err != nil {
@@ -45,13 +46,26 @@ func Connect(wg *sync.WaitGroup, daemons []*momo_common.Daemon, filePath string,
     connArr[0].Read(bufferReplicationMode)
 
     if strconv.Itoa(momo_common.PRIMARY_SPLAY_REPLICATION) == string(bufferReplicationMode) {
+        defer connArr[1].Close()
+        defer connArr[2].Close()
         log.Printf("Daemon replicationMode: " + string(bufferReplicationMode))
-    }
+        connArr[1] = dialSocket(daemons[1].Host)
+        connArr[2] = dialSocket(daemons[2].Host)
 
-    sendFile(connArr[0], filePath, file, fileMetadata)
+        wgSendFile.Add(3)
+        go sendFile(&wgSendFile, connArr[0], file, fileMetadata)
+        go sendFile(&wgSendFile, connArr[1], file, fileMetadata)
+        go sendFile(&wgSendFile, connArr[2], file, fileMetadata)
+    } else {
+        wgSendFile.Add(1)
+        sendFile(&wgSendFile, connArr[0], file, fileMetadata)
+    }
+    wgSendFile.Wait()
 }
 
-func sendFile(connection net.Conn, filePath string, file *os.File, fileMetadata momo_common.FileMetadata) {
+func sendFile(wgSendFile *sync.WaitGroup, connection net.Conn, file *os.File, fileMetadata momo_common.FileMetadata) {
+    defer wgSendFile.Done()
+
     fileMD5 := fillString(fileMetadata.MD5, 32)
     fileName := fillString(fileMetadata.Name, momo_common.LENGTHINFO)
     fileSize := fillString(strconv.FormatInt(fileMetadata.Size, 10), momo_common.LENGTHINFO)
@@ -76,7 +90,7 @@ func sendFile(connection net.Conn, filePath string, file *os.File, fileMetadata 
     log.Printf("Waiting ACK from server")
     bufferACK := make([]byte, 10)
     connection.Read(bufferACK)
-    log.Printf(string(bufferACK))
+    log.Printf("==> " + string(bufferACK))
     log.Printf("File has been sent, closing connection!")
 }
 
