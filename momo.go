@@ -15,7 +15,6 @@ import (
 )
 
 func main() {
-
     impersonationPtr := flag.String("imp", "client", "Server, client or metric server impersonation")
     serverIdPtr := flag.Int("id", 0, "Server daemon id")
     filePathPtr := flag.String("file", "/dev/momo/null", "File path to upload")
@@ -58,5 +57,4 @@ func main() {
         default:
             log.Println("*** ERROR: Option unknown ***")
     }
-
 }

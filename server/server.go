@@ -40,6 +40,7 @@ func Daemon(daemons []*momo_common.Daemon, serverId int) {
 
             var replicationMode int
             defer func(){
+                log.Printf("Server ACK to Client => ACK"+strconv.Itoa(serverId))
                 connection.Write([]byte("ACK"+strconv.Itoa(serverId)))
                 connection.Close()
             }()
