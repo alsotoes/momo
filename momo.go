@@ -23,16 +23,6 @@ func main() {
     cfg := momo_common.GetConfig()
     momo_common.LogStdOut(cfg.Debug)
 
-    /*
-    fmt.Println(len(cfg.Daemons))
-    for i := range(cfg.Daemons) {
-        daemon := cfg.Daemons[i]
-        fmt.Println("host: " + daemon.Host)
-        fmt.Println("metric: " + daemon.Metric)
-        fmt.Println("data: " + daemon.Data)
-    }
-    */
-
     //fmt.Println("host: " + cfg.Daemons[0].Host)
 
     // Important:
