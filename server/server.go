@@ -45,6 +45,7 @@ func Daemon(daemons []*momo_common.Daemon, serverId int) {
                 connection.Close()
             }()
 
+            // TODO: fix this, put this logic in the switch-case code
             if 0 == serverId {
                 replicationMode = momo_common.ReplicationMode
             } else {
@@ -60,11 +61,15 @@ func Daemon(daemons []*momo_common.Daemon, serverId int) {
             switch replicationMode {
                 case momo_common.NO_REPLICATION, momo_common.PRIMARY_SPLAY_REPLICATION:
                     getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
+                    if momo_common.ReplicationMode == momo_common.CHAIN_REPLICATION && 1 == serverId {
+                        wg.Add(1)
+                        momo_client.Connect(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 2)
+                        wg.Wait()
+                    }
                 case momo_common.CHAIN_REPLICATION:
-                    wg.Add(2)
+                    wg.Add(1)
                     getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
                     momo_client.Connect(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 1)
-                    momo_client.Connect(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 2)
                     wg.Wait()
                 case momo_common.SPLAY_REPLICATION:
                     wg.Add(2)
@@ -75,7 +80,6 @@ func Daemon(daemons []*momo_common.Daemon, serverId int) {
                 default:
                     log.Println("*** ERROR: Unknown replication type")
                     os.Exit(1)
-
             }
         }()
     }
