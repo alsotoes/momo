@@ -63,7 +63,7 @@ func Daemon(daemons []*momo_common.Daemon, serverId int) {
                     getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
                     if momo_common.ReplicationMode == momo_common.CHAIN_REPLICATION && 1 == serverId {
                         wg.Add(1)
-                        momo_client.Connect(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 2)
+                        momo_client.Connect(&wg, daemons, daemons[1].Data+"/"+metadata.Name, 2)
                         wg.Wait()
                     }
                 case momo_common.CHAIN_REPLICATION:
