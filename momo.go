@@ -37,9 +37,7 @@ func main() {
             momo_client.Connect(&wg, cfg.Daemons, *filePathPtr, 0)
         case "server":
             log.Printf("*** SERVER CODE")
-            if 0 == *serverIdPtr {
-                go momo_server.ChangeReplicationMode(cfg.MetricsHost)
-            }
+            go momo_server.ChangeReplicationMode(cfg.Daemons[*serverIdPtr].Chrep)
             momo_server.Daemon(cfg.Daemons, *serverIdPtr)
         case "metric":
             log.Printf("*** METRIC CODE")
