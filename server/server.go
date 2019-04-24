@@ -48,7 +48,6 @@ func Daemon(daemons []*momo_common.Daemon, serverId int) {
             log.Printf("Server Daemon replicationMode: " + strconv.Itoa(replicationMode))
             connection.Write([]byte(strconv.FormatInt(int64(replicationMode), 10)))
 
-            //metadata := momo_server.GetMetadata(connection)
             metadata := GetMetadata(connection)
             var wg sync.WaitGroup
 
