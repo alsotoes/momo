@@ -11,3 +11,16 @@ type ReplicationData struct {
     NewReplication int  `json:"newreplication"`
     TimeStamp int64     `json:"timestamp"`
 }
+
+type Daemon struct {
+    Host string
+    Chrep string
+    Data string
+}
+
+type Configuration struct {
+    Debug bool
+    MetricsInterval int
+    MetricsHost string
+    Daemons []*Daemon
+}

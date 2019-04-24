@@ -8,19 +8,6 @@ import (
     "gopkg.in/ini.v1"
 )
 
-type Daemon struct {
-    Host string
-    Chrep string
-    Data string
-}
-
-type Configuration struct {
-    Debug bool
-    MetricsInterval int
-    MetricsHost string
-    Daemons []*Daemon
-}
-
 func GetConfig() Configuration {
 
     daemonArr := []*Daemon{}
@@ -55,5 +42,4 @@ func GetConfig() Configuration {
     configuration.Daemons = daemonArr
 
     return configuration
-
 }
