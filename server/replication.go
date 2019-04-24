@@ -9,23 +9,22 @@ import(
     "encoding/json"
 
     momo_common "github.com/alsotoes/momo/common"
+    //momo_client "github.com/alsotoes/momo/client"
 )
 
-func ChangeReplicationModeServer(servAddr string) {
-    server, err := net.Listen("tcp", servAddr)
+func ChangeReplicationModeServer(daemons []*momo_common.Daemon, serverId int, epoch int64) {
+    server, err := net.Listen("tcp", daemons[serverId].Chrep)
     if err != nil {
         log.Printf("Error listetning: ", err)
         os.Exit(1)
     }
 
     defer server.Close()
-    log.Printf("Server changeReplicationMode started... at "+servAddr)
+    log.Printf("Server changeReplicationMode started... at "+daemons[serverId].Chrep)
     log.Printf("Waiting for connections: changeReplicationMode...")
     log.Printf("default ReplicationMode value: " + strconv.Itoa(momo_common.ReplicationMode))
 
-    now := time.Now()
-    nanos := now.UnixNano()
-    momo_common.ReplicationLookBack.TimeStamp = nanos
+    momo_common.ReplicationLookBack.TimeStamp = epoch
     replicationJson, _ := json.Marshal(momo_common.ReplicationLookBack)
     log.Printf("ReplicationData struct: "+ string(replicationJson))
 
@@ -49,6 +48,13 @@ func ChangeReplicationModeServer(servAddr string) {
             momo_common.ReplicationLookBack.TimeStamp = nanos
             replicationJson, _ := json.Marshal(momo_common.ReplicationLookBack)
             log.Printf("ReplicationData new struct: "+ string(replicationJson))
+
+            //go ChangeReplicationModeClient(daemons, 1)
+            //go ChangeReplicationModeClient(daemons, 2)
         }()
     }
+}
+
+func ChangeReplicationModeClient(daemons []*momo_common.Daemon, serverId int) {
+    //conn := momo_client.DialSocket(daemons[serverId].Chrep)
 }

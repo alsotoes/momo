@@ -15,7 +15,7 @@ func Connect(wg *sync.WaitGroup, daemons []*momo_common.Daemon, filePath string,
     var connArr [3]net.Conn
     var wgSendFile sync.WaitGroup
 
-    connArr[0] = dialSocket(daemons[serverId].Host)
+    connArr[0] = DialSocket(daemons[serverId].Host)
 
     defer wg.Done()
     defer connArr[0].Close()
@@ -26,12 +26,12 @@ func Connect(wg *sync.WaitGroup, daemons []*momo_common.Daemon, filePath string,
     if strconv.Itoa(momo_common.PRIMARY_SPLAY_REPLICATION) == string(bufferReplicationMode) {
         log.Printf("Daemon replicationMode: " + string(bufferReplicationMode))
 
-        connArr[1] = dialSocket(daemons[1].Host)
+        connArr[1] = DialSocket(daemons[1].Host)
         defer connArr[1].Close()
         bufferReplicationMode1 := make([]byte, 1)
         connArr[1].Read(bufferReplicationMode1)
 
-        connArr[2] = dialSocket(daemons[2].Host)
+        connArr[2] = DialSocket(daemons[2].Host)
         defer connArr[2].Close()
         bufferReplicationMode2 := make([]byte, 1)
         connArr[2].Read(bufferReplicationMode2)
@@ -97,7 +97,7 @@ func sendFile(wgSendFile *sync.WaitGroup, connection net.Conn, filePath string) 
     log.Printf("File has been sent, closing connection!")
 }
 
-func dialSocket(servAddr string) net.Conn {
+func DialSocket(servAddr string) net.Conn {
     tcpAddr, err := net.ResolveTCPAddr("tcp", servAddr)
     if err != nil {
         println("ResolveTCPAddr failed:", err.Error())

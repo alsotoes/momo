@@ -4,6 +4,7 @@ import (
     "log"
     "flag"
     "sync"
+    "time"
 
     momo_client "github.com/alsotoes/momo/client"
     momo_server "github.com/alsotoes/momo/server"
@@ -32,7 +33,9 @@ func main() {
             momo_client.Connect(&wg, cfg.Daemons, *filePathPtr, 0)
         case "server":
             log.Printf("*** SERVER CODE")
-            go momo_server.ChangeReplicationModeServer(cfg.Daemons[*serverIdPtr].Chrep)
+            now := time.Now()
+            nanos := now.UnixNano()
+            go momo_server.ChangeReplicationModeServer(cfg.Daemons, *serverIdPtr, nanos)
             momo_server.Daemon(cfg.Daemons, *serverIdPtr)
         case "metric":
             log.Printf("*** METRIC CODE")
