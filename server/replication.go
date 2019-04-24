@@ -4,7 +4,9 @@ import(
     "os"
     "log"
     "net"
+    "time"
     "strconv"
+    "encoding/json"
 
     momo_common "github.com/alsotoes/momo/common"
 )
@@ -20,6 +22,15 @@ func ChangeReplicationMode(servAddr string) {
     log.Printf("Server changeReplicationMode started... at "+servAddr)
     log.Printf("Waiting for connections: changeReplicationMode...")
     log.Printf("default ReplicationMode value: " + strconv.Itoa(momo_common.ReplicationMode))
+
+    now := time.Now()
+    nanos := now.UnixNano()
+    replication := &momo_common.ReplicationData{
+        Old: momo_common.ReplicationMode,
+        New: momo_common.ReplicationMode,
+        TimeStamp: nanos}
+    replicationJson, _ := json.Marshal(replication)
+    log.Printf("ReplicationData struct: "+ string(replicationJson))
 
     for {
         connection, err := server.Accept()
