@@ -10,11 +10,5 @@ const CHAIN_REPLICATION = 1
 const SPLAY_REPLICATION = 2
 const PRIMARY_SPLAY_REPLICATION = 3
 
-// ReplicationMode global variable
+// ReplicationMode at stating point
 var ReplicationMode = 1
-
-type FileMetadata struct {
-    Name string
-    MD5  string
-    Size int64
-}
