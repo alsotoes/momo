@@ -12,3 +12,9 @@ const PRIMARY_SPLAY_REPLICATION = 3
 
 // ReplicationMode at stating point
 var ReplicationMode = 1
+
+// Struct to lookback states when changing replication mode
+var ReplicationLookBack = &ReplicationData{
+    Old: ReplicationMode,
+    New: ReplicationMode,
+    TimeStamp: 1}

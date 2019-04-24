@@ -2,11 +2,8 @@ package main
 
 import (
     "log"
-    _"fmt"
     "flag"
     "sync"
-    _ "strconv"
-    _ "io/ioutil"
 
     momo_client "github.com/alsotoes/momo/client"
     momo_server "github.com/alsotoes/momo/server"
@@ -35,7 +32,7 @@ func main() {
             momo_client.Connect(&wg, cfg.Daemons, *filePathPtr, 0)
         case "server":
             log.Printf("*** SERVER CODE")
-            go momo_server.ChangeReplicationMode(cfg.Daemons[*serverIdPtr].Chrep)
+            go momo_server.ChangeReplicationModeServer(cfg.Daemons[*serverIdPtr].Chrep)
             momo_server.Daemon(cfg.Daemons, *serverIdPtr)
         case "metric":
             log.Printf("*** METRIC CODE")
