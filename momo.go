@@ -23,8 +23,6 @@ func main() {
     cfg := momo_common.GetConfig()
     momo_common.LogStdOut(cfg.Debug)
 
-    //fmt.Println("host: " + cfg.Daemons[0].Host)
-
     // Important:
     //  Affinity work in this order [0,1,2] thats why a lot of lines are bonded to ServerId 0
     //  ServerId 0 choose and change replication.
