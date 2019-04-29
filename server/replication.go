@@ -49,12 +49,12 @@ func ChangeReplicationModeServer(daemons []*momo_common.Daemon, serverId int, ep
             replicationJson, _ := json.Marshal(momo_common.ReplicationLookBack)
             log.Printf("ReplicationData new struct: "+ string(replicationJson))
 
-            //go ChangeReplicationModeClient(daemons, 1)
-            //go ChangeReplicationModeClient(daemons, 2)
+            //go ChangeReplicationModeClient(daemons, string(replicationJson), 1)
+            //go ChangeReplicationModeClient(daemons, string(replicationJson), 2)
         }()
     }
 }
 
-func ChangeReplicationModeClient(daemons []*momo_common.Daemon, serverId int) {
+func ChangeReplicationModeClient(daemons []*momo_common.Daemon, replicationJson string, serverId int) {
     //conn := momo_client.DialSocket(daemons[serverId].Chrep)
 }
