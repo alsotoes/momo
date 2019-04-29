@@ -7,9 +7,9 @@ type FileMetadata struct {
 }
 
 type ReplicationData struct {
-    Old int  `json:"old"`
-    New int  `json:"new"`
-    TimeStamp int64     `json:"timestamp"`
+    Old int         `json:"old"`
+    New int         `json:"new"`
+    TimeStamp int64 `json:"timestamp"`
 }
 
 type Daemon struct {
