@@ -48,12 +48,12 @@ func Daemon(daemons []*momo_common.Daemon, serverId int) {
             log.Printf("Server Daemon replicationMode: " + strconv.Itoa(replicationMode))
             connection.Write([]byte(strconv.FormatInt(int64(replicationMode), 10)))
 
-            metadata := GetMetadata(connection)
+            metadata := getMetadata(connection)
             var wg sync.WaitGroup
 
             switch replicationMode {
                 case momo_common.NO_REPLICATION, momo_common.PRIMARY_SPLAY_REPLICATION:
-                    GetFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
+                    getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
                     if momo_common.ReplicationMode == momo_common.CHAIN_REPLICATION && 1 == serverId {
                         wg.Add(1)
                         momo_client.Connect(&wg, daemons, daemons[1].Data+"/"+metadata.Name, 2)
@@ -61,12 +61,12 @@ func Daemon(daemons []*momo_common.Daemon, serverId int) {
                     }
                 case momo_common.CHAIN_REPLICATION:
                     wg.Add(1)
-                    GetFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
+                    getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
                     momo_client.Connect(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 1)
                     wg.Wait()
                 case momo_common.SPLAY_REPLICATION:
                     wg.Add(2)
-                    GetFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
+                    getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
                     go momo_client.Connect(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 1)
                     go momo_client.Connect(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 2)
                     wg.Wait()

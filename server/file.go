@@ -11,7 +11,7 @@ import(
     momo_common "github.com/alsotoes/momo/common"
 )
 
-func GetMetadata(connection net.Conn) momo_common.FileMetadata {
+func getMetadata(connection net.Conn) momo_common.FileMetadata {
     var metadata momo_common.FileMetadata
 
     bufferFileMD5 := make([]byte, 32)
@@ -34,7 +34,7 @@ func GetMetadata(connection net.Conn) momo_common.FileMetadata {
     return metadata
 }
 
-func GetFile(connection net.Conn, path string, fileName string, fileMD5 string, fileSize int64) {
+func getFile(connection net.Conn, path string, fileName string, fileMD5 string, fileSize int64) {
     newFile, err := os.Create(path+fileName)
 
     if err != nil {
