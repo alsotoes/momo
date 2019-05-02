@@ -12,7 +12,7 @@ import(
     momo_client "github.com/alsotoes/momo/client"
 )
 
-func ChangeReplicationModeServer(daemons []*momo_common.Daemon, serverId int, epoch int64) {
+func ChangeReplicationModeServer(daemons []*momo_common.Daemon, serverId int, timestamp int64) {
     server, err := net.Listen("tcp", daemons[serverId].Chrep)
     if err != nil {
         log.Printf("Error listetning: ", err)
@@ -24,7 +24,7 @@ func ChangeReplicationModeServer(daemons []*momo_common.Daemon, serverId int, ep
     log.Printf("Waiting for connections: changeReplicationMode...")
     log.Printf("default ReplicationMode value: " + strconv.Itoa(momo_common.ReplicationMode))
 
-    momo_common.ReplicationLookBack.TimeStamp = epoch
+    momo_common.ReplicationLookBack.TimeStamp = timestamp
     replicationJson, _ := json.Marshal(momo_common.ReplicationLookBack)
     log.Printf("ReplicationData struct: "+ string(replicationJson))
 
