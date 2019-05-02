@@ -30,12 +30,12 @@ func main() {
             log.Printf("*** CLIENT CODE")
             var wg sync.WaitGroup
             wg.Add(1)
-            momo_client.Connect(&wg, cfg.Daemons, *filePathPtr, 0)
+            momo_client.Connect(&wg, cfg.Daemons, *filePathPtr, 0, -1)
         case "server":
             log.Printf("*** SERVER CODE")
             now := time.Now()
-            nanos := now.UnixNano()
-            go momo_server.ChangeReplicationModeServer(cfg.Daemons, *serverIdPtr, nanos)
+            timestamp := now.UnixNano()
+            go momo_server.ChangeReplicationModeServer(cfg.Daemons, *serverIdPtr, timestamp)
             momo_server.Daemon(cfg.Daemons, *serverIdPtr)
         case "metric":
             log.Printf("*** METRIC CODE")

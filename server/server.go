@@ -5,6 +5,7 @@ import(
     "log"
     "net"
     "sync"
+    "time"
     "strconv"
 
     momo_common "github.com/alsotoes/momo/common"
@@ -12,6 +13,7 @@ import(
 )
 
 func Daemon(daemons []*momo_common.Daemon, serverId int) {
+    var timestamp int64
     server, err := net.Listen("tcp", daemons[serverId].Host)
     if err != nil {
         log.Printf("Error listetning: ", err)
@@ -38,13 +40,23 @@ func Daemon(daemons []*momo_common.Daemon, serverId int) {
                 connection.Close()
             }()
 
-            // TODO: fix this, put this logic in the switch-case code
+            bufferTimestamp := make([]byte, momo_common.LENGTHTIMESTAMP)
+            connection.Read(bufferTimestamp)
+
             if 0 == serverId {
+                now := time.Now()
+                timestamp = now.UnixNano()
                 replicationMode = momo_common.ReplicationMode
             } else {
+                timestamp, err = strconv.ParseInt(string(bufferTimestamp), 10, 64)
+                if err != nil {
+                    log.Printf("Error: %d of type %T", timestamp, timestamp)
+                    panic(err)
+                }
                 replicationMode = momo_common.NO_REPLICATION
             }
 
+            log.Printf("Cluster object global timestamp: " + strconv.FormatInt(timestamp, 10))
             log.Printf("Server Daemon replicationMode: " + strconv.Itoa(replicationMode))
             connection.Write([]byte(strconv.FormatInt(int64(replicationMode), 10)))
 
@@ -56,19 +68,19 @@ func Daemon(daemons []*momo_common.Daemon, serverId int) {
                     getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
                     if momo_common.ReplicationMode == momo_common.CHAIN_REPLICATION && 1 == serverId {
                         wg.Add(1)
-                        momo_client.Connect(&wg, daemons, daemons[1].Data+"/"+metadata.Name, 2)
+                        momo_client.Connect(&wg, daemons, daemons[1].Data+"/"+metadata.Name, 2, timestamp)
                         wg.Wait()
                     }
                 case momo_common.CHAIN_REPLICATION:
                     wg.Add(1)
                     getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
-                    momo_client.Connect(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 1)
+                    momo_client.Connect(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 1, timestamp)
                     wg.Wait()
                 case momo_common.SPLAY_REPLICATION:
                     wg.Add(2)
                     getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
-                    go momo_client.Connect(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 1)
-                    go momo_client.Connect(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 2)
+                    go momo_client.Connect(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 1, timestamp)
+                    go momo_client.Connect(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 2, timestamp)
                     wg.Wait()
                 default:
                     log.Println("*** ERROR: Unknown replication type")

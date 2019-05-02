@@ -3,6 +3,7 @@ package common
 const (
     // Socket constants
     BUFFERSIZE = 1024
+    LENGTHTIMESTAMP = 19
     LENGTHINFO = 64
 
     // Replication types
