@@ -17,7 +17,7 @@ func main() {
     nanos := now.UnixNano()
 
     replicationJsonStruct := &momo_common.ReplicationData{
-//        Old: 2,
+        Old: 2,
         New: 2,
         TimeStamp: nanos}
 
