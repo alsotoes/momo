@@ -30,6 +30,7 @@ func GetConfig() Configuration {
         daemon.Host = sec.Key("host").String()
         daemon.Chrep = sec.Key("chrep").String()
         daemon.Data = sec.Key("data").String()
+        daemon.Drive = sec.Key("drive").String()
         daemonArr = append(daemonArr, daemon)
 
         index = index +1
@@ -37,8 +38,9 @@ func GetConfig() Configuration {
     }
 
     configuration.Debug, _ = strconv.ParseBool(cfg.Section("global").Key("debug").String())
-    configuration.MetricsInterval, _ = strconv.Atoi(cfg.Section("global").Key("metrics_interval").String())
-    configuration.MetricsHost = cfg.Section("global").Key("metrics_host").String()
+    configuration.MetricsInterval, _ = strconv.Atoi(cfg.Section("metrics").Key("interval").String())
+    configuration.MinThreshold, _ = strconv.ParseFloat(cfg.Section("metrics").Key("min_threshold").String(), 64)
+    configuration.MaxThreshold, _ = strconv.ParseFloat(cfg.Section("metrics").Key("max_threshold").String(), 64)
     configuration.Daemons = daemonArr
 
     return configuration

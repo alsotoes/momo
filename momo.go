@@ -38,8 +38,7 @@ func main() {
             go momo_server.ChangeReplicationModeServer(cfg.Daemons, *serverIdPtr, timestamp)
             momo_server.Daemon(cfg.Daemons, *serverIdPtr)
         case "metric":
-            log.Printf("*** METRIC CODE")
-            momo_metrics.GetMetrics(cfg.MetricsInterval)
+            momo_metrics.GetMetrics(cfg.Daemons, *serverIdPtr, cfg.MetricsInterval)
         default:
             log.Println("*** ERROR: Option unknown ***")
     }

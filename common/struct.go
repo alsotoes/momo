@@ -16,11 +16,13 @@ type Daemon struct {
     Host string
     Chrep string
     Data string
+    Drive string
 }
 
 type Configuration struct {
     Debug bool
     MetricsInterval int
-    MetricsHost string
+    MaxThreshold float64
+    MinThreshold float64
     Daemons []*Daemon
 }
