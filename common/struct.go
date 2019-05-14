@@ -19,10 +19,23 @@ type Daemon struct {
     Drive string
 }
 
-type Configuration struct {
+type ConfigurationGlobal struct {
     Debug bool
-    MetricsInterval int
+    DriftAllowed float64
+    ReplicationOrder string
+    PolymorphSystem bool
+}
+
+type ConfigurationMetrics struct {
+    Interval int
     MaxThreshold float64
     MinThreshold float64
+    FallbackInterval int
+}
+
+
+type Configuration struct {
     Daemons []*Daemon
+    Global ConfigurationGlobal
+    Metrics ConfigurationMetrics
 }

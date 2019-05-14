@@ -24,6 +24,8 @@ func ChangeReplicationModeServer(daemons []*momo_common.Daemon, serverId int, ti
     log.Printf("Waiting for connections: changeReplicationMode...")
     log.Printf("default ReplicationMode value: " + strconv.Itoa(momo_common.ReplicationMode))
 
+    momo_common.ReplicationLookBack.Old = momo_common.ReplicationMode
+    momo_common.ReplicationLookBack.New = momo_common.ReplicationMode
     momo_common.ReplicationLookBack.TimeStamp = timestamp
     replicationJson, _ := json.Marshal(momo_common.ReplicationLookBack)
     log.Printf("ReplicationData struct: "+ string(replicationJson))

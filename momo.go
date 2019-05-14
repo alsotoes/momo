@@ -1,6 +1,7 @@
 package main
 
 import (
+    "os"
     "log"
     "flag"
     "sync"
@@ -14,12 +15,17 @@ import (
 
 func main() {
     impersonationPtr := flag.String("imp", "client", "Server, client or metric server impersonation")
-    serverIdPtr := flag.Int("id", 0, "Server daemon id")
-    filePathPtr := flag.String("file", "/dev/momo/null", "File path to upload")
+    serverIdPtr := flag.Int("id", -1, "Server daemon id")
+    filePathPtr := flag.String("file", "/tmp/momo", "File path to upload")
     flag.Parse()
 
     cfg := momo_common.GetConfig()
-    momo_common.LogStdOut(cfg.Debug)
+    momo_common.LogStdOut(cfg.Global.Debug)
+
+    if *serverIdPtr >= len(cfg.Daemons) || *serverIdPtr < 0 {
+        log.Printf("panic: index out of range")
+        os.Exit(1)
+    }
 
     // Important:
     //  Affinity work in this order [0,1,2] thats why a lot of lines are bonded to ServerId 0
@@ -35,10 +41,11 @@ func main() {
             log.Printf("*** SERVER CODE")
             now := time.Now()
             timestamp := now.UnixNano()
+            go momo_metrics.GetMetrics(cfg, *serverIdPtr)
             go momo_server.ChangeReplicationModeServer(cfg.Daemons, *serverIdPtr, timestamp)
             momo_server.Daemon(cfg.Daemons, *serverIdPtr)
         case "metric":
-            momo_metrics.GetMetrics(cfg.Daemons, *serverIdPtr, cfg.MetricsInterval)
+            momo_metrics.GetMetrics(cfg, *serverIdPtr)
         default:
             log.Println("*** ERROR: Option unknown ***")
     }

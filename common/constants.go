@@ -15,7 +15,7 @@ const (
 
 var (
     // ReplicationMode at stating point
-    ReplicationMode = 1
+    ReplicationMode = 2
 
     // Struct to lookback states when changing replication mode
     ReplicationLookBack = &ReplicationData{
