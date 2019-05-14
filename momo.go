@@ -41,7 +41,9 @@ func main() {
             log.Printf("*** SERVER CODE")
             now := time.Now()
             timestamp := now.UnixNano()
-            go momo_metrics.GetMetrics(cfg, *serverIdPtr)
+            if *serverIdPtr == 0 {
+                go momo_metrics.GetMetrics(cfg, *serverIdPtr)
+            }
             go momo_server.ChangeReplicationModeServer(cfg.Daemons, *serverIdPtr, timestamp)
             momo_server.Daemon(cfg.Daemons, *serverIdPtr)
         case "metric":
