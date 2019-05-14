@@ -52,7 +52,7 @@ func GetMetrics(cfg momo_common.Configuration, serverId int) {
                 log.Printf("Replication method has no fallback")
             }
             start = time.Now()
-        }elif {
+        }else {
             log.Printf(now.Sub(start).String())
             log.Printf("%.2f,%.2f,%.2f,%.2f\n",memFree, memUsed, cpuFree, cpuUsed)
         }
