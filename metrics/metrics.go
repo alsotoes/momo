@@ -47,7 +47,7 @@ func GetMetrics(cfg momo_common.Configuration, serverId int) {
             if index != -1 && index != 0 {
                 log.Printf("Replication fallback because of timeout")
                 replicationMode, _ = strconv.Atoi(replicationOrder[index-1])
-                PushNewReplicationMode(replicationMode)
+                pushNewReplicationMode(replicationMode)
             } else {
                 log.Printf("Replication method has no fallback")
             }
@@ -66,7 +66,7 @@ func GetMetrics(cfg momo_common.Configuration, serverId int) {
     }
 }
 
-func PushNewReplicationMode(replication int) {
+func pushNewReplicationMode(replication int) {
     cfg := momo_common.GetConfig()
     conn := momo_client.DialSocket(cfg.Daemons[0].Chrep)
     defer conn.Close()
