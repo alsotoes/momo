@@ -18,7 +18,7 @@ func main() {
 
     replicationJsonStruct := &momo_common.ReplicationData{
         Old: 2,
-        New: 2,
+        New: 1,
         TimeStamp: nanos}
 
     replicationJson, _ := json.Marshal(replicationJsonStruct)
