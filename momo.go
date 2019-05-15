@@ -41,13 +41,9 @@ func main() {
             log.Printf("*** SERVER CODE")
             now := time.Now()
             timestamp := now.UnixNano()
-            if *serverIdPtr == 0 {
-                go momo_metrics.GetMetrics(cfg, *serverIdPtr)
-            }
+            go momo_metrics.GetMetrics(cfg, *serverIdPtr)
             go momo_server.ChangeReplicationModeServer(cfg.Daemons, *serverIdPtr, timestamp)
             momo_server.Daemon(cfg.Daemons, *serverIdPtr)
-        case "metric":
-            momo_metrics.GetMetrics(cfg, *serverIdPtr)
         default:
             log.Println("*** ERROR: Option unknown ***")
     }

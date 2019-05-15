@@ -1,28 +1,26 @@
 package momo
 
 import (
-    _ "os"
-    _ "fmt"
     "log"
     "time"
     "strings"
     "strconv"
-    _ "reflect"
-    "encoding/json"
 
     "github.com/shirou/gopsutil/mem"
     "github.com/shirou/gopsutil/cpu"
 
     momo_common "github.com/alsotoes/momo/common"
-    momo_client "github.com/alsotoes/momo/client"
 )
 
 func GetMetrics(cfg momo_common.Configuration, serverId int) {
+    var index int
     replicationOrder := strings.Split(cfg.Global.ReplicationOrder,",")
     momo_common.ReplicationMode, _ = strconv.Atoi(replicationOrder[0])
-    //index := momo_common.Contains(replicationOrder, strconv.Itoa(momo_common.ReplicationMode))
-    var index int
     replicationMode := momo_common.ReplicationMode
+
+    if serverId != 0 {
+        return
+    }
 
     log.Printf("Daemon GetMetrics stated...")
     start := time.Now()
@@ -78,21 +76,4 @@ func GetMetrics(cfg momo_common.Configuration, serverId int) {
         */
         time.Sleep(time.Duration(cfg.Metrics.Interval) * time.Millisecond)
     }
-}
-
-func pushNewReplicationMode(replication int) {
-    cfg := momo_common.GetConfig()
-    conn := momo_client.DialSocket(cfg.Daemons[0].Chrep)
-    defer conn.Close()
-
-    now := time.Now()
-    nanos := now.UnixNano()
-
-    replicationJsonStruct := &momo_common.ReplicationData{
-        New: replication,
-        TimeStamp: nanos}
-
-    replicationJson, _ := json.Marshal(replicationJsonStruct)
-    conn.Write([]byte(replicationJson))
-    log.Printf("New Replication mode pushed: %s", replicationJson)
 }
