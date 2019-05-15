@@ -11,6 +11,9 @@ const (
     CHAIN_REPLICATION = 1
     SPLAY_REPLICATION = 2
     PRIMARY_SPLAY_REPLICATION = 3
+
+    // Dummy
+    DUMMY_EPOCH = 1557906926566451195
 )
 
 var (
@@ -21,5 +24,5 @@ var (
     ReplicationLookBack = &ReplicationData{
         Old: ReplicationMode,
         New: ReplicationMode,
-        TimeStamp: 1}
+        TimeStamp: DUMMY_EPOCH}
 )
