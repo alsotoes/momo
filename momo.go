@@ -22,7 +22,7 @@ func main() {
     cfg := momo_common.GetConfig()
     momo_common.LogStdOut(cfg.Global.Debug)
 
-    if *serverIdPtr >= len(cfg.Daemons) || *serverIdPtr < 0 {
+    if *impersonationPtr == "server" && (*serverIdPtr >= len(cfg.Daemons) || *serverIdPtr < 0) {
         log.Printf("panic: index out of range")
         os.Exit(1)
     }
@@ -36,7 +36,7 @@ func main() {
             log.Printf("*** CLIENT CODE")
             var wg sync.WaitGroup
             wg.Add(1)
-            momo_client.Connect(&wg, cfg.Daemons, *filePathPtr, 0, -1)
+            momo_client.Connect(&wg, cfg.Daemons, *filePathPtr, 0, momo_common.DUMMY_EPOCH)
         case "server":
             log.Printf("*** SERVER CODE")
             now := time.Now()
