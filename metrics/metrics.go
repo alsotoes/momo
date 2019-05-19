@@ -45,6 +45,7 @@ func GetMetrics(cfg momo_common.Configuration, serverId int) {
                     log.Printf("Replication changed because cfg.Metrics.MinThreshold reached")
                     replicationMode, _ = strconv.Atoi(replicationOrder[index-1])
                     pushNewReplicationMode(replicationMode)
+                    start = time.Now()
                 }
             }
             if memUsed >= cfg.Metrics.MaxThreshold || cpuUsed >= cfg.Metrics.MaxThreshold {
@@ -52,6 +53,7 @@ func GetMetrics(cfg momo_common.Configuration, serverId int) {
                     log.Printf("Replication changed because cfg.Metrics.MaxThreshold reached")
                     replicationMode, _ = strconv.Atoi(replicationOrder[index+1])
                     pushNewReplicationMode(replicationMode)
+                    start = time.Now()
                 }
             }
         }
