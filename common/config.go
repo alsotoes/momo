@@ -39,8 +39,7 @@ func GetConfig() Configuration {
 
     configuration.Global.Debug, _ = strconv.ParseBool(cfg.Section("global").Key("debug").String())
     configuration.Global.ReplicationOrder = cfg.Section("global").Key("replication_order").String()
-    configuration.Global.DriftAllowed, _ = strconv.ParseFloat(cfg.Section("global").Key("drift_allowed").String(), 64)
-    configuration.Global.PolymorphSystem, _ = strconv.ParseBool(cfg.Section("global").Key("polymorph_system").String())
+    configuration.Global.PolymorphicSystem, _ = strconv.ParseBool(cfg.Section("global").Key("polymorphic_system").String())
 
     configuration.Metrics.Interval, _ = strconv.Atoi(cfg.Section("metrics").Key("interval").String())
     configuration.Metrics.MinThreshold, _ = strconv.ParseFloat(cfg.Section("metrics").Key("min_threshold").String(), 64)

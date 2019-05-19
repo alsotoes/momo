@@ -21,9 +21,8 @@ type Daemon struct {
 
 type ConfigurationGlobal struct {
     Debug bool
-    DriftAllowed float64
     ReplicationOrder string
-    PolymorphSystem bool
+    PolymorphicSystem bool
 }
 
 type ConfigurationMetrics struct {
@@ -32,7 +31,6 @@ type ConfigurationMetrics struct {
     MinThreshold float64
     FallbackInterval int
 }
-
 
 type Configuration struct {
     Daemons []*Daemon
