@@ -42,17 +42,27 @@ func Daemon(daemons []*momo_common.Daemon, serverId int) {
 
             bufferTimestamp := make([]byte, momo_common.LENGTHTIMESTAMP)
             connection.Read(bufferTimestamp)
+            timestamp, err = strconv.ParseInt(string(bufferTimestamp), 10, 64)
+            if err != nil {
+                log.Printf("Error: %d of type %T", timestamp, timestamp)
+                panic(err)
+            }
 
             if 0 == serverId {
                 now := time.Now()
                 timestamp = now.UnixNano()
-                replicationMode = momo_common.ReplicationMode
-            } else {
-                timestamp, err = strconv.ParseInt(string(bufferTimestamp), 10, 64)
-                if err != nil {
-                    log.Printf("Error: %d of type %T", timestamp, timestamp)
-                    panic(err)
+                replicationMode = momo_common.ReplicationLookBack.New
+            } else if 1 == serverId {
+                if timestamp > momo_common.ReplicationLookBack.TimeStamp {
+                    replicationMode = momo_common.ReplicationLookBack.New
+                } else {
+                    replicationMode = momo_common.ReplicationLookBack.Old
                 }
+
+                if replicationMode != momo_common.CHAIN_REPLICATION {
+                    replicationMode = momo_common.NO_REPLICATION
+                }
+            } else {
                 replicationMode = momo_common.NO_REPLICATION
             }
 
@@ -66,16 +76,17 @@ func Daemon(daemons []*momo_common.Daemon, serverId int) {
             switch replicationMode {
                 case momo_common.NO_REPLICATION, momo_common.PRIMARY_SPLAY_REPLICATION:
                     getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
-                    if momo_common.ReplicationMode == momo_common.CHAIN_REPLICATION && 1 == serverId {
+                case momo_common.CHAIN_REPLICATION:
+                    if serverId == 1 {
                         wg.Add(1)
                         momo_client.Connect(&wg, daemons, daemons[1].Data+"/"+metadata.Name, 2, timestamp)
                         wg.Wait()
+                    } else {
+                        wg.Add(1)
+                        getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
+                        momo_client.Connect(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 1, timestamp)
+                        wg.Wait()
                     }
-                case momo_common.CHAIN_REPLICATION:
-                    wg.Add(1)
-                    getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
-                    momo_client.Connect(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 1, timestamp)
-                    wg.Wait()
                 case momo_common.SPLAY_REPLICATION:
                     wg.Add(2)
                     getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)

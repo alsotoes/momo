@@ -17,8 +17,8 @@ const (
 )
 
 var (
-    // ReplicationMode at stating point
-    ReplicationMode = 2
+    // Replication mode to be changed concurrently
+    ReplicationMode = 1
 
     // Struct to lookback states when changing replication mode
     ReplicationLookBack = &ReplicationData{
