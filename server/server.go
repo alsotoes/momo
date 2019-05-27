@@ -79,6 +79,7 @@ func Daemon(daemons []*momo_common.Daemon, serverId int) {
                 case momo_common.CHAIN_REPLICATION:
                     if serverId == 1 {
                         wg.Add(1)
+                        getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
                         momo_client.Connect(&wg, daemons, daemons[1].Data+"/"+metadata.Name, 2, timestamp)
                         wg.Wait()
                     } else {
