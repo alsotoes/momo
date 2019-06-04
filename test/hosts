@@ -5,7 +5,10 @@
 192.168.103.193         momo-mon0 momo-mon0.localdomain
 192.168.103.148         momo-client0 momo-client0.localdomain
 192.168.103.147         momo-client1 momo-client1.localdomain
-192.168.103.213         momo-client2 momo-client2.localdomain
+192.168.103.214         momo-client2 momo-client2.localdomain
+192.168.103.229         momo-client3 momo-client3.localdomain
+192.168.103.213         momo-client4 momo-client4.localdomain
+192.168.103.169         momo-client5 momo-client5.localdomain
 192.168.103.160         momo-server0 momo-server0.localdomain
 192.168.103.233         momo-server1 momo-server1.localdomain
 192.168.103.208         momo-server2 momo-server2.localdomain
