@@ -1,10 +1,10 @@
 #!/bin/bash
 
 DIR=$1
-MAX=$2
+MAX=100000
 count=1
 
-sleep $(shuf -i 1-100 -n 1)
+sleep $(shuf -i 1-200 -n 1)
 for file in $(ls -1 ${DIR})
 do
     ./momo -file ${DIR}/${file} > /dev/null 2>&1 &
