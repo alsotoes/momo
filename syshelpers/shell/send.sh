@@ -1,7 +1,8 @@
 #!/bin/bash
 
 DIR=$1
-MAX=100000
+#MAX=100000
+MAX=25000
 count=1
 
 sleep $(shuf -i 1-200 -n 1)
