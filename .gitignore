@@ -19,3 +19,6 @@ test_data/
 
 # Swap files
 *.swp
+
+# others
+venv/

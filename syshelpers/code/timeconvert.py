@@ -7,6 +7,7 @@ to_zone = tz.gettz('UTC')
 
 # utc = datetime.utcnow()
 utc = datetime.strptime('2011-01-21 02:37:21', '%Y-%m-%d %H:%M:%S')
+print(utc)
 
 # Tell the datetime object that it's in UTC time zone since 
 # datetime objects are 'naive' by default
