@@ -4,8 +4,8 @@ import (
     "time"
     "encoding/json"
 
-    momo_client "github.com/alsotoes/momo/client"
-    momo_common "github.com/alsotoes/momo/common"
+    momo_client "github.com/alsotoes/momo/src/client"
+    momo_common "github.com/alsotoes/momo/src/common"
 )
 
 func main() {

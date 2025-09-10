@@ -7,7 +7,7 @@ import (
     "sync"
     "strconv"
 
-    momo_common "github.com/alsotoes/momo/common"
+    momo_common "github.com/alsotoes/momo/src/common"
 )
 
 func Connect(wg *sync.WaitGroup, daemons []*momo_common.Daemon, filePath string, serverId int, timestamp int64) {

@@ -8,7 +8,7 @@ import(
     "strconv"
     "strings"
 
-    momo_common "github.com/alsotoes/momo/common"
+    momo_common "github.com/alsotoes/momo/src/common"
 )
 
 func getMetadata(connection net.Conn) momo_common.FileMetadata {

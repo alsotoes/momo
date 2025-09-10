@@ -8,8 +8,8 @@ import(
     "strconv"
     "encoding/json"
 
-    momo_common "github.com/alsotoes/momo/common"
-    momo_client "github.com/alsotoes/momo/client"
+    momo_common "github.com/alsotoes/momo/src/common"
+    momo_client "github.com/alsotoes/momo/src/client"
 )
 
 func ChangeReplicationModeServer(daemons []*momo_common.Daemon, serverId int, timestamp int64) {

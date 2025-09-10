@@ -1,0 +1,64 @@
+version: "3.8"
+
+services:
+  server0:
+    build: .
+    container_name: momo-server0
+    command: ["-imp", "server", "-id", "0"]
+    volumes:
+      - ./data/dir1:/root/received_files/dir1
+    ports:
+      - "3333:3333"
+      - "2223:2223"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "nc -z localhost 3333 && nc -z localhost 2223"]
+      interval: 5s
+      timeout: 2s
+      retries: 20
+      start_period: 5s
+    networks: [momo-net]
+
+  server1:
+    build: .
+    container_name: momo-server1
+    command: ["-imp", "server", "-id", "1"]
+    volumes:
+      - ./data/dir2:/root/received_files/dir2
+    ports:
+      - "3334:3334"
+      - "2224:2224"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "nc -z localhost 3334 && nc -z localhost 2224"]
+      interval: 5s
+      timeout: 2s
+      retries: 20
+      start_period: 5s
+    networks: [momo-net]
+
+  server2:
+    build: .
+    container_name: momo-server2
+    command: ["-imp", "server", "-id", "2"]
+    volumes:
+      - ./data/dir3:/root/received_files/dir3
+    ports:
+      - "3335:3335"
+      - "2225:2225"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "nc -z localhost 3335 && nc -z localhost 2225"]
+      interval: 5s
+      timeout: 2s
+      retries: 20
+      start_period: 5s
+    networks: [momo-net]
+
+  client:
+    build: .
+    container_name: momo-client
+    entrypoint: ["/app/momo"]
+    networks: [momo-net]
+    volumes:
+      - ./files:/files
+
+networks:
+  momo-net: {}

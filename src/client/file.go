@@ -8,7 +8,7 @@ import (
     "sync"
     "strconv"
 
-    momo_common "github.com/alsotoes/momo/common"
+    momo_common "github.com/alsotoes/momo/src/common"
 )
 
 func sendFile(wgSendFile *sync.WaitGroup, connection net.Conn, filePath string) {

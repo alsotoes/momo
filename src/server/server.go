@@ -8,8 +8,8 @@ import(
     "time"
     "strconv"
 
-    momo_common "github.com/alsotoes/momo/common"
-    momo_client "github.com/alsotoes/momo/client"
+    momo_common "github.com/alsotoes/momo/src/common"
+    momo_client "github.com/alsotoes/momo/src/client"
 )
 
 func Daemon(daemons []*momo_common.Daemon, serverId int) {

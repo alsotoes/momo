@@ -7,10 +7,10 @@ import (
     "sync"
     "time"
 
-    momo_client "github.com/alsotoes/momo/client"
-    momo_server "github.com/alsotoes/momo/server"
-    momo_common "github.com/alsotoes/momo/common"
-    momo_metrics "github.com/alsotoes/momo/metrics"
+    momo_client "github.com/alsotoes/momo/src/client"
+    momo_server "github.com/alsotoes/momo/src/server"
+    momo_common "github.com/alsotoes/momo/src/common"
+    momo_metrics "github.com/alsotoes/momo/src/metrics"
 )
 
 func main() {

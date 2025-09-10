@@ -6,10 +6,10 @@ import (
     "strings"
     "strconv"
 
-    "github.com/shirou/gopsutil/mem"
-    "github.com/shirou/gopsutil/cpu"
+    "github.com/shirou/gopsutil/v3/mem"
+    "github.com/shirou/gopsutil/v3/cpu"
 
-    momo_common "github.com/alsotoes/momo/common"
+    momo_common "github.com/alsotoes/momo/src/common"
 )
 
 func GetMetrics(cfg momo_common.Configuration, serverId int) {
