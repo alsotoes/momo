@@ -39,12 +39,25 @@ func TestGetConfig_Success(t *testing.T) {
 		t.Fatalf("GetConfig failed: %v", err)
 	}
 
-	// A full assertion of all fields is good practice, but we'll keep it concise here
+	// Assert Global section
 	if !config.Global.Debug {
 		t.Error("Expected Global.Debug to be true, but it was false")
 	}
+	if config.Global.ReplicationOrder != "primary-splay" {
+		t.Errorf("Expected Global.ReplicationOrder to be 'primary-splay', but got '%s'", config.Global.ReplicationOrder)
+	}
+
+	// Assert Metrics section
+	if config.Metrics.Interval != 10 {
+		t.Errorf("Expected Metrics.Interval to be 10, but got %d", config.Metrics.Interval)
+	}
+
+	// Assert Daemons section
 	if len(config.Daemons) != 1 {
 		t.Fatalf("Expected 1 daemon, but got %d", len(config.Daemons))
+	}
+	if config.Daemons[0].Host != "localhost:8080" {
+		t.Errorf("Expected daemon host to be 'localhost:8080', but got '%s'", config.Daemons[0].Host)
 	}
 }
 
@@ -73,12 +86,17 @@ func TestGetConfig_Failures(t *testing.T) {
 		{
 			name:          "Invalid debug value",
 			content:       strings.Replace(validConfig, "debug = true", "debug = not-a-bool", 1),
-			expectedError: "failed to parse 'debug' in [global] section",
+			expectedError: "failed to load [global] section: failed to parse 'debug'",
 		},
 		{
 			name:          "Missing host in daemon",
 			content:       strings.Replace(validConfig, "host = localhost:8080", "", 1),
-			expectedError: "missing 'host' in section daemon.0",
+			expectedError: "missing 'host' in section [daemon.0]",
+		},
+		{
+			name:          "Missing interval in metrics",
+			content:       strings.Replace(validConfig, "interval = 10", "", 1),
+			expectedError: "failed to load [metrics] section: failed to parse 'interval'",
 		},
 	}
 
