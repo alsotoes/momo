@@ -15,8 +15,8 @@ func getMetadata(connection net.Conn) momo_common.FileMetadata {
     var metadata momo_common.FileMetadata
 
     bufferFileMD5 := make([]byte, 32)
-    bufferFileName := make([]byte, momo_common.LENGTHINFO)
-    bufferFileSize := make([]byte, momo_common.LENGTHINFO)
+    bufferFileName := make([]byte, momo_common.FileInfoLength)
+    bufferFileSize := make([]byte, momo_common.FileInfoLength)
 
     connection.Read(bufferFileMD5)
     fileMD5 := string(bytes.Trim(bufferFileMD5, "\x00"))
@@ -25,7 +25,7 @@ func getMetadata(connection net.Conn) momo_common.FileMetadata {
     fileName := string(bytes.Trim(bufferFileName, "\x00"))
 
     connection.Read(bufferFileSize)
-    fileSize, _ := strconv.ParseInt(string(bytes.Trim(bufferFileSize, "\x00")), 10, momo_common.LENGTHINFO)
+    fileSize, _ := strconv.ParseInt(string(bytes.Trim(bufferFileSize, "\x00")), 10, momo_common.FileInfoLength)
 
     metadata.Name = fileName
     metadata.MD5 = fileMD5
@@ -50,15 +50,15 @@ func getFile(connection net.Conn, path string, fileName string, fileMD5 string, 
     var receivedBytes int64
 
     for {
-        if (fileSize - receivedBytes) < momo_common.BUFFERSIZE {
+        if (fileSize - receivedBytes) < momo_common.TCPSocketBufferSize {
             if (fileSize - receivedBytes) != 0 {
                 io.CopyN(newFile, connection, (fileSize - receivedBytes))
-                connection.Read(make([]byte, (receivedBytes+momo_common.BUFFERSIZE)-fileSize))
+                connection.Read(make([]byte, (receivedBytes+momo_common.TCPSocketBufferSize)-fileSize))
             }
             break
         }
-        io.CopyN(newFile, connection, momo_common.BUFFERSIZE)
-        receivedBytes += momo_common.BUFFERSIZE
+        io.CopyN(newFile, connection, momo_common.TCPSocketBufferSize)
+        receivedBytes += momo_common.TCPSocketBufferSize
     }
 
     hash, err := momo_common.HashFile(path+fileName)

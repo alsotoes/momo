@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	client "github.com/alsotoes/momo/src/client"
 	"github.com/alsotoes/momo/src/common"
 	metrics "github.com/alsotoes/momo/src/metrics"
 	server "github.com/alsotoes/momo/src/server"
@@ -34,7 +33,10 @@ func Run() {
 
 	switch *impersonationPtr {
 	case "client":
-		client.Connect(cfg.Daemons, *filePathPtr, 0, common.DUMMY_EPOCH)
+		var wg sync.WaitGroup
+		wg.Add(1)
+		common.Connect(&wg, cfg.Daemons, *filePathPtr, 0, common.DummyEpoch)
+		wg.Wait()
 	case "server":
 		runServer(cfg, *serverIdPtr)
 	default:

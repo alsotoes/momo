@@ -39,7 +39,7 @@ func handleConnection(t *testing.T, connection net.Conn, daemons []*momo_common.
 		connection.Close()
 	}()
 
-	bufferTimestamp := make([]byte, momo_common.LENGTHTIMESTAMP)
+	bufferTimestamp := make([]byte, momo_common.TimestampLength)
 	connection.Read(bufferTimestamp)
 	timestamp, err := strconv.ParseInt(string(bufferTimestamp), 10, 64)
 	if err != nil {
@@ -49,18 +49,18 @@ func handleConnection(t *testing.T, connection net.Conn, daemons []*momo_common.
 	// The rest of the logic from the original Daemon function's go func() { ... }
 	switch serverId {
 	case 0:
-		replicationMode = momo_common.ReplicationLookBack.New
+		replicationMode = ReplicationState.New
 	case 1:
-		if timestamp > momo_common.ReplicationLookBack.TimeStamp {
-			replicationMode = momo_common.ReplicationLookBack.New
+		if timestamp > ReplicationState.TimeStamp {
+			replicationMode = ReplicationState.New
 		} else {
-			replicationMode = momo_common.ReplicationLookBack.Old
+			replicationMode = ReplicationState.Old
 		}
-		if replicationMode != momo_common.CHAIN_REPLICATION {
-			replicationMode = momo_common.NO_REPLICATION
+		if replicationMode != momo_common.ReplicationChain {
+			replicationMode = momo_common.ReplicationNone
 		}
 	default:
-		replicationMode = momo_common.NO_REPLICATION
+		replicationMode = momo_common.ReplicationNone
 	}
 
 	connection.Write([]byte(strconv.Itoa(replicationMode)))
@@ -77,9 +77,9 @@ func handleConnection(t *testing.T, connection net.Conn, daemons []*momo_common.
 	defer func() { connectToPeer = originalConnect }()
 
 	switch replicationMode {
-	case momo_common.NO_REPLICATION:
+	case momo_common.ReplicationNone:
 		mockGetFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
-	case momo_common.CHAIN_REPLICATION:
+	case momo_common.ReplicationChain:
 		if serverId == 1 {
 			wg.Add(1)
 			mockGetFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
@@ -91,7 +91,7 @@ func handleConnection(t *testing.T, connection net.Conn, daemons []*momo_common.
 			connectToPeer(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 1, timestamp)
 			wg.Wait()
 		}
-	case momo_common.SPLAY_REPLICATION:
+	case momo_common.ReplicationSplay:
 		wg.Add(2)
 		mockGetFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
 		go connectToPeer(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 1, timestamp)
@@ -102,7 +102,7 @@ func handleConnection(t *testing.T, connection net.Conn, daemons []*momo_common.
 
 func TestDaemonLogic(t *testing.T) {
 	// Setup
-	momo_common.ReplicationLookBack.New = momo_common.NO_REPLICATION
+	ReplicationState.New = momo_common.ReplicationNone
 	daemons := []*momo_common.Daemon{
 		{Host: "127.0.0.1:0", Data: ""},
 		{Host: "127.0.0.1:0", Data: ""},
@@ -126,8 +126,8 @@ func TestDaemonLogic(t *testing.T) {
 	client.Read(replicationModeBuf)
 	replicationMode, _ := strconv.Atoi(string(replicationModeBuf))
 
-	if replicationMode != momo_common.NO_REPLICATION {
-		t.Errorf("Expected replication mode %d, got %d", momo_common.NO_REPLICATION, replicationMode)
+	if replicationMode != momo_common.ReplicationNone {
+		t.Errorf("Expected replication mode %d, got %d", momo_common.ReplicationNone, replicationMode)
 	}
 
 	// Create a temporary file to send
@@ -146,10 +146,10 @@ func TestDaemonLogic(t *testing.T) {
 
 	// Send metadata
 	client.Write([]byte(md5))
-	fileNameBytes := make([]byte, momo_common.LENGTHINFO)
+	fileNameBytes := make([]byte, momo_common.FileInfoLength)
 	copy(fileNameBytes, fileName)
 	client.Write(fileNameBytes)
-	fileSizeBytes := make([]byte, momo_common.LENGTHINFO)
+	fileSizeBytes := make([]byte, momo_common.FileInfoLength)
 	copy(fileSizeBytes, strconv.Itoa(len(fileContent)))
 	client.Write(fileSizeBytes)
 

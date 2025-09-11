@@ -1,28 +1,26 @@
 package common
 
 const (
-    // Socket constants
-    BUFFERSIZE = 1024
-    LENGTHTIMESTAMP = 19
-    LENGTHINFO = 64
+	// Network-related constants
 
-    // Replication types
-    NO_REPLICATION = 0
-    CHAIN_REPLICATION = 1
-    SPLAY_REPLICATION = 2
-    PRIMARY_SPLAY_REPLICATION = 3
+	// TCPSocketBufferSize defines the standard buffer size for TCP sockets.
+	TCPSocketBufferSize = 1024
+	// TimestampLength is the expected length of a timestamp string.
+	TimestampLength = 19
+	// FileInfoLength is the allocated length for file information strings.
+	FileInfoLength = 64
 
-    // Dummy
-    DUMMY_EPOCH = 1557906926566451195
-)
+	// ReplicationType defines the different modes of data replication.
+	ReplicationType int = iota
+	// ReplicationNone indicates that no replication is used.
+	ReplicationNone
+	// ReplicationChain indicates the use of chain replication.
+	ReplicationChain
+	// ReplicationSplay indicates the use of splay replication.
+	ReplicationSplay
+	// ReplicationPrimarySplay indicates a primary-splay replication strategy.
+	ReplicationPrimarySplay
 
-var (
-    // Replication mode to be changed concurrently
-    ReplicationMode = 1
-
-    // Struct to lookback states when changing replication mode
-    ReplicationLookBack = &ReplicationData{
-        Old: ReplicationMode,
-        New: ReplicationMode,
-        TimeStamp: DUMMY_EPOCH}
+	// DummyEpoch is a placeholder epoch value for initialization.
+	DummyEpoch = 1557906926566451195
 )

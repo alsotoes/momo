@@ -36,12 +36,12 @@ func TestGetMetadata(t *testing.T) {
 		client.Write([]byte(fileMD5))
 
 		// Write the file name
-		fileNameBytes := make([]byte, momo_common.LENGTHINFO)
+		fileNameBytes := make([]byte, momo_common.FileInfoLength)
 		copy(fileNameBytes, fileName)
 		client.Write(fileNameBytes)
 
 		// Write the file size
-		fileSizeBytes := make([]byte, momo_common.LENGTHINFO)
+		fileSizeBytes := make([]byte, momo_common.FileInfoLength)
 		copy(fileSizeBytes, strconv.Itoa(fileSize))
 		client.Write(fileSizeBytes)
 	}()

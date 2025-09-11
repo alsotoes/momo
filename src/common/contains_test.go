@@ -2,7 +2,7 @@ package common
 
 import "testing"
 
-func TestContains(t *testing.T) {
+func TestFindStringIndex(t *testing.T) {
 	testCases := []struct {
 		name          string
 		slice         []string
@@ -49,7 +49,7 @@ func TestContains(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			actualIndex := Contains(tc.slice, tc.value)
+			actualIndex := FindStringIndex(tc.slice, tc.value)
 			if actualIndex != tc.expectedIndex {
 				t.Errorf("Expected index %d, but got %d", tc.expectedIndex, actualIndex)
 			}

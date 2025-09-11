@@ -44,7 +44,7 @@ func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, curren
 	}
 	cpuUsed := c[0] / 100
 
-	index := momo_common.Contains(replicationOrder, strconv.Itoa(currentReplicationMode))
+	index := momo_common.FindStringIndex(replicationOrder, strconv.Itoa(currentReplicationMode))
 
 	if index != -1 {
 		// Increase replication if usage is high
@@ -94,7 +94,7 @@ func GetMetrics(cfg momo_common.Configuration, serverId int) {
 
 			// Change replication mode by timeout fallback
 			now := time.Now()
-			index := momo_common.Contains(replicationOrder, strconv.Itoa(currentReplicationMode))
+			index := momo_common.FindStringIndex(replicationOrder, strconv.Itoa(currentReplicationMode))
 			if now.Sub(start) > (time.Duration(cfg.Metrics.FallbackInterval) * time.Millisecond) {
 				if index != -1 && index > 0 {
 					log.Printf("Replication fallback because of timeout")

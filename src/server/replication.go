@@ -8,8 +8,10 @@ import(
     "encoding/json"
 
     momo_common "github.com/alsotoes/momo/src/common"
-    momo_client "github.com/alsotoes/momo/src/client"
 )
+
+var CurrentReplicationMode int = momo_common.ReplicationNone
+var ReplicationState momo_common.ReplicationData
 
 func ChangeReplicationModeServer(daemons []*momo_common.Daemon, serverId int, timestamp int64) {
     server, err := net.Listen("tcp", daemons[serverId].Chrep)
@@ -21,12 +23,12 @@ func ChangeReplicationModeServer(daemons []*momo_common.Daemon, serverId int, ti
     defer server.Close()
     log.Printf("Server changeReplicationMode started... at %s", daemons[serverId].Chrep)
     log.Printf("Waiting for connections: changeReplicationMode...")
-    log.Printf("default ReplicationMode value: %d", momo_common.ReplicationMode)
+    log.Printf("default ReplicationMode value: %d", CurrentReplicationMode)
 
-    momo_common.ReplicationLookBack.Old = momo_common.ReplicationMode
-    momo_common.ReplicationLookBack.New = momo_common.ReplicationMode
-    momo_common.ReplicationLookBack.TimeStamp = timestamp
-    replicationJson, _ := json.Marshal(momo_common.ReplicationLookBack)
+    ReplicationState.Old = CurrentReplicationMode
+    ReplicationState.New = CurrentReplicationMode
+    ReplicationState.TimeStamp = timestamp
+    replicationJson, _ := json.Marshal(ReplicationState)
     log.Printf("ReplicationData struct: %s", string(replicationJson))
 
     for {
@@ -36,7 +38,7 @@ func ChangeReplicationModeServer(daemons []*momo_common.Daemon, serverId int, ti
             os.Exit(1)
         }
         go func() {
-            bufferReplicationMode := make([]byte, momo_common.LENGTHINFO)
+            bufferReplicationMode := make([]byte, momo_common.FileInfoLength)
             connection.Read(bufferReplicationMode)
             log.Printf("Client connected to changeReplicationMode")
 
@@ -45,11 +47,11 @@ func ChangeReplicationModeServer(daemons []*momo_common.Daemon, serverId int, ti
                 panic(err)
             }
 
-            momo_common.ReplicationLookBack.Old = momo_common.ReplicationMode
-            momo_common.ReplicationLookBack.New = replicationJson.New
-            momo_common.ReplicationLookBack.TimeStamp = replicationJson.TimeStamp
-            newReplicationJson, _ := json.Marshal(momo_common.ReplicationLookBack)
-            momo_common.ReplicationMode = replicationJson.New
+            ReplicationState.Old = CurrentReplicationMode
+            ReplicationState.New = replicationJson.New
+            ReplicationState.TimeStamp = replicationJson.TimeStamp
+            newReplicationJson, _ := json.Marshal(ReplicationState)
+            CurrentReplicationMode = replicationJson.New
             log.Printf("changeReplicationMode new value: %d", replicationJson.New)
             log.Printf("ReplicationData new struct: %s", string(newReplicationJson))
 
@@ -62,7 +64,7 @@ func ChangeReplicationModeServer(daemons []*momo_common.Daemon, serverId int, ti
 }
 
 func changeReplicationModeClient(daemons []*momo_common.Daemon, replicationJson string, serverId int) {
-    conn := momo_client.DialSocket(daemons[serverId].Chrep)
+    conn, _ := momo_common.DialSocket(daemons[serverId].Chrep)
     defer conn.Close()
 
     conn.Write([]byte(replicationJson))

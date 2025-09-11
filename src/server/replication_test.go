@@ -17,7 +17,7 @@ func handleReplicationChange(t *testing.T, connection net.Conn, wg *sync.WaitGro
 	defer wg.Done()
 	defer connection.Close()
 
-	bufferReplicationMode := make([]byte, momo_common.LENGTHINFO)
+	bufferReplicationMode := make([]byte, momo_common.FileInfoLength)
 	_, err := connection.Read(bufferReplicationMode)
 	if err != nil {
 		t.Logf("connection read error: %v", err)
@@ -31,12 +31,12 @@ func handleReplicationChange(t *testing.T, connection net.Conn, wg *sync.WaitGro
 		return
 	}
 
-	momo_common.ReplicationMode = replicationJSON.New
+	CurrentReplicationMode = replicationJSON.New
 }
 
 // TestChangeReplicationModeServerLogic tests the internal logic of the server's connection handler.
 func TestChangeReplicationModeServerLogic(t *testing.T) {
-	momo_common.ReplicationMode = 1
+	CurrentReplicationMode = 1
 
 	client, server := net.Pipe()
 
@@ -54,7 +54,7 @@ func TestChangeReplicationModeServerLogic(t *testing.T) {
 		t.Fatalf("Failed to marshal json: %v", err)
 	}
 
-	buffer := make([]byte, momo_common.LENGTHINFO)
+	buffer := make([]byte, momo_common.FileInfoLength)
 	copy(buffer, jsonBytes)
 
 	_, err = client.Write(buffer)
@@ -65,8 +65,8 @@ func TestChangeReplicationModeServerLogic(t *testing.T) {
 
 	wg.Wait()
 
-	if momo_common.ReplicationMode != expectedMode {
-		t.Errorf("Expected replication mode to be %d, but got %d", expectedMode, momo_common.ReplicationMode)
+	if CurrentReplicationMode != expectedMode {
+		t.Errorf("Expected replication mode to be %d, but got %d", expectedMode, CurrentReplicationMode)
 	}
 }
 
@@ -88,7 +88,7 @@ func TestChangeReplicationModeClient(t *testing.T) {
 		}
 		defer conn.Close()
 
-		buf := make([]byte, momo_common.LENGTHINFO)
+		buf := make([]byte, momo_common.FileInfoLength)
 		n, _ := conn.Read(buf)
 		received <- buf[:n]
 	}()

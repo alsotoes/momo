@@ -9,10 +9,9 @@ import(
     "strconv"
 
     momo_common "github.com/alsotoes/momo/src/common"
-    momo_client "github.com/alsotoes/momo/src/client"
 )
 
-var connectToPeer = momo_client.Connect
+var connectToPeer = momo_common.Connect
 
 func Daemon(daemons []*momo_common.Daemon, serverId int) {
     var timestamp int64
@@ -42,7 +41,7 @@ func Daemon(daemons []*momo_common.Daemon, serverId int) {
                 connection.Close()
             }()
 
-            bufferTimestamp := make([]byte, momo_common.LENGTHTIMESTAMP)
+            bufferTimestamp := make([]byte, momo_common.TimestampLength)
             connection.Read(bufferTimestamp)
             timestamp, err = strconv.ParseInt(string(bufferTimestamp), 10, 64)
             if err != nil {
@@ -53,19 +52,19 @@ func Daemon(daemons []*momo_common.Daemon, serverId int) {
             if 0 == serverId {
                 now := time.Now()
                 timestamp = now.UnixNano()
-                replicationMode = momo_common.ReplicationLookBack.New
+                replicationMode = ReplicationState.New
             } else if 1 == serverId {
-                if timestamp > momo_common.ReplicationLookBack.TimeStamp {
-                    replicationMode = momo_common.ReplicationLookBack.New
+                if timestamp > ReplicationState.TimeStamp {
+                    replicationMode = ReplicationState.New
                 } else {
-                    replicationMode = momo_common.ReplicationLookBack.Old
+                    replicationMode = ReplicationState.Old
                 }
 
-                if replicationMode != momo_common.CHAIN_REPLICATION {
-                    replicationMode = momo_common.NO_REPLICATION
+                if replicationMode != momo_common.ReplicationChain {
+                    replicationMode = momo_common.ReplicationNone
                 }
             } else {
-                replicationMode = momo_common.NO_REPLICATION
+                replicationMode = momo_common.ReplicationNone
             }
 
             log.Printf("Cluster object global timestamp: %d", timestamp)
@@ -76,9 +75,9 @@ func Daemon(daemons []*momo_common.Daemon, serverId int) {
             var wg sync.WaitGroup
 
             switch replicationMode {
-                case momo_common.NO_REPLICATION, momo_common.PRIMARY_SPLAY_REPLICATION:
+                case momo_common.ReplicationNone, momo_common.ReplicationPrimarySplay:
                     getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
-                case momo_common.CHAIN_REPLICATION:
+                case momo_common.ReplicationChain:
                     if serverId == 1 {
                         wg.Add(1)
                         getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
@@ -90,7 +89,7 @@ func Daemon(daemons []*momo_common.Daemon, serverId int) {
                         connectToPeer(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 1, timestamp)
                         wg.Wait()
                     }
-                case momo_common.SPLAY_REPLICATION:
+                case momo_common.ReplicationSplay:
                     wg.Add(2)
                     getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
                     go connectToPeer(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 1, timestamp)
