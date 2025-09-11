@@ -16,18 +16,18 @@ func Daemon(daemons []*momo_common.Daemon, serverId int) {
     var timestamp int64
     server, err := net.Listen("tcp", daemons[serverId].Host)
     if err != nil {
-        log.Printf("Error listetning: ", err)
+        log.Printf("Error listetning: %v", err)
         os.Exit(1)
     }
 
     defer server.Close()
-    log.Printf("Server primary Daemon started... at " + daemons[serverId].Host)
+    log.Printf("Server primary Daemon started... at %s", daemons[serverId].Host)
     log.Printf("...Waiting for connections...")
 
     for {
         connection, err := server.Accept()
         if err != nil {
-            log.Printf("Error: ", err)
+            log.Printf("Error: %v", err)
             os.Exit(1)
         }
         log.Printf("Client connected to primary Daemon")
@@ -35,7 +35,7 @@ func Daemon(daemons []*momo_common.Daemon, serverId int) {
         go func() {
             var replicationMode int
             defer func(){
-                log.Printf("Server ACK to Client => ACK"+strconv.Itoa(serverId))
+                log.Printf("Server ACK to Client => ACK%d", serverId)
                 connection.Write([]byte("ACK"+strconv.Itoa(serverId)))
                 connection.Close()
             }()
@@ -66,8 +66,8 @@ func Daemon(daemons []*momo_common.Daemon, serverId int) {
                 replicationMode = momo_common.NO_REPLICATION
             }
 
-            log.Printf("Cluster object global timestamp: " + strconv.FormatInt(timestamp, 10))
-            log.Printf("Server Daemon replicationMode: " + strconv.Itoa(replicationMode))
+            log.Printf("Cluster object global timestamp: %d", timestamp)
+            log.Printf("Server Daemon replicationMode: %d", replicationMode)
             connection.Write([]byte(strconv.FormatInt(int64(replicationMode), 10)))
 
             metadata := getMetadata(connection)
