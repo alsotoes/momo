@@ -1,86 +1,115 @@
 package momo
 
 import (
-    "log"
-    "time"
-    "strings"
-    "strconv"
+	"log"
+	"strconv"
+	"strings"
+	"time"
 
-    "github.com/shirou/gopsutil/v3/mem"
-    "github.com/shirou/gopsutil/v3/cpu"
-
-    momo_common "github.com/alsotoes/momo/src/common"
+	momo_common "github.com/alsotoes/momo/src/common"
+	"github.com/shirou/gopsutil/v3/cpu"
+	"github.com/shirou/gopsutil/v3/mem"
 )
 
+// SystemMetrics defines an interface for getting system metrics.
+// This allows for mocking in tests.
+type SystemMetrics interface {
+	VirtualMemory() (*mem.VirtualMemoryStat, error)
+	CPUPercent() ([]float64, error)
+}
+
+// RealSystemMetrics is the implementation of SystemMetrics that uses gopsutil.
+type RealSystemMetrics struct{}
+
+func (rsm *RealSystemMetrics) VirtualMemory() (*mem.VirtualMemoryStat, error) {
+	return mem.VirtualMemory()
+}
+
+func (rsm *RealSystemMetrics) CPUPercent() ([]float64, error) {
+	return cpu.Percent(0, false)
+}
+
+func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, currentReplicationMode int, replicationOrder []string) (int, bool) {
+	v, err := sm.VirtualMemory()
+	if err != nil {
+		log.Printf("Error getting memory metrics: %v", err)
+		return currentReplicationMode, false
+	}
+	memUsed := float64(v.UsedPercent) / 100
+
+	c, err := sm.CPUPercent()
+	if err != nil {
+		log.Printf("Error getting cpu metrics: %v", err)
+		return currentReplicationMode, false
+	}
+	cpuUsed := c[0] / 100
+
+	index := momo_common.Contains(replicationOrder, strconv.Itoa(currentReplicationMode))
+
+	if index != -1 {
+		// Increase replication if usage is high
+		if memUsed >= cfg.Metrics.MaxThreshold || cpuUsed >= cfg.Metrics.MaxThreshold {
+			if index < len(replicationOrder)-1 {
+				log.Printf("Replication changed because cfg.Metrics.MaxThreshold reached")
+				newReplicationMode, _ := strconv.Atoi(replicationOrder[index+1])
+				return newReplicationMode, true
+			}
+		}
+
+		// Decrease replication if usage is low
+		if memUsed < cfg.Metrics.MinThreshold && cpuUsed < cfg.Metrics.MinThreshold {
+			if index > 0 {
+				log.Printf("Replication changed because resource usage is below MinThreshold")
+				newReplicationMode, _ := strconv.Atoi(replicationOrder[index-1])
+				return newReplicationMode, true
+			}
+		}
+	}
+
+	return currentReplicationMode, false
+}
+
 func GetMetrics(cfg momo_common.Configuration, serverId int) {
-    var index int
-    replicationOrder := strings.Split(cfg.Global.ReplicationOrder,",")
-    momo_common.ReplicationMode, _ = strconv.Atoi(replicationOrder[0])
-    replicationMode := momo_common.ReplicationMode
+	if serverId != 0 {
+		return
+	}
 
-    if serverId != 0 {
-        return
-    }
+	log.Printf("Daemon GetMetrics stated...")
 
-    log.Printf("Daemon GetMetrics stated...")
-    start := time.Now()
-    now := time.Now()
+	replicationOrder := strings.Split(cfg.Global.ReplicationOrder, ",")
+	currentReplicationMode, _ := strconv.Atoi(replicationOrder[0])
+	pushNewReplicationMode(currentReplicationMode)
 
-    for {
-        // https://www.thegeekdiary.com/how-to-calculate-memory-usage-in-linux-using-sar-ps-and-free/
-        // kbmemfree + kbbuffers + kbcached = actual free memory on the system
-        v, _ := mem.VirtualMemory()
-        memFree := (float64(v.Free) + float64(v.Buffers) + float64(v.Cached))/ float64(v.Total)
-        memUsed := float64(v.UsedPercent)/100
+	sm := &RealSystemMetrics{}
+	start := time.Now()
 
-        c, _ := cpu.Percent(0, false)
-        cpuFree := (float64(100) - float64(c[0]))/100
-        cpuUsed := c[0]/100
+	for {
+		if cfg.Global.PolymorphicSystem {
+			newReplicationMode, changed := checkMetricsAndSwap(cfg, sm, currentReplicationMode, replicationOrder)
+			if changed {
+				currentReplicationMode = newReplicationMode
+				pushNewReplicationMode(currentReplicationMode)
+				start = time.Now()
+			}
 
-        if true == cfg.Global.PolymorphicSystem {
-            index = momo_common.Contains(replicationOrder, strconv.Itoa(momo_common.ReplicationMode))
-            // Change replication mode by resources metric
-            if index >= 0 && index < len(replicationOrder) {
-                if memFree <= cfg.Metrics.MinThreshold || cpuFree <= cfg.Metrics.MinThreshold {
-                    if index > 0 {
-                        log.Printf("Replication changed because cfg.Metrics.MinThreshold reached")
-                        replicationMode, _ = strconv.Atoi(replicationOrder[index-1])
-                        pushNewReplicationMode(replicationMode)
-                        start = time.Now()
-                    }
-                }
-                if memUsed >= cfg.Metrics.MaxThreshold || cpuUsed >= cfg.Metrics.MaxThreshold {
-                    if index < len(replicationOrder) {
-                        log.Printf("Replication changed because cfg.Metrics.MaxThreshold reached")
-                        replicationMode, _ = strconv.Atoi(replicationOrder[index+1])
-                        pushNewReplicationMode(replicationMode)
-                        start = time.Now()
-                    }
-                }
-            }
+			// Change replication mode by timeout fallback
+			now := time.Now()
+			index := momo_common.Contains(replicationOrder, strconv.Itoa(currentReplicationMode))
+			if now.Sub(start) > (time.Duration(cfg.Metrics.FallbackInterval) * time.Millisecond) {
+				if index != -1 && index > 0 {
+					log.Printf("Replication fallback because of timeout")
+					currentReplicationMode, _ = strconv.Atoi(replicationOrder[index-1])
+					pushNewReplicationMode(currentReplicationMode)
+					start = time.Now()
+				} else {
+					log.Printf("Replication method has no fallback")
+				}
+			}
 
-            // Change replication mode by timeout fallback 
-            now = time.Now()
-            if now.Sub(start) > (time.Duration(cfg.Metrics.FallbackInterval) * time.Millisecond) && serverId == 0 {
-                if index != -1 && index != 0 {
-                    log.Printf("Replication fallback because of timeout")
-                    replicationMode, _ = strconv.Atoi(replicationOrder[index-1])
-                    pushNewReplicationMode(replicationMode)
-                } else {
-                    log.Printf("Replication method has no fallback")
-                }
-                start = time.Now()
-            }
-
-            /*
-            cpuTimes, _ := cpu.Times(false)
-            fmt.Println(cpuTimes)
-            fmt.Println("")
-            */
-            time.Sleep(time.Duration(cfg.Metrics.Interval) * time.Millisecond)
-        } else {
-            log.Printf("Replication will not change beacuse polymorphic_system is set to false")
-            return
-        }
-    }
+			time.Sleep(time.Duration(cfg.Metrics.Interval) * time.Millisecond)
+		} else {
+			log.Printf("Replication will not change beacuse polymorphic_system is set to false")
+			return
+		}
+	}
 }

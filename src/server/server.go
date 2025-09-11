@@ -12,6 +12,8 @@ import(
     momo_client "github.com/alsotoes/momo/src/client"
 )
 
+var connectToPeer = momo_client.Connect
+
 func Daemon(daemons []*momo_common.Daemon, serverId int) {
     var timestamp int64
     server, err := net.Listen("tcp", daemons[serverId].Host)
@@ -80,19 +82,19 @@ func Daemon(daemons []*momo_common.Daemon, serverId int) {
                     if serverId == 1 {
                         wg.Add(1)
                         getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
-                        momo_client.Connect(&wg, daemons, daemons[1].Data+"/"+metadata.Name, 2, timestamp)
+                        connectToPeer(&wg, daemons, daemons[1].Data+"/"+metadata.Name, 2, timestamp)
                         wg.Wait()
                     } else {
                         wg.Add(1)
                         getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
-                        momo_client.Connect(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 1, timestamp)
+                        connectToPeer(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 1, timestamp)
                         wg.Wait()
                     }
                 case momo_common.SPLAY_REPLICATION:
                     wg.Add(2)
                     getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
-                    go momo_client.Connect(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 1, timestamp)
-                    go momo_client.Connect(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 2, timestamp)
+                    go connectToPeer(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 1, timestamp)
+                    go connectToPeer(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 2, timestamp)
                     wg.Wait()
                 default:
                     log.Println("*** ERROR: Unknown replication type")

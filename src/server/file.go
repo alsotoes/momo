@@ -6,7 +6,7 @@ import(
     "log"
     "net"
     "strconv"
-    "strings"
+    "bytes"
 
     momo_common "github.com/alsotoes/momo/src/common"
 )
@@ -19,13 +19,13 @@ func getMetadata(connection net.Conn) momo_common.FileMetadata {
     bufferFileSize := make([]byte, momo_common.LENGTHINFO)
 
     connection.Read(bufferFileMD5)
-    fileMD5 := string(bufferFileMD5)
+    fileMD5 := string(bytes.Trim(bufferFileMD5, "\x00"))
 
     connection.Read(bufferFileName)
-    fileName := strings.Trim(string(bufferFileName), ":")
+    fileName := string(bytes.Trim(bufferFileName, "\x00"))
 
     connection.Read(bufferFileSize)
-    fileSize, _ := strconv.ParseInt(strings.Trim(string(bufferFileSize), ":"), 10, momo_common.LENGTHINFO)
+    fileSize, _ := strconv.ParseInt(string(bytes.Trim(bufferFileSize, "\x00")), 10, momo_common.LENGTHINFO)
 
     metadata.Name = fileName
     metadata.MD5 = fileMD5

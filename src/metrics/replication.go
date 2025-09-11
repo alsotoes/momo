@@ -1,27 +1,37 @@
 package momo
 
 import (
-    "log"
-    "time"
-    "encoding/json"
+	"encoding/json"
+	"log"
+	"net"
+	"time"
 
-    momo_common "github.com/alsotoes/momo/src/common"
-    momo_client "github.com/alsotoes/momo/src/client"
+	momo_common "github.com/alsotoes/momo/src/common"
 )
 
-func pushNewReplicationMode(replication int) {
-    cfg := momo_common.GetConfig()
-    conn := momo_client.DialSocket(cfg.Daemons[0].Chrep)
-    defer conn.Close()
+func pushNewReplicationMode(newReplicationMode int) {
+	log.Printf("Pushing new replication mode to all daemons")
 
-    now := time.Now()
-    nanos := now.UnixNano()
+	daemons := momo_common.GetConfig().Daemons
 
-    replicationJsonStruct := &momo_common.ReplicationData{
-        New: replication,
-        TimeStamp: nanos}
+	for _, daemon := range daemons {
+		go func(daemon *momo_common.Daemon) {
+			conn, err := net.Dial("unix", daemon.Chrep)
+			if err != nil {
+				log.Printf("Dial error: %v", err)
+				return
+			}
+			defer conn.Close()
 
-    replicationJson, _ := json.Marshal(replicationJsonStruct)
-    conn.Write([]byte(replicationJson))
-    log.Printf("New Replication mode pushed: %s", replicationJson)
+			encoder := json.NewEncoder(conn)
+			data := momo_common.ReplicationData{
+				New:       newReplicationMode,
+				TimeStamp: time.Now().Unix(),
+			}
+
+			if err := encoder.Encode(data); err != nil {
+				log.Printf("Encode error: %v", err)
+			}
+		}(daemon)
+	}
 }
