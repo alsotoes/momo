@@ -28,9 +28,6 @@ This document explains the architecture, configuration, wire protocol, replicati
   - `server.go`: Main TCP server handling uploads and replication fan‑out.
   - `file.go`: Metadata parsing and file receive logic.
   - `replication.go`: Change‑replication mode server and fan‑out to peers.
-- `src/client/`: Client dialer and file sender.
-  - `client.go`: Connects, negotiates mode, optionally opens more sockets.
-  - `file.go`: Sends metadata, streams file, waits for ACK.
 - `src/metrics/`: Metrics loop and push of replication changes.
   - `metrics.go`: Samples CPU/mem and decides when to change mode.
   - `replication.go`: Pushes replication updates to the change‑mode server.
@@ -79,8 +76,8 @@ Handshake and transfer overview:
 
 Lengths (see `src/common/constants.go`):
 
-- Timestamp: `LENGTHTIMESTAMP = 19` bytes (ASCII, e.g., `UnixNano`).
-- Metadata: `MD5 = 32`, `LENGTHINFO = 64` for name and size (right‑padded with `:`).
+- Timestamp: `TimestampLength = 19` bytes (ASCII, e.g., `UnixNano`).
+- Metadata: `MD5 = 32`, `FileInfoLength = 64` for name and size (right‑padded with `:`).
 - Payload: streamed in `BUFFERSIZE = 1024` bytes.
 
 Order:
@@ -187,6 +184,7 @@ Behavior by mode:
 
 - Build binary: `make build` (outputs `bin/momo`).
 - Tidy deps: `make tidy` and vendor: `make vendor`.
+- Run all tests: `make test`
 - Run servers: `make run-server ID=0` (or `make server0`, `make server1`, `make server2`).
 - Run client: `make run-client FILE=/path/to/file`.
 
