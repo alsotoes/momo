@@ -2,7 +2,6 @@ package common
 
 import (
 	"log"
-	"os"
 	"strconv"
 
 	"gopkg.in/ini.v1"
@@ -13,6 +12,7 @@ func GetConfig(path string) (Configuration, error) {
 	var configuration Configuration
 	cfg, err := ini.Load(path)
 	if err != nil {
+		log.Printf("Failed to load configuration: %v", err)
 		return configuration, err
 	}
 
@@ -52,13 +52,7 @@ func GetConfig(path string) (Configuration, error) {
 	return configuration, nil
 }
 
-// GetConfigFromFile loads the configuration from the default path and panics on error.
-// This is for convenience when the config is expected to be present.
-var GetConfigFromFile = func() Configuration {
-	config, err := GetConfig("./conf/momo.conf")
-	if err != nil {
-		log.Printf("Failed to load configuration: %v", err)
-		os.Exit(1)
-	}
-	return config
+// GetConfigFromFile loads the configuration from the default path.
+var GetConfigFromFile = func() (Configuration, error) {
+	return GetConfig("conf/momo.conf")
 }

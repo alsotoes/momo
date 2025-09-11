@@ -12,9 +12,12 @@ import (
 func pushNewReplicationMode(newReplicationMode int) {
 	log.Printf("Pushing new replication mode to all daemons")
 
-	daemons := momo_common.GetConfigFromFile().Daemons
+	config, err := momo_common.GetConfigFromFile()
+	if err != nil {
+		log.Fatalf("Failed to get config: %v", err)
+	}
 
-	for _, daemon := range daemons {
+	for _, daemon := range config.Daemons {
 		go func(daemon *momo_common.Daemon) {
 			conn, err := net.Dial("unix", daemon.Chrep)
 			if err != nil {
