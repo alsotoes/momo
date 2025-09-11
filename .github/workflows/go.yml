@@ -2,11 +2,11 @@ name: Go Build and Test
 
 on:
   push:
-    branches: [ main ]
+    branches: [ master ]
     paths:
       - 'src/**'
   pull_request:
-    branches: [ main ]
+    branches: [ master ]
     paths:
       - 'src/**'
 
