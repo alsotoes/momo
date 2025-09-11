@@ -2,16 +2,17 @@ SHELL := /bin/bash
 GO ?= go
 
 BIN_DIR := bin
+SRC := $(shell find src -name '*.go')
 BIN := $(BIN_DIR)/momo
 MAIN := src/momo.go
 
-.PHONY: all build clean tidy vendor run-server run-client server0 server1 server2
+.PHONY: all build clean tidy vendor test run-server run-client server0 server1 server2
 
 all: build
 
 build: $(BIN)
 
-$(BIN):
+$(BIN): $(SRC)
 	@mkdir -p $(BIN_DIR)
 	$(GO) build -o $(BIN) $(MAIN)
 
@@ -23,6 +24,9 @@ vendor:
 
 clean:
 	rm -rf $(BIN_DIR)
+
+test:
+	$(GO) test ./...
 
 # Usage: make run-server ID=0
 run-server:
@@ -40,4 +44,3 @@ server2:
 # Usage: make run-client FILE=/path/to/file
 run-client:
 	$(GO) run $(MAIN) -imp client -file $(FILE)
-
