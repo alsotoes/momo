@@ -1,4 +1,0 @@
----
-ansible_user: root
-ansible_port: 22
-ansible_connection: ssh

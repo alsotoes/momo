@@ -7,8 +7,8 @@ import (
 	"sync"
 	"testing"
 	"time"
-	"strings"
 	"strconv"
+	"bytes"
 
 	momo_common "github.com/alsotoes/momo/src/common"
 )
@@ -20,10 +20,10 @@ func TestFillString(t *testing.T) {
 		length   int
 		expected string
 	}{
-		{"Short string", "hello", 10, "hello:::::"},
+		{"Short string", "hello", 10, "hello\x00\x00\x00\x00\x00"},
 		{"Exact length", "world", 5, "world"},
 		{"Longer string", "longstring", 5, "longstring"},
-		{"Empty string", "", 5, ":::::"},
+		{"Empty string", "", 5, "\x00\x00\x00\x00\x00"},
 	}
 
 	for _, tc := range testCases {
@@ -93,16 +93,16 @@ func TestSendFile(t *testing.T) {
 
 		// Verify metadata
 		expectedHash, _ := momo_common.HashFile(tmpfile.Name())
-		if strings.TrimRight(string(md5Buffer), ":") != expectedHash {
+		if string(bytes.TrimRight(md5Buffer, "\x00")) != expectedHash {
 			t.Errorf("Expected hash '%s', but got '%s'", expectedHash, string(md5Buffer))
 		}
 
 		fileInfo, _ := os.Stat(tmpfile.Name())
-		if strings.TrimRight(string(nameBuffer), ":") != fileInfo.Name() {
+		if string(bytes.TrimRight(nameBuffer, "\x00")) != fileInfo.Name() {
 			t.Errorf("Expected name '%s', but got '%s'", fileInfo.Name(), string(nameBuffer))
 		}
 		
-		size, _ := strconv.ParseInt(strings.TrimRight(string(sizeBuffer), ":"), 10, 64)
+		size, _ := strconv.ParseInt(string(bytes.TrimRight(sizeBuffer, "\x00")), 10, 64)
 		if size != fileInfo.Size() {
 			t.Errorf("Expected size '%d', but got '%d'", fileInfo.Size(), size)
 		}

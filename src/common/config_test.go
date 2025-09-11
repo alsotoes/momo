@@ -1,6 +1,7 @@
 package common
 
 import (
+	"io/ioutil"
 	"os"
 	"testing"
 )
@@ -31,22 +32,22 @@ change_replication = splay
 data = /data/1
 drive = /dev/sdb1
 `
-	if err := os.MkdirAll("conf", 0755); err != nil {
-		t.Fatalf("Failed to create conf directory: %v", err)
-	}
-	dfh, err := os.Create("./conf/momo.conf")
-	if err != nil {
-		t.Fatalf("Failed to create dummy config file: %v", err)
-	}
-	defer os.RemoveAll("./conf")
 
-	_, err = dfh.WriteString(configFileContent)
+	tmpfile, err := ioutil.TempFile("", "momo.conf")
 	if err != nil {
-		t.Fatalf("Failed to write to dummy config file: %v", err)
+		t.Fatalf("Failed to create temporary config file: %v", err)
 	}
-	dfh.Close()
+	defer os.Remove(tmpfile.Name())
 
-	config := GetConfig()
+	if _, err := tmpfile.WriteString(configFileContent); err != nil {
+		t.Fatalf("Failed to write to temporary config file: %v", err)
+	}
+	tmpfile.Close()
+
+	config, err := GetConfig(tmpfile.Name())
+	if err != nil {
+		t.Fatalf("GetConfig failed: %v", err)
+	}
 
 	// Assertions for [global] section
 	if !config.Global.Debug {

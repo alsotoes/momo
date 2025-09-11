@@ -61,14 +61,14 @@ func sendFile(wgSendFile *sync.WaitGroup, connection net.Conn, filePath string) 
 	log.Printf("File has been sent, closing connection!")
 }
 
-func fillString(retunString string, toLength int) string {
+func fillString(returnString string, toLength int) string {
 	for {
-		lengtString := len(retunString)
+		lengtString := len(returnString)
 		if lengtString < toLength {
-			retunString = retunString + ":"
+			returnString = returnString + "\x00"
 			continue
 		}
 		break
 	}
-	return retunString
+	return returnString
 }

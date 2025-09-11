@@ -12,7 +12,7 @@ import (
 func pushNewReplicationMode(newReplicationMode int) {
 	log.Printf("Pushing new replication mode to all daemons")
 
-	daemons := momo_common.GetConfig().Daemons
+	daemons := momo_common.GetConfigFromFile().Daemons
 
 	for _, daemon := range daemons {
 		go func(daemon *momo_common.Daemon) {

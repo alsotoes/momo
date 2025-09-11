@@ -49,12 +49,12 @@ func TestPushNewReplicationMode(t *testing.T) {
 		},
 	}
 
-	// Override GetConfig to return the mock config
-	originalGetConfig := momo_common.GetConfig
-	momo_common.GetConfig = func() momo_common.Configuration {
+	// Override GetConfigFromFile to return the mock config
+	originalGetConfig := momo_common.GetConfigFromFile
+	momo_common.GetConfigFromFile = func() momo_common.Configuration {
 		return cfg
 	}
-	defer func() { momo_common.GetConfig = originalGetConfig }()
+	defer func() { momo_common.GetConfigFromFile = originalGetConfig }()
 
 	pushNewReplicationMode(5)
 

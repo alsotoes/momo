@@ -1,6 +1,7 @@
 package momo
 
 import (
+	"io"
 	"net"
 	"os"
 	"strconv"
@@ -19,14 +20,11 @@ func mockConnect(wg *sync.WaitGroup, daemons []*momo_common.Daemon, filename str
 
 // mockGetFile is a mock implementation of getFile for testing.
 func mockGetFile(connection net.Conn, path string, fileName string, fileMD5 string, fileSize int64) {
-	// This mock function will simply consume the data from the connection
-	// without writing to the filesystem.
-	for {
-		buffer := make([]byte, 1024)
-		_, err := connection.Read(buffer)
-		if err != nil {
-			break
-		}
+	// This mock function will consume exactly fileSize bytes from the connection.
+	_, err := io.CopyN(io.Discard, connection, fileSize)
+	if err != nil {
+		// This can happen if the client closes the connection prematurely.
+		// For this test's purpose, we can ignore the error.
 	}
 }
 
@@ -34,6 +32,9 @@ func mockGetFile(connection net.Conn, path string, fileName string, fileMD5 stri
 func handleConnection(t *testing.T, connection net.Conn, daemons []*momo_common.Daemon, serverId int) {
 	var replicationMode int
 	defer func() {
+		// In a real scenario, this might block if the client isn't reading.
+		// net.Pipe is unbuffered, so writes block until a read happens.
+		// The client *is* waiting for this ACK, so it should be fine.
 		connection.Write([]byte("ACK" + strconv.Itoa(serverId)))
 		connection.Close()
 	}()
@@ -110,7 +111,12 @@ func TestDaemonLogic(t *testing.T) {
 
 	client, server := net.Pipe()
 
-	go handleConnection(t, server, daemons, 0)
+	// This goroutine will hang if handleConnection blocks, so we'll know if there's a deadlock.
+	serverDone := make(chan struct{})
+	go func() {
+		handleConnection(t, server, daemons, 0)
+		close(serverDone)
+	}()
 
 	// Test Execution
 	timestamp := strconv.FormatInt(time.Now().UnixNano(), 10)
@@ -153,7 +159,7 @@ func TestDaemonLogic(t *testing.T) {
 	file.Read(filedata)
 	client.Write(filedata)
 
-	// Wait for ACK
+	// The server should now be unblocked from mockGetFile and send the ACK.
 	ackBuf := make([]byte, 4)
 	client.Read(ackBuf)
 
@@ -161,5 +167,13 @@ func TestDaemonLogic(t *testing.T) {
 		t.Errorf("Expected ACK0, got %s", string(ackBuf))
 	}
 
-	client.Close()
+	client.Close() // This will cause handleConnection to exit if it hasn't already.
+
+	// Wait for the server goroutine to finish to ensure no deadlocks.
+	select {
+	case <-serverDone:
+		// all good
+	case <-time.After(1 * time.Second):
+		t.Fatal("Test timed out, server goroutine is likely deadlocked.")
+	}
 }

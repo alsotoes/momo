@@ -19,7 +19,7 @@ func main() {
     filePathPtr := flag.String("file", "/tmp/momo", "File path to upload")
     flag.Parse()
 
-    cfg := momo_common.GetConfig()
+    cfg := momo_common.GetConfigFromFile()
     momo_common.LogStdOut(cfg.Global.Debug)
 
     if *impersonationPtr == "server" && (*serverIdPtr >= len(cfg.Daemons) || *serverIdPtr < 0) {
