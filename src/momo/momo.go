@@ -34,26 +34,38 @@ func Run() {
 
 	switch *impersonationPtr {
 	case "client":
-		runClient(cfg, *filePathPtr)
+		client.Connect(cfg.Daemons, *filePathPtr, 0, common.DUMMY_EPOCH)
 	case "server":
 		runServer(cfg, *serverIdPtr)
 	default:
-		log.Println("*** ERROR: Option unknown ***")
+		log.Printf("*** ERROR: Option unknown: %s", *impersonationPtr)
+		os.Exit(1)
 	}
-}
-
-func runClient(cfg common.Configuration, filePath string) {
-	log.Printf("*** CLIENT CODE")
-	var wg sync.WaitGroup
-	wg.Add(1)
-	client.Connect(&wg, cfg.Daemons, filePath, 0, common.DUMMY_EPOCH)
 }
 
 func runServer(cfg common.Configuration, serverId int) {
 	log.Printf("*** SERVER CODE")
 	now := time.Now()
 	timestamp := now.UnixNano()
-	go metrics.GetMetrics(cfg, serverId)
-	go server.ChangeReplicationModeServer(cfg.Daemons, serverId, timestamp)
-	server.Daemon(cfg.Daemons, serverId)
+
+	var wg sync.WaitGroup
+	wg.Add(3)
+
+	go func() {
+		defer wg.Done()
+		metrics.GetMetrics(cfg, serverId)
+	}()
+
+	go func() {
+		defer wg.Done()
+		server.ChangeReplicationModeServer(cfg.Daemons, serverId, timestamp)
+	}()
+
+	go func() {
+		defer wg.Done()
+		server.Daemon(cfg.Daemons, serverId)
+	}()
+
+	wg.Wait()
+	log.Printf("Server shutting down")
 }

@@ -1,65 +1,109 @@
-package momo
+package client
 
 import (
-    "os"
-    "log"
-    "net"
-    "sync"
-    "strconv"
+	"errors"
+	"log"
+	"net"
+	"strconv"
+	"sync"
 
-    momo_common "github.com/alsotoes/momo/src/common"
+	momo_common "github.com/alsotoes/momo/src/common"
 )
 
-func Connect(wg *sync.WaitGroup, daemons []*momo_common.Daemon, filePath string, serverId int, timestamp int64) {
-    var connArr [3]net.Conn
-    var wgSendFile sync.WaitGroup
+// Connect establishes connections with daemon(s) and sends a file.
+// It first connects to a specified daemon to determine the replication mode.
+// If splay replication is active, it connects to all other daemons.
+// Finally, it sends the file to all established connections concurrently.
+func Connect(daemons []*momo_common.Daemon, filePath string, serverId int, timestamp int64) {
+	var connections []net.Conn
+	var wgSendFile sync.WaitGroup
 
-    connArr[0] = DialSocket(daemons[serverId].Host)
+	// Connect to the initial daemon to check replication mode
+	initialConn, err := dialSocket(daemons[serverId].Host)
+	if err != nil {
+		log.Printf("Failed to connect to initial daemon %s: %v", daemons[serverId].Host, err)
+		return
+	}
+	connections = append(connections, initialConn)
 
-    defer wg.Done()
-    defer connArr[0].Close()
+	// Perform handshake to get replication mode
+	if _, err := initialConn.Write([]byte(strconv.FormatInt(timestamp, 10))); err != nil {
+		log.Printf("Failed to send timestamp to %s: %v", daemons[serverId].Host, err)
+		initialConn.Close()
+		return
+	}
+	bufferReplicationMode := make([]byte, 1)
+	if _, err := initialConn.Read(bufferReplicationMode); err != nil {
+		log.Printf("Failed to read replication mode from %s: %v", daemons[serverId].Host, err)
+		initialConn.Close()
+		return
+	}
+	log.Printf("Client replicationMode: " + string(bufferReplicationMode))
 
-    connArr[0].Write([]byte(strconv.FormatInt(timestamp, 10)))
-    bufferReplicationMode := make([]byte, 1)
-    connArr[0].Read(bufferReplicationMode)
-    log.Printf("Client replicationMode: " + string(bufferReplicationMode))
+	replicationMode, err := strconv.Atoi(string(bufferReplicationMode))
+	if err != nil {
+		log.Printf("Invalid replication mode received from %s: %v", daemons[serverId].Host, err)
+		initialConn.Close()
+		return
+	}
 
-    if strconv.Itoa(momo_common.PRIMARY_SPLAY_REPLICATION) == string(bufferReplicationMode) {
-        connArr[1] = DialSocket(daemons[1].Host)
-        defer connArr[1].Close()
-        connArr[1].Write([]byte(strconv.FormatInt(timestamp, 10)))
-        bufferReplicationMode1 := make([]byte, 1)
-        connArr[1].Read(bufferReplicationMode1)
+	if replicationMode == momo_common.PRIMARY_SPLAY_REPLICATION {
+		// In splay replication, connect to all other daemons as well
+		for i, daemon := range daemons {
+			if i == serverId {
+				continue // Already connected
+			}
 
-        connArr[2] = DialSocket(daemons[2].Host)
-        defer connArr[2].Close()
-        connArr[2].Write([]byte(strconv.FormatInt(timestamp, 10)))
-        bufferReplicationMode2 := make([]byte, 1)
-        connArr[2].Read(bufferReplicationMode2)
+			conn, err := dialSocket(daemon.Host)
+			if err != nil {
+				log.Printf("Failed to connect to daemon %s: %v", daemon.Host, err)
+				continue
+			}
 
-        wgSendFile.Add(3)
-        go sendFile(&wgSendFile, connArr[0], filePath)
-        go sendFile(&wgSendFile, connArr[1], filePath)
-        go sendFile(&wgSendFile, connArr[2], filePath)
-    } else {
-        wgSendFile.Add(1)
-        sendFile(&wgSendFile, connArr[0], filePath)
-    }
-    wgSendFile.Wait()
+			// Perform handshake with the other daemons
+			if _, err := conn.Write([]byte(strconv.FormatInt(timestamp, 10))); err != nil {
+				log.Printf("Failed to send timestamp to %s: %v", daemon.Host, err)
+				conn.Close()
+				continue
+			}
+			dummyBuffer := make([]byte, 1)
+			if _, err := conn.Read(dummyBuffer); err != nil {
+				log.Printf("Failed to complete handshake with %s: %v", daemon.Host, err)
+				conn.Close()
+				continue
+			}
+
+			connections = append(connections, conn)
+		}
+	}
+
+	// Close all connections at the end
+	defer func() {
+		for _, conn := range connections {
+			conn.Close()
+		}
+	}()
+
+	// Send the file to all established connections concurrently
+	wgSendFile.Add(len(connections))
+	for _, conn := range connections {
+		go sendFile(&wgSendFile, conn, filePath)
+	}
+	wgSendFile.Wait()
 }
 
-func DialSocket(servAddr string) net.Conn {
-    tcpAddr, err := net.ResolveTCPAddr("tcp", servAddr)
-    if err != nil {
-        println("ResolveTCPAddr failed:", err.Error())
-        os.Exit(1)
-    }
+// dialSocket connects to the given address.
+// It returns a net.Conn or an error.
+func dialSocket(servAddr string) (net.Conn, error) {
+	tcpAddr, err := net.ResolveTCPAddr("tcp", servAddr)
+	if err != nil {
+		return nil, errors.New("ResolveTCPAddr failed: " + err.Error())
+	}
 
-    connection, err := net.DialTCP("tcp", nil, tcpAddr)
-    if err != nil {
-        println("Dial failed:", err.Error())
-        os.Exit(1)
-    }
+	connection, err := net.DialTCP("tcp", nil, tcpAddr)
+	if err != nil {
+		return nil, errors.New("Dial failed: " + err.Error())
+	}
 
-    return connection
+	return connection, nil
 }
