@@ -1,19 +1,19 @@
-package momo
+package client
 
 import (
+	"bytes"
 	"io/ioutil"
 	"net"
 	"os"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
-	"strconv"
-	"bytes"
 
 	momo_common "github.com/alsotoes/momo/src/common"
 )
 
-func TestFillString(t *testing.T) {
+func TestPadString(t *testing.T) {
 	testCases := []struct {
 		name     string
 		input    string
@@ -22,13 +22,13 @@ func TestFillString(t *testing.T) {
 	}{
 		{"Short string", "hello", 10, "hello\x00\x00\x00\x00\x00"},
 		{"Exact length", "world", 5, "world"},
-		{"Longer string", "longstring", 5, "longstring"},
+		{"Longer string", "longstring", 5, "longs"},
 		{"Empty string", "", 5, "\x00\x00\x00\x00\x00"},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := fillString(tc.input, tc.length)
+			result := padString(tc.input, tc.length)
 			if result != tc.expected {
 				t.Errorf("Expected '%s', but got '%s'", tc.expected, result)
 			}
@@ -73,7 +73,7 @@ func TestSendFile(t *testing.T) {
 		defer conn.Close()
 
 		// Read metadata
-		md5Buffer := make([]byte, 32)
+		md5Buffer := make([]byte, md5Length)
 		if _, err := conn.Read(md5Buffer); err != nil {
 			t.Errorf("Server could not read md5: %v", err)
 			return
@@ -101,15 +101,14 @@ func TestSendFile(t *testing.T) {
 		if string(bytes.TrimRight(nameBuffer, "\x00")) != fileInfo.Name() {
 			t.Errorf("Expected name '%s', but got '%s'", fileInfo.Name(), string(nameBuffer))
 		}
-		
+
 		size, _ := strconv.ParseInt(string(bytes.TrimRight(sizeBuffer, "\x00")), 10, 64)
 		if size != fileInfo.Size() {
 			t.Errorf("Expected size '%d', but got '%d'", fileInfo.Size(), size)
 		}
 
-
 		// Read file content
-		fileBuffer := make([]byte, momo_common.BUFFERSIZE*2)
+		fileBuffer := make([]byte, momo_common.BUFFERSIZE)
 		bytesRead, err := conn.Read(fileBuffer)
 		if err != nil {
 			t.Errorf("Server could not read file content: %v", err)
@@ -119,7 +118,7 @@ func TestSendFile(t *testing.T) {
 		if string(fileBuffer[:bytesRead]) != content {
 			t.Errorf("Expected content '%s', but got '%s'", content, string(fileBuffer[:bytesRead]))
 		}
-		
+
 		// Send ACK
 		if _, err := conn.Write([]byte("ACK")); err != nil {
 			t.Errorf("Server could not write ACK: %v", err)
@@ -139,6 +138,6 @@ func TestSendFile(t *testing.T) {
 	clientWg.Add(1)
 	go sendFile(&clientWg, conn, tmpfile.Name())
 	clientWg.Wait()
-	
+
 	serverWg.Wait()
 }

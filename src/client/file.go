@@ -1,74 +1,99 @@
-package momo
+package client
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"net"
 	"os"
-	"sync"
 	"strconv"
+	"sync"
 
 	momo_common "github.com/alsotoes/momo/src/common"
 )
 
-func sendFile(wgSendFile *sync.WaitGroup, connection net.Conn, filePath string) {
-	defer wgSendFile.Done()
+const (
+	md5Length = 32
+	ackLength = 4
+)
 
+// sendFile sends a file over a network connection.
+// It first sends metadata (MD5 hash, filename, size) and then the file content.
+// It waits for an ACK from the server after sending the file.
+func sendFile(wg *sync.WaitGroup, conn net.Conn, filePath string) {
+	defer wg.Done()
+
+	if err := doSendFile(conn, filePath); err != nil {
+		log.Printf("Failed to send file to %s: %v", conn.RemoteAddr(), err)
+	}
+}
+
+func doSendFile(conn net.Conn, filePath string) error {
 	file, err := os.Open(filePath)
 	if err != nil {
-		log.Printf(err.Error())
-		os.Exit(1)
-	} else {
-		defer file.Close()
+		return fmt.Errorf("failed to open file: %w", err)
 	}
+	defer file.Close()
+
 	fileInfo, err := file.Stat()
 	if err != nil {
-		log.Printf(err.Error())
-		os.Exit(1)
+		return fmt.Errorf("failed to get file info: %w", err)
 	}
 
 	hash, err := momo_common.HashFile(filePath)
 	if err != nil {
-		log.Printf(err.Error())
-		os.Exit(1)
+		return fmt.Errorf("failed to hash file: %w", err)
 	}
 
-	fileMD5 := fillString(hash, 32)
-	fileName := fillString(fileInfo.Name(), momo_common.LENGTHINFO)
-	fileSize := fillString(strconv.FormatInt(fileInfo.Size(), 10), momo_common.LENGTHINFO)
+	// Prepare metadata
+	fileMD5 := padString(hash, md5Length)
+	fileName := padString(fileInfo.Name(), momo_common.LENGTHINFO)
+	fileSize := padString(strconv.FormatInt(fileInfo.Size(), 10), momo_common.LENGTHINFO)
 
-	log.Printf("Sending filename and filesize!")
-	connection.Write([]byte(fileMD5))
-	connection.Write([]byte(fileName))
-	connection.Write([]byte(fileSize))
+	// Send metadata
+	log.Printf("Sending metadata for %s", fileInfo.Name())
+	if _, err := conn.Write([]byte(fileMD5)); err != nil {
+		return fmt.Errorf("failed to send MD5: %w", err)
+	}
+	if _, err := conn.Write([]byte(fileName)); err != nil {
+		return fmt.Errorf("failed to send filename: %w", err)
+	}
+	if _, err := conn.Write([]byte(fileSize)); err != nil {
+		return fmt.Errorf("failed to send filesize: %w", err)
+	}
+
+	// Send file content
+	log.Printf("Sending file content for %s", fileInfo.Name())
 	sendBuffer := make([]byte, momo_common.BUFFERSIZE)
-
-	log.Printf("Start sending file!")
-	log.Printf("=> MD5: " + fileMD5)
-	log.Printf("=> Name: " + fileInfo.Name())
 	for {
 		n, err := file.Read(sendBuffer)
 		if err == io.EOF {
 			break
 		}
-		connection.Write(sendBuffer[:n])
+		if err != nil {
+			return fmt.Errorf("failed to read file chunk: %w", err)
+		}
+		if _, err := conn.Write(sendBuffer[:n]); err != nil {
+			return fmt.Errorf("failed to send file chunk: %w", err)
+		}
 	}
 
-	log.Printf("Waiting ACK from server")
-	bufferACK := make([]byte, 4)
-	connection.Read(bufferACK)
-	log.Printf(string(bufferACK))
-	log.Printf("File has been sent, closing connection!")
+	// Wait for server ACK
+	log.Printf("Waiting for ACK from server for %s", fileInfo.Name())
+	bufferACK := make([]byte, ackLength)
+	if _, err := conn.Read(bufferACK); err != nil {
+		return fmt.Errorf("failed to read ACK: %w", err)
+	}
+	log.Printf("Received ACK: %s", string(bufferACK))
+
+	log.Printf("File %s has been sent successfully.", fileInfo.Name())
+	return nil
 }
 
-func fillString(returnString string, toLength int) string {
-	for {
-		lengtString := len(returnString)
-		if lengtString < toLength {
-			returnString = returnString + "\x00"
-			continue
-		}
-		break
+// padString pads a string with null characters to a specified length.
+func padString(input string, length int) string {
+	if len(input) >= length {
+		return input[:length]
 	}
-	return returnString
+	return input + string(make([]byte, length-len(input)))
 }
