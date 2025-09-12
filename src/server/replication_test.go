@@ -94,7 +94,7 @@ func TestChangeReplicationModeClient(t *testing.T) {
 	}()
 
 	daemons := []*momo_common.Daemon{
-		{Chrep: serverAddr},
+		{ChangeReplication: serverAddr},
 	}
 	jsonString := `{"New":5,"TimeStamp":1662756600}`
 

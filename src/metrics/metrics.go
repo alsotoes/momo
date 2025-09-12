@@ -2,8 +2,6 @@ package momo
 
 import (
 	"log"
-	"strconv"
-	"strings"
 	"time"
 
 	momo_common "github.com/alsotoes/momo/src/common"
@@ -29,7 +27,7 @@ func (rsm *RealSystemMetrics) CPUPercent() ([]float64, error) {
 	return cpu.Percent(0, false)
 }
 
-func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, currentReplicationMode int, replicationOrder []string) (int, bool) {
+func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, currentReplicationMode int, replicationOrder []int) (int, bool) {
 	v, err := sm.VirtualMemory()
 	if err != nil {
 		log.Printf("Error getting memory metrics: %v", err)
@@ -44,15 +42,20 @@ func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, curren
 	}
 	cpuUsed := c[0] / 100
 
-	index := momo_common.FindStringIndex(replicationOrder, strconv.Itoa(currentReplicationMode))
+	index := -1
+	for i, v := range replicationOrder {
+		if v == currentReplicationMode {
+			index = i
+			break
+		}
+	}
 
 	if index != -1 {
 		// Increase replication if usage is high
 		if memUsed >= cfg.Metrics.MaxThreshold || cpuUsed >= cfg.Metrics.MaxThreshold {
 			if index < len(replicationOrder)-1 {
 				log.Printf("Replication changed because cfg.Metrics.MaxThreshold reached")
-				newReplicationMode, _ := strconv.Atoi(replicationOrder[index+1])
-				return newReplicationMode, true
+				return replicationOrder[index+1], true
 			}
 		}
 
@@ -60,8 +63,7 @@ func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, curren
 		if memUsed < cfg.Metrics.MinThreshold && cpuUsed < cfg.Metrics.MinThreshold {
 			if index > 0 {
 				log.Printf("Replication changed because resource usage is below MinThreshold")
-				newReplicationMode, _ := strconv.Atoi(replicationOrder[index-1])
-				return newReplicationMode, true
+				return replicationOrder[index-1], true
 			}
 		}
 	}
@@ -76,8 +78,8 @@ func GetMetrics(cfg momo_common.Configuration, serverId int) {
 
 	log.Printf("Daemon GetMetrics stated...")
 
-	replicationOrder := strings.Split(cfg.Global.ReplicationOrder, ",")
-	currentReplicationMode, _ := strconv.Atoi(replicationOrder[0])
+	replicationOrder := cfg.Global.ReplicationOrder
+	currentReplicationMode := replicationOrder[0]
 	pushNewReplicationMode(currentReplicationMode)
 
 	sm := &RealSystemMetrics{}
@@ -94,11 +96,17 @@ func GetMetrics(cfg momo_common.Configuration, serverId int) {
 
 			// Change replication mode by timeout fallback
 			now := time.Now()
-			index := momo_common.FindStringIndex(replicationOrder, strconv.Itoa(currentReplicationMode))
+			index := -1
+			for i, v := range replicationOrder {
+				if v == currentReplicationMode {
+					index = i
+					break
+				}
+			}
 			if now.Sub(start) > (time.Duration(cfg.Metrics.FallbackInterval) * time.Millisecond) {
 				if index != -1 && index > 0 {
 					log.Printf("Replication fallback because of timeout")
-					currentReplicationMode, _ = strconv.Atoi(replicationOrder[index-1])
+					currentReplicationMode = replicationOrder[index-1]
 					pushNewReplicationMode(currentReplicationMode)
 					start = time.Now()
 				} else {

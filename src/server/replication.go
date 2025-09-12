@@ -14,14 +14,14 @@ var CurrentReplicationMode int = momo_common.ReplicationNone
 var ReplicationState momo_common.ReplicationData
 
 func ChangeReplicationModeServer(daemons []*momo_common.Daemon, serverId int, timestamp int64) {
-    server, err := net.Listen("tcp", daemons[serverId].Chrep)
+    server, err := net.Listen("tcp", daemons[serverId].ChangeReplication)
     if err != nil {
         log.Printf("Error listetning: %v", err)
         os.Exit(1)
     }
 
     defer server.Close()
-    log.Printf("Server changeReplicationMode started... at %s", daemons[serverId].Chrep)
+    log.Printf("Server changeReplicationMode started... at %s", daemons[serverId].ChangeReplication)
     log.Printf("Waiting for connections: changeReplicationMode...")
     log.Printf("default ReplicationMode value: %d", CurrentReplicationMode)
 
@@ -64,7 +64,7 @@ func ChangeReplicationModeServer(daemons []*momo_common.Daemon, serverId int, ti
 }
 
 func changeReplicationModeClient(daemons []*momo_common.Daemon, replicationJson string, serverId int) {
-    conn, _ := momo_common.DialSocket(daemons[serverId].Chrep)
+    conn, _ := momo_common.DialSocket(daemons[serverId].ChangeReplication)
     defer conn.Close()
 
     conn.Write([]byte(replicationJson))

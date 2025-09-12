@@ -19,7 +19,7 @@ func pushNewReplicationMode(newReplicationMode int) {
 
 	for _, daemon := range config.Daemons {
 		go func(daemon *momo_common.Daemon) {
-			conn, err := net.Dial("unix", daemon.Chrep)
+			conn, err := net.Dial("tcp", daemon.ChangeReplication)
 			if err != nil {
 				log.Printf("Dial error: %v", err)
 				return

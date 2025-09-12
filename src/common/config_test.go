@@ -3,6 +3,7 @@ package common
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -10,7 +11,7 @@ import (
 const validConfig = `
 [global]
 debug = true
-replication_order = primary-splay
+replication_order = 2,3,1
 polymorphic_system = true
 
 [metrics]
@@ -21,7 +22,7 @@ fallback_interval = 30
 
 [daemon.0]
 host = localhost:8080
-change_replication = splay
+change_replication = localhost:2222
 data = /data/0
 drive = /dev/sda1
 `
@@ -43,8 +44,10 @@ func TestGetConfig_Success(t *testing.T) {
 	if !config.Global.Debug {
 		t.Error("Expected Global.Debug to be true, but it was false")
 	}
-	if config.Global.ReplicationOrder != "primary-splay" {
-		t.Errorf("Expected Global.ReplicationOrder to be 'primary-splay', but got '%s'", config.Global.ReplicationOrder)
+
+	expectedOrder := []int{2, 3, 1}
+	if !reflect.DeepEqual(config.Global.ReplicationOrder, expectedOrder) {
+		t.Errorf("Expected Global.ReplicationOrder to be %v, but got %v", expectedOrder, config.Global.ReplicationOrder)
 	}
 
 	// Assert Metrics section
@@ -58,6 +61,9 @@ func TestGetConfig_Success(t *testing.T) {
 	}
 	if config.Daemons[0].Host != "localhost:8080" {
 		t.Errorf("Expected daemon host to be 'localhost:8080', but got '%s'", config.Daemons[0].Host)
+	}
+	if config.Daemons[0].ChangeReplication != "localhost:2222" {
+		t.Errorf("Expected daemon ChangeReplication to be 'localhost:2222', but got '%s'", config.Daemons[0].ChangeReplication)
 	}
 }
 
@@ -89,9 +95,19 @@ func TestGetConfig_Failures(t *testing.T) {
 			expectedError: "failed to load [global] section: failed to parse 'debug'",
 		},
 		{
+			name:          "Invalid replication_order value",
+			content:       strings.Replace(validConfig, "replication_order = 2,3,1", "replication_order = 2,a,1", 1),
+			expectedError: "failed to load [global] section: failed to parse 'replication_order'",
+		},
+		{
 			name:          "Missing host in daemon",
 			content:       strings.Replace(validConfig, "host = localhost:8080", "", 1),
 			expectedError: "missing 'host' in section [daemon.0]",
+		},
+		{
+			name:          "Missing change_replication in daemon",
+			content:       strings.Replace(validConfig, "change_replication = localhost:2222", "", 1),
+			expectedError: "missing 'change_replication' in section [daemon.0]",
 		},
 		{
 			name:          "Missing interval in metrics",

@@ -32,7 +32,7 @@ func TestCheckMetricsAndSwap(t *testing.T) {
 		},
 	}
 
-	replicationOrder := []string{"1", "2", "3"}
+	replicationOrder := []int{1, 2, 3}
 
 	tests := []struct {
 		name                   string

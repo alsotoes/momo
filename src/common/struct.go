@@ -13,27 +13,27 @@ type ReplicationData struct {
 }
 
 type Daemon struct {
-    Host string
-    Chrep string
-    Data string
-    Drive string
+    Host             string
+    ChangeReplication string
+    Data             string
+    Drive            string
 }
 
 type ConfigurationGlobal struct {
-    Debug bool
-    ReplicationOrder string
+    Debug             bool
+    ReplicationOrder  []int
     PolymorphicSystem bool
 }
 
 type ConfigurationMetrics struct {
-    Interval int
-    MaxThreshold float64
-    MinThreshold float64
+    Interval         int
+    MaxThreshold     float64
+    MinThreshold     float64
     FallbackInterval int
 }
 
 type Configuration struct {
     Daemons []*Daemon
-    Global ConfigurationGlobal
+    Global  ConfigurationGlobal
     Metrics ConfigurationMetrics
 }

@@ -15,10 +15,10 @@ The handshake is initiated by the client and is used to establish the replicatio
 3.  The server receives the timestamp and decides which replication mode to use for this connection. This decision is based on the server's current configuration and metrics.
 4.  The server responds with a single-digit ASCII code representing the chosen replication mode:
 
-    -   `0`: No Replication
-    -   `1`: Chain Replication
-    -   `2`: Splay Replication
-    -   `3`: Primary-Splay Replication
+    -   `1`: No Replication
+    -   `2`: Chain Replication
+    -   `3`: Splay Replication
+    -   `4`: Primary-Splay Replication
 
 **Diagram:**
 

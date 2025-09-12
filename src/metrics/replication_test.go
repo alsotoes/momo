@@ -3,7 +3,6 @@ package momo
 import (
 	"encoding/json"
 	"net"
-	"os"
 	"testing"
 	"time"
 
@@ -11,14 +10,13 @@ import (
 )
 
 func TestPushNewReplicationMode(t *testing.T) {
-	// Create a mock server
-	socketPath := "/tmp/momo_test.sock"
-	os.Remove(socketPath) // Clean up any previous socket file
-	l, err := net.Listen("unix", socketPath)
+	// Create a mock TCP server
+	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.Remove(socketPath) })
+	defer l.Close()
+	serverAddr := l.Addr().String()
 
 	go func() {
 		fd, err := l.Accept()
@@ -44,7 +42,7 @@ func TestPushNewReplicationMode(t *testing.T) {
 	cfg := momo_common.Configuration{
 		Daemons: []*momo_common.Daemon{
 			{
-				Chrep: socketPath, // Use the same socket path for the client
+				ChangeReplication: serverAddr,
 			},
 		},
 	}

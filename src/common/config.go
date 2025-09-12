@@ -2,6 +2,7 @@ package common
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"gopkg.in/ini.v1"
@@ -66,9 +67,18 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 		return ConfigurationGlobal{}, fmt.Errorf("failed to parse 'debug': %w", err)
 	}
 
-	globalCfg.ReplicationOrder = section.Key("replication_order").String()
-	if globalCfg.ReplicationOrder == "" {
+	replicationOrderStr := section.Key("replication_order").String()
+	if replicationOrderStr == "" {
 		return ConfigurationGlobal{}, fmt.Errorf("'replication_order' is missing or empty")
+	}
+
+	parts := strings.Split(replicationOrderStr, ",")
+	for _, part := range parts {
+		order, err := strconv.Atoi(strings.TrimSpace(part))
+		if err != nil {
+			return ConfigurationGlobal{}, fmt.Errorf("failed to parse 'replication_order': %w", err)
+		}
+		globalCfg.ReplicationOrder = append(globalCfg.ReplicationOrder, order)
 	}
 
 	globalCfg.PolymorphicSystem, err = section.Key("polymorphic_system").Bool()
@@ -126,7 +136,7 @@ func loadDaemons(cfg *ini.File) ([]*Daemon, error) {
 		d := &Daemon{}
 		requiredFields := map[string]*string{
 			"host":   &d.Host,
-			"change_replication": &d.Chrep,
+			"change_replication": &d.ChangeReplication,
 			"data":   &d.Data,
 			"drive":  &d.Drive,
 		}
