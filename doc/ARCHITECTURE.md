@@ -21,7 +21,7 @@ The following diagram illustrates the high-level architecture of the system:
 ```
 +----------------+      +----------------+      +----------------+
 |                |      |                |      |                |
-|     Client     +------>     Server 0    +------>     Server 1    |
+|     Client     +------>    Server 0    +------>     Server 1   |
 |                |      |      (Metrics) |      |                |
 +----------------+      +----------------+      +----------------+
                                 |                     |
@@ -92,7 +92,7 @@ In this mode, the client sends the file to all servers in the cluster simultaneo
                 /                                 |
 +----------------+      +----------------+      +----------------+
 |                |      |                |      |                |
-|     Client     +------>     Server 0    <------>     Server 2    |
+|     Client     +------>     Server 0   <------>     Server 2   |
 |                |      |                |      |                |
 +----------------+      +----------------+      +----------------+
                 \                                 ^
