@@ -3,7 +3,6 @@ package momo
 import (
 	"encoding/json"
 	"log"
-	"net"
 	"time"
 
 	momo_common "github.com/alsotoes/momo/src/common"
@@ -17,24 +16,20 @@ func pushNewReplicationMode(newReplicationMode int) {
 		log.Fatalf("Failed to get config: %v", err)
 	}
 
-	for _, daemon := range config.Daemons {
-		go func(daemon *momo_common.Daemon) {
-			conn, err := net.Dial("tcp", daemon.ChangeReplication)
-			if err != nil {
-				log.Printf("Dial error: %v", err)
-				return
-			}
-			defer conn.Close()
+    conn, err := momo_common.DialSocket(config.Daemons[0].ChangeReplication)
+    if err != nil {
+        log.Printf("Dial error: %v", err)
+        return
+    }
+    defer conn.Close()
 
-			encoder := json.NewEncoder(conn)
-			data := momo_common.ReplicationData{
-				New:       newReplicationMode,
-				TimeStamp: time.Now().Unix(),
-			}
+	encoder := json.NewEncoder(conn)
+	data := momo_common.ReplicationData{
+		New:       newReplicationMode,
+		TimeStamp: time.Now().Unix(),
+	}
 
-			if err := encoder.Encode(data); err != nil {
-				log.Printf("Encode error: %v", err)
-			}
-		}(daemon)
+	if err := encoder.Encode(data); err != nil {
+		log.Printf("Encode error: %v", err)
 	}
 }

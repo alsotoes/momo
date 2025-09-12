@@ -64,7 +64,11 @@ func ChangeReplicationModeServer(daemons []*momo_common.Daemon, serverId int, ti
 }
 
 func changeReplicationModeClient(daemons []*momo_common.Daemon, replicationJson string, serverId int) {
-    conn, _ := momo_common.DialSocket(daemons[serverId].ChangeReplication)
+    conn, err := momo_common.DialSocket(daemons[serverId].ChangeReplication)
+    if err != nil {
+        log.Printf("Dial error: %v", err)
+        return
+    }
     defer conn.Close()
 
     conn.Write([]byte(replicationJson))
