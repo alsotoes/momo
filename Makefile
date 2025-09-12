@@ -2,11 +2,12 @@ SHELL := /bin/bash
 GO ?= go
 
 BIN_DIR := bin
+DOC_DIR := docs
 SRC := $(shell find src -name '*.go')
 BIN := $(BIN_DIR)/momo
 MAIN := src/momo.go
 
-.PHONY: all build clean tidy vendor test run-server run-client server0 server1 server2
+.PHONY: all build clean tidy vendor test run-server run-client server0 server1 server2 doc
 
 all: build
 
@@ -16,6 +17,11 @@ $(BIN): $(SRC)
 	@mkdir -p $(BIN_DIR)
 	$(GO) build -o $(BIN) $(MAIN)
 
+doc:
+	@mkdir -p $(DOC_DIR)
+	$(GO) doc -all ./src/common > $(DOC_DIR)/common.txt
+	$(GO) doc -all ./src/metrics > $(DOC_DIR)/metrics.txt
+
 tidy:
 	$(GO) mod tidy
 
@@ -24,6 +30,7 @@ vendor:
 
 clean:
 	rm -rf $(BIN_DIR)
+	rm -rf $(DOC_DIR)
 
 test:
 	$(GO) test ./...

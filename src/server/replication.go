@@ -13,6 +13,11 @@ import(
 var CurrentReplicationMode int = momo_common.ReplicationNone
 var ReplicationState momo_common.ReplicationData
 
+// ChangeReplicationModeServer listens for connections on a dedicated port and updates the replication mode of the server.
+//
+// When a client connects, it sends a JSON object containing the new replication mode.
+// This function updates the server's replication mode and, if the server is the primary (serverId 0),
+// it propagates the change to the other servers in the cluster.
 func ChangeReplicationModeServer(daemons []*momo_common.Daemon, serverId int, timestamp int64) {
     server, err := net.Listen("tcp", daemons[serverId].ChangeReplication)
     if err != nil {

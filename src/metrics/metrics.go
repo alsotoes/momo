@@ -1,3 +1,4 @@
+// Package momo provides the metrics collection and analysis functionality for the momo application.
 package momo
 
 import (
@@ -19,14 +20,20 @@ type SystemMetrics interface {
 // RealSystemMetrics is the implementation of SystemMetrics that uses gopsutil.
 type RealSystemMetrics struct{}
 
+// VirtualMemory returns the virtual memory statistics.
 func (rsm *RealSystemMetrics) VirtualMemory() (*mem.VirtualMemoryStat, error) {
 	return mem.VirtualMemory()
 }
 
+// CPUPercent returns the CPU usage percentage.
 func (rsm *RealSystemMetrics) CPUPercent() ([]float64, error) {
 	return cpu.Percent(0, false)
 }
 
+// checkMetricsAndSwap checks the system metrics and determines whether to change the replication mode.
+//
+// It compares the memory and CPU usage against the configured thresholds and returns the new
+// replication mode and a boolean indicating whether the mode was changed.
 func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, currentReplicationMode int, replicationOrder []int) (int, bool) {
 	v, err := sm.VirtualMemory()
 	if err != nil {
@@ -71,6 +78,10 @@ func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, curren
 	return currentReplicationMode, false
 }
 
+// GetMetrics is the main loop for the metrics daemon.
+//
+// It periodically checks the system metrics and, if the polymorphic system is enabled,
+// adjusts the replication mode based on the configured thresholds and fallback interval.
 func GetMetrics(cfg momo_common.Configuration, serverId int) {
 	if serverId != 0 {
 		return

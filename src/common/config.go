@@ -1,3 +1,4 @@
+// Package common provides shared functionality for the momo application.
 package common
 
 import (

@@ -13,6 +13,17 @@ import(
 
 var connectToPeer = momo_common.Connect
 
+// Daemon is the core of the momo server.
+// It listens for incoming connections and handles file uploads and replication.
+//
+// The server's behavior is determined by the replicationMode, which can be one of the following:
+//
+//	- ReplicationNone: No data replication.
+//	- ReplicationSplay: The primary server replicates data to all other servers in the cluster.
+//	- ReplicationChain: Servers are arranged in a chain, and data is replicated sequentially from one server to the next.
+//	- ReplicationPrimarySplay: This mode is handled similarly to ReplicationNone, which might be unintentional.
+//
+// The replicationMode is determined by the ChangeReplicationModeServer function.
 func Daemon(daemons []*momo_common.Daemon, serverId int) {
     var timestamp int64
     server, err := net.Listen("tcp", daemons[serverId].Host)

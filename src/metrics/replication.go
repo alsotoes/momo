@@ -8,6 +8,9 @@ import (
 	momo_common "github.com/alsotoes/momo/src/common"
 )
 
+// pushNewReplicationMode pushes the new replication mode to all daemons.
+// It connects to the ChangeReplication endpoint of the first daemon in the configuration
+// and sends the new replication mode and a timestamp.
 func pushNewReplicationMode(newReplicationMode int) {
 	log.Printf("Pushing new replication mode to all daemons")
 
@@ -16,12 +19,12 @@ func pushNewReplicationMode(newReplicationMode int) {
 		log.Fatalf("Failed to get config: %v", err)
 	}
 
-    conn, err := momo_common.DialSocket(config.Daemons[0].ChangeReplication)
-    if err != nil {
-        log.Printf("Dial error: %v", err)
-        return
-    }
-    defer conn.Close()
+	conn, err := momo_common.DialSocket(config.Daemons[0].ChangeReplication)
+	if err != nil {
+		log.Printf("Dial error: %v", err)
+		return
+	}
+	defer conn.Close()
 
 	encoder := json.NewEncoder(conn)
 	data := momo_common.ReplicationData{

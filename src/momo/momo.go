@@ -1,3 +1,4 @@
+// Package momo provides the main functionality for the momo application.
 package momo
 
 import (
@@ -12,6 +13,19 @@ import (
 	server "github.com/alsotoes/momo/src/server"
 )
 
+// Run is the main entry point for the momo application.
+// It parses command-line flags to determine whether to run in client or server mode.
+//
+// In client mode, it connects to the server and uploads a file.
+// In server mode, it starts the server, which listens for incoming connections
+// and handles file uploads and replication.
+//
+// The following command-line flags are available:
+//
+//	-imp: Server, client or metric server impersonation (default: "client").
+//	-id: Server daemon id (default: -1).
+//	-file: File path to upload (default: "/tmp/momo").
+//	-config: Path to the configuration file (default: "conf/momo.conf").
 func Run() {
 	impersonationPtr := flag.String("imp", "client", "Server, client or metric server impersonation")
 	serverIdPtr := flag.Int("id", -1, "Server daemon id")

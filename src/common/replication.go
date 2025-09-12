@@ -93,6 +93,7 @@ func Connect(wg *sync.WaitGroup, daemons []*Daemon, filePath string, serverId in
 	wgSendFile.Wait()
 }
 
+// md5Length is the expected length of an MD5 hash string.
 const md5Length = 32
 
 // sendFile sends a file over a network connection.
