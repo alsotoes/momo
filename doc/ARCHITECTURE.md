@@ -72,15 +72,15 @@ In chain replication, the servers are organized in a chain. The client sends the
 In splay replication, the primary server (Server 0) sends the file to all other servers in the cluster simultaneously.
 
 ```
-                 +------>     Server 1    <------+
-                /                                 |
+                            +------>     Server 1    <------+
+                            /                                 |
 +----------------+      +----------------+      +----------------+
 |                |      |                |      |                |
 |     Client     +------>     Server 0   +------>     Server 2   |
 |                |      |                |      |                |
 +----------------+      +----------------+      +----------------+
-                \                                 ^
-                 +------>      ...      <------+
+                            \                                 ^
+                            +------>      ...      <------+
 ```
 
 ### 4. Primary-Splay Replication

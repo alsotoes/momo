@@ -59,17 +59,17 @@ In Splay mode, the primary server sends the data to all secondary servers simult
 The client sends the file to the primary. The primary then becomes a central hub, "splaying" the data out to all other servers at the same time.
 
 ```
-                       +-----------+
-                     / | Server 1  |
-                   /   +-----------+
-                 /
-+----------+     +---------+     +-----------+
-|  Client  | --> | Primary | --> | Server 2  |
-+----------+     +---------+     +-----------+
-                 \
-                   \   +-----------+
-                     \ | Server 3  |
-                       +-----------+
+                                  +-----------+
+                                / | Server 1  |
+                              /   +-----------+
+                            /
++----------+     +----------+     +-----------+
+|  Client  | --> | Server 0 | --> | Server 2  |
++----------+     +----------+     +-----------+
+                            \
+                              \   +-----------+
+                                \ | ....      |
+                                  +-----------+
 ```
 
 **Trade-offs:**
