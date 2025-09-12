@@ -1,3 +1,4 @@
+## workspace
 # github.com/go-ole/go-ole v1.2.6
 ## explicit; go 1.12
 github.com/go-ole/go-ole
@@ -17,7 +18,7 @@ github.com/shirou/gopsutil/v3/mem
 # github.com/shoenig/go-m1cpu v0.1.6
 ## explicit; go 1.20
 github.com/shoenig/go-m1cpu
-# github.com/stretchr/testify v1.11.1
+# github.com/stretchr/testify v1.9.0
 ## explicit; go 1.17
 # github.com/tklauser/go-sysconf v0.3.12
 ## explicit; go 1.13

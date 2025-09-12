@@ -2,12 +2,14 @@ SHELL := /bin/bash
 GO ?= go
 
 BIN_DIR := bin
-DOC_DIR := docs
+DOCS_DIR := doc
+HTML_DOCS := $(DOCS_DIR)/html
 SRC := $(shell find src -name '*.go')
 BIN := $(BIN_DIR)/momo
 MAIN := src/momo.go
+MODULES := ./src/common ./src/metrics ./src/server
 
-.PHONY: all build clean tidy vendor test run-server run-client server0 server1 server2 doc
+.PHONY: all build clean tidy vendor test vet coverage doc doc-live
 
 all: build
 
@@ -18,36 +20,32 @@ $(BIN): $(SRC)
 	$(GO) build -o $(BIN) $(MAIN)
 
 doc:
-	@mkdir -p $(DOC_DIR)
-	$(GO) doc -all ./src/common > $(DOC_DIR)/common.txt
-	$(GO) doc -all ./src/metrics > $(DOC_DIR)/metrics.txt
+	@mkdir -p $(HTML_DOCS)
+	godoc -http=:6060 & \
+	while ! nc -z localhost 6060; do sleep 1; done; \
+	curl -s http://localhost:6060/pkg/github.com/alsotoes/momo/ > $(HTML_DOCS)/index.html; \
+	curl -s http://localhost:6060/pkg/github.com/alsotoes/momo/common/ > $(HTML_DOCS)/common.html; \
+	curl -s http://localhost:6060/pkg/github.com/alsotoes/momo/metrics/ > $(HTML_DOCS)/metrics.html; \
+	curl -s http://localhost:6060/pkg/github.com/alsotoes/momo/server/ > $(HTML_DOCS)/server.html; \
+	pkill godoc
 
 tidy:
-	$(GO) mod tidy
+	$(GO) work sync
 
 vendor:
-	$(GO) mod vendor
+	$(GO) work vendor
 
 clean:
 	rm -rf $(BIN_DIR)
-	rm -rf $(DOC_DIR)
+	rm -rf $(HTML_DOCS)
+	rm -f coverage.out
 
-test:
-	$(GO) test ./...
+test: vet
+	CGO_ENABLED=1 $(GO) test -v -race -cover $(MODULES)
 
-# Usage: make run-server ID=0
-run-server:
-	$(GO) run $(MAIN) -imp server -id $(ID)
+vet:
+	$(GO) vet $(MODULES)
 
-server0:
-	$(GO) run $(MAIN) -imp server -id 0
-
-server1:
-	$(GO) run $(MAIN) -imp server -id 1
-
-server2:
-	$(GO) run $(MAIN) -imp server -id 2
-
-# Usage: make run-client FILE=/path/to/file
-run-client:
-	$(GO) run $(MAIN) -imp client -file $(FILE)
+coverage:
+	CGO_ENABLED=1 $(GO) test -race -coverprofile=coverage.out $(MODULES)
+	$(GO) tool cover -html=coverage.out

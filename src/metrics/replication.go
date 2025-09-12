@@ -1,4 +1,5 @@
-package momo
+// Package metrics provides the metrics collection and analysis functionality for the momo application.
+package metrics
 
 import (
 	"encoding/json"
@@ -8,11 +9,11 @@ import (
 	momo_common "github.com/alsotoes/momo/src/common"
 )
 
-// pushNewReplicationMode pushes the new replication mode to all daemons.
-// It connects to the ChangeReplication endpoint of the first daemon in the configuration
-// and sends the new replication mode and a timestamp.
+// pushNewReplicationMode notifies the primary daemon of a replication mode change.
+// It connects to the ChangeReplication endpoint of the first daemon listed in the configuration
+// and sends a JSON payload containing the new replication mode and the current timestamp.
 func pushNewReplicationMode(newReplicationMode int) {
-	log.Printf("Pushing new replication mode to all daemons")
+	log.Printf("Notifying primary daemon of new replication mode: %d", newReplicationMode)
 
 	config, err := momo_common.GetConfigFromFile()
 	if err != nil {

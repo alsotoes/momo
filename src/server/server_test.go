@@ -1,4 +1,5 @@
-package momo
+// Package server provides the core functionality for the momo server.
+package server
 
 import (
 	"io"
@@ -101,79 +102,91 @@ func handleConnection(t *testing.T, connection net.Conn, daemons []*momo_common.
 }
 
 func TestDaemonLogic(t *testing.T) {
-	// Setup
-	ReplicationState.New = momo_common.ReplicationNone
+	// Setup common test data
 	daemons := []*momo_common.Daemon{
 		{Host: "127.0.0.1:0", Data: ""},
 		{Host: "127.0.0.1:0", Data: ""},
 		{Host: "127.0.0.1:0", Data: ""},
 	}
 
-	client, server := net.Pipe()
-
-	// This goroutine will hang if handleConnection blocks, so we'll know if there's a deadlock.
-	serverDone := make(chan struct{})
-	go func() {
-		handleConnection(t, server, daemons, 0)
-		close(serverDone)
-	}()
-
-	// Test Execution
-	timestamp := strconv.FormatInt(time.Now().UnixNano(), 10)
-	client.Write([]byte(timestamp))
-
-	replicationModeBuf := make([]byte, 1)
-	client.Read(replicationModeBuf)
-	replicationMode, _ := strconv.Atoi(string(replicationModeBuf))
-
-	if replicationMode != momo_common.ReplicationNone {
-		t.Errorf("Expected replication mode %d, got %d", momo_common.ReplicationNone, replicationMode)
-	}
-
-	// Create a temporary file to send
-	file, err := os.CreateTemp("", "testfile-*.txt")
+	fileContent := "hello world"
+	tempFile, err := os.CreateTemp("", "testfile-*.txt")
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
-	defer os.Remove(file.Name())
+	defer os.Remove(tempFile.Name())
 
-	fileName := file.Name()
-	fileContent := "hello world"
-	file.Write([]byte(fileContent))
-	file.Close()
+	fileName := tempFile.Name()
+	tempFile.Write([]byte(fileContent))
+	tempFile.Close()
 
 	md5, _ := momo_common.HashFile(fileName)
 
-	// Send metadata
-	client.Write([]byte(md5))
-	fileNameBytes := make([]byte, momo_common.FileInfoLength)
-	copy(fileNameBytes, fileName)
-	client.Write(fileNameBytes)
-	fileSizeBytes := make([]byte, momo_common.FileInfoLength)
-	copy(fileSizeBytes, strconv.Itoa(len(fileContent)))
-	client.Write(fileSizeBytes)
-
-	// Send file content
-	file, _ = os.Open(fileName)
-	filedata := make([]byte, len(fileContent))
-	file.Read(filedata)
-	client.Write(filedata)
-
-	// The server should now be unblocked from mockGetFile and send the ACK.
-	ackBuf := make([]byte, 4)
-	client.Read(ackBuf)
-
-	if string(ackBuf) != "ACK0" {
-		t.Errorf("Expected ACK0, got %s", string(ackBuf))
+	testCases := []struct {
+		name              string
+		ReplicationMode   int
+		serverId          int
+		expectedAck       string
+		expectedReplication int
+	}{
+		{"ReplicationNone", momo_common.ReplicationNone, 0, "ACK0", momo_common.ReplicationNone},
+		{"ReplicationSplay", momo_common.ReplicationSplay, 0, "ACK0", momo_common.ReplicationSplay},
+		{"ReplicationChain", momo_common.ReplicationChain, 1, "ACK1", momo_common.ReplicationChain},
 	}
 
-	client.Close() // This will cause handleConnection to exit if it hasn't already.
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Setup
+			ReplicationState.New = tc.ReplicationMode
+			client, server := net.Pipe()
 
-	// Wait for the server goroutine to finish to ensure no deadlocks.
-	select {
-	case <-serverDone:
-		// all good
-	case <-time.After(1 * time.Second):
-		t.Fatal("Test timed out, server goroutine is likely deadlocked.")
+			serverDone := make(chan struct{})
+			go func() {
+				handleConnection(t, server, daemons, tc.serverId)
+				close(serverDone)
+			}()
+
+			// Test Execution
+			timestamp := strconv.FormatInt(time.Now().UnixNano(), 10)
+			client.Write([]byte(timestamp))
+
+			replicationModeBuf := make([]byte, 1)
+			client.Read(replicationModeBuf)
+			replicationMode, _ := strconv.Atoi(string(replicationModeBuf))
+
+			if replicationMode != tc.expectedReplication {
+				t.Errorf("Expected replication mode %d, got %d", tc.expectedReplication, replicationMode)
+			}
+
+			// Send metadata
+			client.Write([]byte(md5))
+			fileNameBytes := make([]byte, momo_common.FileInfoLength)
+			copy(fileNameBytes, fileName)
+			client.Write(fileNameBytes)
+			fileSizeBytes := make([]byte, momo_common.FileInfoLength)
+			copy(fileSizeBytes, strconv.Itoa(len(fileContent)))
+			client.Write(fileSizeBytes)
+
+			// Send file content
+			file, _ := os.Open(fileName)
+			filedata := make([]byte, len(fileContent))
+			file.Read(filedata)
+			client.Write(filedata)
+
+			ackBuf := make([]byte, len(tc.expectedAck))
+			client.Read(ackBuf)
+
+			if string(ackBuf) != tc.expectedAck {
+				t.Errorf("Expected %s, got %s", tc.expectedAck, string(ackBuf))
+			}
+
+			client.Close()
+
+			select {
+			case <-serverDone:
+			case <-time.After(2 * time.Second):
+				t.Fatal("Test timed out, server goroutine is likely deadlocked.")
+			}
+		})
 	}
 }

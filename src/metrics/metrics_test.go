@@ -1,4 +1,4 @@
-package momo
+package metrics
 
 import (
 	"testing"

@@ -10,8 +10,11 @@ import (
 )
 
 const (
+	// sectionGlobal is the name of the [global] section in the configuration file.
 	sectionGlobal  = "global"
+	// sectionMetrics is the name of the [metrics] section in the configuration file.
 	sectionMetrics = "metrics"
+	// prefixDaemon is the prefix for daemon sections in the configuration file (e.g., [daemon.0]).
 	prefixDaemon   = "daemon."
 )
 
@@ -53,7 +56,8 @@ func GetConfig(path string) (Configuration, error) {
 	return config, nil
 }
 
-// GetConfigFromFile is a variable that can be overridden for testing.
+// GetConfigFromFile is a function variable that loads the configuration from the default path "conf/momo.conf".
+// It can be overridden in tests to load a custom configuration for testing purposes.
 var GetConfigFromFile = func() (Configuration, error) {
 	return GetConfig("conf/momo.conf")
 }
