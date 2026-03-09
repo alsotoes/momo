@@ -33,50 +33,42 @@ func (rsm *RealSystemMetrics) CPUPercent() ([]float64, error) {
 // checkMetricsAndSwap checks the system metrics and determines whether to change the replication mode.
 //
 // It compares the memory and CPU usage against the configured thresholds and returns the new
-// replication mode and a boolean indicating whether the mode was changed.
-func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, currentReplicationMode int, replicationOrder []int) (int, bool) {
+// replication index and a boolean indicating whether the mode was changed.
+func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, currentIndex int, replicationOrder []int) (int, bool) {
 	v, err := sm.VirtualMemory()
 	if err != nil {
 		log.Printf("Error getting memory metrics: %v", err)
-		return currentReplicationMode, false
+		return currentIndex, false
 	}
 	memUsed := float64(v.UsedPercent) / 100
 
 	c, err := sm.CPUPercent()
 	if err != nil {
 		log.Printf("Error getting cpu metrics: %v", err)
-		return currentReplicationMode, false
+		return currentIndex, false
 	}
 	cpuUsed := c[0] / 100
 
-	index := -1
-	for i, v := range replicationOrder {
-		if v == currentReplicationMode {
-			index = i
-			break
-		}
-	}
-
-	if index != -1 {
+	if currentIndex != -1 {
 		// Increase replication if usage is high
 		if memUsed >= cfg.Metrics.MaxThreshold || cpuUsed >= cfg.Metrics.MaxThreshold {
-			if index < len(replicationOrder)-1 {
+			if currentIndex < len(replicationOrder)-1 {
 				log.Printf("Replication changed because cfg.Metrics.MaxThreshold reached")
-				return replicationOrder[index+1], true
+				return currentIndex + 1, true
 			}
 		}
 
 		// Decrease replication if usage is low
 		if memUsed < cfg.Metrics.MinThreshold && cpuUsed < cfg.Metrics.MinThreshold {
-			if index > 0 {
+			if currentIndex > 0 {
 				log.Printf("Replication changed because resource usage is below MinThreshold")
-				return replicationOrder[index-1], true
+				return currentIndex - 1, true
 			}
 		}
 
 	}
 
-	return currentReplicationMode, false
+	return currentIndex, false
 }
 
 // GetMetrics is the main loop for the metrics daemon.
@@ -92,35 +84,28 @@ func GetMetrics(cfg momo_common.Configuration, serverId int) {
 	log.Printf("Daemon GetMetrics stated...")
 
 	replicationOrder := cfg.Global.ReplicationOrder
-	currentReplicationMode := replicationOrder[0]
-	pushNewReplicationMode(currentReplicationMode)
+	currentIndex := 0
+	pushNewReplicationMode(replicationOrder[currentIndex])
 
 	sm := &RealSystemMetrics{}
 	start := time.Now()
 
 	for {
 		if cfg.Global.PolymorphicSystem {
-			newReplicationMode, changed := checkMetricsAndSwap(cfg, sm, currentReplicationMode, replicationOrder)
+			newIndex, changed := checkMetricsAndSwap(cfg, sm, currentIndex, replicationOrder)
 			if changed {
-				currentReplicationMode = newReplicationMode
-				pushNewReplicationMode(currentReplicationMode)
+				currentIndex = newIndex
+				pushNewReplicationMode(replicationOrder[currentIndex])
 				start = time.Now()
 			}
 
 			// Change replication mode by timeout fallback
 			now := time.Now()
-			index := -1
-			for i, v := range replicationOrder {
-				if v == currentReplicationMode {
-					index = i
-					break
-				}
-			}
 			if now.Sub(start) > (time.Duration(cfg.Metrics.FallbackInterval) * time.Millisecond) {
-				if index != -1 && index > 0 {
+				if currentIndex > 0 {
 					log.Printf("Replication fallback because of timeout")
-					currentReplicationMode = replicationOrder[index-1]
-					pushNewReplicationMode(currentReplicationMode)
+					currentIndex--
+					pushNewReplicationMode(replicationOrder[currentIndex])
 					start = time.Now()
 				} else {
 					log.Printf("Replication method has no fallback")

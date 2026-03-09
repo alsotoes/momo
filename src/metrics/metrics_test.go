@@ -35,52 +35,52 @@ func TestCheckMetricsAndSwap(t *testing.T) {
 	replicationOrder := []int{1, 2, 3}
 
 	tests := []struct {
-		name                   string
-		currentReplicationMode int
-		memUsedPercent         float64
-		cpuUsedPercent         float64
-		expectedReplicationMode int
-		expectedChanged        bool
+		name            string
+		currentIndex    int
+		memUsedPercent  float64
+		cpuUsedPercent  float64
+		expectedIndex   int
+		expectedChanged bool
 	}{
 		{
-			name:                   "Should not change when metrics are normal",
-			currentReplicationMode: 2,
-			memUsedPercent:         50.0,
-			cpuUsedPercent:         50.0,
-			expectedReplicationMode: 2,
-			expectedChanged:        false,
+			name:            "Should not change when metrics are normal",
+			currentIndex:    1, // Points to 2 in [1, 2, 3]
+			memUsedPercent:  50.0,
+			cpuUsedPercent:  50.0,
+			expectedIndex:   1,
+			expectedChanged: false,
 		},
 		{
-			name:                   "Should increase replication mode when usage is high",
-			currentReplicationMode: 2,
-			memUsedPercent:         90.0,
-			cpuUsedPercent:         50.0,
-			expectedReplicationMode: 3,
-			expectedChanged:        true,
+			name:            "Should increase replication mode when usage is high",
+			currentIndex:    1,
+			memUsedPercent:  90.0,
+			cpuUsedPercent:  50.0,
+			expectedIndex:   2,
+			expectedChanged: true,
 		},
 		{
-			name:                   "Should decrease replication mode when usage is low",
-			currentReplicationMode: 2,
-			memUsedPercent:         10.0, // Triggers memFree <= minThreshold
-			cpuUsedPercent:         10.0,
-			expectedReplicationMode: 1,
-			expectedChanged:        true,
+			name:            "Should decrease replication mode when usage is low",
+			currentIndex:    1,
+			memUsedPercent:  10.0, // Triggers memFree <= minThreshold
+			cpuUsedPercent:  10.0,
+			expectedIndex:   0,
+			expectedChanged: true,
 		},
 		{
-			name:                   "Should not increase replication mode at max level",
-			currentReplicationMode: 3,
-			memUsedPercent:         90.0,
-			cpuUsedPercent:         90.0,
-			expectedReplicationMode: 3,
-			expectedChanged:        false,
+			name:            "Should not increase replication mode at max level",
+			currentIndex:    2,
+			memUsedPercent:  90.0,
+			cpuUsedPercent:  90.0,
+			expectedIndex:   2,
+			expectedChanged: false,
 		},
 		{
-			name:                   "Should not decrease replication mode at min level",
-			currentReplicationMode: 1,
-			memUsedPercent:         10.0,
-			cpuUsedPercent:         10.0,
-			expectedReplicationMode: 1,
-			expectedChanged:        false,
+			name:            "Should not decrease replication mode at min level",
+			currentIndex:    0,
+			memUsedPercent:  10.0,
+			cpuUsedPercent:  10.0,
+			expectedIndex:   0,
+			expectedChanged: false,
 		},
 	}
 
@@ -93,10 +93,10 @@ func TestCheckMetricsAndSwap(t *testing.T) {
 				cpuStat: []float64{tt.cpuUsedPercent},
 			}
 
-			newReplicationMode, changed := checkMetricsAndSwap(cfg, sm, tt.currentReplicationMode, replicationOrder)
+			newIndex, changed := checkMetricsAndSwap(cfg, sm, tt.currentIndex, replicationOrder)
 
-			if newReplicationMode != tt.expectedReplicationMode {
-				t.Errorf("Expected replication mode %d, got %d", tt.expectedReplicationMode, newReplicationMode)
+			if newIndex != tt.expectedIndex {
+				t.Errorf("Expected index %d, got %d", tt.expectedIndex, newIndex)
 			}
 			if changed != tt.expectedChanged {
 				t.Errorf("Expected changed status %v, got %v", tt.expectedChanged, changed)
