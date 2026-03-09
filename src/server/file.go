@@ -23,13 +23,13 @@ func getMetadata(connection net.Conn) momo_common.FileMetadata {
 	bufferFileName := make([]byte, momo_common.FileInfoLength)
 	bufferFileSize := make([]byte, momo_common.FileInfoLength)
 
-	connection.Read(bufferFileMD5)
+	io.ReadFull(connection, bufferFileMD5)
 	fileMD5 := string(bytes.Trim(bufferFileMD5, "\x00"))
 
-	connection.Read(bufferFileName)
+	io.ReadFull(connection, bufferFileName)
 	fileName := string(bytes.Trim(bufferFileName, "\x00"))
 
-	connection.Read(bufferFileSize)
+	io.ReadFull(connection, bufferFileSize)
 	fileSize, _ := strconv.ParseInt(string(bytes.Trim(bufferFileSize, "\x00")), 10, momo_common.FileInfoLength)
 
 	metadata.Name = fileName

@@ -2,6 +2,7 @@
 package server
 
 import (
+	"io"
 	"log"
 	"net"
 	"os"
@@ -57,7 +58,7 @@ func Daemon(daemons []*momo_common.Daemon, serverId int) {
 
 			// Read the timestamp from the connection
 			bufferTimestamp := make([]byte, momo_common.TimestampLength)
-			connection.Read(bufferTimestamp)
+			io.ReadFull(connection, bufferTimestamp)
 			timestamp, err = strconv.ParseInt(string(bufferTimestamp), 10, 64)
 			if err != nil {
 				log.Printf("Error: %d of type %T", timestamp, timestamp)

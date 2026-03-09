@@ -34,7 +34,7 @@ func Connect(wg *sync.WaitGroup, daemons []*Daemon, filePath string, serverId in
 		return
 	}
 	bufferReplicationMode := make([]byte, 1)
-	if _, err := initialConn.Read(bufferReplicationMode); err != nil {
+	if _, err := io.ReadFull(initialConn, bufferReplicationMode); err != nil {
 		log.Printf("Failed to read replication mode from %s: %v", daemons[serverId].Host, err)
 		initialConn.Close()
 		return
@@ -68,7 +68,7 @@ func Connect(wg *sync.WaitGroup, daemons []*Daemon, filePath string, serverId in
 				continue
 			}
 			dummyBuffer := make([]byte, 1)
-			if _, err := conn.Read(dummyBuffer); err != nil {
+			if _, err := io.ReadFull(conn, dummyBuffer); err != nil {
 				log.Printf("Failed to complete handshake with %s: %v", daemon.Host, err)
 				conn.Close()
 				continue
@@ -151,7 +151,7 @@ func sendFile(wg *sync.WaitGroup, connection net.Conn, fileName string) {
 
 	// Wait for ACK
 	ackBuffer := make([]byte, 3)
-	if _, err := connection.Read(ackBuffer); err != nil {
+	if _, err := io.ReadFull(connection, ackBuffer); err != nil {
 		log.Printf("Failed to read ACK from server: %v", err)
 		return
 	}
