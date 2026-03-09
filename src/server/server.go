@@ -50,19 +50,25 @@ func Daemon(daemons []*momo_common.Daemon, serverId int) {
 
 		go func() {
 			var replicationMode int
+			var success bool
 			defer func() {
-				log.Printf("Server ACK to Client => ACK%d", serverId)
-				connection.Write([]byte("ACK" + strconv.Itoa(serverId)))
+				if success {
+					log.Printf("Server ACK to Client => ACK%d", serverId)
+					connection.Write([]byte("ACK" + strconv.Itoa(serverId)))
+				}
 				connection.Close()
 			}()
 
 			// Read the timestamp from the connection
 			bufferTimestamp := make([]byte, momo_common.TimestampLength)
-			io.ReadFull(connection, bufferTimestamp)
+			if _, err := io.ReadFull(connection, bufferTimestamp); err != nil {
+				log.Printf("Error reading timestamp: %v", err)
+				return
+			}
 			timestamp, err = strconv.ParseInt(string(bufferTimestamp), 10, 64)
 			if err != nil {
-				log.Printf("Error: %d of type %T", timestamp, timestamp)
-				panic(err)
+				log.Printf("Error parsing timestamp: %v", err)
+				return
 			}
 
 			// Determine the replication mode based on the server ID and timestamp
@@ -86,37 +92,61 @@ func Daemon(daemons []*momo_common.Daemon, serverId int) {
 
 			log.Printf("Cluster object global timestamp: %d", timestamp)
 			log.Printf("Server Daemon replicationMode: %d", replicationMode)
-			connection.Write([]byte(strconv.FormatInt(int64(replicationMode), 10)))
+			if _, err := connection.Write([]byte(strconv.FormatInt(int64(replicationMode), 10))); err != nil {
+				log.Printf("Error sending replication mode: %v", err)
+				return
+			}
 
-			metadata := getMetadata(connection)
+			metadata, err := getMetadata(connection)
+			if err != nil {
+				log.Printf("Error getting metadata: %v", err)
+				return
+			}
 			var wg sync.WaitGroup
 
 			// Handle the file based on the replication mode
 			switch replicationMode {
 			case momo_common.ReplicationNone, momo_common.ReplicationPrimarySplay:
-				getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
+				if err := getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size); err != nil {
+					log.Printf("Error getting file: %v", err)
+					return
+				}
 			case momo_common.ReplicationChain:
 				if serverId == 1 {
 					wg.Add(1)
-					getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
+					if err := getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size); err != nil {
+						log.Printf("Error getting file: %v", err)
+						wg.Done()
+						return
+					}
 					connectToPeer(&wg, daemons, daemons[1].Data+"/"+metadata.Name, 2, timestamp)
 					wg.Wait()
 				} else {
 					wg.Add(1)
-					getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
+					if err := getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size); err != nil {
+						log.Printf("Error getting file: %v", err)
+						wg.Done()
+						return
+					}
 					connectToPeer(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 1, timestamp)
 					wg.Wait()
 				}
 			case momo_common.ReplicationSplay:
 				wg.Add(2)
-				getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
+				if err := getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size); err != nil {
+					log.Printf("Error getting file: %v", err)
+					wg.Done() // Need to handle waitgroup correctly if one fails
+					wg.Done()
+					return
+				}
 				go connectToPeer(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 1, timestamp)
 				go connectToPeer(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 2, timestamp)
 				wg.Wait()
 			default:
 				log.Println("*** ERROR: Unknown replication type")
-				os.Exit(1)
+				return
 			}
+			success = true
 		}()
 	}
 }

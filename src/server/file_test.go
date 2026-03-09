@@ -54,7 +54,11 @@ func TestGetMetadata(t *testing.T) {
 	}()
 
 	// Act: Call the function under test, which reads from the server side of the pipe.
-	metadata := getMetadata(server)
+	metadata, err := getMetadata(server)
+
+	if err != nil {
+		t.Fatalf("getMetadata failed: %v", err)
+	}
 
 	// Assert: Verify that the received metadata matches the expected values.
 	if metadata.Name != fileName {
