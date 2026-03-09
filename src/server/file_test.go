@@ -2,8 +2,12 @@
 package server
 
 import (
+	"crypto/md5"
+	"encoding/hex"
+	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 
@@ -65,5 +69,50 @@ func TestGetMetadata(t *testing.T) {
 	}
 	if metadata.Size != int64(fileSize) {
 		t.Errorf("Expected file size %d, got %d", fileSize, metadata.Size)
+	}
+}
+
+func TestGetFileTraversal(t *testing.T) {
+	server, client := net.Pipe()
+
+	tempDir, err := os.MkdirTemp("", "test-getfile")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	storageDir := filepath.Join(tempDir, "storage")
+	err = os.Mkdir(storageDir, 0755)
+	if err != nil {
+		t.Fatalf("Failed to create storage dir: %v", err)
+	}
+
+	traversalFileName := "../traversal.txt"
+	fileContent := "dangerous content"
+
+	hash := md5.New()
+	io.WriteString(hash, fileContent)
+	fileMD5 := hex.EncodeToString(hash.Sum(nil))
+	fileSize := int64(len(fileContent))
+
+	go func() {
+		defer client.Close()
+		client.Write([]byte(fileContent))
+	}()
+
+	// In a real scenario, the server would call getFile after getMetadata.
+	// We call getFile directly to test its path handling.
+
+	getFile(server, storageDir, traversalFileName, fileMD5, fileSize)
+
+	// The file should be created in storageDir/traversal.txt, NOT in tempDir/traversal.txt
+	traversalFilePath := filepath.Join(tempDir, "traversal.txt")
+	if _, err := os.Stat(traversalFilePath); err == nil {
+		t.Errorf("Vulnerability still exists: File created outside storage directory at %s", traversalFilePath)
+	}
+
+	safeFilePath := filepath.Join(storageDir, "traversal.txt")
+	if _, err := os.Stat(safeFilePath); os.IsNotExist(err) {
+		t.Errorf("Expected file to be created at %s, but it was not", safeFilePath)
 	}
 }
