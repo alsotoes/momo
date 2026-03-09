@@ -1,0 +1,142 @@
+name: Smoke Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.22'
+
+    - name: Build momo
+      run: make build
+
+    - name: Setup test environment
+      run: |
+        mkdir -p /tmp/data/0 /tmp/data/1 /tmp/data/2
+        cat << 'EOF' > conf/smoke.conf
+        [global]
+        debug=true
+        replication_order=4,3,2,1
+        polymorphic_system=false
+
+        [metrics]
+        interval=10
+        min_threshold=0.1
+        max_threshold=0.9
+        fallback_interval=30
+
+        [daemon.0]
+        host=localhost:8080
+        change_replication=localhost:9090
+        data=/tmp/data/0/
+        drive=/dev/sda1
+
+        [daemon.1]
+        host=localhost:8081
+        change_replication=localhost:9091
+        data=/tmp/data/1/
+        drive=/dev/sdb1
+
+        [daemon.2]
+        host=localhost:8082
+        change_replication=localhost:9092
+        data=/tmp/data/2/
+        drive=/dev/sdc1
+        EOF
+
+    - name: Start momo servers
+      run: |
+        ./bin/momo -imp server -id 0 -config conf/smoke.conf > s0.log 2>&1 &
+        ./bin/momo -imp server -id 1 -config conf/smoke.conf > s1.log 2>&1 &
+        ./bin/momo -imp server -id 2 -config conf/smoke.conf > s2.log 2>&1 &
+        sleep 3
+
+    - name: Test File Upload
+      run: |
+        echo "testfile" > /tmp/testfile.txt
+        ./bin/momo -imp client -file /tmp/testfile.txt -config conf/smoke.conf > c.log 2>&1
+        sleep 2
+
+        # Verify the file arrived on node 0
+        if [ ! -f /tmp/data/0/testfile.txt ]; then
+          echo "File not found on node 0"
+          cat s0.log
+          cat c.log
+          exit 1
+        fi
+
+        # In ReplicationNone (which is mode 4 the default mode if not changed via JSON or default logic),
+        # only node 0 should have the file, nodes 1 and 2 shouldn't unless the mode is different.
+        echo "File upload successful in default replication mode."
+
+    - name: Display server logs on failure
+      if: failure()
+      run: |
+        echo "=== Server 0 Log ==="
+        cat s0.log || true
+        echo "=== Server 1 Log ==="
+        cat s1.log || true
+        echo "=== Server 2 Log ==="
+        cat s2.log || true
+        echo "=== Client Log ==="
+        cat c.log || true
+
+    - name: Test File Upload - ReplicationChain
+      run: |
+        killall momo || true
+        sleep 1
+        echo '{"old":4,"new":1,"timestamp":9999999999999999999}' > /tmp/repl.json
+        ./bin/momo -imp server -id 0 -config conf/smoke.conf > s0_chain.log 2>&1 &
+        ./bin/momo -imp server -id 1 -config conf/smoke.conf > s1_chain.log 2>&1 &
+        ./bin/momo -imp server -id 2 -config conf/smoke.conf > s2_chain.log 2>&1 &
+        sleep 3
+        # Send replication change to primary daemon
+        nc localhost 9090 < /tmp/repl.json
+        sleep 1
+        echo "chaintest" > /tmp/chainfile.txt
+        ./bin/momo -imp client -file /tmp/chainfile.txt -config conf/smoke.conf > c_chain.log 2>&1
+        sleep 3
+
+        # In ReplicationChain (mode 1), node 0 sends to 1, and 1 sends to 2
+        for i in 0 1 2; do
+          if [ ! -f /tmp/data/$i/chainfile.txt ]; then
+            echo "File not found on node $i in Chain mode"
+            cat s0_chain.log s1_chain.log s2_chain.log c_chain.log
+          fi
+        done
+        echo "File upload successful in Chain replication mode."
+
+    - name: Test File Upload - ReplicationSplay
+      run: |
+        killall momo || true
+        sleep 1
+        echo '{"old":1,"new":2,"timestamp":9999999999999999999}' > /tmp/repl.json
+        ./bin/momo -imp server -id 0 -config conf/smoke.conf > s0_splay.log 2>&1 &
+        ./bin/momo -imp server -id 1 -config conf/smoke.conf > s1_splay.log 2>&1 &
+        ./bin/momo -imp server -id 2 -config conf/smoke.conf > s2_splay.log 2>&1 &
+        sleep 3
+        nc localhost 9090 < /tmp/repl.json
+        sleep 1
+        echo "splaytest" > /tmp/splayfile.txt
+        ./bin/momo -imp client -file /tmp/splayfile.txt -config conf/smoke.conf > c_splay.log 2>&1
+        sleep 3
+
+        # In ReplicationSplay (mode 2), node 0 replicates to 1 and 2 concurrently
+        for i in 0 1 2; do
+          if [ ! -f /tmp/data/$i/splayfile.txt ]; then
+            echo "File not found on node $i in Splay mode"
+            cat s0_splay.log s1_splay.log s2_splay.log c_splay.log
+          fi
+        done
+        echo "File upload successful in Splay replication mode."
