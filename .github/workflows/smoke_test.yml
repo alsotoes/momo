@@ -2,9 +2,9 @@ name: Smoke Test
 
 on:
   push:
-    branches: [ main ]
+    branches: [ "master" ]
   pull_request:
-    branches: [ main ]
+    branches: [ "master" ]
 
 jobs:
   smoke-test:
@@ -27,7 +27,7 @@ jobs:
         cat << 'EOF' > conf/smoke.conf
         [global]
         debug=true
-        replication_order=4,3,2,1
+        replication_order=2,3,4,1
         polymorphic_system=false
 
         [metrics]
