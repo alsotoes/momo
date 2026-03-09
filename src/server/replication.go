@@ -3,9 +3,11 @@ package server
 
 import (
 	"encoding/json"
+	"io"
 	"log"
 	"net"
 	"os"
+	"time"
 
 	momo_common "github.com/alsotoes/momo/src/common"
 )
@@ -50,9 +52,13 @@ func ChangeReplicationModeServer(daemons []*momo_common.Daemon, serverId int, ti
 			defer connection.Close()
 			log.Printf("Client connected to changeReplicationMode")
 
+			// 🛡️ Sentinel: Enforce a read/write timeout to prevent slowloris DoS attacks
+			connection.SetDeadline(time.Now().Add(10 * time.Second))
+
 			// Decode the replication data directly from the connection
+			// 🛡️ Sentinel: Limit the JSON payload size to prevent DoS via memory exhaustion
 			replicationJson := momo_common.ReplicationData{}
-			if err := json.NewDecoder(connection).Decode(&replicationJson); err != nil {
+			if err := json.NewDecoder(io.LimitReader(connection, 1024)).Decode(&replicationJson); err != nil {
 				log.Printf("Failed to decode replication data: %v", err)
 				return
 			}
