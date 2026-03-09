@@ -23,3 +23,10 @@ test_data/
 # others
 venv/
 **/bin
+
+# smoke test
+*_chain.log
+*_splay.log
+*_primary_splay.log
+conf/smoke.conf
+test.sh
