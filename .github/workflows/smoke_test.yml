@@ -27,7 +27,7 @@ jobs:
         cat << 'EOF' > conf/smoke.conf
         [global]
         debug=true
-        replication_order=2,3,4,1
+        replication_order=4,3,2,1
         polymorphic_system=false
 
         [metrics]
@@ -96,7 +96,7 @@ jobs:
       run: |
         killall momo || true
         sleep 1
-        echo '{"old":4,"new":1,"timestamp":9999999999999999999}' > /tmp/repl.json
+        echo '{"old":4,"new":1,"timestamp":4000000000000000000}' > /tmp/repl.json
         ./bin/momo -imp server -id 0 -config conf/smoke.conf > s0_chain.log 2>&1 &
         ./bin/momo -imp server -id 1 -config conf/smoke.conf > s1_chain.log 2>&1 &
         ./bin/momo -imp server -id 2 -config conf/smoke.conf > s2_chain.log 2>&1 &
@@ -113,6 +113,7 @@ jobs:
           if [ ! -f /tmp/data/$i/chainfile.txt ]; then
             echo "File not found on node $i in Chain mode"
             cat s0_chain.log s1_chain.log s2_chain.log c_chain.log
+            exit 1
           fi
         done
         echo "File upload successful in Chain replication mode."
@@ -121,7 +122,7 @@ jobs:
       run: |
         killall momo || true
         sleep 1
-        echo '{"old":1,"new":2,"timestamp":9999999999999999999}' > /tmp/repl.json
+        echo '{"old":1,"new":2,"timestamp":4000000000000000000}' > /tmp/repl.json
         ./bin/momo -imp server -id 0 -config conf/smoke.conf > s0_splay.log 2>&1 &
         ./bin/momo -imp server -id 1 -config conf/smoke.conf > s1_splay.log 2>&1 &
         ./bin/momo -imp server -id 2 -config conf/smoke.conf > s2_splay.log 2>&1 &
@@ -137,6 +138,32 @@ jobs:
           if [ ! -f /tmp/data/$i/splayfile.txt ]; then
             echo "File not found on node $i in Splay mode"
             cat s0_splay.log s1_splay.log s2_splay.log c_splay.log
+            exit 1
           fi
         done
         echo "File upload successful in Splay replication mode."
+
+    - name: Test File Upload - ReplicationPrimarySplay
+      run: |
+        killall momo || true
+        sleep 1
+        echo '{"old":2,"new":3,"timestamp":4000000000000000001}' > /tmp/repl.json
+        ./bin/momo -imp server -id 0 -config conf/smoke.conf > s0_primary_splay.log 2>&1 &
+        ./bin/momo -imp server -id 1 -config conf/smoke.conf > s1_primary_splay.log 2>&1 &
+        ./bin/momo -imp server -id 2 -config conf/smoke.conf > s2_primary_splay.log 2>&1 &
+        sleep 3
+        nc localhost 9090 < /tmp/repl.json
+        sleep 1
+        echo "primarysplaytest" > /tmp/primarysplayfile.txt
+        ./bin/momo -imp client -file /tmp/primarysplayfile.txt -config conf/smoke.conf > c_primary_splay.log 2>&1
+        sleep 3
+
+        # In ReplicationPrimarySplay (mode 3), the client sends the file to all nodes concurrently
+        for i in 0 1 2; do
+          if [ ! -f /tmp/data/$i/primarysplayfile.txt ]; then
+            echo "File not found on node $i in PrimarySplay mode"
+            cat s0_primary_splay.log s1_primary_splay.log s2_primary_splay.log c_primary_splay.log
+            exit 1
+          fi
+        done
+        echo "File upload successful in PrimarySplay replication mode."
