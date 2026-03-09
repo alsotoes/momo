@@ -2,7 +2,6 @@
 package server
 
 import (
-	"bytes"
 	"encoding/json"
 	"log"
 	"net"
@@ -49,16 +48,11 @@ func ChangeReplicationModeServer(daemons []*momo_common.Daemon, serverId int, ti
 		}
 		go func() {
 			defer connection.Close()
-			bufferReplicationMode := make([]byte, momo_common.FileInfoLength)
-			if _, err := connection.Read(bufferReplicationMode); err != nil {
-				log.Printf("Error reading replication mode: %v", err)
-				return
-			}
 			log.Printf("Client connected to changeReplicationMode")
 
-			// Decode the replication data from the connection
+			// Decode the replication data directly from the connection
 			replicationJson := momo_common.ReplicationData{}
-			if err := json.NewDecoder(bytes.NewReader(bufferReplicationMode)).Decode(&replicationJson); err != nil {
+			if err := json.NewDecoder(connection).Decode(&replicationJson); err != nil {
 				log.Printf("Failed to decode replication data: %v", err)
 				return
 			}

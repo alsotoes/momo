@@ -2,6 +2,7 @@
 package server
 
 import (
+	"io"
 	"log"
 	"net"
 	"os"
@@ -60,7 +61,7 @@ func Daemon(daemons []*momo_common.Daemon, serverId int) {
 
 			// Read the timestamp from the connection
 			bufferTimestamp := make([]byte, momo_common.TimestampLength)
-			if _, err := connection.Read(bufferTimestamp); err != nil {
+			if _, err := io.ReadFull(connection, bufferTimestamp); err != nil {
 				log.Printf("Error reading timestamp: %v", err)
 				return
 			}
