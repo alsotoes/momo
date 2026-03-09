@@ -48,8 +48,12 @@ func ChangeReplicationModeServer(daemons []*momo_common.Daemon, serverId int, ti
 			os.Exit(1)
 		}
 		go func() {
+			defer connection.Close()
 			bufferReplicationMode := make([]byte, momo_common.FileInfoLength)
-			connection.Read(bufferReplicationMode)
+			if _, err := connection.Read(bufferReplicationMode); err != nil {
+				log.Printf("Error reading replication mode: %v", err)
+				return
+			}
 			log.Printf("Client connected to changeReplicationMode")
 
 			// Decode the replication data from the connection

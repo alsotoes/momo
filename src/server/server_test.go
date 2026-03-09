@@ -20,31 +20,39 @@ func mockConnect(wg *sync.WaitGroup, daemons []*momo_common.Daemon, filename str
 }
 
 // mockGetFile is a mock implementation of getFile for testing.
-func mockGetFile(connection net.Conn, path string, fileName string, fileMD5 string, fileSize int64) {
+func mockGetFile(connection net.Conn, path string, fileName string, fileMD5 string, fileSize int64) error {
 	// This mock function will consume exactly fileSize bytes from the connection.
 	_, err := io.CopyN(io.Discard, connection, fileSize)
 	if err != nil {
 		// This can happen if the client closes the connection prematurely.
 		// For this test's purpose, we can ignore the error.
 	}
+	return nil
 }
 
 // handleConnection is a testable version of the connection handling logic inside Daemon.
 func handleConnection(t *testing.T, connection net.Conn, daemons []*momo_common.Daemon, serverId int) {
 	var replicationMode int
+	var success bool
 	defer func() {
-		// In a real scenario, this might block if the client isn't reading.
-		// net.Pipe is unbuffered, so writes block until a read happens.
-		// The client *is* waiting for this ACK, so it should be fine.
-		connection.Write([]byte("ACK" + strconv.Itoa(serverId)))
+		if success {
+			// In a real scenario, this might block if the client isn't reading.
+			// net.Pipe is unbuffered, so writes block until a read happens.
+			// The client *is* waiting for this ACK, so it should be fine.
+			connection.Write([]byte("ACK" + strconv.Itoa(serverId)))
+		}
 		connection.Close()
 	}()
 
 	bufferTimestamp := make([]byte, momo_common.TimestampLength)
-	connection.Read(bufferTimestamp)
+	if _, err := connection.Read(bufferTimestamp); err != nil {
+		t.Logf("Error reading timestamp: %v", err)
+		return
+	}
 	timestamp, err := strconv.ParseInt(string(bufferTimestamp), 10, 64)
 	if err != nil {
-		t.Fatalf("Error parsing timestamp: %v", err)
+		t.Errorf("Error parsing timestamp: %v", err)
+		return
 	}
 
 	// The rest of the logic from the original Daemon function's go func() { ... }
@@ -66,7 +74,11 @@ func handleConnection(t *testing.T, connection net.Conn, daemons []*momo_common.
 
 	connection.Write([]byte(strconv.Itoa(replicationMode)))
 
-	metadata := getMetadata(connection)
+	metadata, err := getMetadata(connection)
+	if err != nil {
+		t.Logf("Error getting metadata: %v", err)
+		return
+	}
 	var wg sync.WaitGroup
 
 	// Create a temporary directory for the test
@@ -99,6 +111,7 @@ func handleConnection(t *testing.T, connection net.Conn, daemons []*momo_common.
 		go connectToPeer(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 2, timestamp)
 		wg.Wait()
 	}
+	success = true
 }
 
 func TestDaemonLogic(t *testing.T) {
