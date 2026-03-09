@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	momo_common "github.com/alsotoes/momo/src/common"
@@ -44,7 +45,9 @@ func getMetadata(connection net.Conn) momo_common.FileMetadata {
 // After the transfer is complete, it calculates the MD5 hash of the received file and compares it with the expected hash.
 // It logs the progress and the result of the MD5 check.
 func getFile(connection net.Conn, path string, fileName string, fileMD5 string, fileSize int64) {
-	newFile, err := os.Create(path + fileName)
+	safeFileName := filepath.Base(fileName)
+	fullPath := filepath.Join(path, safeFileName)
+	newFile, err := os.Create(fullPath)
 
 	if err != nil {
 		log.Printf(err.Error())
@@ -70,7 +73,7 @@ func getFile(connection net.Conn, path string, fileName string, fileMD5 string, 
 		receivedBytes += momo_common.TCPSocketBufferSize
 	}
 
-	hash, err := momo_common.HashFile(path + fileName)
+	hash, err := momo_common.HashFile(fullPath)
 	if err != nil {
 		log.Printf(err.Error())
 		connection.Close()
@@ -79,7 +82,7 @@ func getFile(connection net.Conn, path string, fileName string, fileMD5 string, 
 
 	log.Printf("=> MD5:     " + fileMD5)
 	log.Printf("=> New MD5: " + hash)
-	log.Printf("=> Name:    " + path + fileName)
+	log.Printf("=> Name:    " + fullPath)
 	log.Printf("Received file completely!")
 	log.Printf("Sending ACK to client connection")
 }
