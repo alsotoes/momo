@@ -90,32 +90,35 @@ func GetMetrics(cfg momo_common.Configuration, serverId int) {
 	sm := &RealSystemMetrics{}
 	start := time.Now()
 
+	if !cfg.Global.PolymorphicSystem {
+		log.Printf("Replication will not change beacuse polymorphic_system is set to false")
+		return
+	}
+
+	fallbackDuration := time.Duration(cfg.Metrics.FallbackInterval) * time.Millisecond
+	intervalDuration := time.Duration(cfg.Metrics.Interval) * time.Millisecond
+
 	for {
-		if cfg.Global.PolymorphicSystem {
-			newIndex, changed := checkMetricsAndSwap(cfg, sm, currentIndex, replicationOrder)
-			if changed {
-				currentIndex = newIndex
+		newIndex, changed := checkMetricsAndSwap(cfg, sm, currentIndex, replicationOrder)
+		if changed {
+			currentIndex = newIndex
+			pushNewReplicationMode(replicationOrder[currentIndex])
+			start = time.Now()
+		}
+
+		// Change replication mode by timeout fallback
+		now := time.Now()
+		if now.Sub(start) > fallbackDuration {
+			if currentIndex > 0 {
+				log.Printf("Replication fallback because of timeout")
+				currentIndex--
 				pushNewReplicationMode(replicationOrder[currentIndex])
 				start = time.Now()
+			} else {
+				log.Printf("Replication method has no fallback")
 			}
-
-			// Change replication mode by timeout fallback
-			now := time.Now()
-			if now.Sub(start) > (time.Duration(cfg.Metrics.FallbackInterval) * time.Millisecond) {
-				if currentIndex > 0 {
-					log.Printf("Replication fallback because of timeout")
-					currentIndex--
-					pushNewReplicationMode(replicationOrder[currentIndex])
-					start = time.Now()
-				} else {
-					log.Printf("Replication method has no fallback")
-				}
-			}
-
-			time.Sleep(time.Duration(cfg.Metrics.Interval) * time.Millisecond)
-		} else {
-			log.Printf("Replication will not change beacuse polymorphic_system is set to false")
-			return
 		}
+
+		time.Sleep(intervalDuration)
 	}
 }
