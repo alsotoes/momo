@@ -101,9 +101,11 @@ func TestGetFileTraversal(t *testing.T) {
 	}()
 
 	// In a real scenario, the server would call getFile after getMetadata.
-	// We call getFile directly to test its path handling.
+	// Since getMetadata now sanitizes the filename, we pass the sanitized name to getFile
+	// to simulate the real behavior.
 
-	getFile(server, storageDir, traversalFileName, fileMD5, fileSize)
+	sanitizedFileName := filepath.Base(traversalFileName)
+	getFile(server, storageDir, sanitizedFileName, fileMD5, fileSize)
 
 	// The file should be created in storageDir/traversal.txt, NOT in tempDir/traversal.txt
 	traversalFilePath := filepath.Join(tempDir, "traversal.txt")
