@@ -63,22 +63,14 @@ func getFile(connection net.Conn, path string, fileName string, fileMD5 string, 
 	}
 
 	defer newFile.Close()
-	var receivedBytes int64
 
-	for {
-		// If the remaining bytes are less than the buffer size, copy the exact number of bytes.
-		if (fileSize - receivedBytes) < momo_common.TCPSocketBufferSize {
-			if (fileSize - receivedBytes) != 0 {
-				if _, err := io.CopyN(newFile, connection, (fileSize - receivedBytes)); err != nil {
-					return err
-				}
-			}
-			break
-		}
-		if _, err := io.CopyN(newFile, connection, momo_common.TCPSocketBufferSize); err != nil {
+	// Optimization: Use a single io.CopyN instead of manually chunking in a loop.
+	// This enables the Go standard library to utilize zero-copy system calls
+	// (like splice or sendfile) and reduces function call overhead.
+	if fileSize > 0 {
+		if _, err := io.CopyN(newFile, connection, fileSize); err != nil {
 			return err
 		}
-		receivedBytes += momo_common.TCPSocketBufferSize
 	}
 
 	hash, err := momo_common.HashFile(fullPath)
