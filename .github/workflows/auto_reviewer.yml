@@ -1,0 +1,36 @@
+name: Auto Reviewer
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review]
+
+jobs:
+  add-reviewer:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Add Reviewer
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const reviewer = 'alsotoes';
+            const { owner, repo } = context.repo;
+            const pull_number = context.payload.pull_request.number;
+            const author = context.payload.pull_request.user.login;
+
+            if (author !== reviewer) {
+              try {
+                await github.rest.pulls.requestReviewers({
+                  owner,
+                  repo,
+                  pull_number,
+                  reviewers: [reviewer]
+                });
+                console.log(`Added ${reviewer} as a reviewer.`);
+              } catch (error) {
+                console.error(`Failed to add reviewer: ${error.message}`);
+              }
+            } else {
+              console.log("Author is the reviewer, skipping.");
+            }
