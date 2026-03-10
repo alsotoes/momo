@@ -1,4 +1,4 @@
-## 2026-03-09 - [Denial of Service via Unbounded JSON Decode]
-**Vulnerability:** The server accepts configuration changes via an open port without size limits and reads JSON directly from the connection (`json.NewDecoder(connection)`).
-**Learning:** A malicious actor can hold connections open or stream infinite spaces/large payloads, leading to memory exhaustion or goroutine leaks.
-**Prevention:** Always use `io.LimitReader` when decoding JSON from untrusted network connections to enforce a maximum payload size, and use connection read/write deadlines (`SetDeadline`) to prevent slowloris attacks.
+## 2026-03-10 - Path Traversal during file replication metadata retrieval
+**Vulnerability:** The application was vulnerable to path traversal during peer replication because it retrieved the `fileName` directly from client-supplied metadata and passed it to downstream handlers (`getFile` and `connectToPeer`) without early sanitization.
+**Learning:** Even if `filepath.Base` is used right before `os.Create` in `getFile()`, it was missed in `server.go` when `connectToPeer` built replication paths (`daemons[x].Data + "/" + metadata.Name`). It's better to sanitize the metadata *as soon as it's parsed* from the network.
+**Prevention:** Always validate and sanitize user-provided identifiers (like file paths) immediately at the input boundary before they are returned to other components of the system.

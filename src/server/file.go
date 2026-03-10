@@ -32,7 +32,8 @@ func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 	if _, err := io.ReadFull(connection, bufferFileName); err != nil {
 		return metadata, err
 	}
-	fileName := string(bytes.Trim(bufferFileName, "\x00"))
+	// 🛡️ Sentinel: Sanitize fileName immediately to prevent path traversal in all downstream consumers.
+	fileName := filepath.Base(string(bytes.Trim(bufferFileName, "\x00")))
 
 	if _, err := io.ReadFull(connection, bufferFileSize); err != nil {
 		return metadata, err
@@ -54,8 +55,7 @@ func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 // After the transfer is complete, it calculates the MD5 hash of the received file and compares it with the expected hash.
 // It logs the progress and the result of the MD5 check.
 func getFile(connection net.Conn, path string, fileName string, fileMD5 string, fileSize int64) error {
-	safeFileName := filepath.Base(fileName)
-	fullPath := filepath.Join(path, safeFileName)
+	fullPath := filepath.Join(path, fileName)
 	newFile, err := os.Create(fullPath)
 
 	if err != nil {
