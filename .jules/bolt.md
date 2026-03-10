@@ -1,3 +1,3 @@
-## 2026-03-09 - Go `io.CopyN` loop anti-pattern
-**Learning:** Calling `io.CopyN` repeatedly in a small fixed-size loop to transfer network files completely negates the performance benefits of Go's `io` package. It introduces severe overhead (allocations, context switches) and prevents the standard library from utilizing optimized zero-copy system calls like `sendfile` or `splice`.
-**Action:** When transferring files of known size over a network connection in Go, always use a single `io.CopyN(dst, src, fileSize)` call rather than chunking it manually in a loop.
+## 2024-05-24 - [Zero-copy optimizations with io.CopyN]
+**Learning:** Using a single `io.CopyN` call with the full file size is significantly faster than manually chunking the read in a loop when handling network file transfers in Go. This is because the standard library can utilize zero-copy system calls (like `splice` or `sendfile`), which reduces memory copying between kernel and user space, and significantly decreases function call overhead.
+**Action:** Always prefer a single `io.Copy` or `io.CopyN` call when the total size is known, rather than breaking it down into smaller, fixed-size chunks, especially when reading from network connections to files.
