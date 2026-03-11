@@ -104,3 +104,22 @@ func TestCheckMetricsAndSwap(t *testing.T) {
 		})
 	}
 }
+
+func TestRealSystemMetrics(t *testing.T) {
+	rsm := &RealSystemMetrics{}
+	_, err := rsm.VirtualMemory()
+	if err != nil {
+		t.Errorf("Unexpected error from VirtualMemory: %v", err)
+	}
+	_, err = rsm.CPUPercent()
+	if err != nil {
+		t.Errorf("Unexpected error from CPUPercent: %v", err)
+	}
+}
+
+func TestGetMetricsNonPrimaryServer(t *testing.T) {
+	// serverId != 0, should return immediately
+	cfg := momo_common.Configuration{}
+	GetMetrics(cfg, 1)
+}
+
