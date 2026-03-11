@@ -3,8 +3,18 @@ name: Performance Comparison
 on:
   pull_request:
     branches: [ "master" ]
+    paths:
+      - 'src/**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
   push:
     branches: [ "master" ]
+    paths:
+      - 'src/**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
 
 jobs:
   benchstat:

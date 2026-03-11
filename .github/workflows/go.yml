@@ -3,8 +3,18 @@ name: Go
 on:
   push:
     branches: [ "master" ]
+    paths:
+      - 'src/**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
   pull_request:
     branches: [ "master" ]
+    paths:
+      - 'src/**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
 
 jobs:
   build:

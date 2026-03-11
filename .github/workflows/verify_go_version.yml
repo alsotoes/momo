@@ -3,8 +3,22 @@ name: Verify Go Version Consistency
 on:
   pull_request:
     branches: [ "master" ]
+    paths:
+      - 'src/**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
+      - 'Dockerfile'
+      - '.idx/dev.nix'
   push:
     branches: [ "master" ]
+    paths:
+      - 'src/**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
+      - 'Dockerfile'
+      - '.idx/dev.nix'
 
 jobs:
   verify-versions:
