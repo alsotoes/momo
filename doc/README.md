@@ -249,11 +249,11 @@ This section is automatically updated by our GitHub Actions workflow.
 ```
                       │ old_bench_filtered.txt │       new_bench_filtered.txt        │
                       │         sec/op         │    sec/op      vs base              │
-CheckMetricsAndSwap-4             8.422n ± ∞ ¹    8.431n ± ∞ ¹       ~ (p=0.500 n=5)
-IndexSearch-4                     3.428n ± ∞ ¹    3.429n ± ∞ ¹       ~ (p=0.889 n=5)
-IndexDirectTracking-4            0.3125n ± ∞ ¹   0.3126n ± ∞ ¹       ~ (p=0.841 n=5)
-ConcurrentUploads-4               219.7µ ± ∞ ¹    320.6µ ± ∞ ¹       ~ (p=0.056 n=5)
-geomean                           37.52n          41.26n        +9.96%
+CheckMetricsAndSwap-4             8.427n ± ∞ ¹    8.460n ± ∞ ¹       ~ (p=0.151 n=5)
+IndexSearch-4                     3.435n ± ∞ ¹    3.431n ± ∞ ¹       ~ (p=0.476 n=5)
+IndexDirectTracking-4            0.3121n ± ∞ ¹   0.3125n ± ∞ ¹       ~ (p=0.794 n=5)
+ConcurrentUploads-4               212.6µ ± ∞ ¹    219.4µ ± ∞ ¹       ~ (p=1.000 n=5)
+geomean                           37.23n          37.56n        +0.89%
 ¹ need >= 6 samples for confidence interval at level 0.95
 
                       │ old_bench_filtered.txt │        new_bench_filtered.txt         │
@@ -261,8 +261,8 @@ geomean                           37.52n          41.26n        +9.96%
 CheckMetricsAndSwap-4              0.000 ± ∞ ¹     0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
 IndexSearch-4                      0.000 ± ∞ ¹     0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
 IndexDirectTracking-4              0.000 ± ∞ ¹     0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
-ConcurrentUploads-4              2.075Ki ± ∞ ¹   2.078Ki ± ∞ ¹       ~ (p=0.683 n=5)
-geomean                                      ³                  +0.04%               ³
+ConcurrentUploads-4              2.081Ki ± ∞ ¹   2.075Ki ± ∞ ¹       ~ (p=0.349 n=5)
+geomean                                      ³                  -0.07%               ³
 ¹ need >= 6 samples for confidence interval at level 0.95
 ² all samples are equal
 ³ summaries must be >0 to compute geomean
@@ -272,8 +272,8 @@ geomean                                      ³                  +0.04%         
 CheckMetricsAndSwap-4              0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
 IndexSearch-4                      0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
 IndexDirectTracking-4              0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
-ConcurrentUploads-4                49.00 ± ∞ ¹   49.00 ± ∞ ¹       ~ (p=1.000 n=5)
-geomean                                      ³                +0.00%               ³
+ConcurrentUploads-4                50.00 ± ∞ ¹   49.00 ± ∞ ¹       ~ (p=0.206 n=5)
+geomean                                      ³                -0.50%               ³
 ¹ need >= 6 samples for confidence interval at level 0.95
 ² all samples are equal
 ³ summaries must be >0 to compute geomean
@@ -284,17 +284,20 @@ geomean                                      ³                +0.00%           
 
 | Benchmark | Avg. Value/Op |
 |-----------|---------------|
-| BenchmarkCheckMetricsAndSwap-4 | 8.43 ns/op |\n| BenchmarkConcurrentUploads-4 | 322813.00 ns/op |\n| BenchmarkIndexDirectTracking-4 | 0.32 ns/op |\n| BenchmarkIndexSearch-4 | 3.43 ns/op |\n
+| BenchmarkCheckMetricsAndSwap-4 | 8.45 ns/op |\n| BenchmarkConcurrentUploads-4 | 242974.00 ns/op |\n| BenchmarkIndexDirectTracking-4 | 0.31 ns/op |\n| BenchmarkIndexSearch-4 | 3.49 ns/op |\n
 
-### Performance Chart
+### Performance History
 
 ```mermaid
 xychart-beta
-    title "Latest Benchmark Performance (Time)"
-    x-axis "Benchmark"
+    title "Performance Trend (Last 10 Commits)"
+    x-axis "Commit"
     y-axis "Avg. Time (ns/op)"
-    x-axis ["IndexSearch", "IndexDirectTracking", "ConcurrentUploads", "CheckMetricsAndSwap"]
-    bar [3, 0, 322813, 8]
+    x-axis [comm,d350]
+    line "CheckMetricsAndSwap" [8]
+    line "ConcurrentUploads" [242974]
+    line "IndexDirectTracking" [0]
+    line "IndexSearch" [3]
 ```
 <!-- BENCHMARK_RESULTS_END -->
 
