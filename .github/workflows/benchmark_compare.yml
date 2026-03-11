@@ -41,10 +41,19 @@ jobs:
         make benchmark COUNT=5 | tee base_bench.txt
         git checkout -
 
-    - name: Compare Benchmarks
+    - name: Compare Benchmarks and Enforce Threshold
       run: |
         echo "## Performance Comparison (Benchstat)" >> $GITHUB_STEP_SUMMARY
         echo '```text' >> $GITHUB_STEP_SUMMARY
         benchstat base_bench.txt current_bench.txt | tee bench_comparison.txt
         cat bench_comparison.txt >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
+        
+        # Check if there is any statistically significant degradation.
+        # benchstat outputs "+" for increases in time/op or alloc/op (which is bad).
+        if grep -E "\+[0-9]+\.[0-9]+%" bench_comparison.txt; then
+          echo "❌ Performance degradation detected! Failing the pipeline." >> $GITHUB_STEP_SUMMARY
+          exit 1
+        else
+          echo "✅ No statistically significant performance degradation detected." >> $GITHUB_STEP_SUMMARY
+        fi
