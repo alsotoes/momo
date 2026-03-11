@@ -27,5 +27,8 @@ While the E2E tests focus on baseline data transfer across Docker nodes, the `sm
 ### 3. Auto Reviewer (`auto_reviewer.yml`)
 To enforce code review best practices without manual intervention, this workflow listens for Pull Requests (opened, reopened, ready_for_review).
 
-- Automatically uses the GitHub REST API to request a review from the designated lead maintainer (`alsotoes`).
-- Intelligently skips assignment if the lead maintainer is the author of the PR.
+### 4. Performance Comparison (`benchmark_compare.yml`)
+To ensure we do not introduce performance regressions, this workflow uses Go's `benchstat` tool to compare the execution speed of the current code against the base branch (or previous commit).
+- Automatically runs `make benchmark COUNT=5` on both the old and new codebase.
+- Computes the statistical delta of memory allocations and execution time.
+- Prints the comparison table directly to the GitHub Action Step Summary.
