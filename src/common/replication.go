@@ -121,19 +121,29 @@ func sendContent(connection net.Conn, reader io.Reader, size int64) error {
 
 // sendMetadata sends file metadata (MD5, name, and size) over a network connection.
 func sendMetadata(connection net.Conn, metadata FileMetadata) error {
-	fileMD5 := padString(metadata.MD5, md5Length)
-	fileNameStr := padString(metadata.Name, FileInfoLength)
-	fileSizeStr := padString(fmt.Sprintf("%d", metadata.Size), FileInfoLength)
+	// Optimization: Allocate a single buffer of the exact size and format fields directly.
+	// This replaces 3 separate io.WriteString calls, fmt.Sprintf string formatting,
+	// and multiple padString allocations with a single network write.
+	// We rely on make([]byte) initializing the array with zeros (null bytes) for padding,
+	// matching the original `padString` behavior of appending null bytes.
+	const totalLength = md5Length + FileInfoLength + FileInfoLength
+	buf := make([]byte, totalLength)
 
-	if _, err := io.WriteString(connection, fileMD5); err != nil {
+	// We copy the MD5 hash, Name, and Size. The copy function naturally handles
+	// truncation if the source is longer than the destination slice.
+	// If the source is shorter, the remaining bytes in the destination
+	// remain as null bytes (0x00) which serves as our padding,
+	// exactly identical to padString behavior.
+	copy(buf[0:md5Length], metadata.MD5)
+	copy(buf[md5Length:md5Length+FileInfoLength], metadata.Name)
+
+	sizeStr := strconv.FormatInt(metadata.Size, 10)
+	copy(buf[md5Length+FileInfoLength:], sizeStr)
+
+	if _, err := connection.Write(buf); err != nil {
 		return err
 	}
-	if _, err := io.WriteString(connection, fileNameStr); err != nil {
-		return err
-	}
-	if _, err := io.WriteString(connection, fileSizeStr); err != nil {
-		return err
-	}
+
 	return nil
 }
 
