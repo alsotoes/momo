@@ -240,5 +240,99 @@ Notes:
 - Tests and tooling around config validation.
 
 <!-- BENCHMARK_RESULTS_START -->
+## Performance
+
+This section is automatically updated by our GitHub Actions workflow.
+
+### Comparison with previous commit
+
+```
+                      │ old_bench_filtered.txt │       new_bench_filtered.txt        │
+                      │         sec/op         │    sec/op      vs base              │
+CheckMetricsAndSwap-4             8.427n ± ∞ ¹    8.433n ± ∞ ¹       ~ (p=0.571 n=5)
+IndexSearch-4                     3.435n ± ∞ ¹    3.438n ± ∞ ¹       ~ (p=0.286 n=5)
+IndexDirectTracking-4            0.3123n ± ∞ ¹   0.3168n ± ∞ ¹       ~ (p=0.175 n=5)
+ConcurrentUploads-4               320.2µ ± ∞ ¹    215.9µ ± ∞ ¹       ~ (p=0.056 n=5)
+geomean                           41.25n          37.53n        -9.02%
+¹ need >= 6 samples for confidence interval at level 0.95
+
+                      │ old_bench_filtered.txt │        new_bench_filtered.txt         │
+                      │          B/op          │     B/op       vs base                │
+CheckMetricsAndSwap-4              0.000 ± ∞ ¹     0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+IndexSearch-4                      0.000 ± ∞ ¹     0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+IndexDirectTracking-4              0.000 ± ∞ ¹     0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+ConcurrentUploads-4              2.081Ki ± ∞ ¹   2.080Ki ± ∞ ¹       ~ (p=1.000 n=5)
+geomean                                      ³                  -0.01%               ³
+¹ need >= 6 samples for confidence interval at level 0.95
+² all samples are equal
+³ summaries must be >0 to compute geomean
+
+                      │ old_bench_filtered.txt │       new_bench_filtered.txt        │
+                      │       allocs/op        │  allocs/op   vs base                │
+CheckMetricsAndSwap-4              0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+IndexSearch-4                      0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+IndexDirectTracking-4              0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+ConcurrentUploads-4                49.00 ± ∞ ¹   49.00 ± ∞ ¹       ~ (p=1.000 n=5)
+geomean                                      ³                +0.00%               ³
+¹ need >= 6 samples for confidence interval at level 0.95
+² all samples are equal
+³ summaries must be >0 to compute geomean
+```
+
+### Latest Benchmark Results
+
+
+| Benchmark | Time/Op |
+|-----------|---------|
+| BenchmarkCheckMetricsAndSwap-4 | 8.419 ns/op |
+| BenchmarkCheckMetricsAndSwap-4 | 8.432 ns/op |
+| BenchmarkCheckMetricsAndSwap-4 | 8.449 ns/op |
+| BenchmarkCheckMetricsAndSwap-4 | 8.433 ns/op |
+| BenchmarkCheckMetricsAndSwap-4 | 8.438 ns/op |
+| BenchmarkIndexSearch-4 | 3.433 ns/op |
+| BenchmarkIndexSearch-4 | 3.448 ns/op |
+| BenchmarkIndexSearch-4 | 3.510 ns/op |
+| BenchmarkIndexSearch-4 | 3.438 ns/op |
+| BenchmarkIndexSearch-4 | 3.433 ns/op |
+| BenchmarkIndexDirectTracking-4 | 0.3126 ns/op |
+| BenchmarkIndexDirectTracking-4 | 0.3118 ns/op |
+| BenchmarkIndexDirectTracking-4 | 0.3168 ns/op |
+| BenchmarkIndexDirectTracking-4 | 0.3256 ns/op |
+| BenchmarkIndexDirectTracking-4 | 0.3564 ns/op |
+| BenchmarkConcurrentUploads-4 | 139092 ns/op |
+| BenchmarkConcurrentUploads-4 | 134164 ns/op |
+| BenchmarkConcurrentUploads-4 | 215908 ns/op |
+| BenchmarkConcurrentUploads-4 | 316996 ns/op |
+| BenchmarkConcurrentUploads-4 | 320018 ns/op |
+
+
+### Performance Chart
+
+```mermaid
+gantt
+    title Latest Benchmark Results
+    dateFormat  X
+    axisFormat  %s
+    BenchmarkCheckMetricsAndSwap-4 : 8
+    BenchmarkCheckMetricsAndSwap-4 : 8
+    BenchmarkCheckMetricsAndSwap-4 : 8
+    BenchmarkCheckMetricsAndSwap-4 : 8
+    BenchmarkCheckMetricsAndSwap-4 : 8
+    BenchmarkIndexSearch-4 : 3
+    BenchmarkIndexSearch-4 : 3
+    BenchmarkIndexSearch-4 : 3
+    BenchmarkIndexSearch-4 : 3
+    BenchmarkIndexSearch-4 : 3
+    BenchmarkIndexDirectTracking-4 : 0
+    BenchmarkIndexDirectTracking-4 : 0
+    BenchmarkIndexDirectTracking-4 : 0
+    BenchmarkIndexDirectTracking-4 : 0
+    BenchmarkIndexDirectTracking-4 : 0
+    BenchmarkConcurrentUploads-4 : 139092
+    BenchmarkConcurrentUploads-4 : 134164
+    BenchmarkConcurrentUploads-4 : 215908
+    BenchmarkConcurrentUploads-4 : 316996
+    BenchmarkConcurrentUploads-4 : 320018
+```
 <!-- BENCHMARK_RESULTS_END -->
 
