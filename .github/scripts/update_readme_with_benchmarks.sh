@@ -48,6 +48,19 @@ while IFS= read -r line; do
     MARKDOWN_TABLE="$MARKDOWN_TABLE| $name | $avg_val $unit |\n"
 done <<< "$AVG_RESULTS"
 
+HISTORY_FILE=".github/data/benchmark_history.csv"
+COMMIT_SHA=$3
+
+# Save the latest averaged results to the history file
+while IFS= read -r line; do
+    name=$(echo "$line" | awk '{print $1}')
+    avg_val=$(echo "$line" | awk '{printf "%.2f", $2}')
+    unit=$(echo "$line" | awk '{print $3}')
+    if [ "$unit" == "ns/op" ]; then
+        echo "$COMMIT_SHA,$name,$avg_val" >> "$HISTORY_FILE"
+    fi
+done <<< "$AVG_RESULTS"
+
 # Prepare the content to be injected into the README
 # Use a temporary file to avoid issues with special characters in variables.
 CONTENT_FILE=$(mktemp)
@@ -66,38 +79,33 @@ $COMPARISON
 
 $MARKDOWN_TABLE
 
-### Performance Chart
+### Performance History
 
 \`\`\`mermaid
 xychart-beta
-    title "Latest Benchmark Performance (Time)"
-    x-axis "Benchmark"
+    title "Performance Trend (Last 10 Commits)"
+    x-axis "Commit"
     y-axis "Avg. Time (ns/op)"
 EOF
 
-# Filter for time-based benchmarks for the chart
-TIME_AVG_RESULTS=$(echo "$AVG_RESULTS" | grep "ns/op")
-
-X_AXIS_LABELS=""
-BAR_DATA=""
-
-while IFS= read -r line; do
-    # Shorten the name for the chart
-    name=$(echo "$line" | awk '{print $1}' | sed -e 's/Benchmark//' -e 's/-[0-9]\+$//')
-    avg_time=$(echo "$line" | awk '{printf "%.0f", $2}')
-    X_AXIS_LABELS="\"$name\", $X_AXIS_LABELS"
-    BAR_DATA="$avg_time, $BAR_DATA"
-done <<< "$TIME_AVG_RESULTS"
-
-# Remove trailing commas
-if [ -n "$X_AXIS_LABELS" ]; then
-    X_AXIS_LABELS=${X_AXIS_LABELS%, }
-    BAR_DATA=${BAR_DATA%, }
-fi
+# Get the last 10 unique commit SHAs from the history
+LAST_10_COMMITS=$(tail -n 40 "$HISTORY_FILE" | awk -F, '{print $1}' | uniq | tail -n 10 | sed -e 's/^\(....\).*/\1/g' | tr '\n' ',' | sed 's/,$//')
 
 cat <<EOF >> "$CONTENT_FILE"
-    x-axis [${X_AXIS_LABELS}]
-    bar [${BAR_DATA}]
+    x-axis [${LAST_10_COMMITS}]
+EOF
+
+# Get the list of unique benchmark names
+BENCHMARK_NAMES=$(awk -F, 'NR>1 {print $2}' "$HISTORY_FILE" | sort -u)
+
+for bench_name in $BENCHMARK_NAMES; do
+    # Get the data for this benchmark for the last 10 commits
+    bench_data=$(grep "$bench_name" "$HISTORY_FILE" | tail -n 10 | awk -F, '{printf "%.0f,", $3}' | sed 's/,$//')
+    short_name=$(echo "$bench_name" | sed -e 's/Benchmark//' -e 's/-[0-9]\+$//')
+    echo "    line \"$short_name\" [${bench_data}]" >> "$CONTENT_FILE"
+done
+
+cat <<EOF >> "$CONTENT_FILE"
 \`\`\`
 EOF
 
