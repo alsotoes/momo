@@ -53,7 +53,7 @@ func startMockServer(t *testing.T, expectedMode int, delay time.Duration) (strin
 		}
 
 		// Read file metadata
-		bufHash := make([]byte, md5Length)
+		bufHash := make([]byte, hashLength)
 		io.ReadFull(conn, bufHash)
 		bufName := make([]byte, FileInfoLength)
 		io.ReadFull(conn, bufName)
@@ -86,7 +86,7 @@ func startDummyServer(t *testing.T) (string, net.Listener) {
 				c.Write([]byte("4")) // Not Splay
 				
 				// Wait for metadata
-				bufHash := make([]byte, md5Length)
+				bufHash := make([]byte, hashLength)
 				io.ReadFull(c, bufHash)
 				bufName := make([]byte, FileInfoLength)
 				io.ReadFull(c, bufName)
@@ -156,7 +156,7 @@ func TestConnect(t *testing.T) {
 		conn.Write([]byte(fmt.Sprintf("%d", ReplicationPrimarySplay))) // Send 3
 
 		// Read file metadata
-		bufHash := make([]byte, md5Length)
+		bufHash := make([]byte, hashLength)
 		io.ReadFull(conn, bufHash)
 		bufName := make([]byte, FileInfoLength)
 		io.ReadFull(conn, bufName)

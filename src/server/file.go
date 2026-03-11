@@ -13,21 +13,21 @@ import (
 	momo_common "github.com/alsotoes/momo/src/common"
 )
 
-// getMetadata reads file metadata (MD5, name, size) from a network connection.
-// It reads the MD5 hash, file name, and file size from the connection, trims any null characters,
+// getMetadata reads file metadata (Hash, name, size) from a network connection.
+// It reads the Hash string, file name, and file size from the connection, trims any null characters,
 // and returns a FileMetadata struct.
 // Null characters are trimmed because the buffers are fixed size, and the actual data may be smaller.
 func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 	var metadata momo_common.FileMetadata
 
-	bufferFileMD5 := make([]byte, 32)
+	bufferFileHash := make([]byte, 64)
 	bufferFileName := make([]byte, momo_common.FileInfoLength)
 	bufferFileSize := make([]byte, momo_common.FileInfoLength)
 
-	if _, err := io.ReadFull(connection, bufferFileMD5); err != nil {
+	if _, err := io.ReadFull(connection, bufferFileHash); err != nil {
 		return metadata, err
 	}
-	fileMD5 := string(bytes.Trim(bufferFileMD5, "\x00"))
+	fileHash := string(bytes.Trim(bufferFileHash, "\x00"))
 
 	if _, err := io.ReadFull(connection, bufferFileName); err != nil {
 		return metadata, err
@@ -44,7 +44,7 @@ func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 	}
 
 	metadata.Name = fileName
-	metadata.MD5 = fileMD5
+	metadata.Hash = fileHash
 	metadata.Size = fileSize
 
 	return metadata, nil
@@ -52,9 +52,9 @@ func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 
 // getFile reads a file from a network connection and saves it to a specified path.
 // It creates a new file at the given path and copies the file content from the connection in chunks.
-// After the transfer is complete, it calculates the MD5 hash of the received file and compares it with the expected hash.
-// It logs the progress and the result of the MD5 check.
-func getFile(connection net.Conn, path string, fileName string, fileMD5 string, fileSize int64) error {
+// After the transfer is complete, it calculates the SHA-256 hash of the received file and compares it with the expected hash.
+// It logs the progress and the result of the hash check.
+func getFile(connection net.Conn, path string, fileName string, expectedHash string, fileSize int64) error {
 	fullPath := filepath.Join(path, fileName)
 	newFile, err := os.Create(fullPath)
 
@@ -78,9 +78,9 @@ func getFile(connection net.Conn, path string, fileName string, fileMD5 string, 
 		return err
 	}
 
-	log.Printf("=> MD5:     " + fileMD5)
-	log.Printf("=> New MD5: " + hash)
-	log.Printf("=> Name:    " + fullPath)
+	log.Printf("=> Expected Hash: " + expectedHash)
+	log.Printf("=> Actual Hash:   " + hash)
+	log.Printf("=> Name:          " + fullPath)
 	log.Printf("Received file completely!")
 	log.Printf("Sending ACK to client connection")
 	return nil

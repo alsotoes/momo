@@ -2,7 +2,7 @@
 package server
 
 import (
-	"crypto/md5"
+	"crypto/sha256"
 	"encoding/hex"
 	"io"
 	"net"
@@ -20,7 +20,7 @@ func TestGetMetadata(t *testing.T) {
 	// Arrange: Set up a network pipe to simulate a client-server connection without real networking.
 	server, client := net.Pipe()
 
-	// Arrange: Create a temporary file to get realistic test data (MD5 hash).
+	// Arrange: Create a temporary file to get realistic test data (SHA-256 hash).
 	tempFile, err := os.CreateTemp("", "testfile-*.txt")
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
@@ -32,15 +32,15 @@ func TestGetMetadata(t *testing.T) {
 	tempFile.Write([]byte(fileContent))
 	tempFile.Close()
 
-	fileMD5, _ := momo_common.HashFile(tempFile.Name())
+	fileHash, _ := momo_common.HashFile(tempFile.Name())
 	fileSize := len(fileContent)
 
 	// Act: Start a goroutine to simulate the client sending metadata over the pipe.
 	go func() {
 		defer client.Close()
 
-		// Send MD5 hash
-		client.Write([]byte(fileMD5))
+		// Send SHA-256 hash
+		client.Write([]byte(fileHash))
 
 		// Send file name, padded to the fixed buffer size
 		fileNameBytes := make([]byte, momo_common.FileInfoLength)
@@ -64,8 +64,8 @@ func TestGetMetadata(t *testing.T) {
 	if metadata.Name != fileName {
 		t.Errorf("Expected file name '%s', got '%s'", fileName, metadata.Name)
 	}
-	if metadata.MD5 != fileMD5 {
-		t.Errorf("Expected file MD5 '%s', got '%s'", fileMD5, metadata.MD5)
+	if metadata.Hash != fileHash {
+		t.Errorf("Expected file hash '%s', got '%s'", fileHash, metadata.Hash)
 	}
 	if metadata.Size != int64(fileSize) {
 		t.Errorf("Expected file size %d, got %d", fileSize, metadata.Size)
@@ -90,9 +90,9 @@ func TestGetFileTraversal(t *testing.T) {
 	traversalFileName := "../traversal.txt"
 	fileContent := "dangerous content"
 
-	hash := md5.New()
+	hash := sha256.New()
 	io.WriteString(hash, fileContent)
-	fileMD5 := hex.EncodeToString(hash.Sum(nil))
+	fileHash := hex.EncodeToString(hash.Sum(nil))
 	fileSize := int64(len(fileContent))
 
 	go func() {
@@ -105,7 +105,7 @@ func TestGetFileTraversal(t *testing.T) {
 	// to simulate the real behavior.
 
 	sanitizedFileName := filepath.Base(traversalFileName)
-	getFile(server, storageDir, sanitizedFileName, fileMD5, fileSize)
+	getFile(server, storageDir, sanitizedFileName, fileHash, fileSize)
 
 	// The file should be created in storageDir/traversal.txt, NOT in tempDir/traversal.txt
 	traversalFilePath := filepath.Join(tempDir, "traversal.txt")

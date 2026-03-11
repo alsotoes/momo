@@ -120,14 +120,14 @@ func Daemon(ctx context.Context, daemons []*momo_common.Daemon, serverId int) {
 			// Handle the file based on the replication mode
 			switch replicationMode {
 			case momo_common.ReplicationNone, momo_common.ReplicationPrimarySplay:
-				if err := getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size); err != nil {
+				if err := getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size); err != nil {
 					log.Printf("Error getting file: %v", err)
 					return
 				}
 			case momo_common.ReplicationChain:
 				if serverId == 1 {
 					wg.Add(1)
-					if err := getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size); err != nil {
+					if err := getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size); err != nil {
 						log.Printf("Error getting file: %v", err)
 						wg.Done()
 						return
@@ -136,7 +136,7 @@ func Daemon(ctx context.Context, daemons []*momo_common.Daemon, serverId int) {
 					wg.Wait()
 				} else {
 					wg.Add(1)
-					if err := getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size); err != nil {
+					if err := getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size); err != nil {
 						log.Printf("Error getting file: %v", err)
 						wg.Done()
 						return
@@ -146,7 +146,7 @@ func Daemon(ctx context.Context, daemons []*momo_common.Daemon, serverId int) {
 				}
 			case momo_common.ReplicationSplay:
 				wg.Add(2)
-				if err := getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size); err != nil {
+				if err := getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size); err != nil {
 					log.Printf("Error getting file: %v", err)
 					wg.Done() // Need to handle waitgroup correctly if one fails
 					wg.Done()

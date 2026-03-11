@@ -22,8 +22,8 @@ func TestHashFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The expected MD5 hash of "hello world"
-	expectedHash := "5eb63bbbe01eeed093cb22bb8f5acdc3"
+	// The expected SHA-256 hash of "hello world"
+	expectedHash := "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
 
 	actualHash, err := HashFile(tmpfile.Name())
 	if err != nil {

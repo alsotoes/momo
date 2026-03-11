@@ -93,11 +93,11 @@ func Connect(wg *sync.WaitGroup, daemons []*Daemon, filePath string, serverId in
 	wgSendFile.Wait()
 }
 
-// md5Length is the expected length of an MD5 hash string.
-const md5Length = 32
+// hashLength is the expected length of a SHA-256 hash string.
+const hashLength = 64
 
 // sendFile sends a file over a network connection.
-// It first sends the file's metadata (MD5 hash, name, and size) and then the file's content.
+// It first sends the file's metadata (SHA-256 hash, name, and size) and then the file's content.
 // It waits for an acknowledgment ("ACK") from the server upon successful reception.
 func sendFile(wg *sync.WaitGroup, connection net.Conn, fileName string) {
 	defer wg.Done()
@@ -122,16 +122,16 @@ func sendFile(wg *sync.WaitGroup, connection net.Conn, fileName string) {
 		return
 	}
 
-	log.Printf("=> MD5:     %s", fileHash)
+	log.Printf("=> Hash:    %s", fileHash)
 	log.Printf("=> Name:    %s", fileInfo.Name())
 	log.Printf("=> Size:    %d", fileSize)
 
 	// Send metadata
-	fileMD5 := padString(fileHash, md5Length)
+	fileHashStr := padString(fileHash, hashLength)
 	fileNameStr := padString(fileInfo.Name(), FileInfoLength)
 	fileSizeStr := padString(fmt.Sprintf("%d", fileSize), FileInfoLength)
 
-	connection.Write([]byte(fileMD5))
+	connection.Write([]byte(fileHashStr))
 	connection.Write([]byte(fileNameStr))
 	connection.Write([]byte(fileSizeStr))
 

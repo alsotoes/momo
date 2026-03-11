@@ -84,8 +84,8 @@ func TestDaemonReal(t *testing.T) {
 	if err == nil {
 		file.WriteString("data")
 		file.Close()
-		md5, _ := momo_common.HashFile(file.Name())
-		conn.Write([]byte(padTestString(md5, 32)))
+		hash, _ := momo_common.HashFile(file.Name())
+		conn.Write([]byte(padTestString(hash, 64)))
 		conn.Write([]byte(padTestString("test.txt", momo_common.FileInfoLength)))
 		conn.Write([]byte(padTestString("4", momo_common.FileInfoLength)))
 		

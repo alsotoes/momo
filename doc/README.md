@@ -11,7 +11,7 @@ This document explains the architecture, configuration, wire protocol, replicati
 - Four replication modes: none, chain, splay, and primary‑splay.
 - Metrics‑driven mode changes (CPU/memory thresholds + fallback timer).
 - Centralized change‑replication control with timestamped updates.
-- Simple MD5 integrity logging on the receiver.
+- Simple SHA-256 integrity logging on the receiver.
 
 
 ## Repository Layout
@@ -21,7 +21,7 @@ This document explains the architecture, configuration, wire protocol, replicati
   - `constants.go`: Wire/field lengths and replication constants.
   - `config.go`: INI configuration loader (`conf/momo.conf`).
   - `struct.go`: Config and metadata structs.
-  - `md5.go`: File MD5 utility.
+  - `hash.go`: File SHA-256 hash utility.
   - `log.go`: Toggle logging to stdout.
   - `contains.go`: Slice utility used by metrics.
 - `src/server/`: Server daemon, file receive, and replication control server.
@@ -63,9 +63,9 @@ Handshake and transfer overview:
 
 1. Client opens a TCP connection to the primary server (usually server 0) and sends a 19‑byte timestamp.
 2. Server decides the effective replication mode for this connection and responds with a one‑digit ASCII mode code.
-3. Client sends metadata: 32‑byte hex MD5, 64‑byte file name (right‑padded with `:`), and 64‑byte decimal file size (right‑padded with `:`).
+3. Client sends metadata: 64‑byte hex SHA-256 hash, 64‑byte file name (right‑padded with `:`), and 64‑byte decimal file size (right‑padded with `:`).
 4. Client streams file bytes in `1024`‑byte chunks until EOF.
-5. Server writes the file to disk, validates MD5, and replies with `ACK{serverId}`.
+5. Server writes the file to disk, validates the hash, and replies with `ACK{serverId}`.
 6. Depending on the negotiated mode, additional replication is performed:
    - Chain: receiving server acts as a client to the next server in the chain.
    - Splay: server 0 concurrently uploads to servers 1 and 2.
@@ -77,15 +77,15 @@ Handshake and transfer overview:
 Lengths (see `src/common/constants.go`):
 
 - Timestamp: `TimestampLength = 19` bytes (ASCII, e.g., `UnixNano`).
-- Metadata: `MD5 = 32`, `FileInfoLength = 64` for name and size (right‑padded with colons (`:`)).
+- Metadata: `Hash = 64`, `FileInfoLength = 64` for name and size (right‑padded with colons (`:`)).
 - Payload: streamed in `BUFFERSIZE = 1024` bytes.
 
 Order:
 
-- Client → Server: `timestamp` → `fileMD5` → `fileName` → `fileSize` → file bytes…
+- Client → Server: `timestamp` → `fileHash` → `fileName` → `fileSize` → file bytes…
 - Server → Client: `replicationMode` (single ASCII digit) → after receive, `ACK{serverId}`.
 
-The server reads exactly `fileSize` bytes and discards any extra padding from the last fixed‑size chunk before validating the MD5.
+The server reads exactly `fileSize` bytes and discards any extra padding from the last fixed‑size chunk before validating the hash.
 
 
 ## Metrics‑Driven Mode Changes
@@ -220,7 +220,7 @@ Notes:
 - No authentication or encryption; traffic is plain TCP.
 - Error handling is minimal; some paths `os.Exit(1)` on errors.
 - Change‑replication server decodes a fixed‑size buffer; ensure the JSON fits within `LENGTHINFO`.
-- MD5 is logged for integrity, but mismatches don’t block ACK in the current code.
+- The hash is logged for integrity, but mismatches don’t block ACK in the current code.
 - Affinity: server 0 leads replication changes and timestamps; server 1 constrains non‑chain modes to NO_REPLICATION during handshake.
 
 
