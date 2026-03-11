@@ -23,21 +23,30 @@ grep "^Benchmark" "$NEW_BENCH" > new_bench_filtered.txt
 # Generate comparison table with benchstat
 COMPARISON=$(benchstat old_bench_filtered.txt new_bench_filtered.txt)
 
-# Generate MermaidJS chart and markdown table from the new benchmarks
-# Using awk to parse the benchmark output
-PARSED_RESULTS=$(awk '{print $1, $3, $4}' new_bench_filtered.txt)
+# Average the results for the table and chart
+AVG_RESULTS=$(awk '
+{
+    sum[$1] += $3;
+    unit[$1] = $4;
+    count[$1]++;
+}
+END {
+    for (bench in sum) {
+        print bench, sum[bench]/count[bench], unit[bench]
+    }
+}' new_bench_filtered.txt | sort)
 
+# Generate markdown table from the new benchmarks
 MARKDOWN_TABLE="
-| Benchmark | Time/Op |
-|-----------|---------|
+| Benchmark | Avg. Value/Op |
+|-----------|---------------|
 "
 while IFS= read -r line; do
     name=$(echo "$line" | awk '{print $1}')
-    time=$(echo "$line" | awk '{print $2}')
+    avg_val=$(echo "$line" | awk '{printf "%.2f", $2}')
     unit=$(echo "$line" | awk '{print $3}')
-    MARKDOWN_TABLE="$MARKDOWN_TABLE| $name | $time $unit |
-"
-done <<< "$PARSED_RESULTS"
+    MARKDOWN_TABLE="$MARKDOWN_TABLE| $name | $avg_val $unit |\n"
+done <<< "$AVG_RESULTS"
 
 # Prepare the content to be injected into the README
 # Use a temporary file to avoid issues with special characters in variables.
@@ -60,21 +69,35 @@ $MARKDOWN_TABLE
 ### Performance Chart
 
 \`\`\`mermaid
-gantt
-    title Latest Benchmark Results
-    dateFormat  X
-    axisFormat  %s
+xychart-beta
+    title "Latest Benchmark Performance (Time)"
+    x-axis "Benchmark"
+    y-axis "Avg. Time (ns/op)"
 EOF
 
+# Filter for time-based benchmarks for the chart
+TIME_AVG_RESULTS=$(echo "$AVG_RESULTS" | grep "ns/op")
+
+X_AXIS_LABELS=""
+BAR_DATA=""
+
 while IFS= read -r line; do
-    name=$(echo "$line" | awk '{print $1}')
-    time=$(echo "$line" | awk '{print $2}')
-    # Mermaid gantt chart wants integer times. We will strip the decimals.
-    time_int=$(echo "$time" | awk -F. '{print $1}')
-    echo "    $name : $time_int" >> "$CONTENT_FILE"
-done <<< "$PARSED_RESULTS"
+    # Shorten the name for the chart
+    name=$(echo "$line" | awk '{print $1}' | sed -e 's/Benchmark//' -e 's/-[0-9]\+$//')
+    avg_time=$(echo "$line" | awk '{printf "%.0f", $2}')
+    X_AXIS_LABELS="\"$name\", $X_AXIS_LABELS"
+    BAR_DATA="$avg_time, $BAR_DATA"
+done <<< "$TIME_AVG_RESULTS"
+
+# Remove trailing commas
+if [ -n "$X_AXIS_LABELS" ]; then
+    X_AXIS_LABELS=${X_AXIS_LABELS%, }
+    BAR_DATA=${BAR_DATA%, }
+fi
 
 cat <<EOF >> "$CONTENT_FILE"
+    x-axis [${X_AXIS_LABELS}]
+    bar [${BAR_DATA}]
 \`\`\`
 EOF
 
