@@ -2,3 +2,6 @@ commit_sha,benchmark_name,avg_ns_op,avg_B_op,avg_allocs_op
 3fe8654664302c3c56d2260393b9e415dd63ca79,BenchmarkCheckMetricsAndSwap-4,8.82,0.00,0.00
 3fe8654664302c3c56d2260393b9e415dd63ca79,BenchmarkIndexDirectTracking-4,0.35,0.00,0.00
 3fe8654664302c3c56d2260393b9e415dd63ca79,BenchmarkIndexSearch-4,2.73,0.00,0.00
+96694238f65fafc429281786535b6bd21704308d,BenchmarkCheckMetricsAndSwap-4,8.46,0.00,0.00
+96694238f65fafc429281786535b6bd21704308d,BenchmarkIndexDirectTracking-4,0.32,0.00,0.00
+96694238f65fafc429281786535b6bd21704308d,BenchmarkIndexSearch-4,2.30,0.00,0.00
