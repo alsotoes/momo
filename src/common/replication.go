@@ -96,6 +96,47 @@ func Connect(wg *sync.WaitGroup, daemons []*Daemon, filePath string, serverId in
 // md5Length is the expected length of an MD5 hash string.
 const md5Length = 32
 
+// waitAck waits for an acknowledgment ("ACK") from the server.
+func waitAck(connection net.Conn) error {
+	ackBuffer := make([]byte, 3)
+	if _, err := io.ReadFull(connection, ackBuffer); err != nil {
+		return fmt.Errorf("failed to read ACK from server: %w", err)
+	}
+
+	if string(ackBuffer) != "ACK" {
+		return fmt.Errorf("received unexpected response from server: %s", string(ackBuffer))
+	}
+	return nil
+}
+
+// sendContent sends file content over a network connection.
+func sendContent(connection net.Conn, reader io.Reader, size int64) error {
+	if size > 0 {
+		if _, err := io.CopyN(connection, reader, size); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// sendMetadata sends file metadata (MD5, name, and size) over a network connection.
+func sendMetadata(connection net.Conn, metadata FileMetadata) error {
+	fileMD5 := padString(metadata.MD5, md5Length)
+	fileNameStr := padString(metadata.Name, FileInfoLength)
+	fileSizeStr := padString(fmt.Sprintf("%d", metadata.Size), FileInfoLength)
+
+	if _, err := io.WriteString(connection, fileMD5); err != nil {
+		return err
+	}
+	if _, err := io.WriteString(connection, fileNameStr); err != nil {
+		return err
+	}
+	if _, err := io.WriteString(connection, fileSizeStr); err != nil {
+		return err
+	}
+	return nil
+}
+
 // sendFile sends a file over a network connection.
 // It first sends the file's metadata (MD5 hash, name, and size) and then the file's content.
 // It waits for an acknowledgment ("ACK") from the server upon successful reception.
@@ -122,42 +163,28 @@ func sendFile(wg *sync.WaitGroup, connection net.Conn, fileName string) {
 		return
 	}
 
-	log.Printf("=> MD5:     %s", fileHash)
-	log.Printf("=> Name:    %s", fileInfo.Name())
-	log.Printf("=> Size:    %d", fileSize)
-
-	// Send metadata
-	fileMD5 := padString(fileHash, md5Length)
-	fileNameStr := padString(fileInfo.Name(), FileInfoLength)
-	fileSizeStr := padString(fmt.Sprintf("%d", fileSize), FileInfoLength)
-
-	connection.Write([]byte(fileMD5))
-	connection.Write([]byte(fileNameStr))
-	connection.Write([]byte(fileSizeStr))
-
-	// Send file content
-	sendBuffer := make([]byte, TCPSocketBufferSize)
-	for {
-		n, err := file.Read(sendBuffer)
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			log.Printf("Error reading from file %s: %v", fileName, err)
-			return
-		}
-		connection.Write(sendBuffer[:n])
+	metadata := FileMetadata{
+		Name: fileInfo.Name(),
+		MD5:  fileHash,
+		Size: fileSize,
 	}
 
-	// Wait for ACK
-	ackBuffer := make([]byte, 3)
-	if _, err := io.ReadFull(connection, ackBuffer); err != nil {
-		log.Printf("Failed to read ACK from server: %v", err)
+	log.Printf("=> MD5:     %s", metadata.MD5)
+	log.Printf("=> Name:    %s", metadata.Name)
+	log.Printf("=> Size:    %d", metadata.Size)
+
+	if err := sendMetadata(connection, metadata); err != nil {
+		log.Printf("Failed to send metadata for %s: %v", fileName, err)
 		return
 	}
 
-	if string(ackBuffer) != "ACK" {
-		log.Printf("Received unexpected response from server: %s", string(ackBuffer))
+	if err := sendContent(connection, file, fileSize); err != nil {
+		log.Printf("Failed to send content for %s: %v", fileName, err)
+		return
+	}
+
+	if err := waitAck(connection); err != nil {
+		log.Printf("Failed waiting for ACK for %s: %v", fileName, err)
 		return
 	}
 
