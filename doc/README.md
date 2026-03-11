@@ -233,4 +233,59 @@ Notes:
 - Tests and tooling around config validation.
 
 <!-- BENCHMARK_RESULTS_START -->
+## Performance
+
+This section is automatically updated by our GitHub Actions workflow.
+
+### Comparison with previous commit
+
+```
+                      │ old_bench_filtered.txt │       new_bench_filtered.txt        │
+                      │         sec/op         │    sec/op      vs base              │
+CheckMetricsAndSwap-4             6.607n ± ∞ ¹    6.595n ± ∞ ¹       ~ (p=0.952 n=5)
+IndexSearch-4                     4.003n ± ∞ ¹    3.994n ± ∞ ¹       ~ (p=0.595 n=5)
+IndexDirectTracking-4            0.2889n ± ∞ ¹   0.2891n ± ∞ ¹       ~ (p=0.206 n=5)
+geomean                           1.970n          1.967n        -0.11%
+¹ need >= 6 samples for confidence interval at level 0.95
+
+                      │ old_bench_filtered.txt │       new_bench_filtered.txt        │
+                      │          B/op          │    B/op      vs base                │
+CheckMetricsAndSwap-4              0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+IndexSearch-4                      0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+IndexDirectTracking-4              0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+geomean                                      ³                +0.00%               ³
+¹ need >= 6 samples for confidence interval at level 0.95
+² all samples are equal
+³ summaries must be >0 to compute geomean
+
+                      │ old_bench_filtered.txt │       new_bench_filtered.txt        │
+                      │       allocs/op        │  allocs/op   vs base                │
+CheckMetricsAndSwap-4              0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+IndexSearch-4                      0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+IndexDirectTracking-4              0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+geomean                                      ³                +0.00%               ³
+¹ need >= 6 samples for confidence interval at level 0.95
+² all samples are equal
+³ summaries must be >0 to compute geomean
+```
+
+### Latest Benchmark Results
+
+
+| Benchmark | Avg. Value/Op |
+|-----------|---------------|
+| BenchmarkCheckMetricsAndSwap-4 | 6.64 ns/op |\n| BenchmarkIndexDirectTracking-4 | 0.29 ns/op |\n| BenchmarkIndexSearch-4 | 4.00 ns/op |\n
+
+### Performance History
+
+```mermaid
+xychart-beta
+    title "Performance Trend (Last 10 Commits)"
+    x-axis "Commit"
+    y-axis "Avg. Time (ns/op)"
+    x-axis [comm,7708]
+    line "CheckMetricsAndSwap" [7]
+    line "IndexDirectTracking" [0]
+    line "IndexSearch" [4]
+```
 <!-- BENCHMARK_RESULTS_END -->

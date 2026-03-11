@@ -1,1 +1,4 @@
 commit_sha,benchmark_name,avg_ns_op
+7708223751f4292408b5f18e0f32fffed3701db7,BenchmarkCheckMetricsAndSwap-4,6.64
+7708223751f4292408b5f18e0f32fffed3701db7,BenchmarkIndexDirectTracking-4,0.29
+7708223751f4292408b5f18e0f32fffed3701db7,BenchmarkIndexSearch-4,4.00
