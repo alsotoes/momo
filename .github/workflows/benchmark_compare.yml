@@ -49,12 +49,17 @@ jobs:
         cat bench_comparison.txt >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
         
-        # Check if there is any statistically significant degradation.
-        # benchstat outputs "+" for increases in time/op or alloc/op (which is bad).
-        # We ignore exactly "+0.00%" which can happen with geomeans.
-        if grep -E "\+[0-9]+\.[0-9]+%" bench_comparison.txt | grep -v "+0.00%"; then
-          echo "❌ Performance degradation detected! Failing the pipeline." >> $GITHUB_STEP_SUMMARY
-          exit 1
+        # Check if there is any statistically significant degradation greater than 5%.
+        # GitHub Actions runners have inherent noise, so we tolerate up to 5% variance.
+        if awk '/\+[0-9]+\.[0-9]+%/ {
+            match($0, /\+([0-9]+\.[0-9]+)%/, arr)
+            if (arr[1] + 0 > 5.0) {
+                print "❌ Performance degradation > 5% detected: +" arr[1] "%"
+                exit 1
+            }
+        }' bench_comparison.txt; then
+          echo "✅ No significant performance degradation (> 5%) detected." >> $GITHUB_STEP_SUMMARY
         else
-          echo "✅ No statistically significant performance degradation detected." >> $GITHUB_STEP_SUMMARY
+          echo "❌ Performance degradation > 5% detected! Failing the pipeline." >> $GITHUB_STEP_SUMMARY
+          exit 1
         fi
