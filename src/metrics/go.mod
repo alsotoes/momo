@@ -1,6 +1,6 @@
 module github.com/alsotoes/momo/src/metrics
 
-go 1.22.8
+go 1.24
 
 require github.com/shirou/gopsutil/v3 v3.24.5
 
