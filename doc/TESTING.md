@@ -26,11 +26,15 @@ To prevent this, Momo integrates **Uber's `goleak`** into its test suite.
 
 **Race Conditions:** All Go tests are run with the `-race` flag enabled by default via the `Makefile` to detect unsafe parallel memory access.
 
-## 3. Load and Stress Testing (Benchmarking)
-To ensure the primary daemon can handle bursts of file uploads under heavy load, we utilize Go's benchmark tooling.
+## 3. Load and Stress Testing (Protocol Micro-Benchmark)
+To ensure the primary daemon can handle bursts of file uploads under heavy load, we utilize Go's benchmark tooling. It is important to note that this is a **Protocol Micro-Benchmark**, not a distributed system macro-benchmark.
 
 - **Location:** `src/server/server_benchmark_test.go`
-- **What it does:** The `BenchmarkConcurrentUploads` function spawns a daemon and blasts it with `b.N` concurrent client file uploads. It measures memory allocations and operation speeds under stress.
+- **What it does:** The `BenchmarkConcurrentUploads` function spawns a local daemon and blasts it with `b.N` concurrent client file uploads over `127.0.0.1`.
+- **What it measures:**
+  - **Memory Allocations (Leaks):** Tracks bytes/allocations per connection (`-benchmem`).
+  - **Protocol Efficiency:** Measures the speed of the 19/32/64-byte handshake padding, metadata parsing, and TCP goroutine dispatching.
+- **What it DOES NOT measure:** It does not test multi-node replication (Chain/Splay), WAN latency, packet loss, or heavy disk I/O bottlenecks. Those are reserved for future distributed load testing (e.g., k6).
 
 **To run benchmarks:**
 ```bash
