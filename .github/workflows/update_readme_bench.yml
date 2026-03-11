@@ -3,6 +3,11 @@ name: Update README with Benchmarks
 on:
   push:
     branches: [ "master" ]
+    paths:
+      - 'src/**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
 
 jobs:
   update-readme:
