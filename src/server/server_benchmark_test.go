@@ -60,7 +60,7 @@ func BenchmarkConcurrentUploads(b *testing.B) {
 			buf := make([]byte, 1)
 			conn.Read(buf) // Replication mode
 
-			conn.Write([]byte(padBenchString(md5, momo_common.Md5Length)))
+			conn.Write([]byte(padBenchString(md5, 32)))
 			conn.Write([]byte(padBenchString(fmt.Sprintf("bench_%d.txt", index), momo_common.FileInfoLength)))
 			conn.Write([]byte(padBenchString(fmt.Sprintf("%d", len(fileContent)), momo_common.FileInfoLength)))
 
