@@ -1,0 +1,89 @@
+name: Verify Go Version Consistency
+
+on:
+  pull_request:
+    branches: [ "master" ]
+  push:
+    branches: [ "master" ]
+
+jobs:
+  verify-versions:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Check Go Version Consistency
+      run: |
+        # Extract the source of truth from the root go.mod
+        ROOT_GO_MOD_VERSION=$(grep -E "^go " go.mod | awk '{print $2}')
+        if [ -z "$ROOT_GO_MOD_VERSION" ]; then
+          echo "❌ Failed to find Go version in root go.mod"
+          exit 1
+        fi
+        
+        # Extract the major.minor part (e.g., 1.24 from 1.24.0)
+        MAJOR_MINOR=$(echo "$ROOT_GO_MOD_VERSION" | cut -d. -f1,2)
+        MAJOR_MINOR_USCORE=$(echo "$MAJOR_MINOR" | tr '.' '_')
+        
+        echo "Expected Go Version: $MAJOR_MINOR (from $ROOT_GO_MOD_VERSION in root go.mod)"
+        
+        FAIL=0
+
+        # 1. Check all other go.mod files
+        echo "Checking sub-module go.mod files..."
+        for f in $(find src -name "go.mod"); do
+          VER=$(grep -E "^go " "$f" | awk '{print $2}')
+          if [[ "$VER" != "$ROOT_GO_MOD_VERSION" && "$VER" != "$MAJOR_MINOR" && "$VER" != "$MAJOR_MINOR.0" ]]; then
+            echo "❌ Mismatch in $f: found '$VER'"
+            FAIL=1
+          else
+            echo "  ✅ Match in $f: $VER"
+          fi
+        done
+
+        # 2. Check GitHub Actions workflows
+        echo "Checking GitHub Actions workflows..."
+        for f in $(find .github/workflows -name "*.yml" -not -name "verify_go_version.yml"); do
+          if grep -E "^ *go-version:" "$f" > /dev/null; then
+            # Allow strings like '1.24', '1.24.x', "1.24", etc.
+            if ! grep -E "^ *go-version: *['\"]$MAJOR_MINOR" "$f" > /dev/null; then
+              echo "❌ Mismatch in $f:"
+              grep -E "^ *go-version:" "$f"
+              FAIL=1
+            else
+              echo "  ✅ Match in $f"
+            fi
+          fi
+        done
+
+        # 3. Check Dockerfile
+        echo "Checking Dockerfile..."
+        if [ -f Dockerfile ] && grep -q "FROM golang:" Dockerfile; then
+          if ! grep -q "FROM golang:$MAJOR_MINOR" Dockerfile; then
+            echo "❌ Mismatch in Dockerfile:"
+            grep "FROM golang:" Dockerfile
+            FAIL=1
+          else
+            echo "  ✅ Match in Dockerfile"
+          fi
+        fi
+
+        # 4. Check Google IDX dev.nix
+        echo "Checking .idx/dev.nix..."
+        if [ -f .idx/dev.nix ] && grep -q "pkgs.go" .idx/dev.nix; then
+          if ! grep -q "pkgs.go_$MAJOR_MINOR_USCORE" .idx/dev.nix; then
+            echo "❌ Mismatch in .idx/dev.nix:"
+            grep "pkgs.go" .idx/dev.nix
+            FAIL=1
+          else
+            echo "  ✅ Match in .idx/dev.nix"
+          fi
+        fi
+
+        if [ $FAIL -ne 0 ]; then
+          echo "❌ Go version consistency check failed! Please ensure all files match the version in the root go.mod."
+          exit 1
+        fi
+        
+        echo "🎉 All Go versions are perfectly synchronized!"

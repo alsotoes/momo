@@ -9,7 +9,7 @@ BIN := $(BIN_DIR)/momo
 MAIN := src/momo.go
 MODULES := ./src/common ./src/metrics ./src/server
 
-.PHONY: all build clean tidy vendor test vet coverage doc doc-live
+.PHONY: all build clean tidy vendor test vet coverage doc doc-live benchmark test-e2e
 
 all: build
 
@@ -49,3 +49,9 @@ vet:
 coverage:
 	CGO_ENABLED=1 $(GO) test -race -coverprofile=coverage.out $(MODULES)
 	$(GO) tool cover -html=coverage.out
+
+benchmark:
+	$(GO) test -run=^$$ -bench=. -benchmem -count=$(if $(COUNT),$(COUNT),1) $(MODULES)
+
+test-e2e:
+	./.github/scripts/test-e2e.sh
