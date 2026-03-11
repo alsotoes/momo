@@ -51,7 +51,7 @@ coverage:
 	$(GO) tool cover -html=coverage.out
 
 benchmark:
-	$(GO) test -bench=. -benchmem -count=$(if $(COUNT),$(COUNT),1) $(MODULES)
+	$(GO) test -run=^$$ -bench=. -benchmem -count=$(if $(COUNT),$(COUNT),1) $(MODULES)
 
 test-e2e:
 	./.github/scripts/test-e2e.sh
