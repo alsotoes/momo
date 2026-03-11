@@ -23,7 +23,6 @@ test_data/
 # others
 venv/
 **/bin
-*.dat
 
 # smoke test
 *_chain.log

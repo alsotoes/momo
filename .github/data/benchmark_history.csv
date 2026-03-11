@@ -1,5 +1,0 @@
-commit_sha,benchmark_name,avg_ns_op
-d350042ebfb31f6273dbb58eddc89c70642eccfd,BenchmarkCheckMetricsAndSwap-4,8.45
-d350042ebfb31f6273dbb58eddc89c70642eccfd,BenchmarkConcurrentUploads-4,242974.00
-d350042ebfb31f6273dbb58eddc89c70642eccfd,BenchmarkIndexDirectTracking-4,0.31
-d350042ebfb31f6273dbb58eddc89c70642eccfd,BenchmarkIndexSearch-4,3.49

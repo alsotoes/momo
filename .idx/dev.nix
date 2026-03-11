@@ -6,7 +6,7 @@
 
   # Use https://search.nixos.org/packages to find packages
   packages = [
-    pkgs.go_1_24
+    pkgs.go
     pkgs.gnumake
     pkgs.gotools
     pkgs.gcc
