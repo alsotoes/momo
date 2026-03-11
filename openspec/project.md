@@ -20,13 +20,13 @@ Momo is a minimal TCP-based file replication playground written in Go. It demons
 - Avoid global state mutations outside of initialization unless strictly synchronized.
 
 ### Architecture Patterns
-- **TCP Daemons:** Nodes act as independent Daemons assigned an ID (0, 1, 2). Node 0 is typically the primary and metrics authority.
+- **TCP & QUIC Daemons:** Nodes act as independent Daemons assigned an ID (0, 1, 2). Node 0 is typically the primary and metrics authority. Daemons listen on both standard TCP and UDP (QUIC) ports simultaneously.
 - **Polymorphic System:** The system monitors CPU/Memory and dynamically adjusts the replication tier across the cluster by broadcasting JSON payloads via a dedicated TCP port.
 - **Replication Strategies:**
-  - `ReplicationNone` (4): No replication.
-  - `ReplicationChain` (1): Node 0 -> Node 1 -> Node 2.
-  - `ReplicationSplay` (2): Node 0 -> Node 1 and Node 2.
-  - `ReplicationPrimarySplay` (3): Client -> Node 0, Node 1, Node 2 concurrently.
+  - `ReplicationNone` (4): No replication. (TCP)
+  - `ReplicationChain` (1): Node 0 -> Node 1 -> Node 2. (TCP for high-bandwidth LAN)
+  - `ReplicationSplay` (2): Node 0 -> Node 1 and Node 2. (TCP for high-bandwidth LAN)
+  - `ReplicationPrimarySplay` (3): Client -> Node 0, Node 1, Node 2 concurrently. (QUIC for lossy/WAN networks to prevent Head-of-Line blocking and provide 0-RTT/Connection Migration).
 
 ### Testing Strategy
 - **Unit Testing:** Table-driven tests heavily preferred. Functions must be isolated, using mocks (like `net.Pipe` or dummy TCP listeners) for network boundaries.

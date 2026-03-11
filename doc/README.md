@@ -7,12 +7,18 @@ This document explains the architecture, configuration, wire protocol, replicati
 
 ## Features
 
-- File transfer over plain TCP with per‑chunk streaming.
+- Multi-protocol file transfer with per‑chunk streaming (TCP for LAN, QUIC for WAN).
 - Four replication modes: none, chain, splay, and primary‑splay.
 - Metrics‑driven mode changes (CPU/memory thresholds + fallback timer).
 - Centralized change‑replication control with timestamped updates.
 - Simple MD5 integrity logging on the receiver.
 - [Comprehensive testing suite with concurrent mock validations and GitHub CI/CD](TESTING.md) ([CI/CD Workflows](CICD.md)).
+
+
+## Architecture: TCP vs QUIC
+Momo employs a hybrid protocol approach to maximize throughput depending on network conditions:
+- **LAN Topologies (TCP):** Replication strategies executing within the data center (like `Chain` and `Splay`) utilize traditional TCP. On high-bandwidth, stable networks (10Gbps+), kernel-level TCP processing requires less CPU overhead.
+- **WAN Topologies (QUIC):** `PrimarySplay` dictates that a single client directly uploads chunks to all cluster nodes simultaneously over the internet. Standard TCP connections suffer from Head-of-Line (HoL) blocking and high latency under packet loss over WANs. Momo utilizes the **QUIC** protocol (UDP-based multiplexing) exclusively for `PrimarySplay` to provide 0-RTT handshakes, connection migration across unstable mobile networks, and immunity to HoL blocking.
 
 
 ## Repository Layout
