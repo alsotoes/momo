@@ -54,4 +54,4 @@ benchmark:
 	$(GO) test -bench=. -benchmem $(MODULES)
 
 test-e2e:
-	./test-e2e.sh
+	./.github/scripts/test-e2e.sh
