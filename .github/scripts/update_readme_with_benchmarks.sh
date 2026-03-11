@@ -16,12 +16,16 @@ if [ ! -f "$OLD_BENCH" ] || [ ! -f "$NEW_BENCH" ]; then
     exit 1
 fi
 
+# Filter benchmark results to only include benchmark lines
+grep "^Benchmark" "$OLD_BENCH" > old_bench_filtered.txt
+grep "^Benchmark" "$NEW_BENCH" > new_bench_filtered.txt
+
 # Generate comparison table with benchstat
-COMPARISON=$(benchstat "$OLD_BENCH" "$NEW_BENCH")
+COMPARISON=$(benchstat old_bench_filtered.txt new_bench_filtered.txt)
 
 # Generate MermaidJS chart and markdown table from the new benchmarks
 # Using awk to parse the benchmark output
-PARSED_RESULTS=$(grep "^Benchmark" "$NEW_BENCH" | awk '{print $1, $3, $4}')
+PARSED_RESULTS=$(awk '{print $1, $3, $4}' new_bench_filtered.txt)
 
 MARKDOWN_TABLE="
 | Benchmark | Time/Op |
@@ -31,11 +35,12 @@ while IFS= read -r line; do
     name=$(echo "$line" | awk '{print $1}')
     time=$(echo "$line" | awk '{print $2}')
     unit=$(echo "$line" | awk '{print $3}')
-    MARKDOWN_TABLE="$MARKDOWN_TABLE| $name | $time $unit |\n"
+    MARKDOWN_TABLE="$MARKDOWN_TABLE| $name | $time $unit |
+"
 done <<< "$PARSED_RESULTS"
 
 MERMAID_CHART="
-\`\`\`mermaid
+```mermaid
 gantt
     title Latest Benchmark Results
     dateFormat  X
@@ -51,11 +56,13 @@ while IFS= read -r line; do
 done <<< "$PARSED_RESULTS"
 
 MERMAID_CHART="$MERMAID_CHART
-\`\`\`
+```
 "
 
 # Prepare the content to be injected into the README
-CONTENT_TO_INJECT="
+# Use a temporary file to avoid issues with special characters in variables.
+CONTENT_FILE=$(mktemp)
+cat <<EOF > "$CONTENT_FILE"
 ## Performance
 
 This section is automatically updated by our GitHub Actions workflow.
@@ -73,13 +80,9 @@ $MARKDOWN_TABLE
 ### Performance Chart
 
 $MERMAID_CHART
-"
+EOF
 
 # Update the README
-# This is a bit tricky. We'll use sed to replace the content between the markers.
-# A more robust solution might use a different tool if this becomes too complex.
-
-# Create a temporary file
 TMP_README=$(mktemp)
 
 # Read the README line by line
@@ -87,7 +90,7 @@ in_bench_section=false
 while IFS= read -r line; do
     if [[ "$line" == "$MARKER_START" ]]; then
         echo "$MARKER_START" >> "$TMP_README"
-        echo "$CONTENT_TO_INJECT" >> "$TMP_README"
+        cat "$CONTENT_FILE" >> "$TMP_README"
         in_bench_section=true
     elif [[ "$line" == "$MARKER_END" ]]; then
         in_bench_section=false
@@ -96,6 +99,9 @@ while IFS= read -r line; do
         echo "$line" >> "$TMP_README"
     fi
 done < "$README_FILE"
+
+# Clean up the temporary content file
+rm "$CONTENT_FILE"
 
 # Move the temporary file to the original README
 mv "$TMP_README" "$README_FILE"
