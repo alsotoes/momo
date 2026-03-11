@@ -14,9 +14,14 @@ import (
 
 // BenchmarkConcurrentUploads benchmarks how fast the Daemon handles multiple concurrent file uploads.
 func BenchmarkConcurrentUploads(b *testing.B) {
+	momo_common.LogStdOut(false)
+	defer momo_common.LogStdOut(true)
+
 	tempDir := b.TempDir()
 	daemons := []*momo_common.Daemon{
-		{Host: "127.0.0.1:45690", Data: tempDir},
+		{Host: "127.0.0.1:45690", Data: tempDir + "/0"},
+		{Host: "127.0.0.1:45691", Data: tempDir + "/1"},
+		{Host: "127.0.0.1:45692", Data: tempDir + "/2"},
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -54,7 +59,7 @@ func BenchmarkConcurrentUploads(b *testing.B) {
 			}
 			defer conn.Close()
 
-			timestampStr := padBenchString("123", momo_common.TimestampLength)
+			timestampStr := "1234567890123456789"
 			conn.Write([]byte(timestampStr))
 
 			buf := make([]byte, 1)
