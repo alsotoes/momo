@@ -64,17 +64,21 @@ func Daemon(ctx context.Context, daemons []*momo_common.Daemon, serverId int) {
 		go func() {
 			var replicationMode int
 			var success bool
+
+			// 🛡️ Sentinel: Use an idle timeout to prevent Slowloris attacks without breaking large file uploads
+			idleConn := momo_common.NewIdleTimeoutConn(connection, 30*time.Second)
+
 			defer func() {
 				if success {
 					log.Printf("Server ACK to Client => ACK%d", serverId)
-					connection.Write([]byte("ACK" + strconv.Itoa(serverId)))
+					idleConn.Write([]byte("ACK" + strconv.Itoa(serverId)))
 				}
-				connection.Close()
+				idleConn.Close()
 			}()
 
 			// Read the timestamp from the connection
 			bufferTimestamp := make([]byte, momo_common.TimestampLength)
-			if _, err := io.ReadFull(connection, bufferTimestamp); err != nil {
+			if _, err := io.ReadFull(idleConn, bufferTimestamp); err != nil {
 				log.Printf("Error reading timestamp: %v", err)
 				return
 			}
@@ -105,12 +109,12 @@ func Daemon(ctx context.Context, daemons []*momo_common.Daemon, serverId int) {
 
 			log.Printf("Cluster object global timestamp: %d", timestamp)
 			log.Printf("Server Daemon replicationMode: %d", replicationMode)
-			if _, err := connection.Write([]byte(strconv.FormatInt(int64(replicationMode), 10))); err != nil {
+			if _, err := idleConn.Write([]byte(strconv.FormatInt(int64(replicationMode), 10))); err != nil {
 				log.Printf("Error sending replication mode: %v", err)
 				return
 			}
 
-			metadata, err := getMetadata(connection)
+			metadata, err := getMetadata(idleConn)
 			if err != nil {
 				log.Printf("Error getting metadata: %v", err)
 				return
@@ -120,14 +124,14 @@ func Daemon(ctx context.Context, daemons []*momo_common.Daemon, serverId int) {
 			// Handle the file based on the replication mode
 			switch replicationMode {
 			case momo_common.ReplicationNone, momo_common.ReplicationPrimarySplay:
-				if err := getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size); err != nil {
+				if err := getFile(idleConn, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size); err != nil {
 					log.Printf("Error getting file: %v", err)
 					return
 				}
 			case momo_common.ReplicationChain:
 				if serverId == 1 {
 					wg.Add(1)
-					if err := getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size); err != nil {
+					if err := getFile(idleConn, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size); err != nil {
 						log.Printf("Error getting file: %v", err)
 						wg.Done()
 						return
@@ -136,7 +140,7 @@ func Daemon(ctx context.Context, daemons []*momo_common.Daemon, serverId int) {
 					wg.Wait()
 				} else {
 					wg.Add(1)
-					if err := getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size); err != nil {
+					if err := getFile(idleConn, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size); err != nil {
 						log.Printf("Error getting file: %v", err)
 						wg.Done()
 						return
@@ -146,7 +150,7 @@ func Daemon(ctx context.Context, daemons []*momo_common.Daemon, serverId int) {
 				}
 			case momo_common.ReplicationSplay:
 				wg.Add(2)
-				if err := getFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size); err != nil {
+				if err := getFile(idleConn, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size); err != nil {
 					log.Printf("Error getting file: %v", err)
 					wg.Done() // Need to handle waitgroup correctly if one fails
 					wg.Done()
