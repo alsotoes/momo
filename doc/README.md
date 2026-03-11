@@ -12,6 +12,7 @@ This document explains the architecture, configuration, wire protocol, replicati
 - Metrics‑driven mode changes (CPU/memory thresholds + fallback timer).
 - Centralized change‑replication control with timestamped updates.
 - Simple MD5 integrity logging on the receiver.
+- [Comprehensive testing suite with concurrent mock validations and GitHub CI/CD](TESTING.md) ([CI/CD Workflows](CICD.md)).
 
 
 ## Repository Layout
