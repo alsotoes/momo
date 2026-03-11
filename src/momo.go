@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 	"os"
@@ -88,12 +89,12 @@ func runServer(cfg common.Configuration, serverId int) {
 
 	go func() {
 		defer wg.Done()
-		server.ChangeReplicationModeServer(cfg.Daemons, serverId, timestamp)
+		server.ChangeReplicationModeServer(context.Background(), cfg.Daemons, serverId, timestamp)
 	}()
 
 	go func() {
 		defer wg.Done()
-		server.Daemon(cfg.Daemons, serverId)
+		server.Daemon(context.Background(), cfg.Daemons, serverId)
 	}()
 
 	wg.Wait()

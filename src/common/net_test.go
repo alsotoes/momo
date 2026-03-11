@@ -3,9 +3,12 @@ package common
 import (
 	"net"
 	"testing"
+
+	"go.uber.org/goleak"
 )
 
 func TestDialSocket(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Failed to start listener: %v", err)

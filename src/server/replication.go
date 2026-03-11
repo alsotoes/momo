@@ -2,6 +2,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log"
@@ -23,7 +24,7 @@ var ReplicationState momo_common.ReplicationData
 // When a client connects, it sends a JSON object containing the new replication mode.
 // This function updates the server's replication mode and, if the server is the primary (serverId 0),
 // it propagates the change to the other servers in the cluster.
-func ChangeReplicationModeServer(daemons []*momo_common.Daemon, serverId int, timestamp int64) {
+func ChangeReplicationModeServer(ctx context.Context, daemons []*momo_common.Daemon, serverId int, timestamp int64) {
 	server, err := net.Listen("tcp", daemons[serverId].ChangeReplication)
 	if err != nil {
 		log.Printf("Error listening: %v", err)
@@ -31,6 +32,13 @@ func ChangeReplicationModeServer(daemons []*momo_common.Daemon, serverId int, ti
 	}
 
 	defer server.Close()
+
+	// Handle graceful shutdown via context
+	go func() {
+		<-ctx.Done()
+		server.Close()
+	}()
+
 	log.Printf("Server changeReplicationMode started... at %s", daemons[serverId].ChangeReplication)
 	log.Printf("Waiting for connections: changeReplicationMode...")
 	log.Printf("default ReplicationMode value: %d", CurrentReplicationMode)
@@ -45,8 +53,13 @@ func ChangeReplicationModeServer(daemons []*momo_common.Daemon, serverId int, ti
 	for {
 		connection, err := server.Accept()
 		if err != nil {
-			log.Printf("Error: %v", err)
-			os.Exit(1)
+			select {
+			case <-ctx.Done():
+				return // Shutting down gracefully
+			default:
+				log.Printf("Error: %v", err)
+				os.Exit(1)
+			}
 		}
 		go func() {
 			defer connection.Close()

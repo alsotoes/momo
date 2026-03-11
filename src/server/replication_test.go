@@ -11,6 +11,7 @@ import (
 	"time"
 
 	momo_common "github.com/alsotoes/momo/src/common"
+	"go.uber.org/goleak"
 )
 
 // handleReplicationChange is a testable version of the connection handling logic inside ChangeReplicationModeServer.
@@ -40,6 +41,7 @@ func handleReplicationChange(t *testing.T, connection net.Conn, wg *sync.WaitGro
 // TestChangeReplicationModeServerLogic verifies that the server correctly
 // updates its replication mode based on data from a client connection.
 func TestChangeReplicationModeServerLogic(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	// Arrange: Set initial state and create a network pipe to simulate a client-server connection.
 	CurrentReplicationMode = momo_common.ReplicationNone // Initial mode
 	client, server := net.Pipe()
@@ -80,6 +82,7 @@ func TestChangeReplicationModeServerLogic(t *testing.T) {
 // TestChangeReplicationModeClient verifies that the client function correctly sends the
 // replication mode JSON payload to a listening server.
 func TestChangeReplicationModeClient(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	// Arrange: Set up a listener to act as a mock server.
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

@@ -2,6 +2,7 @@
 package server
 
 import (
+	"context"
 	"io"
 	"log"
 	"net"
@@ -28,7 +29,7 @@ var connectToPeer = momo_common.Connect
 //	- ReplicationPrimarySplay: This mode is currently handled as ReplicationNone, which means no replication is performed.
 //
 // The replication mode is determined by the client, and for secondary servers, it's influenced by the timestamp of the operation.
-func Daemon(daemons []*momo_common.Daemon, serverId int) {
+func Daemon(ctx context.Context, daemons []*momo_common.Daemon, serverId int) {
 	var timestamp int64
 	server, err := net.Listen("tcp", daemons[serverId].Host)
 	if err != nil {
@@ -37,14 +38,26 @@ func Daemon(daemons []*momo_common.Daemon, serverId int) {
 	}
 
 	defer server.Close()
+
+	// Handle graceful shutdown via context
+	go func() {
+		<-ctx.Done()
+		server.Close()
+	}()
+
 	log.Printf("Server primary Daemon started... at %s", daemons[serverId].Host)
 	log.Printf("...Waiting for connections...")
 
 	for {
 		connection, err := server.Accept()
 		if err != nil {
-			log.Printf("Error: %v", err)
-			os.Exit(1)
+			select {
+			case <-ctx.Done():
+				return // Shutting down gracefully
+			default:
+				log.Printf("Error: %v", err)
+				os.Exit(1)
+			}
 		}
 		log.Printf("Client connected to primary Daemon")
 

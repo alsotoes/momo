@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"net"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	momo_common "github.com/alsotoes/momo/src/common"
+	"go.uber.org/goleak"
 )
 
 func padTestString(input string, length int) string {
@@ -18,18 +20,22 @@ func padTestString(input string, length int) string {
 }
 
 func TestChangeReplicationModeServerReal(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	daemons := []*momo_common.Daemon{
 		{ChangeReplication: "127.0.0.1:45678"},
 		{ChangeReplication: "127.0.0.1:45679"},
 		{ChangeReplication: "127.0.0.1:45680"},
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	l1, _ := net.Listen("tcp", "127.0.0.1:45679")
 	defer l1.Close()
 	l2, _ := net.Listen("tcp", "127.0.0.1:45680")
 	defer l2.Close()
 
-	go ChangeReplicationModeServer(daemons, 0, time.Now().UnixNano())
+	go ChangeReplicationModeServer(ctx, daemons, 0, time.Now().UnixNano())
 	time.Sleep(100 * time.Millisecond)
 
 	conn, err := net.Dial("tcp", "127.0.0.1:45678")
@@ -48,6 +54,7 @@ func TestChangeReplicationModeServerReal(t *testing.T) {
 }
 
 func TestDaemonReal(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	tempDir := t.TempDir()
 	daemons := []*momo_common.Daemon{
 		{Host: "127.0.0.1:45681", Data: tempDir + "/001"},
@@ -55,7 +62,10 @@ func TestDaemonReal(t *testing.T) {
 		{Host: "127.0.0.1:45683", Data: tempDir + "/003"},
 	}
 
-	go Daemon(daemons, 0)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go Daemon(ctx, daemons, 0)
 	time.Sleep(100 * time.Millisecond)
 
 	conn, err := net.Dial("tcp", "127.0.0.1:45681")

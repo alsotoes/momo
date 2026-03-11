@@ -9,6 +9,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"go.uber.org/goleak"
 )
 
 func TestPadString(t *testing.T) {
@@ -99,6 +101,7 @@ func startDummyServer(t *testing.T) (string, net.Listener) {
 }
 
 func TestConnect(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	// Create a temp file to send
 	file, err := os.CreateTemp("", "test_connect_*.txt")
 	if err != nil {
@@ -170,6 +173,7 @@ func TestConnect(t *testing.T) {
 }
 
 func TestSendFile(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	file, err := os.CreateTemp("", "test_sendfile_*.txt")
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
