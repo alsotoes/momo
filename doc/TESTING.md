@@ -37,16 +37,17 @@ To ensure the primary daemon can handle bursts of file uploads under heavy load,
 make benchmark
 ```
 
-## 4. End-to-End (E2E) Docker Integration
-Unit testing mock connections is not a substitute for a real network topology. Momo uses Docker Compose to execute full End-to-End integration tests.
+## 4. End-to-End (E2E) Integration Testing
+To test the complete workflow and data transfer logic without spinning up heavy container orchestration in CI pipelines, Momo uses a dedicated bash script to simulate the network locally.
 
 - **Location:** `.github/scripts/test-e2e.sh`
 - **Workflow:**
-  1. The script spins up the complete `docker-compose.yml` environment containing 3 server nodes on a dedicated Docker network.
-  2. It polls the health checks of the primary daemon to ensure the cluster is ready.
-  3. A temporary client container is created and executes the upload of a test payload (`test_e2e_file.txt`).
-  4. The script uses `docker exec` to physically verify that the payload successfully replicated to the isolated `/root/received_files/` volumes across `server0`, `server1`, and `server2`.
-  5. The cluster is torn down.
+  1. The script compiles the binary and provisions isolated `/tmp/momo-e2e/` directories for each daemon node.
+  2. It launches `daemon 0`, `1`, and `2` as background processes bound to unique local ports.
+  3. A temporary client connects to the system and uploads a test payload (`test_e2e_file.txt`).
+  4. The script programmatically forces replication mode changes via the `change_replication` endpoints.
+  5. It uses bash assertions to physically verify that the payload successfully replicated to the isolated volumes.
+  6. The test script automatically tears down the background processes via bash `trap` commands on exit.
 
 **To run E2E tests locally:**
 ```bash

@@ -1,54 +1,96 @@
 #!/bin/bash
 set -e
 
-echo "Starting Docker Compose environment for E2E tests..."
-docker-compose up --build -d
+echo "Building Momo for E2E tests..."
+make build
 
-echo "Waiting for momo-server0 to become healthy..."
-# We wait for up to 30 seconds
-for i in {1..15}; do
-  if docker inspect --format="{{.State.Health.Status}}" momo-server0 | grep -q "healthy"; then
-    echo "Servers are healthy."
-    break
-  fi
-  echo "Waiting..."
-  sleep 2
-done
+echo "Setting up local directories..."
+E2E_DIR="/tmp/momo-e2e"
+rm -rf $E2E_DIR
+mkdir -p $E2E_DIR/0 $E2E_DIR/1 $E2E_DIR/2
+
+cat << 'EOF' > $E2E_DIR/e2e.conf
+[global]
+debug=true
+replication_order=4,3,2,1
+polymorphic_system=false
+
+[metrics]
+interval=10
+min_threshold=0.1
+max_threshold=0.9
+fallback_interval=30
+
+[daemon.0]
+host=127.0.0.1:4440
+change_replication=127.0.0.1:5550
+data=/tmp/momo-e2e/0/
+drive=/dev/sda1
+
+[daemon.1]
+host=127.0.0.1:4441
+change_replication=127.0.0.1:5551
+data=/tmp/momo-e2e/1/
+drive=/dev/sdb1
+
+[daemon.2]
+host=127.0.0.1:4442
+change_replication=127.0.0.1:5552
+data=/tmp/momo-e2e/2/
+drive=/dev/sdc1
+EOF
+
+echo "Starting local daemons..."
+./bin/momo -imp server -id 0 -config $E2E_DIR/e2e.conf > $E2E_DIR/s0.log 2>&1 &
+P0=$!
+./bin/momo -imp server -id 1 -config $E2E_DIR/e2e.conf > $E2E_DIR/s1.log 2>&1 &
+P1=$!
+./bin/momo -imp server -id 2 -config $E2E_DIR/e2e.conf > $E2E_DIR/s2.log 2>&1 &
+P2=$!
+
+# Ensure cleanup on exit
+trap "kill -9 $P0 $P1 $P2 || true; rm -rf $E2E_DIR" EXIT
+
+echo "Waiting for daemons to bind..."
+sleep 3
+
+# Switch replication to Chain (1) to ensure data reaches all nodes
+echo "Triggering replication mode change to Chain (1)..."
+TS=$(date +%s%N)
+echo "{\"old\":4,\"new\":1,\"timestamp\":$TS}" > $E2E_DIR/repl.json
+nc 127.0.0.1 5550 < $E2E_DIR/repl.json
+sleep 1
 
 # Create dummy file to send
-echo "e2etestdata" > test_e2e_file.txt
+echo "e2etestdata" > $E2E_DIR/test_e2e_file.txt
 
-# Create client container and connect to server0
-echo "Running client container to upload file..."
-docker-compose run --rm client -imp client -file /files/test_e2e_file.txt -config conf/momo.conf
+# Run client
+echo "Running client to upload file..."
+./bin/momo -imp client -file $E2E_DIR/test_e2e_file.txt -config $E2E_DIR/e2e.conf > $E2E_DIR/client.log 2>&1
 
 # Give it a second to process and replicate
 sleep 3
 
 echo "Checking data consistency across nodes..."
-# Server0
-if ! docker exec momo-server0 sh -c "cat /root/received_files/dir1/test_e2e_file.txt | grep e2etestdata"; then
-    echo "E2E Test Failed: Data not found on Server 0"
-    docker-compose logs
-    exit 1
-fi
+FAIL=0
 
-# Server1
-if ! docker exec momo-server1 sh -c "cat /root/received_files/dir2/test_e2e_file.txt | grep e2etestdata"; then
-    echo "E2E Test Failed: Data not found on Server 1 (Replication Failed)"
-    docker-compose logs
-    exit 1
-fi
+for i in 0 1 2; do
+  if ! grep -q "e2etestdata" $E2E_DIR/$i/test_e2e_file.txt 2>/dev/null; then
+      echo "E2E Test Failed: Data not found or mismatched on Server $i"
+      FAIL=1
+  fi
+done
 
-# Server2
-if ! docker exec momo-server2 sh -c "cat /root/received_files/dir3/test_e2e_file.txt | grep e2etestdata"; then
-    echo "E2E Test Failed: Data not found on Server 2 (Replication Failed)"
-    docker-compose logs
-    exit 1
+if [ $FAIL -eq 1 ]; then
+  echo "--- SERVER 0 LOG ---"
+  cat $E2E_DIR/s0.log
+  echo "--- SERVER 1 LOG ---"
+  cat $E2E_DIR/s1.log
+  echo "--- SERVER 2 LOG ---"
+  cat $E2E_DIR/s2.log
+  echo "--- CLIENT LOG ---"
+  cat $E2E_DIR/client.log
+  exit 1
 fi
 
 echo "Data is consistent across all servers. E2E Test Passed!"
-
-echo "Tearing down Docker Compose environment..."
-docker-compose down -v
-rm test_e2e_file.txt

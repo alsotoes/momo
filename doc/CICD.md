@@ -14,7 +14,7 @@ This is the core CI pipeline triggered on every push and PR to the `master` bran
 - **Build:** Compiles the Momo binary (`make build`) to catch compilation errors early.
 - **Test:** Runs all Unit Tests, integration logic, Race Detectors, and Goroutine leak verifications (`make test`).
 - **Benchmark:** Executes the stress test suite against the Daemon to detect severe performance regressions (`make benchmark`).
-- **E2E Integration:** Provisions a full Docker Compose cluster to ensure network data consistency using the `.github/scripts/test-e2e.sh` script (`make test-e2e`).
+- **E2E Integration:** Runs the `.github/scripts/test-e2e.sh` script which provisions a fully isolated, multi-node daemon simulation natively within the GitHub Action runner to physically verify system workflow and file replication consistency without the overhead of container orchestration (`make test-e2e`).
 - **Coverage:** Runs the coverage suite and automatically uploads the `coverage.out` file as a GitHub artifact so developers can review the exact coverage metrics of the PR without checking out the code locally.
 
 ### 2. Smoke Tests (`smoke_test.yml`)
