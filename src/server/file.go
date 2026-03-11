@@ -78,9 +78,9 @@ func getFile(connection net.Conn, path string, fileName string, expectedHash str
 		return err
 	}
 
-	log.Printf("=> Expected Hash: " + expectedHash)
-	log.Printf("=> Actual Hash:   " + hash)
-	log.Printf("=> Name:          " + fullPath)
+	log.Printf("=> Expected Hash: %s", expectedHash)
+	log.Printf("=> Actual Hash:   %s", hash)
+	log.Printf("=> Name:          %s", fullPath)
 	log.Printf("Received file completely!")
 	log.Printf("Sending ACK to client connection")
 	return nil
