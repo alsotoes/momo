@@ -39,26 +39,6 @@ while IFS= read -r line; do
 "
 done <<< "$PARSED_RESULTS"
 
-MERMAID_CHART="
-```mermaid
-gantt
-    title Latest Benchmark Results
-    dateFormat  X
-    axisFormat  %s
-"
-while IFS= read -r line; do
-    name=$(echo "$line" | awk '{print $1}')
-    time=$(echo "$line" | awk '{print $2}')
-    # Mermaid gantt chart wants integer times. We will strip the decimals.
-    time_int=$(echo "$time" | awk -F. '{print $1}')
-    MERMAID_CHART="$MERMAID_CHART
-    $name : $time_int"
-done <<< "$PARSED_RESULTS"
-
-MERMAID_CHART="$MERMAID_CHART
-```
-"
-
 # Prepare the content to be injected into the README
 # Use a temporary file to avoid issues with special characters in variables.
 CONTENT_FILE=$(mktemp)
@@ -69,9 +49,9 @@ This section is automatically updated by our GitHub Actions workflow.
 
 ### Comparison with previous commit
 
-```
+\`\`\`
 $COMPARISON
-```
+\`\`\`
 
 ### Latest Benchmark Results
 
@@ -79,7 +59,23 @@ $MARKDOWN_TABLE
 
 ### Performance Chart
 
-$MERMAID_CHART
+\`\`\`mermaid
+gantt
+    title Latest Benchmark Results
+    dateFormat  X
+    axisFormat  %s
+EOF
+
+while IFS= read -r line; do
+    name=$(echo "$line" | awk '{print $1}')
+    time=$(echo "$line" | awk '{print $2}')
+    # Mermaid gantt chart wants integer times. We will strip the decimals.
+    time_int=$(echo "$time" | awk -F. '{print $1}')
+    echo "    $name : $time_int" >> "$CONTENT_FILE"
+done <<< "$PARSED_RESULTS"
+
+cat <<EOF >> "$CONTENT_FILE"
+\`\`\`
 EOF
 
 # Update the README
