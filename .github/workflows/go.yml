@@ -22,6 +22,12 @@ jobs:
     - name: Test
       run: make test
 
+    - name: Benchmark
+      run: make benchmark
+
+    - name: E2E Integration Tests
+      run: make test-e2e
+
     - name: Coverage
       run: make coverage
 
