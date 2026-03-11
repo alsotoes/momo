@@ -92,8 +92,16 @@ EOF
 # Get the last 10 unique commit SHAs from the history
 LAST_10_COMMITS=$(tail -n 40 "$HISTORY_FILE" | awk -F, '{print $1}' | uniq | tail -n 10 | sed -e 's/^\(....\).*/\1/g' | tr '\n' ',' | sed 's/,$//')
 
+LEGEND=""
+for bench_name in $BENCHMARK_NAMES; do
+    short_name=$(echo "$bench_name" | sed -e 's/Benchmark//' -e 's/-[0-9]\+$//')
+    LEGEND="$LEGEND
+    line \"$short_name\""
+done
+
 cat <<EOF >> "$CONTENT_FILE"
     x-axis [${LAST_10_COMMITS}]
+$LEGEND
 EOF
 
 # Get the list of unique benchmark names
@@ -115,6 +123,7 @@ xychart-beta
     x-axis "Commit"
     y-axis "Avg. Bytes/Op"
     x-axis [${LAST_10_COMMITS}]
+$LEGEND
 EOF
 
 for bench_name in $BENCHMARK_NAMES; do
@@ -133,6 +142,7 @@ xychart-beta
     x-axis "Commit"
     y-axis "Avg. Allocs/Op"
     x-axis [${LAST_10_COMMITS}]
+$LEGEND
 EOF
 
 for bench_name in $BENCHMARK_NAMES; do
