@@ -21,7 +21,7 @@ func mockConnect(wg *sync.WaitGroup, daemons []*momo_common.Daemon, filename str
 }
 
 // mockGetFile is a mock implementation of getFile for testing.
-func mockGetFile(connection net.Conn, path string, fileName string, fileMD5 string, fileSize int64) error {
+func mockGetFile(connection net.Conn, path string, fileName string, expectedHash string, fileSize int64) error {
 	// This mock function will consume exactly fileSize bytes from the connection.
 	_, err := io.CopyN(io.Discard, connection, fileSize)
 	if err != nil {
@@ -92,22 +92,22 @@ func handleConnection(t *testing.T, connection net.Conn, daemons []*momo_common.
 
 	switch replicationMode {
 	case momo_common.ReplicationNone:
-		mockGetFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
+		mockGetFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size)
 	case momo_common.ReplicationChain:
 		if serverId == 1 {
 			wg.Add(1)
-			mockGetFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
+			mockGetFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size)
 			connectToPeer(&wg, daemons, daemons[1].Data+"/"+metadata.Name, 2, timestamp)
 			wg.Wait()
 		} else {
 			wg.Add(1)
-			mockGetFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
+			mockGetFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size)
 			connectToPeer(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 1, timestamp)
 			wg.Wait()
 		}
 	case momo_common.ReplicationSplay:
 		wg.Add(2)
-		mockGetFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.MD5, metadata.Size)
+		mockGetFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size)
 		go connectToPeer(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 1, timestamp)
 		go connectToPeer(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 2, timestamp)
 		wg.Wait()
@@ -135,7 +135,7 @@ func TestDaemonLogic(t *testing.T) {
 	tempFile.Write([]byte(fileContent))
 	tempFile.Close()
 
-	md5, _ := momo_common.HashFile(fileName)
+	hash, _ := momo_common.HashFile(fileName)
 
 	testCases := []struct {
 		name              string
@@ -174,7 +174,7 @@ func TestDaemonLogic(t *testing.T) {
 			}
 
 			// Send metadata
-			client.Write([]byte(md5))
+			client.Write([]byte(hash))
 			fileNameBytes := make([]byte, momo_common.FileInfoLength)
 			copy(fileNameBytes, fileName)
 			client.Write(fileNameBytes)

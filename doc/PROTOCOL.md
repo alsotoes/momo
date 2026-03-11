@@ -43,7 +43,7 @@ Once the handshake is complete, the client sends the file metadata, followed by 
 
 The metadata consists of three fixed-size fields:
 
--   **MD5 Checksum:** 32-byte hexadecimal string.
+-   **SHA-256 Checksum:** 64-byte hexadecimal string.
 -   **File Name:** 64-byte ASCII string, right-padded with colons (`:`).
 -   **File Size:** 64-byte ASCII string representing the decimal file size, right-padded with colons (`:`).
 
@@ -51,7 +51,7 @@ The metadata consists of three fixed-size fields:
 
 ```
 |-----------------|------------------|-----------------|
-|   MD5 (32)      | File Name (64)   | File Size (64)  |
+|   Hash (64)     | File Name (64)   | File Size (64)  |
 |-----------------|------------------|-----------------|
 ```
 
@@ -117,4 +117,4 @@ The client sends the file to all servers in the cluster concurrently.
 
 ## Error Handling
 
-The current implementation of the Momo protocol has minimal error handling. In most cases, if an error occurs during the transfer (e.g., a network error or a mismatched MD5 checksum), the connection is closed, and the program exits with an error code. There is no mechanism for resuming a failed transfer.
+The current implementation of the Momo protocol has minimal error handling. In most cases, if an error occurs during the transfer (e.g., a network error or a mismatched hash checksum), the connection is closed, and the program exits with an error code. There is no mechanism for resuming a failed transfer.

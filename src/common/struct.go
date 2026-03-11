@@ -4,8 +4,8 @@ package common
 type FileMetadata struct {
 	// Name is the name of the file.
 	Name string
-	// MD5 is the MD5 hash of the file.
-	MD5 string
+	// Hash is the SHA-256 hash of the file.
+	Hash string
 	// Size is the size of the file in bytes.
 	Size int64
 }

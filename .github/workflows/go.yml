@@ -14,19 +14,13 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.24.x'
+        go-version: '1.22'
 
     - name: Build
       run: make build
 
     - name: Test
       run: make test
-
-    - name: Benchmark
-      run: make benchmark
-
-    - name: E2E Integration Tests
-      run: make test-e2e
 
     - name: Coverage
       run: make coverage

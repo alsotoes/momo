@@ -7,18 +7,11 @@ This document explains the architecture, configuration, wire protocol, replicati
 
 ## Features
 
-- Multi-protocol file transfer with per‑chunk streaming (TCP for LAN, QUIC for WAN).
+- File transfer over plain TCP with per‑chunk streaming.
 - Four replication modes: none, chain, splay, and primary‑splay.
 - Metrics‑driven mode changes (CPU/memory thresholds + fallback timer).
 - Centralized change‑replication control with timestamped updates.
-- Simple MD5 integrity logging on the receiver.
-- [Comprehensive testing suite with concurrent mock validations and GitHub CI/CD](TESTING.md) ([CI/CD Workflows](CICD.md)).
-
-
-## Architecture: TCP vs QUIC
-Momo employs a hybrid protocol approach to maximize throughput depending on network conditions:
-- **LAN Topologies (TCP):** Replication strategies executing within the data center (like `Chain` and `Splay`) utilize traditional TCP. On high-bandwidth, stable networks (10Gbps+), kernel-level TCP processing requires less CPU overhead.
-- **WAN Topologies (QUIC):** `PrimarySplay` dictates that a single client directly uploads chunks to all cluster nodes simultaneously over the internet. Standard TCP connections suffer from Head-of-Line (HoL) blocking and high latency under packet loss over WANs. Momo utilizes the **QUIC** protocol (UDP-based multiplexing) exclusively for `PrimarySplay` to provide 0-RTT handshakes, connection migration across unstable mobile networks, and immunity to HoL blocking.
+- Simple SHA-256 integrity logging on the receiver.
 
 
 ## Repository Layout
@@ -28,7 +21,7 @@ Momo employs a hybrid protocol approach to maximize throughput depending on netw
   - `constants.go`: Wire/field lengths and replication constants.
   - `config.go`: INI configuration loader (`conf/momo.conf`).
   - `struct.go`: Config and metadata structs.
-  - `md5.go`: File MD5 utility.
+  - `hash.go`: File SHA-256 hash utility.
   - `log.go`: Toggle logging to stdout.
   - `contains.go`: Slice utility used by metrics.
 - `src/server/`: Server daemon, file receive, and replication control server.
@@ -70,9 +63,9 @@ Handshake and transfer overview:
 
 1. Client opens a TCP connection to the primary server (usually server 0) and sends a 19‑byte timestamp.
 2. Server decides the effective replication mode for this connection and responds with a one‑digit ASCII mode code.
-3. Client sends metadata: 32‑byte hex MD5, 64‑byte file name (right‑padded with `:`), and 64‑byte decimal file size (right‑padded with `:`).
+3. Client sends metadata: 64‑byte hex SHA-256 hash, 64‑byte file name (right‑padded with `:`), and 64‑byte decimal file size (right‑padded with `:`).
 4. Client streams file bytes in `1024`‑byte chunks until EOF.
-5. Server writes the file to disk, validates MD5, and replies with `ACK{serverId}`.
+5. Server writes the file to disk, validates the hash, and replies with `ACK{serverId}`.
 6. Depending on the negotiated mode, additional replication is performed:
    - Chain: receiving server acts as a client to the next server in the chain.
    - Splay: server 0 concurrently uploads to servers 1 and 2.
@@ -84,15 +77,15 @@ Handshake and transfer overview:
 Lengths (see `src/common/constants.go`):
 
 - Timestamp: `TimestampLength = 19` bytes (ASCII, e.g., `UnixNano`).
-- Metadata: `MD5 = 32`, `FileInfoLength = 64` for name and size (right‑padded with colons (`:`)).
+- Metadata: `Hash = 64`, `FileInfoLength = 64` for name and size (right‑padded with colons (`:`)).
 - Payload: streamed in `BUFFERSIZE = 1024` bytes.
 
 Order:
 
-- Client → Server: `timestamp` → `fileMD5` → `fileName` → `fileSize` → file bytes…
+- Client → Server: `timestamp` → `fileHash` → `fileName` → `fileSize` → file bytes…
 - Server → Client: `replicationMode` (single ASCII digit) → after receive, `ACK{serverId}`.
 
-The server reads exactly `fileSize` bytes and discards any extra padding from the last fixed‑size chunk before validating the MD5.
+The server reads exactly `fileSize` bytes and discards any extra padding from the last fixed‑size chunk before validating the hash.
 
 
 ## Metrics‑Driven Mode Changes
@@ -227,7 +220,7 @@ Notes:
 - No authentication or encryption; traffic is plain TCP.
 - Error handling is minimal; some paths `os.Exit(1)` on errors.
 - Change‑replication server decodes a fixed‑size buffer; ensure the JSON fits within `LENGTHINFO`.
-- MD5 is logged for integrity, but mismatches don’t block ACK in the current code.
+- The hash is logged for integrity, but mismatches don’t block ACK in the current code.
 - Affinity: server 0 leads replication changes and timestamps; server 1 constrains non‑chain modes to NO_REPLICATION during handshake.
 
 
@@ -238,66 +231,3 @@ Notes:
 - Backpressure and partial‑replication recovery.
 - Structured logging and metrics export.
 - Tests and tooling around config validation.
-
-<!-- BENCHMARK_RESULTS_START -->
-## Performance
-
-This section is automatically updated by our GitHub Actions workflow.
-
-### Comparison with previous commit
-
-```
-                      │ old_bench_filtered.txt │       new_bench_filtered.txt        │
-                      │         sec/op         │    sec/op      vs base              │
-CheckMetricsAndSwap-4             8.427n ± ∞ ¹    8.460n ± ∞ ¹       ~ (p=0.151 n=5)
-IndexSearch-4                     3.435n ± ∞ ¹    3.431n ± ∞ ¹       ~ (p=0.476 n=5)
-IndexDirectTracking-4            0.3121n ± ∞ ¹   0.3125n ± ∞ ¹       ~ (p=0.794 n=5)
-ConcurrentUploads-4               212.6µ ± ∞ ¹    219.4µ ± ∞ ¹       ~ (p=1.000 n=5)
-geomean                           37.23n          37.56n        +0.89%
-¹ need >= 6 samples for confidence interval at level 0.95
-
-                      │ old_bench_filtered.txt │        new_bench_filtered.txt         │
-                      │          B/op          │     B/op       vs base                │
-CheckMetricsAndSwap-4              0.000 ± ∞ ¹     0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
-IndexSearch-4                      0.000 ± ∞ ¹     0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
-IndexDirectTracking-4              0.000 ± ∞ ¹     0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
-ConcurrentUploads-4              2.081Ki ± ∞ ¹   2.075Ki ± ∞ ¹       ~ (p=0.349 n=5)
-geomean                                      ³                  -0.07%               ³
-¹ need >= 6 samples for confidence interval at level 0.95
-² all samples are equal
-³ summaries must be >0 to compute geomean
-
-                      │ old_bench_filtered.txt │       new_bench_filtered.txt        │
-                      │       allocs/op        │  allocs/op   vs base                │
-CheckMetricsAndSwap-4              0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
-IndexSearch-4                      0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
-IndexDirectTracking-4              0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
-ConcurrentUploads-4                50.00 ± ∞ ¹   49.00 ± ∞ ¹       ~ (p=0.206 n=5)
-geomean                                      ³                -0.50%               ³
-¹ need >= 6 samples for confidence interval at level 0.95
-² all samples are equal
-³ summaries must be >0 to compute geomean
-```
-
-### Latest Benchmark Results
-
-
-| Benchmark | Avg. Value/Op |
-|-----------|---------------|
-| BenchmarkCheckMetricsAndSwap-4 | 8.45 ns/op |\n| BenchmarkConcurrentUploads-4 | 242974.00 ns/op |\n| BenchmarkIndexDirectTracking-4 | 0.31 ns/op |\n| BenchmarkIndexSearch-4 | 3.49 ns/op |\n
-
-### Performance History
-
-```mermaid
-xychart-beta
-    title "Performance Trend (Last 10 Commits)"
-    x-axis "Commit"
-    y-axis "Avg. Time (ns/op)"
-    x-axis [comm,d350]
-    line "CheckMetricsAndSwap" [8]
-    line "ConcurrentUploads" [242974]
-    line "IndexDirectTracking" [0]
-    line "IndexSearch" [3]
-```
-<!-- BENCHMARK_RESULTS_END -->
-
