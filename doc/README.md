@@ -242,10 +242,10 @@ This section is automatically updated by our GitHub Actions workflow.
 ```
                       │ old_bench_filtered.txt │       new_bench_filtered.txt        │
                       │         sec/op         │    sec/op      vs base              │
-CheckMetricsAndSwap-4             8.433n ± ∞ ¹    8.422n ± ∞ ¹       ~ (p=0.421 n=5)
-IndexSearch-4                     2.185n ± ∞ ¹    2.188n ± ∞ ¹       ~ (p=0.587 n=5)
-IndexDirectTracking-4            0.3118n ± ∞ ¹   0.3127n ± ∞ ¹       ~ (p=0.103 n=5)
-geomean                           1.791n          1.793n        +0.10%
+CheckMetricsAndSwap-4             8.436n ± ∞ ¹    8.457n ± ∞ ¹       ~ (p=1.000 n=5)
+IndexSearch-4                     2.186n ± ∞ ¹    2.187n ± ∞ ¹       ~ (p=0.897 n=5)
+IndexDirectTracking-4            0.3125n ± ∞ ¹   0.3125n ± ∞ ¹       ~ (p=1.000 n=5)
+geomean                           1.793n          1.795n        +0.10%
 ¹ need >= 6 samples for confidence interval at level 0.95
 
                       │ old_bench_filtered.txt │       new_bench_filtered.txt        │
@@ -274,7 +274,7 @@ geomean                                      ³                +0.00%           
 
 | Benchmark | Avg. Time/Op | Avg. Bytes/Op | Avg. Allocs/Op |
 |-----------|--------------|---------------|----------------|
-| BenchmarkCheckMetricsAndSwap-4 | 8.45 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkIndexDirectTracking-4 | 0.31 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkIndexSearch-4 | 2.19 ns/op | 0.00 B/op | 0.00 allocs/op |\n
+| BenchmarkCheckMetricsAndSwap-4 | 8.46 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkIndexDirectTracking-4 | 0.31 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkIndexSearch-4 | 2.19 ns/op | 0.00 B/op | 0.00 allocs/op |\n
 
 ### Performance History
 
@@ -283,7 +283,7 @@ xychart-beta
     title "Performance Trend (Avg. Time, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Time (ns/op)"
-    x-axis [comm,3fe8,9669,dac1]
+    x-axis [comm,3fe8,9669,0b51]
 
     line "CheckMetricsAndSwap" [9,8,8]
     line "IndexDirectTracking" [0,0,0]
@@ -295,7 +295,7 @@ xychart-beta
     title "Memory Trend (Avg. Bytes/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Bytes/Op"
-    x-axis [comm,3fe8,9669,dac1]
+    x-axis [comm,3fe8,9669,0b51]
 
     line "CheckMetricsAndSwap" [0,0,0]
     line "IndexDirectTracking" [0,0,0]
@@ -307,7 +307,7 @@ xychart-beta
     title "Allocation Trend (Avg. Allocs/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Allocs/Op"
-    x-axis [comm,3fe8,9669,dac1]
+    x-axis [comm,3fe8,9669,0b51]
 
     line "CheckMetricsAndSwap" [0,0,0]
     line "IndexDirectTracking" [0,0,0]
