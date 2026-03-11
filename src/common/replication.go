@@ -136,17 +136,11 @@ func sendFile(wg *sync.WaitGroup, connection net.Conn, fileName string) {
 	connection.Write([]byte(fileSizeStr))
 
 	// Send file content
-	sendBuffer := make([]byte, TCPSocketBufferSize)
-	for {
-		n, err := file.Read(sendBuffer)
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			log.Printf("Error reading from file %s: %v", fileName, err)
-			return
-		}
-		connection.Write(sendBuffer[:n])
+	// Optimization: Use io.Copy to avoid manual buffer allocation and read/write loops.
+	// This can leverage kernel-level zero-copy optimizations (e.g., sendfile).
+	if _, err := io.Copy(connection, file); err != nil {
+		log.Printf("Error sending file %s: %v", fileName, err)
+		return
 	}
 
 	// Wait for ACK
