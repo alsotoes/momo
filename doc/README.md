@@ -238,3 +238,7 @@ Notes:
 - Backpressure and partial‑replication recovery.
 - Structured logging and metrics export.
 - Tests and tooling around config validation.
+
+<!-- BENCHMARK_RESULTS_START -->
+<!-- BENCHMARK_RESULTS_END -->
+
