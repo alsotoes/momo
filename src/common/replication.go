@@ -39,7 +39,7 @@ func Connect(wg *sync.WaitGroup, daemons []*Daemon, filePath string, serverId in
 		initialConn.Close()
 		return
 	}
-	log.Printf("Client replicationMode: " + string(bufferReplicationMode))
+	log.Printf("Client replicationMode: %s", string(bufferReplicationMode))
 
 	replicationMode, err := strconv.Atoi(string(bufferReplicationMode))
 	if err != nil {

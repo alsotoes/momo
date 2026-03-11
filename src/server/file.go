@@ -78,9 +78,9 @@ func getFile(connection net.Conn, path string, fileName string, fileMD5 string, 
 		return err
 	}
 
-	log.Printf("=> MD5:     " + fileMD5)
-	log.Printf("=> New MD5: " + hash)
-	log.Printf("=> Name:    " + fullPath)
+	log.Printf("=> MD5:     %s", fileMD5)
+	log.Printf("=> New MD5: %s", hash)
+	log.Printf("=> Name:    %s", fullPath)
 	log.Printf("Received file completely!")
 	log.Printf("Sending ACK to client connection")
 	return nil
