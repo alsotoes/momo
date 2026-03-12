@@ -88,9 +88,9 @@ func TestDaemonReal(t *testing.T) {
 		conn.Write([]byte(padTestString(hash, 64)))
 		conn.Write([]byte(padTestString("test.txt", momo_common.FileInfoLength)))
 		conn.Write([]byte(padTestString("4", momo_common.FileInfoLength)))
-		
+
 		conn.Write([]byte("data"))
-		
+
 		ackBuf := make([]byte, 4)
 		conn.Read(ackBuf)
 	}

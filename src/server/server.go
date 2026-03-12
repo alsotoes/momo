@@ -23,10 +23,10 @@ var connectToPeer = momo_common.Connect
 //
 // The server can operate in one of the following replication modes:
 //
-//	- ReplicationNone: The server saves the file without replicating it to other nodes.
-//	- ReplicationSplay: The primary server replicates the file to all other servers in the cluster.
-//	- ReplicationChain: Servers are arranged in a chain. The primary server replicates to the next server in the chain, which then replicates to the next, and so on.
-//	- ReplicationPrimarySplay: This mode is currently handled as ReplicationNone, which means no replication is performed.
+//   - ReplicationNone: The server saves the file without replicating it to other nodes.
+//   - ReplicationSplay: The primary server replicates the file to all other servers in the cluster.
+//   - ReplicationChain: Servers are arranged in a chain. The primary server replicates to the next server in the chain, which then replicates to the next, and so on.
+//   - ReplicationPrimarySplay: This mode is currently handled as ReplicationNone, which means no replication is performed.
 //
 // The replication mode is determined by the client, and for secondary servers, it's influenced by the timestamp of the operation.
 func Daemon(ctx context.Context, daemons []*momo_common.Daemon, serverId int) {
@@ -89,15 +89,16 @@ func Daemon(ctx context.Context, daemons []*momo_common.Daemon, serverId int) {
 			}
 
 			// Determine the replication mode based on the server ID and timestamp
+			repState := GetReplicationState()
 			if 0 == serverId {
 				now := time.Now()
 				timestamp = now.UnixNano()
-				replicationMode = ReplicationState.New
+				replicationMode = repState.New
 			} else if 1 == serverId {
-				if timestamp > ReplicationState.TimeStamp {
-					replicationMode = ReplicationState.New
+				if timestamp > repState.TimeStamp {
+					replicationMode = repState.New
 				} else {
-					replicationMode = ReplicationState.Old
+					replicationMode = repState.Old
 				}
 
 				if replicationMode != momo_common.ReplicationChain {

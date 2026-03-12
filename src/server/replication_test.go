@@ -35,7 +35,7 @@ func handleReplicationChange(t *testing.T, connection net.Conn, wg *sync.WaitGro
 		return
 	}
 
-	CurrentReplicationMode = replicationJSON.New
+	SetReplicationState(replicationJSON.New, replicationJSON.TimeStamp)
 }
 
 // TestChangeReplicationModeServerLogic verifies that the server correctly
@@ -43,7 +43,7 @@ func handleReplicationChange(t *testing.T, connection net.Conn, wg *sync.WaitGro
 func TestChangeReplicationModeServerLogic(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	// Arrange: Set initial state and create a network pipe to simulate a client-server connection.
-	CurrentReplicationMode = momo_common.ReplicationNone // Initial mode
+	SetReplicationState(momo_common.ReplicationNone, 0) // Initial mode
 	client, server := net.Pipe()
 
 	var wg sync.WaitGroup
@@ -74,8 +74,9 @@ func TestChangeReplicationModeServerLogic(t *testing.T) {
 	wg.Wait() // Wait for the server-side handler to finish.
 
 	// Assert: Check if the replication mode was updated correctly.
-	if CurrentReplicationMode != expectedMode {
-		t.Errorf("Expected replication mode to be %d, but got %d", expectedMode, CurrentReplicationMode)
+	currentMode := GetCurrentReplicationMode()
+	if currentMode != expectedMode {
+		t.Errorf("Expected replication mode to be %d, but got %d", expectedMode, currentMode)
 	}
 }
 
