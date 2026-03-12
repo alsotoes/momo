@@ -62,6 +62,9 @@ while IFS= read -r line; do
     echo "$COMMIT_SHA,$name,$avg_ns,$avg_B,$avg_allocs" >> "$HISTORY_FILE"
 done <<< "$AVG_RESULTS"
 
+# Get the list of unique benchmark names
+BENCHMARK_NAMES=$(awk -F, 'NR>1 {print $2}' "$HISTORY_FILE" | sort -u)
+
 # Prepare the content to be injected into the README
 # Use a temporary file to avoid issues with special characters in variables.
 CONTENT_FILE=$(mktemp)
@@ -82,6 +85,15 @@ $MARKDOWN_TABLE
 
 ### Performance History
 
+**Legend**
+
+| Color | Benchmark |
+|---|---|
+| 🟢 | $(echo "$BENCHMARK_NAMES" | sed -n 1p | sed -e 's/Benchmark//' -e 's/-[0-9]\+$//') |
+| 🔵 | $(echo "$BENCHMARK_NAMES" | sed -n 2p | sed -e 's/Benchmark//' -e 's/-[0-9]\+$//') |
+| 🔴 | $(echo "$BENCHMARK_NAMES" | sed -n 3p | sed -e 's/Benchmark//' -e 's/-[0-9]\+$//') |
+| 🟠 | $(echo "$BENCHMARK_NAMES" | sed -n 4p | sed -e 's/Benchmark//' -e 's/-[0-9]\+$//') |
+
 \`\`\`mermaid
 xychart-beta
     title "Performance Trend (Avg. Time, Last 10 Commits)"
@@ -92,20 +104,9 @@ EOF
 # Get the last 10 unique commit SHAs from the history
 LAST_10_COMMITS=$(tail -n 40 "$HISTORY_FILE" | awk -F, '{print $1}' | uniq | tail -n 10 | sed -e 's/^\(....\).*/\1/g' | tr '\n' ',' | sed 's/,$//')
 
-LEGEND=""
-for bench_name in $BENCHMARK_NAMES; do
-    short_name=$(echo "$bench_name" | sed -e 's/Benchmark//' -e 's/-[0-9]\+$//')
-    LEGEND="$LEGEND
-    line \"$short_name\""
-done
-
 cat <<EOF >> "$CONTENT_FILE"
     x-axis [${LAST_10_COMMITS}]
-$LEGEND
 EOF
-
-# Get the list of unique benchmark names
-BENCHMARK_NAMES=$(awk -F, 'NR>1 {print $2}' "$HISTORY_FILE" | sort -u)
 
 for bench_name in $BENCHMARK_NAMES; do
     # Get the data for this benchmark for the last 10 commits
@@ -123,7 +124,6 @@ xychart-beta
     x-axis "Commit"
     y-axis "Avg. Bytes/Op"
     x-axis [${LAST_10_COMMITS}]
-$LEGEND
 EOF
 
 for bench_name in $BENCHMARK_NAMES; do
@@ -142,7 +142,6 @@ xychart-beta
     x-axis "Commit"
     y-axis "Avg. Allocs/Op"
     x-axis [${LAST_10_COMMITS}]
-$LEGEND
 EOF
 
 for bench_name in $BENCHMARK_NAMES; do
