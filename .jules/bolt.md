@@ -8,3 +8,7 @@
 ## 2026-03-11 - Optimize file sending with io.Copy
 **Learning:** Using io.Copy leverages Go's standard library to potentially use zero-copy operations like sendfile, avoiding user-space buffer allocations and manual loop overhead.
 **Action:** Use io.Copy or io.CopyN instead of manual byte buffer reading/writing loops when transferring streams of data.
+
+## 2024-05-25 - [Single-buffer metadata serialization]
+**Learning:** Formatting string fields and sending them in multiple `.Write()` calls over a network connection causes unnecessary memory allocations and slow system call overhead. Pre-allocating a single byte buffer of the exact network packet size and using `copy()` and `strconv.AppendInt` drastically reduces execution time and allocations.
+**Action:** When transmitting simple protocol headers or fields over TCP, allocate a single `[]byte` slice for the expected packet size and map data into it sequentially before dispatching via a single `.Write()` to optimize memory usage and avoid syscall limits.
