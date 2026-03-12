@@ -1,7 +1,6 @@
 package common
 
 import (
-	"fmt"
 	"io"
 	"log"
 	"net"
@@ -127,13 +126,18 @@ func sendFile(wg *sync.WaitGroup, connection net.Conn, fileName string) {
 	log.Printf("=> Size:    %d", fileSize)
 
 	// Send metadata
-	fileHashStr := padString(fileHash, hashLength)
-	fileNameStr := padString(fileInfo.Name(), FileInfoLength)
-	fileSizeStr := padString(fmt.Sprintf("%d", fileSize), FileInfoLength)
+	// Optimization: Pre-allocate a single buffer for the exact packet size.
+	// This avoids multiple string formatting allocations and multiple system calls.
+	metadataBuffer := make([]byte, hashLength+FileInfoLength+FileInfoLength)
 
-	connection.Write([]byte(fileHashStr))
-	connection.Write([]byte(fileNameStr))
-	connection.Write([]byte(fileSizeStr))
+	copy(metadataBuffer[0:hashLength], fileHash)
+	copy(metadataBuffer[hashLength:hashLength+FileInfoLength], padString(fileInfo.Name(), FileInfoLength))
+
+	// Format size directly into the buffer avoiding fmt.Sprintf
+	sizeBytes := strconv.AppendInt(make([]byte, 0, FileInfoLength), fileSize, 10)
+	copy(metadataBuffer[hashLength+FileInfoLength:], sizeBytes)
+
+	connection.Write(metadataBuffer)
 
 	// Send file content
 	// Optimization: Use io.Copy to avoid manual buffer allocation and read/write loops.
