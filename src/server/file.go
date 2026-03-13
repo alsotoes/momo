@@ -36,6 +36,9 @@ func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 
 	// 🛡️ Sentinel: Sanitize fileName immediately to prevent path traversal in all downstream consumers.
 	fileName := filepath.Base(string(bytes.Trim(bufferFileName, "\x00")))
+	if fileName == "." || fileName == ".." || fileName == "/" || fileName == "\\" {
+		return metadata, &os.PathError{Op: "getMetadata", Path: fileName, Err: os.ErrInvalid}
+	}
 
 	fileSize, err := strconv.ParseInt(string(bytes.Trim(bufferFileSize, "\x00")), 10, 64)
 	if err != nil {

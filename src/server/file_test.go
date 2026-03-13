@@ -72,6 +72,40 @@ func TestGetMetadata(t *testing.T) {
 	}
 }
 
+func TestGetMetadataDotDot(t *testing.T) {
+	// Arrange: Set up a network pipe to simulate a client-server connection without real networking.
+	server, client := net.Pipe()
+
+	fileName := ".."
+	fileHash := "de614ea622e0963faf12594c1c59937dcb6fc223c81b3a451ee2561fc44e22a2"
+	fileSize := 10
+
+	// Act: Start a goroutine to simulate the client sending metadata over the pipe.
+	go func() {
+		defer client.Close()
+
+		// Send SHA-256 hash
+		client.Write([]byte(fileHash))
+
+		// Send file name, padded to the fixed buffer size
+		fileNameBytes := make([]byte, momo_common.FileInfoLength)
+		copy(fileNameBytes, fileName)
+		client.Write(fileNameBytes)
+
+		// Send file size, padded to the fixed buffer size
+		fileSizeBytes := make([]byte, momo_common.FileInfoLength)
+		copy(fileSizeBytes, strconv.Itoa(fileSize))
+		client.Write(fileSizeBytes)
+	}()
+
+	// Act: Call the function under test, which reads from the server side of the pipe.
+	_, err := getMetadata(server)
+
+	if err == nil {
+		t.Fatalf("getMetadata should have failed for filename '%s'", fileName)
+	}
+}
+
 func TestGetFileTraversal(t *testing.T) {
 	server, client := net.Pipe()
 
