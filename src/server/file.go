@@ -20,24 +20,23 @@ import (
 func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 	var metadata momo_common.FileMetadata
 
-	bufferFileHash := make([]byte, 64)
-	bufferFileName := make([]byte, momo_common.FileInfoLength)
-	bufferFileSize := make([]byte, momo_common.FileInfoLength)
+	// ⚡ Bolt: Use a single buffer and single io.ReadFull call to reduce system calls and allocations.
+	buffer := make([]byte, 64+momo_common.FileInfoLength+momo_common.FileInfoLength)
 
-	if _, err := io.ReadFull(connection, bufferFileHash); err != nil {
+	if _, err := io.ReadFull(connection, buffer); err != nil {
 		return metadata, err
 	}
+
+	// Extract the sub-slices from the main buffer
+	bufferFileHash := buffer[:64]
+	bufferFileName := buffer[64 : 64+momo_common.FileInfoLength]
+	bufferFileSize := buffer[64+momo_common.FileInfoLength:]
+
 	fileHash := string(bytes.Trim(bufferFileHash, "\x00"))
 
-	if _, err := io.ReadFull(connection, bufferFileName); err != nil {
-		return metadata, err
-	}
 	// 🛡️ Sentinel: Sanitize fileName immediately to prevent path traversal in all downstream consumers.
 	fileName := filepath.Base(string(bytes.Trim(bufferFileName, "\x00")))
 
-	if _, err := io.ReadFull(connection, bufferFileSize); err != nil {
-		return metadata, err
-	}
 	fileSize, err := strconv.ParseInt(string(bytes.Trim(bufferFileSize, "\x00")), 10, 64)
 	if err != nil {
 		return metadata, err

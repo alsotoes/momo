@@ -138,10 +138,10 @@ func TestDaemonLogic(t *testing.T) {
 	hash, _ := momo_common.HashFile(fileName)
 
 	testCases := []struct {
-		name              string
-		ReplicationMode   int
-		serverId          int
-		expectedAck       string
+		name                string
+		ReplicationMode     int
+		serverId            int
+		expectedAck         string
 		expectedReplication int
 	}{
 		{"ReplicationNone", momo_common.ReplicationNone, 0, "ACK0", momo_common.ReplicationNone},
