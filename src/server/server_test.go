@@ -57,14 +57,15 @@ func handleConnection(t *testing.T, connection net.Conn, daemons []*momo_common.
 	}
 
 	// The rest of the logic from the original Daemon function's go func() { ... }
+	repState := GetReplicationState()
 	switch serverId {
 	case 0:
-		replicationMode = ReplicationState.New
+		replicationMode = repState.New
 	case 1:
-		if timestamp > ReplicationState.TimeStamp {
-			replicationMode = ReplicationState.New
+		if timestamp > repState.TimeStamp {
+			replicationMode = repState.New
 		} else {
-			replicationMode = ReplicationState.Old
+			replicationMode = repState.Old
 		}
 		if replicationMode != momo_common.ReplicationChain {
 			replicationMode = momo_common.ReplicationNone
@@ -138,10 +139,10 @@ func TestDaemonLogic(t *testing.T) {
 	hash, _ := momo_common.HashFile(fileName)
 
 	testCases := []struct {
-		name              string
-		ReplicationMode   int
-		serverId          int
-		expectedAck       string
+		name                string
+		ReplicationMode     int
+		serverId            int
+		expectedAck         string
 		expectedReplication int
 	}{
 		{"ReplicationNone", momo_common.ReplicationNone, 0, "ACK0", momo_common.ReplicationNone},
@@ -152,7 +153,7 @@ func TestDaemonLogic(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Setup
-			ReplicationState.New = tc.ReplicationMode
+			SetReplicationState(tc.ReplicationMode, 0)
 			client, server := net.Pipe()
 
 			serverDone := make(chan struct{})

@@ -8,16 +8,46 @@ import (
 	"log"
 	"net"
 	"os"
+	"sync"
 	"time"
 
 	momo_common "github.com/alsotoes/momo/src/common"
 )
 
-// CurrentReplicationMode is the current replication mode of the server.
-var CurrentReplicationMode int = momo_common.ReplicationNone
+var replicationStateMutex sync.RWMutex
 
-// ReplicationState stores the old and new replication modes, and the timestamp of the last change.
-var ReplicationState momo_common.ReplicationData
+// currentReplicationMode is the current replication mode of the server.
+var currentReplicationMode int = momo_common.ReplicationNone
+
+// replicationState stores the old and new replication modes, and the timestamp of the last change.
+var replicationState momo_common.ReplicationData
+
+// GetReplicationState safely returns the current replicationState
+func GetReplicationState() momo_common.ReplicationData {
+	replicationStateMutex.RLock()
+	defer replicationStateMutex.RUnlock()
+	return replicationState
+}
+
+// GetCurrentReplicationMode safely returns the current currentReplicationMode
+func GetCurrentReplicationMode() int {
+	replicationStateMutex.RLock()
+	defer replicationStateMutex.RUnlock()
+	return currentReplicationMode
+}
+
+// SetReplicationState safely updates currentReplicationMode and replicationState
+func SetReplicationState(newMode int, timestamp int64) momo_common.ReplicationData {
+	replicationStateMutex.Lock()
+	defer replicationStateMutex.Unlock()
+
+	replicationState.Old = currentReplicationMode
+	replicationState.New = newMode
+	replicationState.TimeStamp = timestamp
+	currentReplicationMode = newMode
+
+	return replicationState
+}
 
 // ChangeReplicationModeServer listens for connections on a dedicated port and updates the replication mode of the server.
 //
@@ -41,13 +71,11 @@ func ChangeReplicationModeServer(ctx context.Context, daemons []*momo_common.Dae
 
 	log.Printf("Server changeReplicationMode started... at %s", daemons[serverId].ChangeReplication)
 	log.Printf("Waiting for connections: changeReplicationMode...")
-	log.Printf("default ReplicationMode value: %d", CurrentReplicationMode)
+	log.Printf("default ReplicationMode value: %d", GetCurrentReplicationMode())
 
 	// Initialize the replication state
-	ReplicationState.Old = CurrentReplicationMode
-	ReplicationState.New = CurrentReplicationMode
-	ReplicationState.TimeStamp = timestamp
-	replicationJson, _ := json.Marshal(ReplicationState)
+	initialState := SetReplicationState(GetCurrentReplicationMode(), timestamp)
+	replicationJson, _ := json.Marshal(initialState)
 	log.Printf("ReplicationData struct: %s", string(replicationJson))
 
 	for {
@@ -77,11 +105,8 @@ func ChangeReplicationModeServer(ctx context.Context, daemons []*momo_common.Dae
 			}
 
 			// Update the replication state
-			ReplicationState.Old = CurrentReplicationMode
-			ReplicationState.New = replicationJson.New
-			ReplicationState.TimeStamp = replicationJson.TimeStamp
-			newReplicationJson, _ := json.Marshal(ReplicationState)
-			CurrentReplicationMode = replicationJson.New
+			newState := SetReplicationState(replicationJson.New, replicationJson.TimeStamp)
+			newReplicationJson, _ := json.Marshal(newState)
 			log.Printf("changeReplicationMode new value: %d", replicationJson.New)
 			log.Printf("ReplicationData new struct: %s", string(newReplicationJson))
 
