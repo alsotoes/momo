@@ -11,7 +11,7 @@ func TestLogStdOut(t *testing.T) {
 	// Redirect log output to a buffer
 	var buf bytes.Buffer
 	log.SetOutput(&buf)
-	
+
 	// Test with logApp = true
 	LogStdOut(true)
 	log.Print("test true")
@@ -19,7 +19,7 @@ func TestLogStdOut(t *testing.T) {
 		t.Errorf("Expected 'test true' in log output, got %s", buf.String())
 	}
 	buf.Reset()
-	
+
 	// Test with logApp = false
 	LogStdOut(false)
 	log.Print("test false")

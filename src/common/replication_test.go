@@ -43,7 +43,7 @@ func startMockServer(t *testing.T, expectedMode int, delay time.Duration) (strin
 			return
 		}
 		defer conn.Close()
-		
+
 		buf := make([]byte, TimestampLength)
 		io.ReadFull(conn, buf)
 		conn.Write([]byte(strconv.Itoa(expectedMode)))
@@ -84,7 +84,7 @@ func startDummyServer(t *testing.T) (string, net.Listener) {
 				buf := make([]byte, TimestampLength)
 				io.ReadFull(c, buf)
 				c.Write([]byte("4")) // Not Splay
-				
+
 				// Wait for metadata
 				bufHash := make([]byte, hashLength)
 				io.ReadFull(c, bufHash)
@@ -92,7 +92,7 @@ func startDummyServer(t *testing.T) (string, net.Listener) {
 				io.ReadFull(c, bufName)
 				bufSize := make([]byte, FileInfoLength)
 				io.ReadFull(c, bufSize)
-				
+
 				c.Write([]byte("ACK"))
 			}(conn)
 		}
@@ -129,7 +129,7 @@ func TestConnect(t *testing.T) {
 	defer ln2.Close()
 	addr3, ln3 := startDummyServer(t)
 	defer ln3.Close()
-	
+
 	daemonsSplay := []*Daemon{
 		{Host: addr1, ChangeReplication: addr1, Data: "/tmp", Drive: "/dev/sda1"},
 		{Host: addr2, ChangeReplication: addr2, Data: "/tmp", Drive: "/dev/sda1"},
@@ -144,7 +144,7 @@ func TestConnect(t *testing.T) {
 	}
 	addrSplay := lnSplay.Addr().String()
 	defer lnSplay.Close()
-	
+
 	go func() {
 		conn, err := lnSplay.Accept()
 		if err != nil {
@@ -164,7 +164,7 @@ func TestConnect(t *testing.T) {
 		io.ReadFull(conn, bufSize)
 		conn.Write([]byte("ACK"))
 	}()
-	
+
 	daemonsSplay[0].Host = addrSplay
 
 	wg.Add(1)
@@ -189,7 +189,7 @@ func TestSendFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to dial: %v", err)
 	}
-	
+
 	// Skip the initial timestamp read/write
 	conn.Write([]byte(padString("123", TimestampLength)))
 	io.ReadFull(conn, make([]byte, 1))

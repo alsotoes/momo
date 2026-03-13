@@ -11,11 +11,11 @@ import (
 
 const (
 	// sectionGlobal is the name of the [global] section in the configuration file.
-	sectionGlobal  = "global"
+	sectionGlobal = "global"
 	// sectionMetrics is the name of the [metrics] section in the configuration file.
 	sectionMetrics = "metrics"
 	// prefixDaemon is the prefix for daemon sections in the configuration file (e.g., [daemon.0]).
-	prefixDaemon   = "daemon."
+	prefixDaemon = "daemon."
 )
 
 // GetConfig loads and validates the configuration from the given file path.
@@ -140,10 +140,10 @@ func loadDaemons(cfg *ini.File) ([]*Daemon, error) {
 
 		d := &Daemon{}
 		requiredFields := map[string]*string{
-			"host":   &d.Host,
+			"host":               &d.Host,
 			"change_replication": &d.ChangeReplication,
-			"data":   &d.Data,
-			"drive":  &d.Drive,
+			"data":               &d.Data,
+			"drive":              &d.Drive,
 		}
 
 		for key, ptr := range requiredFields {

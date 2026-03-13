@@ -122,4 +122,3 @@ func TestGetMetricsNonPrimaryServer(t *testing.T) {
 	cfg := momo_common.Configuration{}
 	GetMetrics(cfg, 1)
 }
-
