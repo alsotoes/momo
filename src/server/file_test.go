@@ -106,6 +106,41 @@ func TestGetMetadataDotDot(t *testing.T) {
 	}
 }
 
+func TestGetMetadataInvalidNames(t *testing.T) {
+	invalidNames := []string{
+		"C:\\Windows\\System32\\cmd.exe",
+		"foo\\bar.txt",
+	}
+
+	for _, fileName := range invalidNames {
+		t.Run(fileName, func(t *testing.T) {
+			server, client := net.Pipe()
+			fileHash := "de614ea622e0963faf12594c1c59937dcb6fc223c81b3a451ee2561fc44e22a2"
+			fileSize := 10
+
+			go func() {
+				defer client.Close()
+
+				client.Write([]byte(fileHash))
+
+				fileNameBytes := make([]byte, momo_common.FileInfoLength)
+				copy(fileNameBytes, fileName)
+				client.Write(fileNameBytes)
+
+				fileSizeBytes := make([]byte, momo_common.FileInfoLength)
+				copy(fileSizeBytes, strconv.Itoa(fileSize))
+				client.Write(fileSizeBytes)
+			}()
+
+			_, err := getMetadata(server)
+
+			if err == nil {
+				t.Fatalf("getMetadata should have failed for filename '%s'", fileName)
+			}
+		})
+	}
+}
+
 func TestGetFileTraversal(t *testing.T) {
 	server, client := net.Pipe()
 
