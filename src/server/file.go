@@ -3,6 +3,7 @@ package server
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -78,6 +79,12 @@ func getFile(connection net.Conn, path string, fileName string, expectedHash str
 	hash, err := momo_common.HashFile(fullPath)
 	if err != nil {
 		return err
+	}
+
+	if hash != expectedHash {
+		// 🛡️ Sentinel: Reject files with mismatched hashes to prevent integrity check bypass
+		os.Remove(fullPath) // Delete the potentially malicious/corrupt file
+		return fmt.Errorf("file hash mismatch: expected %s, got %s", expectedHash, hash)
 	}
 
 	log.Printf("=> Expected Hash: %s", expectedHash)
