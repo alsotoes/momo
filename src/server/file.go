@@ -3,6 +3,8 @@ package server
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"log"
 	"net"
@@ -66,19 +68,22 @@ func getFile(connection net.Conn, path string, fileName string, expectedHash str
 
 	defer newFile.Close()
 
+	// ⚡ Bolt: Compute SHA-256 hash simultaneously while writing to disk using an io.TeeReader.
+	// This eliminates the need to re-read the entire file from disk just to hash it,
+	// cutting disk I/O in half and significantly speeding up file processing.
+	hashCalc := sha256.New()
+	reader := io.TeeReader(connection, hashCalc)
+
 	// Optimization: Use a single io.CopyN instead of manually chunking in a loop.
 	// This enables the Go standard library to utilize zero-copy system calls
 	// (like splice or sendfile) and reduces function call overhead.
 	if fileSize > 0 {
-		if _, err := io.CopyN(newFile, connection, fileSize); err != nil {
+		if _, err := io.CopyN(newFile, reader, fileSize); err != nil {
 			return err
 		}
 	}
 
-	hash, err := momo_common.HashFile(fullPath)
-	if err != nil {
-		return err
-	}
+	hash := hex.EncodeToString(hashCalc.Sum(nil))
 
 	log.Printf("=> Expected Hash: %s", expectedHash)
 	log.Printf("=> Actual Hash:   %s", hash)
