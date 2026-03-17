@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -38,8 +39,12 @@ func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 	fileHash := string(bytes.Trim(bufferFileHash, "\x00"))
 
 	// 🛡️ Sentinel: Sanitize fileName immediately to prevent path traversal in all downstream consumers.
-	fileName := filepath.Base(string(bytes.Trim(bufferFileName, "\x00")))
-	if fileName == "." || fileName == ".." || strings.Contains(fileName, "/") || strings.Contains(fileName, "\\") {
+	rawFileName := string(bytes.Trim(bufferFileName, "\x00"))
+	if rawFileName == "." || rawFileName == ".." || strings.Contains(rawFileName, "/") || strings.Contains(rawFileName, "\\") {
+		return metadata, &os.PathError{Op: "getMetadata", Path: rawFileName, Err: os.ErrInvalid}
+	}
+	fileName := filepath.Base(rawFileName)
+	if fileName == "." || fileName == ".." || fileName == "/" || fileName == "\\" {
 		return metadata, &os.PathError{Op: "getMetadata", Path: fileName, Err: os.ErrInvalid}
 	}
 
@@ -59,7 +64,7 @@ func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 // It creates a new file at the given path and copies the file content from the connection in chunks.
 // After the transfer is complete, it calculates the SHA-256 hash of the received file and compares it with the expected hash.
 // It logs the progress and the result of the hash check.
-func getFile(connection net.Conn, path string, fileName string, expectedHash string, fileSize int64) error {
+func getFile(connection net.Conn, path string, fileName string, expectedHash string, fileSize int64) (err error) {
 	fullPath := filepath.Join(path, fileName)
 	newFile, err := os.Create(fullPath)
 
@@ -67,7 +72,13 @@ func getFile(connection net.Conn, path string, fileName string, expectedHash str
 		return err
 	}
 
-	defer newFile.Close()
+	defer func() {
+		newFile.Close()
+		// 🛡️ Sentinel: Clean up potentially malicious/corrupt/partial files on any error
+		if err != nil {
+			os.Remove(fullPath)
+		}
+	}()
 
 	// ⚡ Bolt: Compute SHA-256 hash simultaneously while writing to disk using an io.TeeReader.
 	// This eliminates the need to re-read the entire file from disk just to hash it,
@@ -79,12 +90,19 @@ func getFile(connection net.Conn, path string, fileName string, expectedHash str
 	// This enables the Go standard library to utilize zero-copy system calls
 	// (like splice or sendfile) and reduces function call overhead.
 	if fileSize > 0 {
-		if _, err := io.CopyN(newFile, reader, fileSize); err != nil {
+		if _, copyErr := io.CopyN(newFile, reader, fileSize); copyErr != nil {
+			err = copyErr
 			return err
 		}
 	}
 
 	hash := hex.EncodeToString(hashCalc.Sum(nil))
+
+	if hash != expectedHash {
+		// 🛡️ Sentinel: Reject files with mismatched hashes to prevent integrity check bypass
+		err = fmt.Errorf("file hash mismatch: expected %s, got %s", expectedHash, hash)
+		return err
+	}
 
 	log.Printf("=> Expected Hash: %s", expectedHash)
 	log.Printf("=> Actual Hash:   %s", hash)

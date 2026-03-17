@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"testing"
@@ -132,11 +133,15 @@ func TestDaemonLogic(t *testing.T) {
 	}
 	defer os.Remove(tempFile.Name())
 
-	fileName := tempFile.Name()
+	// The temp file path contains directories. Our code correctly prevents
+	// path traversal, so we can't send a full path over the network.
+	// We need to just send the base name for the test.
+	fileName := filepath.Base(tempFile.Name())
+	// But we still need the full path to create the local hash/file. Let's write to it.
 	tempFile.Write([]byte(fileContent))
 	tempFile.Close()
 
-	hash, _ := momo_common.HashFile(fileName)
+	hash, _ := momo_common.HashFile(tempFile.Name())
 
 	testCases := []struct {
 		name                string
@@ -184,7 +189,7 @@ func TestDaemonLogic(t *testing.T) {
 			client.Write(fileSizeBytes)
 
 			// Send file content
-			file, _ := os.Open(fileName)
+			file, _ := os.Open(tempFile.Name())
 			filedata := make([]byte, len(fileContent))
 			file.Read(filedata)
 			client.Write(filedata)
