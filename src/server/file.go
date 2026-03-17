@@ -88,8 +88,12 @@ func getFile(connection net.Conn, path string, fileName string, expectedHash str
 
 	if hash != expectedHash {
 		// 🛡️ Sentinel: Reject files with mismatched hashes to prevent integrity check bypass
-		os.Remove(fullPath) // Delete the potentially malicious/corrupt file
-		return log.Printf("file hash mismatch: expected %s, got %s", expectedHash, hash)
+		os.Remove(fullPath) // Delete the potentially malicious/corrupt filefile hash mismatch
+		log.Printf("file hash mismatch: expected %s, got %s", expectedHash, hash)
+		// TODO: I should include an error for this, maybe EIO (Input/output error) or EBADMSG (Bad message). These errors signify data corruption.
+		//      EIO => (Input/output error, 5)
+		//      EBADMSG => (Bad message, 74)
+		return "file hash mismatch", nil
 	}
 
 	log.Printf("=> Expected Hash: %s", expectedHash)
