@@ -3,13 +3,15 @@ package server
 
 import (
 	"bytes"
-	"fmt"
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"log"
 	"net"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	momo_common "github.com/alsotoes/momo/src/common"
 )
@@ -37,7 +39,7 @@ func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 
 	// 🛡️ Sentinel: Sanitize fileName immediately to prevent path traversal in all downstream consumers.
 	fileName := filepath.Base(string(bytes.Trim(bufferFileName, "\x00")))
-	if fileName == "." || fileName == ".." || fileName == "/" || fileName == "\\" {
+	if fileName == "." || fileName == ".." || strings.Contains(fileName, "/") || strings.Contains(fileName, "\\") {
 		return metadata, &os.PathError{Op: "getMetadata", Path: fileName, Err: os.ErrInvalid}
 	}
 
@@ -67,24 +69,27 @@ func getFile(connection net.Conn, path string, fileName string, expectedHash str
 
 	defer newFile.Close()
 
+	// ⚡ Bolt: Compute SHA-256 hash simultaneously while writing to disk using an io.TeeReader.
+	// This eliminates the need to re-read the entire file from disk just to hash it,
+	// cutting disk I/O in half and significantly speeding up file processing.
+	hashCalc := sha256.New()
+	reader := io.TeeReader(connection, hashCalc)
+
 	// Optimization: Use a single io.CopyN instead of manually chunking in a loop.
 	// This enables the Go standard library to utilize zero-copy system calls
 	// (like splice or sendfile) and reduces function call overhead.
 	if fileSize > 0 {
-		if _, err := io.CopyN(newFile, connection, fileSize); err != nil {
+		if _, err := io.CopyN(newFile, reader, fileSize); err != nil {
 			return err
 		}
 	}
 
-	hash, err := momo_common.HashFile(fullPath)
-	if err != nil {
-		return err
-	}
+	hash := hex.EncodeToString(hashCalc.Sum(nil))
 
 	if hash != expectedHash {
 		// 🛡️ Sentinel: Reject files with mismatched hashes to prevent integrity check bypass
 		os.Remove(fullPath) // Delete the potentially malicious/corrupt file
-		return fmt.Errorf("file hash mismatch: expected %s, got %s", expectedHash, hash)
+		return log.Printf("file hash mismatch: expected %s, got %s", expectedHash, hash)
 	}
 
 	log.Printf("=> Expected Hash: %s", expectedHash)
