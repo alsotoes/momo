@@ -26,3 +26,6 @@ aad1bce1332d2e13c190e9d0a6eef55aaa972c03,BenchmarkIndexSearch-4,2.18,0.00,0.00
 425db03757cddba49390f02b8f75c41673c80781,BenchmarkCheckMetricsAndSwap-4,8.43,0.00,0.00
 425db03757cddba49390f02b8f75c41673c80781,BenchmarkIndexDirectTracking-4,0.31,0.00,0.00
 425db03757cddba49390f02b8f75c41673c80781,BenchmarkIndexSearch-4,2.23,0.00,0.00
+0e4f82818175b4676c2bd85429f4dd014c74dadd,BenchmarkCheckMetricsAndSwap-4,8.45,0.00,0.00
+0e4f82818175b4676c2bd85429f4dd014c74dadd,BenchmarkIndexDirectTracking-4,0.31,0.00,0.00
+0e4f82818175b4676c2bd85429f4dd014c74dadd,BenchmarkIndexSearch-4,2.24,0.00,0.00
