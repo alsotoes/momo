@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	momo_common "github.com/alsotoes/momo/src/common"
 )
@@ -36,7 +37,7 @@ func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 
 	// 🛡️ Sentinel: Sanitize fileName immediately to prevent path traversal in all downstream consumers.
 	fileName := filepath.Base(string(bytes.Trim(bufferFileName, "\x00")))
-	if fileName == "." || fileName == ".." || fileName == "/" || fileName == "\\" {
+	if fileName == "." || fileName == ".." || strings.Contains(fileName, "/") || strings.Contains(fileName, "\\") {
 		return metadata, &os.PathError{Op: "getMetadata", Path: fileName, Err: os.ErrInvalid}
 	}
 
