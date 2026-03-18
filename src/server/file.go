@@ -53,6 +53,11 @@ func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 		return metadata, err
 	}
 
+	// 🛡️ Sentinel: Enforce file size limit to prevent Denial of Service via unbound resource allocation.
+	if fileSize > momo_common.MaxFileSize || fileSize < 0 {
+		return metadata, fmt.Errorf("file size %d exceeds limit or is negative", fileSize)
+	}
+
 	metadata.Name = fileName
 	metadata.Hash = fileHash
 	metadata.Size = fileSize
