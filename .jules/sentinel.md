@@ -11,3 +11,7 @@
 **Vulnerability:** Exact string match checks against `.` or `/` failed to prevent path traversal when embedded within legitimate-looking strings, or across cross-platform boundaries (e.g. `filepath.Base` missing `\` on linux).
 **Learning:** `filepath.Base` removes the trailing segments on the *current* operating system, but does not prevent malicious path characters from existing in the middle of a string.
 **Prevention:** Always use `strings.Contains` to ensure explicit path separators or traversal strings (`..`) are not embedded anywhere in untrusted filename input.
+## 2025-03-19 - Unbounded resource allocation via `fileSize`
+**Vulnerability:** The server blindly trusted the user-provided `fileSize` value in `getMetadata` and used it during memory/disk allocation scenarios (e.g. `io.CopyN`). By sending an extremely large value, an attacker could cause an out-of-bounds allocation or Denial of Service (DoS).
+**Learning:** `fileSize` received over the network is entirely untrusted user input, just like `fileName`. Trusting its size directly allows for unbounded allocation vulnerabilities.
+**Prevention:** Always validate numeric protocol values like size or length against predefined minimums (0) and maximums (e.g., `MaxFileSize = 1GB`) before acting on them.
