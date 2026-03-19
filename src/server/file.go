@@ -53,6 +53,11 @@ func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 		return metadata, err
 	}
 
+	// 🛡️ Sentinel: Validate file size to prevent unbounded resource allocation (DoS).
+	if fileSize < 0 || fileSize > momo_common.MaxFileSize {
+		return metadata, fmt.Errorf("file size %d exceeds maximum allowed size of %d", fileSize, momo_common.MaxFileSize)
+	}
+
 	metadata.Name = fileName
 	metadata.Hash = fileHash
 	metadata.Size = fileSize
