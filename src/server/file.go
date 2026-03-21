@@ -53,9 +53,9 @@ func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 		return metadata, err
 	}
 
-	// 🛡️ Sentinel: Validate file size to prevent unbounded resource allocation (DoS).
-	if fileSize < 0 || fileSize > momo_common.MaxFileSize {
-		return metadata, fmt.Errorf("file size %d exceeds maximum allowed size of %d", fileSize, momo_common.MaxFileSize)
+	// 🛡️ Sentinel: Enforce file size limit to prevent Denial of Service via unbound resource allocation.
+	if fileSize > momo_common.MaxFileSize || fileSize < 0 {
+		return metadata, fmt.Errorf("file size %d exceeds limit or is negative", fileSize)
 	}
 
 	metadata.Name = fileName
