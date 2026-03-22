@@ -18,3 +18,7 @@
 **Vulnerability:** The server blindly trusted the user-provided `fileSize` value in `getMetadata` and used it during memory/disk allocation scenarios (e.g. `io.CopyN`). By sending an extremely large value, an attacker could cause an out-of-bounds allocation or Denial of Service (DoS).
 **Learning:** `fileSize` received over the network is entirely untrusted user input, just like `fileName`. Trusting its size directly allows for unbounded allocation vulnerabilities.
 **Prevention:** Always validate numeric protocol values like size or length against predefined minimums (0) and maximums (e.g., `MaxFileSize = 1GB`) before acting on them.
+## 2025-03-22 - Data Destruction via Incomplete File Transfer
+**Vulnerability:** The application opened the final destination file directly when receiving data over the network. If the transfer failed or the hash check failed, the original file (if it existed) was overwritten with partial or corrupt data, leading to a denial of service or data destruction.
+**Learning:** Writing directly to the final destination path before verifying the integrity of the entire payload allows an attacker (or network failure) to destroy existing data by initiating a transfer and failing it.
+**Prevention:** Always write network payloads to a temporary file (`.tmp`) first. Only after the transfer is fully complete and its integrity (e.g., SHA-256 hash) is verified should the temporary file be atomically renamed to the final destination. Ensure the temporary file is deleted on any error.
