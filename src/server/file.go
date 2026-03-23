@@ -36,10 +36,20 @@ func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 	bufferFileName := buffer[64 : 64+momo_common.FileInfoLength]
 	bufferFileSize := buffer[64+momo_common.FileInfoLength:]
 
-	fileHash := string(bytes.Trim(bufferFileHash, "\x00"))
+	// ⚡ Bolt: Use bytes.IndexByte to find null terminator to avoid string allocation overhead
+	fileHashBytes := bufferFileHash
+	if idx := bytes.IndexByte(bufferFileHash, 0); idx != -1 {
+		fileHashBytes = bufferFileHash[:idx]
+	}
+	fileHash := string(fileHashBytes)
 
 	// 🛡️ Sentinel: Sanitize fileName immediately to prevent path traversal in all downstream consumers.
-	rawFileName := string(bytes.Trim(bufferFileName, "\x00"))
+	rawFileNameBytes := bufferFileName
+	if idx := bytes.IndexByte(bufferFileName, 0); idx != -1 {
+		rawFileNameBytes = bufferFileName[:idx]
+	}
+	rawFileName := string(rawFileNameBytes)
+
 	if rawFileName == "." || rawFileName == ".." || strings.Contains(rawFileName, "/") || strings.Contains(rawFileName, "\\") {
 		return metadata, &os.PathError{Op: "getMetadata", Path: rawFileName, Err: os.ErrInvalid}
 	}
@@ -48,7 +58,11 @@ func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 		return metadata, &os.PathError{Op: "getMetadata", Path: fileName, Err: os.ErrInvalid}
 	}
 
-	fileSize, err := strconv.ParseInt(string(bytes.Trim(bufferFileSize, "\x00")), 10, 64)
+	fileSizeBytes := bufferFileSize
+	if idx := bytes.IndexByte(bufferFileSize, 0); idx != -1 {
+		fileSizeBytes = bufferFileSize[:idx]
+	}
+	fileSize, err := strconv.ParseInt(string(fileSizeBytes), 10, 64)
 	if err != nil {
 		return metadata, err
 	}
