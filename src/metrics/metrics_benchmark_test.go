@@ -31,28 +31,3 @@ func BenchmarkCheckMetricsAndSwap(b *testing.B) {
 		checkMetricsAndSwap(cfg, sm, 4, replicationOrder)
 	}
 }
-
-func BenchmarkIndexSearch(b *testing.B) {
-	replicationOrder := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-	currentReplicationMode := 5
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		index := -1
-		for j, v := range replicationOrder {
-			if v == currentReplicationMode {
-				index = j
-				break
-			}
-		}
-		_ = index
-	}
-}
-
-func BenchmarkIndexDirectTracking(b *testing.B) {
-	replicationOrder := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-	currentIndex := 4 // tracks currentReplicationMode = 5
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = replicationOrder[currentIndex]
-	}
-}
