@@ -85,7 +85,8 @@ func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 // It logs the progress and the result of the hash check.
 func getFile(connection net.Conn, path string, fileName string, expectedHash string, fileSize int64) (err error) {
 	fullPath := filepath.Join(path, fileName)
-	newFile, err := os.Create(fullPath)
+	tmpPath := fullPath + ".tmp"
+	newFile, err := os.Create(tmpPath)
 
 	if err != nil {
 		return err
@@ -95,7 +96,7 @@ func getFile(connection net.Conn, path string, fileName string, expectedHash str
 		newFile.Close()
 		// 🛡️ Sentinel: Clean up potentially malicious/corrupt/partial files on any error
 		if err != nil {
-			os.Remove(fullPath)
+			os.Remove(tmpPath)
 		}
 	}()
 
@@ -121,6 +122,12 @@ func getFile(connection net.Conn, path string, fileName string, expectedHash str
 		// 🛡️ Sentinel: Reject files with mismatched hashes to prevent integrity check bypass
 		err = fmt.Errorf("file hash mismatch: expected %s, got %s", expectedHash, hash)
 		return err
+	}
+
+	// 🛡️ Sentinel: Close file before renaming (required for Windows) and perform atomic rename
+	newFile.Close()
+	if err = os.Rename(tmpPath, fullPath); err != nil {
+		return fmt.Errorf("failed to rename temp file: %v", err)
 	}
 
 	log.Printf("=> Expected Hash: %s", expectedHash)

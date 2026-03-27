@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"net"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -121,7 +120,12 @@ func TestChangeReplicationModeClient(t *testing.T) {
 	// Assert: Verify the mock server received the correct data.
 	select {
 	case data := <-received:
-		trimmedData := strings.TrimRight(string(data), "\x00")
+		var trimmedData string
+		if idx := bytes.IndexByte(data, 0); idx != -1 {
+			trimmedData = string(data[:idx])
+		} else {
+			trimmedData = string(data)
+		}
 		if trimmedData != jsonString {
 			t.Errorf("Expected to receive '%s', but got '%s'", jsonString, trimmedData)
 		}
