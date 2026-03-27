@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"net"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -29,7 +28,11 @@ func handleReplicationChange(t *testing.T, connection net.Conn, wg *sync.WaitGro
 
 	replicationJSON := momo_common.ReplicationData{}
 	// Trim null bytes before decoding
-	trimmedBytes := bytes.TrimRight(bufferReplicationMode, "\x00")
+	// ⚡ Bolt: Use bytes.IndexByte to find null terminator instead of bytes.TrimRight
+	trimmedBytes := bufferReplicationMode
+	if idx := bytes.IndexByte(bufferReplicationMode, 0); idx != -1 {
+		trimmedBytes = bufferReplicationMode[:idx]
+	}
 	if err := json.NewDecoder(bytes.NewReader(trimmedBytes)).Decode(&replicationJSON); err != nil {
 		t.Errorf("JSON decode error: %v", err)
 		return
@@ -117,7 +120,12 @@ func TestChangeReplicationModeClient(t *testing.T) {
 	// Assert: Verify the mock server received the correct data.
 	select {
 	case data := <-received:
-		trimmedData := strings.TrimRight(string(data), "\x00")
+		var trimmedData string
+		if idx := bytes.IndexByte(data, 0); idx != -1 {
+			trimmedData = string(data[:idx])
+		} else {
+			trimmedData = string(data)
+		}
 		if trimmedData != jsonString {
 			t.Errorf("Expected to receive '%s', but got '%s'", jsonString, trimmedData)
 		}
