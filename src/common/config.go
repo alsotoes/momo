@@ -78,6 +78,7 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 	}
 
 	parts := strings.Split(replicationOrderStr, ",")
+	// ⚡ Bolt: Pre-allocate the slice capacity to minimize memory allocations and improve performance.
 	// Optimization: Pre-allocate slice capacity to avoid reallocation overhead.
 	globalCfg.ReplicationOrder = make([]int, 0, len(parts))
 	for _, part := range parts {
@@ -127,6 +128,8 @@ func loadMetricsConfig(section *ini.Section) (ConfigurationMetrics, error) {
 // loadDaemons loads all [daemon.*] sections from the configuration.
 func loadDaemons(cfg *ini.File) ([]*Daemon, error) {
 	daemonSections := cfg.SectionStrings()
+	// ⚡ Bolt: Pre-allocate the slice capacity using the maximum possible size (number of sections)
+	// to minimize memory allocations and improve performance.
 	// Optimization: Pre-allocate slice capacity to avoid reallocation overhead.
 	daemons := make([]*Daemon, 0, len(daemonSections))
 

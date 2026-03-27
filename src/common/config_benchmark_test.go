@@ -7,27 +7,29 @@ import (
 )
 
 func BenchmarkParseReplicationOrder_NoPrealloc(b *testing.B) {
-	str := "1,2,3,4,5,6,7,8,9,10"
+	replicationOrderStr := "1, 2, 3, 4, 5, 6, 7, 8, 9, 10"
+	parts := strings.Split(replicationOrderStr, ",")
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		parts := strings.Split(str, ",")
-		var res []int
+		var orderSlice []int
 		for _, part := range parts {
-			val, _ := strconv.Atoi(strings.TrimSpace(part))
-			res = append(res, val)
+			order, _ := strconv.Atoi(strings.TrimSpace(part))
+			orderSlice = append(orderSlice, order)
 		}
+		_ = orderSlice
 	}
 }
 
 func BenchmarkParseReplicationOrder_Prealloc(b *testing.B) {
-	str := "1,2,3,4,5,6,7,8,9,10"
+	replicationOrderStr := "1, 2, 3, 4, 5, 6, 7, 8, 9, 10"
+	parts := strings.Split(replicationOrderStr, ",")
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		parts := strings.Split(str, ",")
-		res := make([]int, 0, len(parts))
+		orderSlice := make([]int, 0, len(parts))
 		for _, part := range parts {
-			val, _ := strconv.Atoi(strings.TrimSpace(part))
-			res = append(res, val)
+			order, _ := strconv.Atoi(strings.TrimSpace(part))
+			orderSlice = append(orderSlice, order)
 		}
+		_ = orderSlice
 	}
 }

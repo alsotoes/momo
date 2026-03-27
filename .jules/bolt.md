@@ -10,6 +10,10 @@
 **Learning:** `bytes.Trim` recursively checks both ends of a byte slice, causing performance overhead. Since padding is strictly null characters (`\x00`), `bytes.IndexByte(b, 0)` is ~6x faster because it immediately returns the index of the first null character and allows taking a direct slice, reducing operations significantly.
 **Action:** Replace `bytes.Trim(b, "\x00")` with a custom inline function utilizing `bytes.IndexByte` and slice manipulation when working with pre-allocated buffer padding.
 
+## 2026-03-26 - Pre-allocate slice capacity
+**Learning:** During configuration loading, `append` inside loops without pre-allocated capacity forces the Go runtime to repeatedly allocate new, larger arrays and copy data, creating unnecessary GC pressure and CPU overhead.
+**Action:** When parsing comma-separated strings or mapping sections into slices, always initialize the slice with `make([]T, 0, len(items))` if the size is known beforehand. This simple change reduces execution time and allocations.
+
 ## 2026-03-22 - Fast Null-Terminated String Parsing in Go
 **Learning:** For parsing fixed-size network buffers representing null-terminated strings, using `bytes.IndexByte(b, 0)` to find the terminator and slicing is significantly faster than using `bytes.Trim(b, "\x00")` or `bytes.TrimRight`. It avoids recursive checking and extra string allocations, performing ~2.5x to ~3.5x faster in benchmarks.
 **Action:** Always prefer `bytes.IndexByte` to locate the null byte and slice the array when parsing null-padded strings from fixed-size buffers, rather than using `bytes.Trim` or `strings.TrimRight`.
