@@ -18,3 +18,12 @@
 **Vulnerability:** The server blindly trusted the user-provided `fileSize` value in `getMetadata` and used it during memory/disk allocation scenarios (e.g. `io.CopyN`). By sending an extremely large value, an attacker could cause an out-of-bounds allocation or Denial of Service (DoS).
 **Learning:** `fileSize` received over the network is entirely untrusted user input, just like `fileName`. Trusting its size directly allows for unbounded allocation vulnerabilities.
 **Prevention:** Always validate numeric protocol values like size or length against predefined minimums (0) and maximums (e.g., `MaxFileSize = 1GB`) before acting on them.
+## 2025-03-21 - Data Destruction via Insecure File Upload Handling
+**Vulnerability:** The server used `os.Create(fullPath)` to write incoming files, immediately truncating any existing file with the same name. If an attacker uploaded a file with the same name as an existing important file and deliberately supplied a bad hash (or dropped the connection), the `defer` block would delete the file or leave it truncated. This is a critical data destruction/DoS vulnerability.
+**Learning:** Writing directly to the final destination path before completing all validations (including hash verification and completion checks) exposes existing data to tampering, truncation, or deletion by unauthenticated/unverified inputs.
+**Prevention:** Always write uploaded or network-transferred data to a temporary file (`.tmp`). Only after the entire transfer is complete and all security checks (e.g., hash validation) pass, safely commit the file by closing it and using an atomic `os.Rename(tempPath, finalPath)`.
+
+## 2024-03-24 - Prevent DoS via Hanging Connections in DialSocket
+**Vulnerability:** The `DialSocket` function in `src/common/net.go` used `net.ResolveTCPAddr` followed by `net.DialTCP` without any connection timeout, allowing a potential Denial of Service (DoS) attack or resource exhaustion by supplying unresponsive IP addresses or causing outbound connections to hang indefinitely during the TCP handshake.
+**Learning:** Network dialing operations must have an enforced timeout because default TCP timeout values provided by the operating system are often very long (e.g. minutes).
+**Prevention:** Use `net.DialTimeout` with a reasonable deadline (e.g., 10 seconds) instead of unbounded `net.DialTCP` or `net.Dial` for all outbound connections.
