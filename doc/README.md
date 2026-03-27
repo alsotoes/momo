@@ -240,30 +240,36 @@ This section is automatically updated by our GitHub Actions workflow.
 ### Comparison with previous commit
 
 ```
-                      │ old_bench_filtered.txt │       new_bench_filtered.txt        │
-                      │         sec/op         │    sec/op      vs base              │
-CheckMetricsAndSwap-4             8.427n ± ∞ ¹    8.441n ± ∞ ¹       ~ (p=0.690 n=5)
-IndexSearch-4                     2.189n ± ∞ ¹    2.190n ± ∞ ¹       ~ (p=0.548 n=5)
-IndexDirectTracking-4            0.3120n ± ∞ ¹   0.3120n ± ∞ ¹       ~ (p=0.952 n=5)
-geomean                           1.792n          1.793n        +0.07%
+                                   │ old_bench_filtered.txt │       new_bench_filtered.txt        │
+                                   │         sec/op         │    sec/op      vs base              │
+CheckMetricsAndSwap-4                          8.429n ± ∞ ¹    8.437n ± ∞ ¹       ~ (p=0.516 n=5)
+IndexSearch-4                                  2.186n ± ∞ ¹    2.184n ± ∞ ¹       ~ (p=0.540 n=5)
+IndexDirectTracking-4                         0.3127n ± ∞ ¹   0.3126n ± ∞ ¹       ~ (p=0.690 n=5)
+ParseReplicationOrder_NoPrealloc-4                             347.7n ± ∞ ¹
+ParseReplicationOrder_Prealloc-4                               229.1n ± ∞ ¹
+geomean                                        1.793n          13.56n        -0.01%
 ¹ need >= 6 samples for confidence interval at level 0.95
 
-                      │ old_bench_filtered.txt │       new_bench_filtered.txt        │
-                      │          B/op          │    B/op      vs base                │
-CheckMetricsAndSwap-4              0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
-IndexSearch-4                      0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
-IndexDirectTracking-4              0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
-geomean                                      ³                +0.00%               ³
+                                   │ old_bench_filtered.txt │       new_bench_filtered.txt        │
+                                   │          B/op          │    B/op      vs base                │
+CheckMetricsAndSwap-4                           0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+IndexSearch-4                                   0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+IndexDirectTracking-4                           0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+ParseReplicationOrder_NoPrealloc-4                            408.0 ± ∞ ¹
+ParseReplicationOrder_Prealloc-4                              240.0 ± ∞ ¹
+geomean                                                   ³                +0.00%               ³
 ¹ need >= 6 samples for confidence interval at level 0.95
 ² all samples are equal
 ³ summaries must be >0 to compute geomean
 
-                      │ old_bench_filtered.txt │       new_bench_filtered.txt        │
-                      │       allocs/op        │  allocs/op   vs base                │
-CheckMetricsAndSwap-4              0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
-IndexSearch-4                      0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
-IndexDirectTracking-4              0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
-geomean                                      ³                +0.00%               ³
+                                   │ old_bench_filtered.txt │       new_bench_filtered.txt        │
+                                   │       allocs/op        │  allocs/op   vs base                │
+CheckMetricsAndSwap-4                           0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+IndexSearch-4                                   0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+IndexDirectTracking-4                           0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+ParseReplicationOrder_NoPrealloc-4                            6.000 ± ∞ ¹
+ParseReplicationOrder_Prealloc-4                              2.000 ± ∞ ¹
+geomean                                                   ³                +0.00%               ³
 ¹ need >= 6 samples for confidence interval at level 0.95
 ² all samples are equal
 ³ summaries must be >0 to compute geomean
@@ -274,7 +280,7 @@ geomean                                      ³                +0.00%           
 
 | Benchmark | Avg. Time/Op | Avg. Bytes/Op | Avg. Allocs/Op |
 |-----------|--------------|---------------|----------------|
-| BenchmarkCheckMetricsAndSwap-4 | 8.48 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkIndexDirectTracking-4 | 0.31 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkIndexSearch-4 | 2.28 ns/op | 0.00 B/op | 0.00 allocs/op |\n
+| BenchmarkCheckMetricsAndSwap-4 | 8.43 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkIndexDirectTracking-4 | 0.31 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkIndexSearch-4 | 2.19 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkParseReplicationOrder_NoPrealloc-4 | 349.86 ns/op | 408.00 B/op | 6.00 allocs/op |\n| BenchmarkParseReplicationOrder_Prealloc-4 | 228.92 ns/op | 240.00 B/op | 2.00 allocs/op |\n
 
 ### Performance History
 
@@ -285,17 +291,19 @@ geomean                                      ³                +0.00%           
 | 🟢 | CheckMetricsAndSwap |
 | 🔵 | IndexDirectTracking |
 | 🔴 | IndexSearch |
-| 🟠 |  |
+| 🟠 | ParseReplicationOrder_NoPrealloc |
 
 ```mermaid
 xychart-beta
     title "Performance Trend (Avg. Time, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Time (ns/op)"
-    x-axis [535a,063a,425d,0e4f,e632,1234,09ab,c995,d6f8,0eeb]
-    line "CheckMetricsAndSwap" [8,8,8,8,7,8,9,7,8,8]
+    x-axis [063a,425d,0e4f,e632,1234,09ab,c995,d6f8,0eeb,327e]
+    line "CheckMetricsAndSwap" [8,8,8,7,8,9,7,8,8,8]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
-    line "IndexSearch" [2,2,2,2,4,2,2,4,2,2]
+    line "IndexSearch" [2,2,2,4,2,2,4,2,2,2]
+    line "ParseReplicationOrder_NoPrealloc" [350]
+    line "ParseReplicationOrder_Prealloc" [229]
 ```
 
 ```mermaid
@@ -303,10 +311,12 @@ xychart-beta
     title "Memory Trend (Avg. Bytes/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Bytes/Op"
-    x-axis [535a,063a,425d,0e4f,e632,1234,09ab,c995,d6f8,0eeb]
+    x-axis [063a,425d,0e4f,e632,1234,09ab,c995,d6f8,0eeb,327e]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [0,0,0,0,0,0,0,0,0,0]
+    line "ParseReplicationOrder_NoPrealloc" [408]
+    line "ParseReplicationOrder_Prealloc" [240]
 ```
 
 ```mermaid
@@ -314,9 +324,11 @@ xychart-beta
     title "Allocation Trend (Avg. Allocs/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Allocs/Op"
-    x-axis [535a,063a,425d,0e4f,e632,1234,09ab,c995,d6f8,0eeb]
+    x-axis [063a,425d,0e4f,e632,1234,09ab,c995,d6f8,0eeb,327e]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [0,0,0,0,0,0,0,0,0,0]
+    line "ParseReplicationOrder_NoPrealloc" [6]
+    line "ParseReplicationOrder_Prealloc" [2]
 ```
 <!-- BENCHMARK_RESULTS_END -->
