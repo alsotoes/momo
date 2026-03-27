@@ -36,19 +36,20 @@ func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 	bufferFileName := buffer[64 : 64+momo_common.FileInfoLength]
 	bufferFileSize := buffer[64+momo_common.FileInfoLength:]
 
-	// ⚡ Bolt: Fast parsing of null-padded byte slices using bytes.IndexByte.
-	// bytes.IndexByte is roughly 6x faster than bytes.Trim since it returns the first null character instead of trimming both ends recursively.
-	getString := func(b []byte) string {
-		if idx := bytes.IndexByte(b, 0); idx != -1 {
-			return string(b[:idx])
-		}
-		return string(b)
+	// ⚡ Bolt: Use bytes.IndexByte to find null terminator to avoid string allocation overhead
+	fileHashBytes := bufferFileHash
+	if idx := bytes.IndexByte(bufferFileHash, 0); idx != -1 {
+		fileHashBytes = bufferFileHash[:idx]
 	}
-
-	fileHash := getString(bufferFileHash)
+	fileHash := string(fileHashBytes)
 
 	// 🛡️ Sentinel: Sanitize fileName immediately to prevent path traversal in all downstream consumers.
-	rawFileName := getString(bufferFileName)
+	rawFileNameBytes := bufferFileName
+	if idx := bytes.IndexByte(bufferFileName, 0); idx != -1 {
+		rawFileNameBytes = bufferFileName[:idx]
+	}
+	rawFileName := string(rawFileNameBytes)
+
 	if rawFileName == "." || rawFileName == ".." || strings.Contains(rawFileName, "/") || strings.Contains(rawFileName, "\\") {
 		return metadata, &os.PathError{Op: "getMetadata", Path: rawFileName, Err: os.ErrInvalid}
 	}
@@ -57,8 +58,11 @@ func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 		return metadata, &os.PathError{Op: "getMetadata", Path: fileName, Err: os.ErrInvalid}
 	}
 
-	fileSizeStr := getString(bufferFileSize)
-	fileSize, err := strconv.ParseInt(fileSizeStr, 10, 64)
+	fileSizeBytes := bufferFileSize
+	if idx := bytes.IndexByte(bufferFileSize, 0); idx != -1 {
+		fileSizeBytes = bufferFileSize[:idx]
+	}
+	fileSize, err := strconv.ParseInt(string(fileSizeBytes), 10, 64)
 	if err != nil {
 		return metadata, err
 	}
@@ -81,8 +85,8 @@ func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 // It logs the progress and the result of the hash check.
 func getFile(connection net.Conn, path string, fileName string, expectedHash string, fileSize int64) (err error) {
 	fullPath := filepath.Join(path, fileName)
-	tempPath := fullPath + ".tmp"
-	newFile, err := os.Create(tempPath)
+	tmpPath := fullPath + ".tmp"
+	newFile, err := os.Create(tmpPath)
 
 	if err != nil {
 		return err
@@ -92,7 +96,7 @@ func getFile(connection net.Conn, path string, fileName string, expectedHash str
 		newFile.Close()
 		// 🛡️ Sentinel: Clean up potentially malicious/corrupt/partial files on any error
 		if err != nil {
-			os.Remove(tempPath)
+			os.Remove(tmpPath)
 		}
 	}()
 
@@ -120,11 +124,10 @@ func getFile(connection net.Conn, path string, fileName string, expectedHash str
 		return err
 	}
 
-	// 🛡️ Sentinel: Safely commit the verified file
-	newFile.Close() // Ensure it's fully flushed/closed before renaming
-	if renameErr := os.Rename(tempPath, fullPath); renameErr != nil {
-		err = renameErr
-		return err
+	// 🛡️ Sentinel: Close file before renaming (required for Windows) and perform atomic rename
+	newFile.Close()
+	if err = os.Rename(tmpPath, fullPath); err != nil {
+		return fmt.Errorf("failed to rename temp file: %v", err)
 	}
 
 	log.Printf("=> Expected Hash: %s", expectedHash)
