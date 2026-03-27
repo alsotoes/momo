@@ -33,6 +33,11 @@
 **Learning:** Writing directly to the final destination path before completing all validations (including hash verification and completion checks) exposes existing data to tampering, truncation, or deletion by unauthenticated/unverified inputs.
 **Prevention:** Always write uploaded or network-transferred data to a temporary file (`.tmp`). Only after the entire transfer is complete and all security checks (e.g., hash validation) pass, safely commit the file by closing it and using an atomic `os.Rename(tempPath, finalPath)`.
 
+## 2025-03-26 - Denial of Service via Hanging Outbound TCP Connections
+**Vulnerability:** Unbounded outbound TCP connections using `net.DialTCP` (without timeouts). An attacker could exhaust system resources (file descriptors, memory) by causing outbound network calls to block indefinitely on unresponsive endpoints (Denial of Service).
+**Learning:** All network communication—both incoming and outgoing—must use proper bounds. A connection attempt to another node might hang forever if the remote server drops packets without answering.
+**Prevention:** Always use `net.DialTimeout` with a reasonable deadline (e.g., 10 seconds) instead of the default `net.Dial` or `net.DialTCP` for network client dial operations.
+
 ## 2025-03-25 - Denial of Service via Hanging Outbound Connections
 **Vulnerability:** The application used `net.DialTCP` for outbound network connections without any timeout configured. An attacker or a malfunctioning network node could keep the connection open indefinitely, exhausting local file descriptors and causing a Denial of Service (DoS).
 **Learning:** Network endpoints must never establish outbound connections without a defined maximum duration. Standard `Dial` or `DialTCP` calls can hang forever if the destination IP is blackholed or drops packets without responding.
