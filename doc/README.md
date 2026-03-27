@@ -240,36 +240,36 @@ This section is automatically updated by our GitHub Actions workflow.
 ### Comparison with previous commit
 
 ```
-                                   │ old_bench_filtered.txt │        new_bench_filtered.txt        │
-                                   │         sec/op         │    sec/op      vs base               │
-ParseReplicationOrder_NoPrealloc-4             347.8n ± ∞ ¹    223.5n ± ∞ ¹  -35.74% (p=0.008 n=5)
-ParseReplicationOrder_Prealloc-4               232.6n ± ∞ ¹    106.9n ± ∞ ¹  -54.04% (p=0.008 n=5)
-CheckMetricsAndSwap-4                          8.435n ± ∞ ¹    8.444n ± ∞ ¹        ~ (p=1.000 n=5)
-IndexSearch-4                                  2.193n ± ∞ ¹    2.186n ± ∞ ¹        ~ (p=0.103 n=5)
-IndexDirectTracking-4                         0.3119n ± ∞ ¹   0.3123n ± ∞ ¹        ~ (p=0.238 n=5)
-geomean                                        13.61n          10.66n        -21.66%
+                                   │ old_bench_filtered.txt │       new_bench_filtered.txt        │
+                                   │         sec/op         │    sec/op      vs base              │
+ParseReplicationOrder_NoPrealloc-4             227.2n ± ∞ ¹    228.4n ± ∞ ¹       ~ (p=0.421 n=5)
+ParseReplicationOrder_Prealloc-4               106.7n ± ∞ ¹    107.1n ± ∞ ¹       ~ (p=0.230 n=5)
+CheckMetricsAndSwap-4                          8.443n ± ∞ ¹    8.438n ± ∞ ¹       ~ (p=1.000 n=5)
+IndexSearch-4                                  2.189n ± ∞ ¹    2.199n ± ∞ ¹       ~ (p=0.595 n=5)
+IndexDirectTracking-4                         0.3120n ± ∞ ¹   0.3124n ± ∞ ¹       ~ (p=0.452 n=5)
+geomean                                        10.69n          10.72n        +0.29%
 ¹ need >= 6 samples for confidence interval at level 0.95
 
-                                   │ old_bench_filtered.txt │        new_bench_filtered.txt        │
-                                   │          B/op          │    B/op      vs base                 │
-ParseReplicationOrder_NoPrealloc-4              408.0 ± ∞ ¹   248.0 ± ∞ ¹  -39.22% (p=0.008 n=5)
-ParseReplicationOrder_Prealloc-4               240.00 ± ∞ ¹   80.00 ± ∞ ¹  -66.67% (p=0.008 n=5)
-CheckMetricsAndSwap-4                           0.000 ± ∞ ¹   0.000 ± ∞ ¹        ~ (p=1.000 n=5) ²
-IndexSearch-4                                   0.000 ± ∞ ¹   0.000 ± ∞ ¹        ~ (p=1.000 n=5) ²
-IndexDirectTracking-4                           0.000 ± ∞ ¹   0.000 ± ∞ ¹        ~ (p=1.000 n=5) ²
-geomean                                                   ³                -27.33%               ³
+                                   │ old_bench_filtered.txt │       new_bench_filtered.txt        │
+                                   │          B/op          │    B/op      vs base                │
+ParseReplicationOrder_NoPrealloc-4              248.0 ± ∞ ¹   248.0 ± ∞ ¹       ~ (p=1.000 n=5) ²
+ParseReplicationOrder_Prealloc-4                80.00 ± ∞ ¹   80.00 ± ∞ ¹       ~ (p=1.000 n=5) ²
+CheckMetricsAndSwap-4                           0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+IndexSearch-4                                   0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+IndexDirectTracking-4                           0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+geomean                                                   ³                +0.00%               ³
 ¹ need >= 6 samples for confidence interval at level 0.95
 ² all samples are equal
 ³ summaries must be >0 to compute geomean
 
-                                   │ old_bench_filtered.txt │        new_bench_filtered.txt        │
-                                   │       allocs/op        │  allocs/op   vs base                 │
-ParseReplicationOrder_NoPrealloc-4              6.000 ± ∞ ¹   5.000 ± ∞ ¹  -16.67% (p=0.008 n=5)
-ParseReplicationOrder_Prealloc-4                2.000 ± ∞ ¹   1.000 ± ∞ ¹  -50.00% (p=0.008 n=5)
-CheckMetricsAndSwap-4                           0.000 ± ∞ ¹   0.000 ± ∞ ¹        ~ (p=1.000 n=5) ²
-IndexSearch-4                                   0.000 ± ∞ ¹   0.000 ± ∞ ¹        ~ (p=1.000 n=5) ²
-IndexDirectTracking-4                           0.000 ± ∞ ¹   0.000 ± ∞ ¹        ~ (p=1.000 n=5) ²
-geomean                                                   ³                -16.06%               ³
+                                   │ old_bench_filtered.txt │       new_bench_filtered.txt        │
+                                   │       allocs/op        │  allocs/op   vs base                │
+ParseReplicationOrder_NoPrealloc-4              5.000 ± ∞ ¹   5.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+ParseReplicationOrder_Prealloc-4                1.000 ± ∞ ¹   1.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+CheckMetricsAndSwap-4                           0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+IndexSearch-4                                   0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+IndexDirectTracking-4                           0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+geomean                                                   ³                +0.00%               ³
 ¹ need >= 6 samples for confidence interval at level 0.95
 ² all samples are equal
 ³ summaries must be >0 to compute geomean
@@ -280,7 +280,7 @@ geomean                                                   ³                -16.
 
 | Benchmark | Avg. Time/Op | Avg. Bytes/Op | Avg. Allocs/Op |
 |-----------|--------------|---------------|----------------|
-| BenchmarkCheckMetricsAndSwap-4 | 8.46 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkIndexDirectTracking-4 | 0.31 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkIndexSearch-4 | 2.19 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkParseReplicationOrder_NoPrealloc-4 | 224.80 ns/op | 248.00 B/op | 5.00 allocs/op |\n| BenchmarkParseReplicationOrder_Prealloc-4 | 107.70 ns/op | 80.00 B/op | 1.00 allocs/op |\n
+| BenchmarkCheckMetricsAndSwap-4 | 8.52 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkIndexDirectTracking-4 | 0.31 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkIndexSearch-4 | 2.29 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkParseReplicationOrder_NoPrealloc-4 | 228.68 ns/op | 248.00 B/op | 5.00 allocs/op |\n| BenchmarkParseReplicationOrder_Prealloc-4 | 107.04 ns/op | 80.00 B/op | 1.00 allocs/op |\n
 
 ### Performance History
 
@@ -298,12 +298,12 @@ xychart-beta
     title "Performance Trend (Avg. Time, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Time (ns/op)"
-    x-axis [09ab,c995,d6f8,0eeb,327e,1f26,cdca,bb13,8d84,a9d9]
-    line "CheckMetricsAndSwap" [9,7,8,8,8,8,8,8,8,8]
+    x-axis [d6f8,0eeb,327e,1f26,cdca,bb13,8d84,a9d9,4701]
+    line "CheckMetricsAndSwap" [7,8,8,8,8,8,8,8,8,9]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
-    line "IndexSearch" [2,4,2,2,2,2,2,2,2,2]
-    line "ParseReplicationOrder_NoPrealloc" [350,349,357,354,345,225]
-    line "ParseReplicationOrder_Prealloc" [229,231,237,234,229,108]
+    line "IndexSearch" [4,2,2,2,2,2,2,2,2,2]
+    line "ParseReplicationOrder_NoPrealloc" [350,349,357,354,345,225,229]
+    line "ParseReplicationOrder_Prealloc" [229,231,237,234,229,108,107]
 ```
 
 ```mermaid
@@ -311,12 +311,12 @@ xychart-beta
     title "Memory Trend (Avg. Bytes/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Bytes/Op"
-    x-axis [09ab,c995,d6f8,0eeb,327e,1f26,cdca,bb13,8d84,a9d9]
+    x-axis [d6f8,0eeb,327e,1f26,cdca,bb13,8d84,a9d9,4701]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [0,0,0,0,0,0,0,0,0,0]
-    line "ParseReplicationOrder_NoPrealloc" [408,408,408,408,408,248]
-    line "ParseReplicationOrder_Prealloc" [240,240,240,240,240,80]
+    line "ParseReplicationOrder_NoPrealloc" [408,408,408,408,408,248,248]
+    line "ParseReplicationOrder_Prealloc" [240,240,240,240,240,80,80]
 ```
 
 ```mermaid
@@ -324,11 +324,11 @@ xychart-beta
     title "Allocation Trend (Avg. Allocs/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Allocs/Op"
-    x-axis [09ab,c995,d6f8,0eeb,327e,1f26,cdca,bb13,8d84,a9d9]
+    x-axis [d6f8,0eeb,327e,1f26,cdca,bb13,8d84,a9d9,4701]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [0,0,0,0,0,0,0,0,0,0]
-    line "ParseReplicationOrder_NoPrealloc" [6,6,6,6,6,5]
-    line "ParseReplicationOrder_Prealloc" [2,2,2,2,2,1]
+    line "ParseReplicationOrder_NoPrealloc" [6,6,6,6,6,5,5]
+    line "ParseReplicationOrder_Prealloc" [2,2,2,2,2,1,1]
 ```
 <!-- BENCHMARK_RESULTS_END -->
