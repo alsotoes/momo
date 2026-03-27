@@ -28,11 +28,10 @@ func handleReplicationChange(t *testing.T, connection net.Conn, wg *sync.WaitGro
 
 	replicationJSON := momo_common.ReplicationData{}
 	// Trim null bytes before decoding
-	var trimmedBytes []byte
+	// ⚡ Bolt: Use bytes.IndexByte to find null terminator instead of bytes.TrimRight
+	trimmedBytes := bufferReplicationMode
 	if idx := bytes.IndexByte(bufferReplicationMode, 0); idx != -1 {
 		trimmedBytes = bufferReplicationMode[:idx]
-	} else {
-		trimmedBytes = bufferReplicationMode
 	}
 	if err := json.NewDecoder(bytes.NewReader(trimmedBytes)).Decode(&replicationJSON); err != nil {
 		t.Errorf("JSON decode error: %v", err)
