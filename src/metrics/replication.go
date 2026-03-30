@@ -12,12 +12,13 @@ import (
 // pushNewReplicationMode notifies the primary daemon of a replication mode change.
 // It connects to the ChangeReplication endpoint of the first daemon listed in the configuration
 // and sends a JSON payload containing the new replication mode and the current timestamp.
-func pushNewReplicationMode(newReplicationMode int) {
+// ⚡ Bolt: Accept configuration as an argument instead of calling GetConfigFromFile on every invocation to eliminate redundant file I/O and parsing overhead.
+func pushNewReplicationMode(config momo_common.Configuration, newReplicationMode int) {
 	log.Printf("Notifying primary daemon of new replication mode: %d", newReplicationMode)
 
-	config, err := momo_common.GetConfigFromFile()
-	if err != nil {
-		log.Fatalf("Failed to get config: %v", err)
+	if len(config.Daemons) == 0 {
+		log.Printf("No daemons configured")
+		return
 	}
 
 	conn, err := momo_common.DialSocket(config.Daemons[0].ChangeReplication)
