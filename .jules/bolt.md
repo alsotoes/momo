@@ -25,3 +25,7 @@
 ## 2026-03-29 - Fast Custom Padding String Parsing
 **Learning:** For padding variables, `strconv.ParseInt(string(bytes))` creates unneeded string allocations and conversions. By implementing a custom null-byte padded parsing function directly over the `[]byte` representation, it offers roughly a 40%+ performance boost over standard `strconv.ParseInt` with `string()` conversion, decreasing execution time per loop significantly for fixed-width networking variables.
 **Action:** Replace `strconv.ParseInt` with customized byte-level iteration mapping for networking variables where length and type (like ascii digits) and structure (like null-termination) are known ahead of time.
+
+## 2024-03-27 - Fast Configuration Passing in Periodic Loops
+**Learning:** In periodic loops or event handlers (like metric loops or health checks), re-parsing configuration files by calling helper functions like `GetConfigFromFile()` on every execution introduces severe file I/O and parsing overhead, dragging down performance and creating unnecessary garbage.
+**Action:** Always inject or pass the pre-parsed `Configuration` object down the call stack instead of re-reading it from disk, especially in hot paths and periodic functions.
