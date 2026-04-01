@@ -29,3 +29,7 @@
 ## 2024-03-27 - Fast Configuration Passing in Periodic Loops
 **Learning:** In periodic loops or event handlers (like metric loops or health checks), re-parsing configuration files by calling helper functions like `GetConfigFromFile()` on every execution introduces severe file I/O and parsing overhead, dragging down performance and creating unnecessary garbage.
 **Action:** Always inject or pass the pre-parsed `Configuration` object down the call stack instead of re-reading it from disk, especially in hot paths and periodic functions.
+
+## 2024-05-19 - Fast Integer Parsing from Byte Slices
+**Learning:** Extracting an allocation-free custom byte parser (like `parsePaddedIntFast`) from a closure to a package-level function allows it to be reused on multiple hot paths. For fixed-size, null-padded buffers, this avoids `strconv.ParseInt(string(b))` which forces string allocations, speeding up parsing times by ~50% (~24ns vs ~48ns).
+**Action:** When repeatedly parsing fixed-width numeric network buffers, implement and reuse a zero-allocation byte iterating parser rather than casting `[]byte` to `string` to use standard library functions.
