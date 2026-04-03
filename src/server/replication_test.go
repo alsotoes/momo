@@ -104,9 +104,12 @@ func TestChangeReplicationModeClient(t *testing.T) {
 		}
 		defer conn.Close()
 
-		buf := make([]byte, momo_common.FileInfoLength)
+		buf := make([]byte, momo_common.FileInfoLength+64) // Include room for token
 		n, _ := conn.Read(buf)
-		received <- buf[:n] // Send received data to the channel.
+		// changeReplicationModeClient sends two writes (Token then JSON). We should read everything sent.
+		buf2 := make([]byte, momo_common.FileInfoLength)
+		n2, _ := conn.Read(buf2)
+		received <- append(buf[:n], buf2[:n2]...) // Send received data to the channel.
 	}()
 
 	// Act: Call the function under test.
@@ -114,20 +117,16 @@ func TestChangeReplicationModeClient(t *testing.T) {
 		{ChangeReplication: serverAddr}, // Configure the daemon to connect to our mock server.
 	}
 	jsonString := `{"New":5,"TimeStamp":1662756600}`
+	authToken := "test_token"
 
-	changeReplicationModeClient(daemons, jsonString, 0)
+	changeReplicationModeClient(daemons, jsonString, 0, authToken)
 
 	// Assert: Verify the mock server received the correct data.
 	select {
 	case data := <-received:
-		var trimmedData string
-		if idx := bytes.IndexByte(data, 0); idx != -1 {
-			trimmedData = string(data[:idx])
-		} else {
-			trimmedData = string(data)
-		}
-		if trimmedData != jsonString {
-			t.Errorf("Expected to receive '%s', but got '%s'", jsonString, trimmedData)
+		expectedData := []byte(momo_common.PadString(authToken, 64) + jsonString)
+		if !bytes.Equal(data, expectedData) {
+			t.Errorf("Expected to receive '%s', but got '%s'", expectedData, data)
 		}
 	case <-time.After(1 * time.Second):
 		t.Fatal("Test timed out, no data received by the server.")
