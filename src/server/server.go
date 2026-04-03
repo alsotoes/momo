@@ -71,7 +71,9 @@ func Daemon(ctx context.Context, daemons []*momo_common.Daemon, serverId int) {
 			defer func() {
 				if success {
 					log.Printf("Server ACK to Client => ACK%d", serverId)
-					idleConn.Write([]byte("ACK" + strconv.Itoa(serverId)))
+					// ⚡ Bolt: Use strconv.AppendInt directly on the "ACK" byte slice
+					// to avoid string concatenation ("ACK" + string) overhead before network write.
+					idleConn.Write(strconv.AppendInt([]byte("ACK"), int64(serverId), 10))
 				}
 				idleConn.Close()
 			}()
@@ -110,7 +112,9 @@ func Daemon(ctx context.Context, daemons []*momo_common.Daemon, serverId int) {
 
 			log.Printf("Cluster object global timestamp: %d", timestamp)
 			log.Printf("Server Daemon replicationMode: %d", replicationMode)
-			if _, err := idleConn.Write([]byte(strconv.FormatInt(int64(replicationMode), 10))); err != nil {
+			// ⚡ Bolt: Use strconv.AppendInt instead of []byte(strconv.FormatInt())
+			// to avoid intermediate string allocations when formatting integers into byte slices for network transmission.
+			if _, err := idleConn.Write(strconv.AppendInt(make([]byte, 0, 32), int64(replicationMode), 10)); err != nil {
 				log.Printf("Error sending replication mode: %v", err)
 				return
 			}
