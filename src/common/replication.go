@@ -28,7 +28,9 @@ func Connect(wg *sync.WaitGroup, daemons []*Daemon, filePath string, serverId in
 	connections = append(connections, initialConn)
 
 	// Perform handshake to get replication mode
-	if _, err := initialConn.Write([]byte(strconv.FormatInt(timestamp, 10))); err != nil {
+	// ⚡ Bolt: Use strconv.AppendInt instead of []byte(strconv.FormatInt())
+	// to avoid intermediate string allocations when formatting integers into byte slices for network transmission.
+	if _, err := initialConn.Write(strconv.AppendInt(make([]byte, 0, 32), timestamp, 10)); err != nil {
 		log.Printf("Failed to send timestamp to %s: %v", daemons[serverId].Host, err)
 		initialConn.Close()
 		return
@@ -62,7 +64,8 @@ func Connect(wg *sync.WaitGroup, daemons []*Daemon, filePath string, serverId in
 			}
 
 			// Perform handshake with the other daemons
-			if _, err := conn.Write([]byte(strconv.FormatInt(timestamp, 10))); err != nil {
+			// ⚡ Bolt: Use strconv.AppendInt to prevent string allocation
+			if _, err := conn.Write(strconv.AppendInt(make([]byte, 0, 32), timestamp, 10)); err != nil {
 				log.Printf("Failed to send timestamp to %s: %v", daemon.Host, err)
 				conn.Close()
 				continue

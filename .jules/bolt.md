@@ -33,3 +33,7 @@
 ## 2024-05-19 - Fast Integer Parsing from Byte Slices
 **Learning:** Extracting an allocation-free custom byte parser (like `parsePaddedIntFast`) from a closure to a package-level function allows it to be reused on multiple hot paths. For fixed-size, null-padded buffers, this avoids `strconv.ParseInt(string(b))` which forces string allocations, speeding up parsing times by ~50% (~24ns vs ~48ns).
 **Action:** When repeatedly parsing fixed-width numeric network buffers, implement and reuse a zero-allocation byte iterating parser rather than casting `[]byte` to `string` to use standard library functions.
+
+## 2026-04-03 - Avoid Intermediate String Allocations for Integer Networking Writes
+**Learning:** Converting an integer to a byte slice using `[]byte(strconv.FormatInt(val, 10))` or `[]byte(strconv.Itoa(val))` creates an intermediate string allocation before converting it to bytes. Using `strconv.AppendInt(make([]byte, 0, 32), val, 10)` writes the integer directly to the byte slice, avoiding the intermediate string allocation and improving performance significantly during network transmission.
+**Action:** Always prefer `strconv.AppendInt` onto an existing or pre-allocated byte slice instead of using `strconv.FormatInt` or `strconv.Itoa` when preparing integers for network transmission.
