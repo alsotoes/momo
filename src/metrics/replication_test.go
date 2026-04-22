@@ -52,3 +52,13 @@ func TestPushNewReplicationMode(t *testing.T) {
 	// Give the server time to process the request
 	time.Sleep(100 * time.Millisecond)
 }
+
+func TestPushNewReplicationMode_NoDaemons(t *testing.T) {
+	// Mock config with no daemons
+	cfg := momo_common.Configuration{
+		Daemons: []*momo_common.Daemon{},
+	}
+
+	// This should not panic and should return early
+	pushNewReplicationMode(cfg, 5)
+}
