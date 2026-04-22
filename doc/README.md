@@ -242,10 +242,10 @@ This section is automatically updated by our GitHub Actions workflow.
 ```
                                    │ old_bench_filtered.txt │       new_bench_filtered.txt       │
                                    │         sec/op         │    sec/op     vs base              │
-ParseReplicationOrder_NoPrealloc-4             225.0n ± ∞ ¹   224.6n ± ∞ ¹       ~ (p=0.548 n=5)
-ParseReplicationOrder_Prealloc-4               106.9n ± ∞ ¹   107.1n ± ∞ ¹       ~ (p=1.000 n=5)
-CheckMetricsAndSwap-4                          8.434n ± ∞ ¹   8.448n ± ∞ ¹       ~ (p=0.206 n=5)
-geomean                                        58.76n         58.79n        +0.06%
+ParseReplicationOrder_NoPrealloc-4             225.9n ± ∞ ¹   224.6n ± ∞ ¹       ~ (p=0.310 n=5)
+ParseReplicationOrder_Prealloc-4               106.4n ± ∞ ¹   106.4n ± ∞ ¹       ~ (p=0.540 n=5)
+CheckMetricsAndSwap-4                          8.431n ± ∞ ¹   8.424n ± ∞ ¹       ~ (p=0.357 n=5)
+geomean                                        58.74n         58.61n        -0.22%
 ¹ need >= 6 samples for confidence interval at level 0.95
 
                                    │ old_bench_filtered.txt │       new_bench_filtered.txt        │
@@ -274,7 +274,7 @@ geomean                                                   ³                +0.0
 
 | Benchmark | Avg. Time/Op | Avg. Bytes/Op | Avg. Allocs/Op |
 |-----------|--------------|---------------|----------------|
-| BenchmarkCheckMetricsAndSwap-4 | 8.45 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkParseReplicationOrder_NoPrealloc-4 | 225.36 ns/op | 248.00 B/op | 5.00 allocs/op |\n| BenchmarkParseReplicationOrder_Prealloc-4 | 107.04 ns/op | 80.00 B/op | 1.00 allocs/op |\n
+| BenchmarkCheckMetricsAndSwap-4 | 8.43 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkParseReplicationOrder_NoPrealloc-4 | 225.44 ns/op | 248.00 B/op | 5.00 allocs/op |\n| BenchmarkParseReplicationOrder_Prealloc-4 | 106.70 ns/op | 80.00 B/op | 1.00 allocs/op |\n
 
 ### Performance History
 
@@ -292,12 +292,12 @@ xychart-beta
     title "Performance Trend (Avg. Time, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Time (ns/op)"
-    x-axis [cdca,bb13,8d84,a9d9,4701,3c85,b5e2,6def,7c1c,1b3e]
-    line "CheckMetricsAndSwap" [8,8,8,8,9,8,8,8,8,8]
+    x-axis [bb13,8d84,a9d9,4701,3c85,b5e2,6def,7c1c,1b3e,660a]
+    line "CheckMetricsAndSwap" [8,8,8,9,8,8,8,8,8,8]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [4,2,2,2,2,2,2,2,2,2]
-    line "ParseReplicationOrder_NoPrealloc" [357,354,345,225,229,228,207,228,230,225]
-    line "ParseReplicationOrder_Prealloc" [237,234,229,108,107,107,102,106,107,107]
+    line "ParseReplicationOrder_NoPrealloc" [354,345,225,229,228,207,228,230,225,225]
+    line "ParseReplicationOrder_Prealloc" [234,229,108,107,107,102,106,107,107,107]
 ```
 
 ```mermaid
@@ -305,12 +305,12 @@ xychart-beta
     title "Memory Trend (Avg. Bytes/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Bytes/Op"
-    x-axis [cdca,bb13,8d84,a9d9,4701,3c85,b5e2,6def,7c1c,1b3e]
+    x-axis [bb13,8d84,a9d9,4701,3c85,b5e2,6def,7c1c,1b3e,660a]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [0,0,0,0,0,0,0,0,0,0]
-    line "ParseReplicationOrder_NoPrealloc" [408,408,408,248,248,248,248,248,248,248]
-    line "ParseReplicationOrder_Prealloc" [240,240,240,80,80,80,80,80,80,80]
+    line "ParseReplicationOrder_NoPrealloc" [408,408,248,248,248,248,248,248,248,248]
+    line "ParseReplicationOrder_Prealloc" [240,240,80,80,80,80,80,80,80,80]
 ```
 
 ```mermaid
@@ -318,11 +318,11 @@ xychart-beta
     title "Allocation Trend (Avg. Allocs/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Allocs/Op"
-    x-axis [cdca,bb13,8d84,a9d9,4701,3c85,b5e2,6def,7c1c,1b3e]
+    x-axis [bb13,8d84,a9d9,4701,3c85,b5e2,6def,7c1c,1b3e,660a]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [0,0,0,0,0,0,0,0,0,0]
-    line "ParseReplicationOrder_NoPrealloc" [6,6,6,5,5,5,5,5,5,5]
-    line "ParseReplicationOrder_Prealloc" [2,2,2,1,1,1,1,1,1,1]
+    line "ParseReplicationOrder_NoPrealloc" [6,6,5,5,5,5,5,5,5,5]
+    line "ParseReplicationOrder_Prealloc" [2,2,1,1,1,1,1,1,1,1]
 ```
 <!-- BENCHMARK_RESULTS_END -->
