@@ -87,3 +87,8 @@ c2829f9025b9307951801c9048353e9902be06f6,BenchmarkIndexDirectTracking-4,0.27,0.0
 c2829f9025b9307951801c9048353e9902be06f6,BenchmarkIndexSearch-4,3.02,0.00,0.00
 c2829f9025b9307951801c9048353e9902be06f6,BenchmarkParseReplicationOrder_NoPrealloc-4,164.64,248.00,5.00
 c2829f9025b9307951801c9048353e9902be06f6,BenchmarkParseReplicationOrder_Prealloc-4,79.98,80.00,1.00
+fc744ed9fc8d16dabec8dc7d8b5a4febc5a40cc8,BenchmarkCheckMetricsAndSwap-4,8.76,0.00,0.00
+fc744ed9fc8d16dabec8dc7d8b5a4febc5a40cc8,BenchmarkIndexDirectTracking-4,0.31,0.00,0.00
+fc744ed9fc8d16dabec8dc7d8b5a4febc5a40cc8,BenchmarkIndexSearch-4,3.46,0.00,0.00
+fc744ed9fc8d16dabec8dc7d8b5a4febc5a40cc8,BenchmarkParseReplicationOrder_NoPrealloc-4,231.62,248.00,5.00
+fc744ed9fc8d16dabec8dc7d8b5a4febc5a40cc8,BenchmarkParseReplicationOrder_Prealloc-4,110.24,80.00,1.00
