@@ -36,10 +36,20 @@ func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 	bufferFileName := buffer[64 : 64+momo_common.FileInfoLength]
 	bufferFileSize := buffer[64+momo_common.FileInfoLength:]
 
-	fileHash := string(bytes.Trim(bufferFileHash, "\x00"))
+	// ⚡ Bolt: Use bytes.IndexByte to find null terminator to avoid string allocation overhead
+	fileHashBytes := bufferFileHash
+	if idx := bytes.IndexByte(bufferFileHash, 0); idx != -1 {
+		fileHashBytes = bufferFileHash[:idx]
+	}
+	fileHash := string(fileHashBytes)
 
 	// 🛡️ Sentinel: Sanitize fileName immediately to prevent path traversal in all downstream consumers.
-	rawFileName := string(bytes.Trim(bufferFileName, "\x00"))
+	rawFileNameBytes := bufferFileName
+	if idx := bytes.IndexByte(bufferFileName, 0); idx != -1 {
+		rawFileNameBytes = bufferFileName[:idx]
+	}
+	rawFileName := string(rawFileNameBytes)
+
 	if rawFileName == "." || rawFileName == ".." || strings.Contains(rawFileName, "/") || strings.Contains(rawFileName, "\\") {
 		return metadata, &os.PathError{Op: "getMetadata", Path: rawFileName, Err: os.ErrInvalid}
 	}
@@ -48,9 +58,18 @@ func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 		return metadata, &os.PathError{Op: "getMetadata", Path: fileName, Err: os.ErrInvalid}
 	}
 
-	fileSize, err := strconv.ParseInt(string(bytes.Trim(bufferFileSize, "\x00")), 10, 64)
+	fileSizeBytes := bufferFileSize
+	if idx := bytes.IndexByte(bufferFileSize, 0); idx != -1 {
+		fileSizeBytes = bufferFileSize[:idx]
+	}
+	fileSize, err := strconv.ParseInt(string(fileSizeBytes), 10, 64)
 	if err != nil {
 		return metadata, err
+	}
+
+	// 🛡️ Sentinel: Enforce file size limit to prevent Denial of Service via unbound resource allocation.
+	if fileSize > momo_common.MaxFileSize || fileSize < 0 {
+		return metadata, fmt.Errorf("file size %d exceeds limit or is negative", fileSize)
 	}
 
 	metadata.Name = fileName
@@ -66,7 +85,8 @@ func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 // It logs the progress and the result of the hash check.
 func getFile(connection net.Conn, path string, fileName string, expectedHash string, fileSize int64) (err error) {
 	fullPath := filepath.Join(path, fileName)
-	newFile, err := os.Create(fullPath)
+	tmpPath := fullPath + ".tmp"
+	newFile, err := os.Create(tmpPath)
 
 	if err != nil {
 		return err
@@ -76,7 +96,7 @@ func getFile(connection net.Conn, path string, fileName string, expectedHash str
 		newFile.Close()
 		// 🛡️ Sentinel: Clean up potentially malicious/corrupt/partial files on any error
 		if err != nil {
-			os.Remove(fullPath)
+			os.Remove(tmpPath)
 		}
 	}()
 
@@ -102,6 +122,12 @@ func getFile(connection net.Conn, path string, fileName string, expectedHash str
 		// 🛡️ Sentinel: Reject files with mismatched hashes to prevent integrity check bypass
 		err = fmt.Errorf("file hash mismatch: expected %s, got %s", expectedHash, hash)
 		return err
+	}
+
+	// 🛡️ Sentinel: Close file before renaming (required for Windows) and perform atomic rename
+	newFile.Close()
+	if err = os.Rename(tmpPath, fullPath); err != nil {
+		return fmt.Errorf("failed to rename temp file: %v", err)
 	}
 
 	log.Printf("=> Expected Hash: %s", expectedHash)
