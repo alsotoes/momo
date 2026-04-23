@@ -21,19 +21,3 @@
 ## 2026-03-25 - Slice pre-allocation for parsing strings
 **Learning:** In Go, dynamically appending elements to a slice like `var res []int` causes the runtime to reallocate memory and copy elements multiple times as the capacity grows. For string splitting or fixed collections, pre-allocating the capacity via `make([]T, 0, len(elements))` avoids this overhead entirely, improving loop execution time and reducing garbage collection pressure.
 **Action:** Always pre-allocate slices when the target length is known beforehand or can be bounded (e.g., after `strings.Split` or iterating over configuration map keys).
-
-## 2026-03-29 - Fast Custom Padding String Parsing
-**Learning:** For padding variables, `strconv.ParseInt(string(bytes))` creates unneeded string allocations and conversions. By implementing a custom null-byte padded parsing function directly over the `[]byte` representation, it offers roughly a 40%+ performance boost over standard `strconv.ParseInt` with `string()` conversion, decreasing execution time per loop significantly for fixed-width networking variables.
-**Action:** Replace `strconv.ParseInt` with customized byte-level iteration mapping for networking variables where length and type (like ascii digits) and structure (like null-termination) are known ahead of time.
-
-## 2024-03-27 - Fast Configuration Passing in Periodic Loops
-**Learning:** In periodic loops or event handlers (like metric loops or health checks), re-parsing configuration files by calling helper functions like `GetConfigFromFile()` on every execution introduces severe file I/O and parsing overhead, dragging down performance and creating unnecessary garbage.
-**Action:** Always inject or pass the pre-parsed `Configuration` object down the call stack instead of re-reading it from disk, especially in hot paths and periodic functions.
-
-## 2024-05-19 - Fast Integer Parsing from Byte Slices
-**Learning:** Extracting an allocation-free custom byte parser (like `parsePaddedIntFast`) from a closure to a package-level function allows it to be reused on multiple hot paths. For fixed-size, null-padded buffers, this avoids `strconv.ParseInt(string(b))` which forces string allocations, speeding up parsing times by ~50% (~24ns vs ~48ns).
-**Action:** When repeatedly parsing fixed-width numeric network buffers, implement and reuse a zero-allocation byte iterating parser rather than casting `[]byte` to `string` to use standard library functions.
-
-## 2026-04-03 - Avoid Intermediate String Allocations for Integer Networking Writes
-**Learning:** Converting an integer to a byte slice using `[]byte(strconv.FormatInt(val, 10))` or `[]byte(strconv.Itoa(val))` creates an intermediate string allocation before converting it to bytes. Using `strconv.AppendInt(make([]byte, 0, 32), val, 10)` writes the integer directly to the byte slice, avoiding the intermediate string allocation and improving performance significantly during network transmission.
-**Action:** Always prefer `strconv.AppendInt` onto an existing or pre-allocated byte slice instead of using `strconv.FormatInt` or `strconv.Itoa` when preparing integers for network transmission.

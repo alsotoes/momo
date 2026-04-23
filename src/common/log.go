@@ -1,7 +1,7 @@
 package common
 
 import (
-	"io"
+	"io/ioutil"
 	"log"
 )
 
@@ -12,6 +12,6 @@ func LogStdOut(logApp bool) {
 	if logApp {
 		log.SetFlags(log.LstdFlags | log.Lmicroseconds | log.Lshortfile | log.LUTC)
 	} else {
-		log.SetOutput(io.Discard)
+		log.SetOutput(ioutil.Discard)
 	}
 }

@@ -55,10 +55,8 @@ func Daemon(ctx context.Context, daemons []*momo_common.Daemon, serverId int, au
 			case <-ctx.Done():
 				return // Shutting down gracefully
 			default:
-				// 🛡️ Sentinel: Do not exit on Accept errors (e.g. EMFILE) to prevent Denial of Service.
-				log.Printf("Error accepting connection: %v", err)
-				time.Sleep(10 * time.Millisecond)
-				continue
+				log.Printf("Error: %v", err)
+				os.Exit(1)
 			}
 		}
 		log.Printf("Client connected to primary Daemon")
@@ -73,9 +71,7 @@ func Daemon(ctx context.Context, daemons []*momo_common.Daemon, serverId int, au
 			defer func() {
 				if success {
 					log.Printf("Server ACK to Client => ACK%d", serverId)
-					// ⚡ Bolt: Use strconv.AppendInt directly on the "ACK" byte slice
-					// to avoid string concatenation ("ACK" + string) overhead before network write.
-					idleConn.Write(strconv.AppendInt([]byte("ACK"), int64(serverId), 10))
+					idleConn.Write([]byte("ACK" + strconv.Itoa(serverId)))
 				}
 				idleConn.Close()
 			}()
@@ -99,7 +95,7 @@ func Daemon(ctx context.Context, daemons []*momo_common.Daemon, serverId int, au
 				log.Printf("Error reading timestamp: %v", err)
 				return
 			}
-			timestamp, err = parsePaddedIntFast(bufferTimestamp)
+			timestamp, err = strconv.ParseInt(string(bufferTimestamp), 10, 64)
 			if err != nil {
 				log.Printf("Error parsing timestamp: %v", err)
 				return
@@ -127,9 +123,7 @@ func Daemon(ctx context.Context, daemons []*momo_common.Daemon, serverId int, au
 
 			log.Printf("Cluster object global timestamp: %d", timestamp)
 			log.Printf("Server Daemon replicationMode: %d", replicationMode)
-			// ⚡ Bolt: Use strconv.AppendInt instead of []byte(strconv.FormatInt())
-			// to avoid intermediate string allocations when formatting integers into byte slices for network transmission.
-			if _, err := idleConn.Write(strconv.AppendInt(make([]byte, 0, 32), int64(replicationMode), 10)); err != nil {
+			if _, err := idleConn.Write([]byte(strconv.FormatInt(int64(replicationMode), 10))); err != nil {
 				log.Printf("Error sending replication mode: %v", err)
 				return
 			}

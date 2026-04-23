@@ -203,13 +203,6 @@ func TestSendFile(t *testing.T) {
 
 	var wg sync.WaitGroup
 	wg.Add(1)
-	fileInfo, _ := os.Stat(file.Name())
-	fileHash, _ := HashFile(file.Name())
-	metadata := &FileMetadata{
-		Name: fileInfo.Name(),
-		Size: fileInfo.Size(),
-		Hash: fileHash,
-	}
-	sendFile(&wg, conn, file.Name(), metadata)
+	sendFile(&wg, conn, file.Name())
 	wg.Wait()
 }
