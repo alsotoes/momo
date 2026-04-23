@@ -36,12 +36,12 @@ type Daemon struct {
 type ConfigurationGlobal struct {
 	// Debug enables or disables debug mode.
 	Debug bool
+	// AuthToken is the authentication token used for node-to-node and client-to-node communication.
+	AuthToken string
 	// ReplicationOrder is the order of replication modes to use.
 	ReplicationOrder []int
 	// PolymorphicSystem enables or disables the polymorphic system.
 	PolymorphicSystem bool
-	// AuthToken is the system authentication token.
-	AuthToken string
 }
 
 // ConfigurationMetrics holds the metrics configuration for the application.

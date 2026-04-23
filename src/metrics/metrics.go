@@ -85,7 +85,7 @@ func GetMetrics(cfg momo_common.Configuration, serverId int) {
 
 	replicationOrder := cfg.Global.ReplicationOrder
 	currentIndex := 0
-	pushNewReplicationMode(replicationOrder[currentIndex])
+	pushNewReplicationMode(cfg, replicationOrder[currentIndex])
 
 	sm := &RealSystemMetrics{}
 	start := time.Now()
@@ -102,7 +102,7 @@ func GetMetrics(cfg momo_common.Configuration, serverId int) {
 		newIndex, changed := checkMetricsAndSwap(cfg, sm, currentIndex, replicationOrder)
 		if changed {
 			currentIndex = newIndex
-			pushNewReplicationMode(replicationOrder[currentIndex])
+			pushNewReplicationMode(cfg, replicationOrder[currentIndex])
 			start = time.Now()
 		}
 
@@ -112,7 +112,7 @@ func GetMetrics(cfg momo_common.Configuration, serverId int) {
 			if currentIndex > 0 {
 				log.Printf("Replication fallback because of timeout")
 				currentIndex--
-				pushNewReplicationMode(replicationOrder[currentIndex])
+				pushNewReplicationMode(cfg, replicationOrder[currentIndex])
 				start = time.Now()
 			} else {
 				log.Printf("Replication method has no fallback")
