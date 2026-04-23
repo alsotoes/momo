@@ -14,7 +14,7 @@ import (
 // It first connects to a specified daemon to determine the replication mode.
 // If splay replication is active, it connects to all other daemons.
 // Finally, it sends the file to all established connections concurrently.
-func Connect(wg *sync.WaitGroup, daemons []*Daemon, filePath string, serverId int, timestamp int64) {
+func Connect(wg *sync.WaitGroup, daemons []*Daemon, filePath string, serverId int, timestamp int64, authToken string) {
 	defer wg.Done()
 	var connections []net.Conn
 	var wgSendFile sync.WaitGroup
@@ -28,9 +28,14 @@ func Connect(wg *sync.WaitGroup, daemons []*Daemon, filePath string, serverId in
 	connections = append(connections, initialConn)
 
 	// Perform handshake to get replication mode
-	// ⚡ Bolt: Use strconv.AppendInt instead of []byte(strconv.FormatInt())
-	// to avoid intermediate string allocations when formatting integers into byte slices for network transmission.
-	if _, err := initialConn.Write(strconv.AppendInt(make([]byte, 0, 32), timestamp, 10)); err != nil {
+	paddedToken := PadString(authToken, 64)
+	if _, err := initialConn.Write([]byte(paddedToken)); err != nil {
+		log.Printf("Failed to send auth token to %s: %v", daemons[serverId].Host, err)
+		initialConn.Close()
+		return
+	}
+
+	if _, err := initialConn.Write([]byte(strconv.FormatInt(timestamp, 10))); err != nil {
 		log.Printf("Failed to send timestamp to %s: %v", daemons[serverId].Host, err)
 		initialConn.Close()
 		return
@@ -64,8 +69,14 @@ func Connect(wg *sync.WaitGroup, daemons []*Daemon, filePath string, serverId in
 			}
 
 			// Perform handshake with the other daemons
-			// ⚡ Bolt: Use strconv.AppendInt to prevent string allocation
-			if _, err := conn.Write(strconv.AppendInt(make([]byte, 0, 32), timestamp, 10)); err != nil {
+			paddedToken := PadString(authToken, 64)
+			if _, err := conn.Write([]byte(paddedToken)); err != nil {
+				log.Printf("Failed to send auth token to %s: %v", daemon.Host, err)
+				conn.Close()
+				continue
+			}
+
+			if _, err := conn.Write([]byte(strconv.FormatInt(timestamp, 10))); err != nil {
 				log.Printf("Failed to send timestamp to %s: %v", daemon.Host, err)
 				conn.Close()
 				continue
@@ -88,29 +99,10 @@ func Connect(wg *sync.WaitGroup, daemons []*Daemon, filePath string, serverId in
 		}
 	}()
 
-	// Compute file metadata once before sending
-	fileInfo, err := os.Stat(filePath)
-	if err != nil {
-		log.Printf("Failed to get file info for %s: %v", filePath, err)
-		return
-	}
-
-	fileHash, err := HashFile(filePath)
-	if err != nil {
-		log.Printf("Failed to hash file %s: %v", filePath, err)
-		return
-	}
-
-	metadata := &FileMetadata{
-		Name: fileInfo.Name(),
-		Size: fileInfo.Size(),
-		Hash: fileHash,
-	}
-
 	// Send the file to all established connections concurrently
 	wgSendFile.Add(len(connections))
 	for _, conn := range connections {
-		go sendFile(&wgSendFile, conn, filePath, metadata)
+		go sendFile(&wgSendFile, conn, filePath)
 	}
 	wgSendFile.Wait()
 }
@@ -121,30 +113,43 @@ const hashLength = 64
 // sendFile sends a file over a network connection.
 // It first sends the file's metadata (SHA-256 hash, name, and size) and then the file's content.
 // It waits for an acknowledgment ("ACK") from the server upon successful reception.
-func sendFile(wg *sync.WaitGroup, connection net.Conn, filePath string, metadata *FileMetadata) {
+func sendFile(wg *sync.WaitGroup, connection net.Conn, fileName string) {
 	defer wg.Done()
 
-	file, err := os.Open(filePath)
+	file, err := os.Open(fileName)
 	if err != nil {
-		log.Printf("Failed to open file %s: %v", filePath, err)
+		log.Printf("Failed to open file %s: %v", fileName, err)
 		return
 	}
 	defer file.Close()
 
-	log.Printf("=> Hash:    %s", metadata.Hash)
-	log.Printf("=> Name:    %s", metadata.Name)
-	log.Printf("=> Size:    %d", metadata.Size)
+	fileInfo, err := file.Stat()
+	if err != nil {
+		log.Printf("Failed to get file info for %s: %v", fileName, err)
+		return
+	}
+
+	fileSize := fileInfo.Size()
+	fileHash, err := HashFile(fileName)
+	if err != nil {
+		log.Printf("Failed to hash file %s: %v", fileName, err)
+		return
+	}
+
+	log.Printf("=> Hash:    %s", fileHash)
+	log.Printf("=> Name:    %s", fileInfo.Name())
+	log.Printf("=> Size:    %d", fileSize)
 
 	// Send metadata
 	// Optimization: Pre-allocate a single buffer for the exact packet size.
 	// This avoids multiple string formatting allocations and multiple system calls.
 	metadataBuffer := make([]byte, hashLength+FileInfoLength+FileInfoLength)
 
-	copy(metadataBuffer[0:hashLength], metadata.Hash)
-	copy(metadataBuffer[hashLength:hashLength+FileInfoLength], padString(metadata.Name, FileInfoLength))
+	copy(metadataBuffer[0:hashLength], fileHash)
+	copy(metadataBuffer[hashLength:hashLength+FileInfoLength], PadString(fileInfo.Name(), FileInfoLength))
 
 	// Format size directly into the buffer avoiding fmt.Sprintf
-	sizeBytes := strconv.AppendInt(make([]byte, 0, FileInfoLength), metadata.Size, 10)
+	sizeBytes := strconv.AppendInt(make([]byte, 0, FileInfoLength), fileSize, 10)
 	copy(metadataBuffer[hashLength+FileInfoLength:], sizeBytes)
 
 	connection.Write(metadataBuffer)
@@ -153,7 +158,7 @@ func sendFile(wg *sync.WaitGroup, connection net.Conn, filePath string, metadata
 	// Optimization: Use io.Copy to avoid manual buffer allocation and read/write loops.
 	// This can leverage kernel-level zero-copy optimizations (e.g., sendfile).
 	if _, err := io.Copy(connection, file); err != nil {
-		log.Printf("Error sending file %s: %v", filePath, err)
+		log.Printf("Error sending file %s: %v", fileName, err)
 		return
 	}
 
@@ -169,12 +174,12 @@ func sendFile(wg *sync.WaitGroup, connection net.Conn, filePath string, metadata
 		return
 	}
 
-	log.Printf("File %s sent successfully.", filePath)
+	log.Printf("File %s sent successfully.", fileName)
 }
 
-// padString pads a string with null characters to a specified length.
+// PadString pads a string with null characters to a specified length.
 // If the string is longer than the specified length, it is truncated.
-func padString(input string, length int) string {
+func PadString(input string, length int) string {
 	if len(input) >= length {
 		return input[:length]
 	}

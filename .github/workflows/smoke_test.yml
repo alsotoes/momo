@@ -39,6 +39,7 @@ jobs:
         debug=true
         replication_order=4,3,2,1
         polymorphic_system=false
+        auth_token=super_secret_test_token
 
         [metrics]
         interval=10
@@ -113,7 +114,9 @@ jobs:
         ./bin/momo -imp server -id 2 -config conf/smoke.conf > s2_chain.log 2>&1 &
         sleep 3
         # Send replication change to primary daemon
-        nc localhost 9090 < /tmp/repl.json
+        echo -n -e 'super_secret_test_token\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0' > /tmp/repl_auth.json
+        cat /tmp/repl.json >> /tmp/repl_auth.json
+        nc localhost 9090 < /tmp/repl_auth.json
         sleep 1
         echo "chaintest" > /tmp/chainfile.txt
         ./bin/momo -imp client -file /tmp/chainfile.txt -config conf/smoke.conf > c_chain.log 2>&1
@@ -139,7 +142,9 @@ jobs:
         ./bin/momo -imp server -id 1 -config conf/smoke.conf > s1_splay.log 2>&1 &
         ./bin/momo -imp server -id 2 -config conf/smoke.conf > s2_splay.log 2>&1 &
         sleep 3
-        nc localhost 9090 < /tmp/repl.json
+        echo -n -e 'super_secret_test_token\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0' > /tmp/repl_auth.json
+        cat /tmp/repl.json >> /tmp/repl_auth.json
+        nc localhost 9090 < /tmp/repl_auth.json
         sleep 1
         echo "splaytest" > /tmp/splayfile.txt
         ./bin/momo -imp client -file /tmp/splayfile.txt -config conf/smoke.conf > c_splay.log 2>&1
@@ -165,7 +170,9 @@ jobs:
         ./bin/momo -imp server -id 1 -config conf/smoke.conf > s1_primary_splay.log 2>&1 &
         ./bin/momo -imp server -id 2 -config conf/smoke.conf > s2_primary_splay.log 2>&1 &
         sleep 3
-        nc localhost 9090 < /tmp/repl.json
+        echo -n -e 'super_secret_test_token\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0' > /tmp/repl_auth.json
+        cat /tmp/repl.json >> /tmp/repl_auth.json
+        nc localhost 9090 < /tmp/repl_auth.json
         sleep 1
         echo "primarysplaytest" > /tmp/primarysplayfile.txt
         ./bin/momo -imp client -file /tmp/primarysplayfile.txt -config conf/smoke.conf > c_primary_splay.log 2>&1

@@ -54,7 +54,7 @@ func SetReplicationState(newMode int, timestamp int64) momo_common.ReplicationDa
 // When a client connects, it sends a JSON object containing the new replication mode.
 // This function updates the server's replication mode and, if the server is the primary (serverId 0),
 // it propagates the change to the other servers in the cluster.
-func ChangeReplicationModeServer(ctx context.Context, daemons []*momo_common.Daemon, serverId int, timestamp int64) {
+func ChangeReplicationModeServer(ctx context.Context, daemons []*momo_common.Daemon, serverId int, timestamp int64, authToken string) {
 	server, err := net.Listen("tcp", daemons[serverId].ChangeReplication)
 	if err != nil {
 		log.Printf("Error listening: %v", err)
@@ -85,10 +85,8 @@ func ChangeReplicationModeServer(ctx context.Context, daemons []*momo_common.Dae
 			case <-ctx.Done():
 				return // Shutting down gracefully
 			default:
-				// 🛡️ Sentinel: Do not exit on Accept errors (e.g. EMFILE) to prevent Denial of Service.
-				log.Printf("Error accepting connection: %v", err)
-				time.Sleep(10 * time.Millisecond)
-				continue
+				log.Printf("Error: %v", err)
+				os.Exit(1)
 			}
 		}
 		go func() {
@@ -97,6 +95,19 @@ func ChangeReplicationModeServer(ctx context.Context, daemons []*momo_common.Dae
 
 			// 🛡️ Sentinel: Enforce a read/write timeout to prevent slowloris DoS attacks
 			connection.SetDeadline(time.Now().Add(10 * time.Second))
+
+			// Enforce Authentication Handshake
+			// Read and verify the 64-byte padded AuthToken
+			bufferAuthToken := make([]byte, 64)
+			if _, err := io.ReadFull(connection, bufferAuthToken); err != nil {
+				log.Printf("Error reading auth token: %v", err)
+				return
+			}
+			expectedToken := momo_common.PadString(authToken, 64)
+			if string(bufferAuthToken) != expectedToken {
+				log.Printf("Authentication failed")
+				return
+			}
 
 			// Decode the replication data directly from the connection
 			// 🛡️ Sentinel: Limit the JSON payload size to prevent DoS via memory exhaustion
@@ -114,8 +125,8 @@ func ChangeReplicationModeServer(ctx context.Context, daemons []*momo_common.Dae
 
 			// If this is the primary server, propagate the change to the other servers
 			if 0 == serverId {
-				go changeReplicationModeClient(daemons, string(newReplicationJson), 1)
-				go changeReplicationModeClient(daemons, string(newReplicationJson), 2)
+				go changeReplicationModeClient(daemons, string(newReplicationJson), 1, authToken)
+				go changeReplicationModeClient(daemons, string(newReplicationJson), 2, authToken)
 			}
 		}()
 	}
@@ -123,13 +134,16 @@ func ChangeReplicationModeServer(ctx context.Context, daemons []*momo_common.Dae
 
 // changeReplicationModeClient connects to another server in the cluster and sends the new replication mode.
 // It is used by the primary server to propagate replication mode changes to the other servers.
-func changeReplicationModeClient(daemons []*momo_common.Daemon, replicationJson string, serverId int) {
+func changeReplicationModeClient(daemons []*momo_common.Daemon, replicationJson string, serverId int, authToken string) {
 	conn, err := momo_common.DialSocket(daemons[serverId].ChangeReplication)
 	if err != nil {
 		log.Printf("Dial error: %v", err)
 		return
 	}
 	defer conn.Close()
+
+	paddedToken := momo_common.PadString(authToken, 64)
+	conn.Write([]byte(paddedToken))
 
 	conn.Write([]byte(replicationJson))
 	log.Printf("ReplicationData sent to serverId: %d", serverId)
