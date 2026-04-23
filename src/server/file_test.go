@@ -187,3 +187,31 @@ func TestGetFileTraversal(t *testing.T) {
 		t.Errorf("Expected file to be created at %s, but it was not", safeFilePath)
 	}
 }
+
+func TestGetMetadataMaxFileSize(t *testing.T) {
+	server, client := net.Pipe()
+
+	fileName := "test.txt"
+	fileHash := "de614ea622e0963faf12594c1c59937dcb6fc223c81b3a451ee2561fc44e22a2"
+	var fileSize int64 = momo_common.MaxFileSize + 1
+
+	go func() {
+		defer client.Close()
+
+		client.Write([]byte(fileHash))
+
+		fileNameBytes := make([]byte, momo_common.FileInfoLength)
+		copy(fileNameBytes, fileName)
+		client.Write(fileNameBytes)
+
+		fileSizeBytes := make([]byte, momo_common.FileInfoLength)
+		copy(fileSizeBytes, strconv.FormatInt(fileSize, 10))
+		client.Write(fileSizeBytes)
+	}()
+
+	_, err := getMetadata(server)
+
+	if err == nil {
+		t.Fatalf("getMetadata should have failed for fileSize %d", fileSize)
+	}
+}
