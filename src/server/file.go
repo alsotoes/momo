@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	momo_common "github.com/alsotoes/momo/src/common"
@@ -35,20 +36,19 @@ func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 	bufferFileName := buffer[64 : 64+momo_common.FileInfoLength]
 	bufferFileSize := buffer[64+momo_common.FileInfoLength:]
 
-	// ⚡ Bolt: A localized helper function to efficiently parse multiple null-padded string slices
-	// This reduces code duplication while still performing significantly better than standard
-	// bytes.Trim or strings.TrimRight by avoiding intermediate string allocations.
-	getString := func(b []byte) string {
-		if idx := bytes.IndexByte(b, 0); idx != -1 {
-			return string(b[:idx])
-		}
-		return string(b)
+	// ⚡ Bolt: Use bytes.IndexByte to find null terminator to avoid string allocation overhead
+	fileHashBytes := bufferFileHash
+	if idx := bytes.IndexByte(bufferFileHash, 0); idx != -1 {
+		fileHashBytes = bufferFileHash[:idx]
 	}
-
-	fileHash := getString(bufferFileHash)
+	fileHash := string(fileHashBytes)
 
 	// 🛡️ Sentinel: Sanitize fileName immediately to prevent path traversal in all downstream consumers.
-	rawFileName := getString(bufferFileName)
+	rawFileNameBytes := bufferFileName
+	if idx := bytes.IndexByte(bufferFileName, 0); idx != -1 {
+		rawFileNameBytes = bufferFileName[:idx]
+	}
+	rawFileName := string(rawFileNameBytes)
 
 	if rawFileName == "." || rawFileName == ".." || strings.Contains(rawFileName, "/") || strings.Contains(rawFileName, "\\") {
 		return metadata, &os.PathError{Op: "getMetadata", Path: rawFileName, Err: os.ErrInvalid}
@@ -58,41 +58,11 @@ func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 		return metadata, &os.PathError{Op: "getMetadata", Path: fileName, Err: os.ErrInvalid}
 	}
 
-	// ⚡ Bolt: Custom parser to convert fixed null-padded byte buffers directly to int64.
-	// This approach is much faster than `strconv.ParseInt(string(b), 10, 64)` since it completely
-	// avoids string conversions and function call overheads for a 40%+ performance boost on getMetadata.
-	parsePaddedIntFast := func(b []byte) (int64, error) {
-		if idx := bytes.IndexByte(b, 0); idx != -1 {
-			b = b[:idx]
-		}
-		if len(b) == 0 {
-			return 0, fmt.Errorf("empty integer string")
-		}
-
-		var res int64
-		var neg bool
-		if b[0] == '-' {
-			neg = true
-			b = b[1:]
-		}
-
-		for _, ch := range b {
-			if ch < '0' || ch > '9' {
-				return 0, fmt.Errorf("invalid character in integer: %c", ch)
-			}
-			// Prevent overflow
-			if res > (1<<63-1)/10 || (res == (1<<63-1)/10 && int64(ch-'0') > (1<<63-1)%10) {
-				return 0, fmt.Errorf("integer overflow")
-			}
-			res = res*10 + int64(ch-'0')
-		}
-		if neg {
-			res = -res
-		}
-		return res, nil
+	fileSizeBytes := bufferFileSize
+	if idx := bytes.IndexByte(bufferFileSize, 0); idx != -1 {
+		fileSizeBytes = bufferFileSize[:idx]
 	}
-
-	fileSize, err := parsePaddedIntFast(bufferFileSize)
+	fileSize, err := strconv.ParseInt(string(fileSizeBytes), 10, 64)
 	if err != nil {
 		return metadata, err
 	}
