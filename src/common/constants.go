@@ -7,6 +7,8 @@ const (
 	TCPSocketBufferSize = 1024
 	// TimestampLength is the expected length of a timestamp string.
 	TimestampLength = 19
+	// AuthTokenLength is the expected length of the authentication token.
+	AuthTokenLength = 64
 	// FileInfoLength is the allocated length for file information strings.
 	FileInfoLength = 64
 	// MaxFileSize is the maximum allowed size for a file transfer (1GB).
