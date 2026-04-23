@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -168,5 +169,11 @@ func padString(input string, length int) string {
 	if len(input) >= length {
 		return input[:length]
 	}
-	return input + string(make([]byte, length-len(input)))
+	var b strings.Builder
+	b.Grow(length)
+	b.WriteString(input)
+	for i := len(input); i < length; i++ {
+		b.WriteByte(0)
+	}
+	return b.String()
 }
