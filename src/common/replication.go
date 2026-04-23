@@ -6,7 +6,6 @@ import (
 	"net"
 	"os"
 	"strconv"
-	"strings"
 	"sync"
 )
 
@@ -185,7 +184,7 @@ func padString(input string, length int) string {
 	if len(input) >= length {
 		return input[:length]
 	}
-	// ⚡ Bolt: Use strings.Repeat for a simpler, faster, and more readable optimization.
-	// This reduces memory allocations compared to string(make([]byte, n)) while maintaining clarity.
-	return input + strings.Repeat("\x00", length-len(input))
+	b := make([]byte, length)
+	copy(b, input)
+	return string(b)
 }

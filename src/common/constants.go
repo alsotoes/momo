@@ -11,7 +11,7 @@ const (
 	AuthTokenLength = 64
 	// FileInfoLength is the allocated length for file information strings.
 	FileInfoLength = 64
-	// MaxFileSize is the maximum allowed file size (1GB).
+	// MaxFileSize is the maximum allowed size for a file transfer (1GB).
 	MaxFileSize = 1024 * 1024 * 1024
 )
 
