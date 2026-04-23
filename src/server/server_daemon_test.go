@@ -35,7 +35,7 @@ func TestChangeReplicationModeServerReal(t *testing.T) {
 	l2, _ := net.Listen("tcp", "127.0.0.1:45680")
 	defer l2.Close()
 
-	go ChangeReplicationModeServer(ctx, daemons, 0, time.Now().UnixNano(), "test_token")
+	go ChangeReplicationModeServer(ctx, daemons, 0, time.Now().UnixNano())
 	time.Sleep(100 * time.Millisecond)
 
 	conn, err := net.Dial("tcp", "127.0.0.1:45678")
@@ -43,8 +43,6 @@ func TestChangeReplicationModeServerReal(t *testing.T) {
 		t.Fatalf("Failed to dial test server: %v", err)
 	}
 	defer conn.Close()
-
-	conn.Write([]byte(momo_common.PadString("test_token", 64)))
 
 	data := momo_common.ReplicationData{
 		New:       momo_common.ReplicationSplay,
@@ -67,7 +65,7 @@ func TestDaemonReal(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go Daemon(ctx, daemons, 0, "test_token")
+	go Daemon(ctx, daemons, 0)
 	time.Sleep(100 * time.Millisecond)
 
 	conn, err := net.Dial("tcp", "127.0.0.1:45681")
@@ -76,7 +74,6 @@ func TestDaemonReal(t *testing.T) {
 	}
 	defer conn.Close()
 
-	conn.Write([]byte(momo_common.PadString("test_token", 64)))
 	timestampStr := "1234567890123456789"
 	conn.Write([]byte(timestampStr))
 

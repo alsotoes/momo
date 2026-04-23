@@ -61,7 +61,7 @@ func Run() {
 		}
 		var wg sync.WaitGroup
 		wg.Add(1)
-		common.Connect(&wg, cfg.Daemons, *filePathPtr, serverId, common.DummyEpoch, cfg.Global.AuthToken)
+		common.Connect(&wg, cfg.Daemons, *filePathPtr, serverId, common.DummyEpoch)
 		wg.Wait()
 	case "server":
 		runServer(cfg, *serverIdPtr)
@@ -89,12 +89,12 @@ func runServer(cfg common.Configuration, serverId int) {
 
 	go func() {
 		defer wg.Done()
-		server.ChangeReplicationModeServer(context.Background(), cfg.Daemons, serverId, timestamp, cfg.Global.AuthToken)
+		server.ChangeReplicationModeServer(context.Background(), cfg.Daemons, serverId, timestamp)
 	}()
 
 	go func() {
 		defer wg.Done()
-		server.Daemon(context.Background(), cfg.Daemons, serverId, cfg.Global.AuthToken)
+		server.Daemon(context.Background(), cfg.Daemons, serverId)
 	}()
 
 	wg.Wait()

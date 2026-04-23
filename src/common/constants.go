@@ -9,8 +9,6 @@ const (
 	TimestampLength = 19
 	// FileInfoLength is the allocated length for file information strings.
 	FileInfoLength = 64
-	// MaxFileSize is the maximum allowed file size (1GB).
-	MaxFileSize = 1024 * 1024 * 1024
 )
 
 const (

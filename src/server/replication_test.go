@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -28,11 +29,7 @@ func handleReplicationChange(t *testing.T, connection net.Conn, wg *sync.WaitGro
 
 	replicationJSON := momo_common.ReplicationData{}
 	// Trim null bytes before decoding
-	// ⚡ Bolt: Use bytes.IndexByte to find null terminator instead of bytes.TrimRight
-	trimmedBytes := bufferReplicationMode
-	if idx := bytes.IndexByte(bufferReplicationMode, 0); idx != -1 {
-		trimmedBytes = bufferReplicationMode[:idx]
-	}
+	trimmedBytes := bytes.TrimRight(bufferReplicationMode, "\x00")
 	if err := json.NewDecoder(bytes.NewReader(trimmedBytes)).Decode(&replicationJSON); err != nil {
 		t.Errorf("JSON decode error: %v", err)
 		return
@@ -104,12 +101,9 @@ func TestChangeReplicationModeClient(t *testing.T) {
 		}
 		defer conn.Close()
 
-		buf := make([]byte, momo_common.FileInfoLength+64) // Include room for token
+		buf := make([]byte, momo_common.FileInfoLength)
 		n, _ := conn.Read(buf)
-		// changeReplicationModeClient sends two writes (Token then JSON). We should read everything sent.
-		buf2 := make([]byte, momo_common.FileInfoLength)
-		n2, _ := conn.Read(buf2)
-		received <- append(buf[:n], buf2[:n2]...) // Send received data to the channel.
+		received <- buf[:n] // Send received data to the channel.
 	}()
 
 	// Act: Call the function under test.
@@ -117,16 +111,15 @@ func TestChangeReplicationModeClient(t *testing.T) {
 		{ChangeReplication: serverAddr}, // Configure the daemon to connect to our mock server.
 	}
 	jsonString := `{"New":5,"TimeStamp":1662756600}`
-	authToken := "test_token"
 
-	changeReplicationModeClient(daemons, jsonString, 0, authToken)
+	changeReplicationModeClient(daemons, jsonString, 0)
 
 	// Assert: Verify the mock server received the correct data.
 	select {
 	case data := <-received:
-		expectedData := []byte(momo_common.PadString(authToken, 64) + jsonString)
-		if !bytes.Equal(data, expectedData) {
-			t.Errorf("Expected to receive '%s', but got '%s'", expectedData, data)
+		trimmedData := strings.TrimRight(string(data), "\x00")
+		if trimmedData != jsonString {
+			t.Errorf("Expected to receive '%s', but got '%s'", jsonString, trimmedData)
 		}
 	case <-time.After(1 * time.Second):
 		t.Fatal("Test timed out, no data received by the server.")
