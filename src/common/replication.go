@@ -30,13 +30,13 @@ func Connect(wg *sync.WaitGroup, cfg Configuration, filePath string, serverId in
 
 	// Perform handshake to get replication mode
 	// First, send the AuthToken
-	if _, err := initialConn.Write([]byte(authToken)); err != nil {
+	if _, err := initialConn.Write([]byte(PadString(authToken, AuthTokenLength))); err != nil {
 		log.Printf("Failed to send AuthToken to %s: %v", daemons[serverId].Host, err)
 		initialConn.Close()
 		return
 	}
 
-	if _, err := initialConn.Write([]byte(strconv.FormatInt(timestamp, 10))); err != nil {
+	if _, err := initialConn.Write([]byte(PadString(strconv.FormatInt(timestamp, 10), TimestampLength))); err != nil {
 		log.Printf("Failed to send timestamp to %s: %v", daemons[serverId].Host, err)
 		initialConn.Close()
 		return
@@ -71,13 +71,13 @@ func Connect(wg *sync.WaitGroup, cfg Configuration, filePath string, serverId in
 
 			// Perform handshake with the other daemons
 			// First, send the AuthToken
-			if _, err := conn.Write([]byte(authToken)); err != nil {
+			if _, err := conn.Write([]byte(PadString(authToken, AuthTokenLength))); err != nil {
 				log.Printf("Failed to send AuthToken to %s: %v", daemon.Host, err)
 				conn.Close()
 				continue
 			}
 
-			if _, err := conn.Write([]byte(strconv.FormatInt(timestamp, 10))); err != nil {
+			if _, err := conn.Write([]byte(PadString(strconv.FormatInt(timestamp, 10), TimestampLength))); err != nil {
 				log.Printf("Failed to send timestamp to %s: %v", daemon.Host, err)
 				conn.Close()
 				continue
@@ -147,7 +147,7 @@ func sendFile(wg *sync.WaitGroup, connection net.Conn, fileName string) {
 	metadataBuffer := make([]byte, hashLength+FileInfoLength+FileInfoLength)
 
 	copy(metadataBuffer[0:hashLength], fileHash)
-	copy(metadataBuffer[hashLength:hashLength+FileInfoLength], padString(fileInfo.Name(), FileInfoLength))
+	copy(metadataBuffer[hashLength:hashLength+FileInfoLength], PadString(fileInfo.Name(), FileInfoLength))
 
 	// Format size directly into the buffer avoiding fmt.Sprintf
 	sizeBytes := strconv.AppendInt(make([]byte, 0, FileInfoLength), fileSize, 10)
@@ -180,7 +180,7 @@ func sendFile(wg *sync.WaitGroup, connection net.Conn, fileName string) {
 
 // padString pads a string with null characters to a specified length.
 // If the string is longer than the specified length, it is truncated.
-func padString(input string, length int) string {
+func PadString(input string, length int) string {
 	if len(input) >= length {
 		return input[:length]
 	}

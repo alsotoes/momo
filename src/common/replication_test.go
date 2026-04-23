@@ -24,7 +24,7 @@ func TestPadString(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		result := padString(tc.input, tc.length)
+		result := PadString(tc.input, tc.length)
 		if result != tc.expected {
 			t.Errorf("Expected '%s', got '%s'", tc.expected, result)
 		}
@@ -231,7 +231,7 @@ func TestSendFile(t *testing.T) {
 	conn.Write([]byte(authToken))
 
 	// Skip the initial timestamp read/write
-	conn.Write([]byte(padString("123", TimestampLength)))
+	conn.Write([]byte(PadString("123", TimestampLength)))
 	io.ReadFull(conn, make([]byte, 1))
 
 	var wg sync.WaitGroup

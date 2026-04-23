@@ -142,7 +142,7 @@ func changeReplicationModeClient(authToken string, daemons []*momo_common.Daemon
 	defer conn.Close()
 
 	// Send the AuthToken first
-	if _, err := conn.Write([]byte(authToken)); err != nil {
+	if _, err := conn.Write([]byte(momo_common.PadString(authToken, momo_common.AuthTokenLength))); err != nil {
 		log.Printf("Failed to send AuthToken: %v", err)
 		return
 	}

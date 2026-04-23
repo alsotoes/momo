@@ -9,6 +9,6 @@ func BenchmarkPadString(b *testing.B) {
 	length := 64
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = padString(input, length)
+		_ = PadString(input, length)
 	}
 }
