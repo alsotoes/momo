@@ -16,3 +16,7 @@
 **Vulnerability:** Lack of file size validation in metadata retrieval allows attackers to specify extremely large file sizes, leading to resource exhaustion.
 **Learning:** Trusting client-provided size metadata without bounds checking can lead to Denial of Service (DoS) when the server attempts to allocate space or process data based on those unvalidated values.
 **Prevention:** Always enforce a maximum limit on client-provided numeric values that govern resource allocation, such as file sizes, buffer lengths, or iteration counts.
+## 2024-05-24 - Enforce Authentication Handshake
+**Vulnerability:** Missing authentication on sensitive endpoints (`Daemon` and `ChangeReplicationModeServer`). Any client could connect and send replication data or files without authorization.
+**Learning:** The system architecture lacked a mandatory authentication handshake during the initial connection phase, leaving it open to unauthorized access and potential DoS attacks.
+**Prevention:** Always implement an authentication mechanism (e.g., a shared secret or token) for internal services, even if they are not exposed to the public internet. Ensure the token is passed and verified immediately upon connection establishment before processing any further data.

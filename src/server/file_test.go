@@ -106,6 +106,58 @@ func TestGetMetadataDotDot(t *testing.T) {
 	}
 }
 
+func TestGetMetadataLargeFile(t *testing.T) {
+	server, client := net.Pipe()
+
+	fileName := "large.txt"
+	fileHash := "de614ea622e0963faf12594c1c59937dcb6fc223c81b3a451ee2561fc44e22a2"
+	fileSize := int64(momo_common.MaxFileSize + 1)
+
+	go func() {
+		defer client.Close()
+		client.Write([]byte(fileHash))
+
+		fileNameBytes := make([]byte, momo_common.FileInfoLength)
+		copy(fileNameBytes, fileName)
+		client.Write(fileNameBytes)
+
+		fileSizeBytes := make([]byte, momo_common.FileInfoLength)
+		copy(fileSizeBytes, strconv.FormatInt(fileSize, 10))
+		client.Write(fileSizeBytes)
+	}()
+
+	_, err := getMetadata(server)
+	if err == nil {
+		t.Fatalf("getMetadata should have failed for large file")
+	}
+}
+
+func TestGetMetadataNegativeSize(t *testing.T) {
+	server, client := net.Pipe()
+
+	fileName := "negative.txt"
+	fileHash := "de614ea622e0963faf12594c1c59937dcb6fc223c81b3a451ee2561fc44e22a2"
+	fileSize := int64(-1)
+
+	go func() {
+		defer client.Close()
+		client.Write([]byte(fileHash))
+
+		fileNameBytes := make([]byte, momo_common.FileInfoLength)
+		copy(fileNameBytes, fileName)
+		client.Write(fileNameBytes)
+
+		fileSizeBytes := make([]byte, momo_common.FileInfoLength)
+		copy(fileSizeBytes, strconv.FormatInt(fileSize, 10))
+		client.Write(fileSizeBytes)
+	}()
+
+	_, err := getMetadata(server)
+	if err == nil {
+		t.Fatalf("getMetadata should have failed for negative file size")
+	}
+}
+
 func TestGetMetadataInvalidNames(t *testing.T) {
 	invalidNames := []string{
 		"C:\\Windows\\System32\\cmd.exe",
@@ -188,13 +240,16 @@ func TestGetFileTraversal(t *testing.T) {
 	}
 }
 
-func TestGetMetadataMaxFileSize(t *testing.T) {
+func TestGetMetadataFileSizeLimit(t *testing.T) {
+	// Arrange
 	server, client := net.Pipe()
 
-	fileName := "test.txt"
+	fileName := "toolarge.txt"
 	fileHash := "de614ea622e0963faf12594c1c59937dcb6fc223c81b3a451ee2561fc44e22a2"
-	var fileSize int64 = momo_common.MaxFileSize + 1
+	// Exactly 1 byte larger than the 1GB limit
+	fileSize := momo_common.MaxFileSize + 1
 
+	// Act
 	go func() {
 		defer client.Close()
 
@@ -205,13 +260,45 @@ func TestGetMetadataMaxFileSize(t *testing.T) {
 		client.Write(fileNameBytes)
 
 		fileSizeBytes := make([]byte, momo_common.FileInfoLength)
-		copy(fileSizeBytes, strconv.FormatInt(fileSize, 10))
+		copy(fileSizeBytes, strconv.FormatInt(int64(fileSize), 10))
 		client.Write(fileSizeBytes)
 	}()
 
 	_, err := getMetadata(server)
 
+	// Assert
 	if err == nil {
-		t.Fatalf("getMetadata should have failed for fileSize %d", fileSize)
+		t.Fatalf("getMetadata should have failed for file size %d exceeding limit %d", fileSize, momo_common.MaxFileSize)
+	}
+}
+
+func TestGetMetadataFileSizeNegative(t *testing.T) {
+	// Arrange
+	server, client := net.Pipe()
+
+	fileName := "negative.txt"
+	fileHash := "de614ea622e0963faf12594c1c59937dcb6fc223c81b3a451ee2561fc44e22a2"
+	fileSize := -1
+
+	// Act
+	go func() {
+		defer client.Close()
+
+		client.Write([]byte(fileHash))
+
+		fileNameBytes := make([]byte, momo_common.FileInfoLength)
+		copy(fileNameBytes, fileName)
+		client.Write(fileNameBytes)
+
+		fileSizeBytes := make([]byte, momo_common.FileInfoLength)
+		copy(fileSizeBytes, strconv.Itoa(fileSize))
+		client.Write(fileSizeBytes)
+	}()
+
+	_, err := getMetadata(server)
+
+	// Assert
+	if err == nil {
+		t.Fatalf("getMetadata should have failed for negative file size %d", fileSize)
 	}
 }
