@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"gopkg.in/ini.v1"
 )
 
 const validConfig = `
@@ -131,6 +133,92 @@ func TestGetConfig_Failures(t *testing.T) {
 
 			if !strings.Contains(err.Error(), tc.expectedError) {
 				t.Errorf("Expected error to contain '%s', but got '%s'", tc.expectedError, err.Error())
+			}
+		})
+	}
+}
+
+// TestLoadGlobalConfig tests the loadGlobalConfig function directly.
+func TestLoadGlobalConfig(t *testing.T) {
+	t.Run("Success", func(t *testing.T) {
+		f := ini.Empty()
+		s, _ := f.NewSection("global")
+		s.NewKey("debug", "true")
+		s.NewKey("replication_order", "1,2,3")
+		s.NewKey("polymorphic_system", "false")
+
+		cfg, err := loadGlobalConfig(s)
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		if !cfg.Debug {
+			t.Error("Expected Debug to be true")
+		}
+		if !reflect.DeepEqual(cfg.ReplicationOrder, []int{1, 2, 3}) {
+			t.Errorf("Expected ReplicationOrder [1, 2, 3], got %v", cfg.ReplicationOrder)
+		}
+		if cfg.PolymorphicSystem {
+			t.Error("Expected PolymorphicSystem to be false")
+		}
+	})
+
+	testCases := []struct {
+		name          string
+		setup         func(*ini.Section)
+		expectedError string
+	}{
+		{
+			name: "Invalid debug",
+			setup: func(s *ini.Section) {
+				s.NewKey("debug", "invalid")
+			},
+			expectedError: "failed to parse 'debug'",
+		},
+		{
+			name: "Missing replication_order",
+			setup: func(s *ini.Section) {
+				s.NewKey("debug", "true")
+			},
+			expectedError: "'replication_order' is missing or empty",
+		},
+		{
+			name: "Empty replication_order",
+			setup: func(s *ini.Section) {
+				s.NewKey("debug", "true")
+				s.NewKey("replication_order", "")
+			},
+			expectedError: "'replication_order' is missing or empty",
+		},
+		{
+			name: "Invalid replication_order element",
+			setup: func(s *ini.Section) {
+				s.NewKey("debug", "true")
+				s.NewKey("replication_order", "1,a,3")
+			},
+			expectedError: "failed to parse 'replication_order'",
+		},
+		{
+			name: "Invalid polymorphic_system",
+			setup: func(s *ini.Section) {
+				s.NewKey("debug", "true")
+				s.NewKey("replication_order", "1,2,3")
+				s.NewKey("polymorphic_system", "invalid")
+			},
+			expectedError: "failed to parse 'polymorphic_system'",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := ini.Empty()
+			s, _ := f.NewSection("global")
+			tc.setup(s)
+			_, err := loadGlobalConfig(s)
+			if err == nil {
+				t.Fatal("Expected error, got nil")
+			}
+			if !strings.Contains(err.Error(), tc.expectedError) {
+				t.Errorf("Expected error containing %q, got %q", tc.expectedError, err.Error())
 			}
 		})
 	}
