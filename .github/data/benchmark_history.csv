@@ -105,3 +105,7 @@ e9aef8180be3891f4141842cedf27ac6ba14902f,BenchmarkPadString-4,57.02,128.00,2.00
 6f69da6a50379ad2c59855943191b1e6031b4932,BenchmarkIndexDirectTracking-4,0.31,0.00,0.00
 6f69da6a50379ad2c59855943191b1e6031b4932,BenchmarkIndexSearch-4,2.40,0.00,0.00
 6f69da6a50379ad2c59855943191b1e6031b4932,BenchmarkPadString-4,54.68,128.00,2.00
+5f52212c1d1a47b51f03cb316afed6d7eba924c9,BenchmarkCheckMetricsAndSwap-4,9.03,0.00,0.00
+5f52212c1d1a47b51f03cb316afed6d7eba924c9,BenchmarkIndexDirectTracking-4,0.35,0.00,0.00
+5f52212c1d1a47b51f03cb316afed6d7eba924c9,BenchmarkIndexSearch-4,2.75,0.00,0.00
+5f52212c1d1a47b51f03cb316afed6d7eba924c9,BenchmarkPadString-4,49.22,128.00,2.00
