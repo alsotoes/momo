@@ -14,8 +14,10 @@ import (
 // It first connects to a specified daemon to determine the replication mode.
 // If splay replication is active, it connects to all other daemons.
 // Finally, it sends the file to all established connections concurrently.
-func Connect(wg *sync.WaitGroup, daemons []*Daemon, filePath string, serverId int, timestamp int64) {
+func Connect(wg *sync.WaitGroup, cfg Configuration, filePath string, serverId int, timestamp int64) {
 	defer wg.Done()
+	daemons := cfg.Daemons
+	authToken := cfg.Global.AuthToken
 	var connections []net.Conn
 	var wgSendFile sync.WaitGroup
 
@@ -28,6 +30,13 @@ func Connect(wg *sync.WaitGroup, daemons []*Daemon, filePath string, serverId in
 	connections = append(connections, initialConn)
 
 	// Perform handshake to get replication mode
+	// First, send the AuthToken
+	if _, err := initialConn.Write([]byte(authToken)); err != nil {
+		log.Printf("Failed to send AuthToken to %s: %v", daemons[serverId].Host, err)
+		initialConn.Close()
+		return
+	}
+
 	if _, err := initialConn.Write([]byte(strconv.FormatInt(timestamp, 10))); err != nil {
 		log.Printf("Failed to send timestamp to %s: %v", daemons[serverId].Host, err)
 		initialConn.Close()
@@ -62,6 +71,13 @@ func Connect(wg *sync.WaitGroup, daemons []*Daemon, filePath string, serverId in
 			}
 
 			// Perform handshake with the other daemons
+			// First, send the AuthToken
+			if _, err := conn.Write([]byte(authToken)); err != nil {
+				log.Printf("Failed to send AuthToken to %s: %v", daemon.Host, err)
+				conn.Close()
+				continue
+			}
+
 			if _, err := conn.Write([]byte(strconv.FormatInt(timestamp, 10))); err != nil {
 				log.Printf("Failed to send timestamp to %s: %v", daemon.Host, err)
 				conn.Close()

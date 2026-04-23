@@ -29,7 +29,8 @@ var connectToPeer = momo_common.Connect
 //   - ReplicationPrimarySplay: This mode is currently handled as ReplicationNone, which means no replication is performed.
 //
 // The replication mode is determined by the client, and for secondary servers, it's influenced by the timestamp of the operation.
-func Daemon(ctx context.Context, daemons []*momo_common.Daemon, serverId int) {
+func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) {
+	daemons := cfg.Daemons
 	var timestamp int64
 	server, err := net.Listen("tcp", daemons[serverId].Host)
 	if err != nil {
@@ -75,6 +76,17 @@ func Daemon(ctx context.Context, daemons []*momo_common.Daemon, serverId int) {
 				}
 				idleConn.Close()
 			}()
+
+			// Read and validate the AuthToken
+			bufferAuthToken := make([]byte, momo_common.AuthTokenLength)
+			if _, err := io.ReadFull(idleConn, bufferAuthToken); err != nil {
+				log.Printf("Error reading AuthToken: %v", err)
+				return
+			}
+			if string(bufferAuthToken) != cfg.Global.AuthToken {
+				log.Printf("Invalid AuthToken received")
+				return
+			}
 
 			// Read the timestamp from the connection
 			bufferTimestamp := make([]byte, momo_common.TimestampLength)
@@ -137,7 +149,7 @@ func Daemon(ctx context.Context, daemons []*momo_common.Daemon, serverId int) {
 						wg.Done()
 						return
 					}
-					connectToPeer(&wg, daemons, daemons[1].Data+"/"+metadata.Name, 2, timestamp)
+					connectToPeer(&wg, cfg, daemons[1].Data+"/"+metadata.Name, 2, timestamp)
 					wg.Wait()
 				} else {
 					wg.Add(1)
@@ -146,7 +158,7 @@ func Daemon(ctx context.Context, daemons []*momo_common.Daemon, serverId int) {
 						wg.Done()
 						return
 					}
-					connectToPeer(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 1, timestamp)
+					connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 1, timestamp)
 					wg.Wait()
 				}
 			case momo_common.ReplicationSplay:
@@ -157,8 +169,8 @@ func Daemon(ctx context.Context, daemons []*momo_common.Daemon, serverId int) {
 					wg.Done()
 					return
 				}
-				go connectToPeer(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 1, timestamp)
-				go connectToPeer(&wg, daemons, daemons[0].Data+"/"+metadata.Name, 2, timestamp)
+				go connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 1, timestamp)
+				go connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 2, timestamp)
 				wg.Wait()
 			default:
 				log.Println("*** ERROR: Unknown replication type")
