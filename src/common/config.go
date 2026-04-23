@@ -78,6 +78,7 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 	}
 
 	parts := strings.Split(replicationOrderStr, ",")
+	globalCfg.ReplicationOrder = make([]int, 0, len(parts))
 	for _, part := range parts {
 		order, err := strconv.Atoi(strings.TrimSpace(part))
 		if err != nil {
