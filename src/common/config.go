@@ -72,14 +72,17 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 		return ConfigurationGlobal{}, fmt.Errorf("failed to parse 'debug': %w", err)
 	}
 
+	globalCfg.AuthToken = section.Key("auth_token").String()
+	if globalCfg.AuthToken == "" {
+		return ConfigurationGlobal{}, fmt.Errorf("'auth_token' is missing or empty")
+	}
+
 	replicationOrderStr := section.Key("replication_order").String()
 	if replicationOrderStr == "" {
 		return ConfigurationGlobal{}, fmt.Errorf("'replication_order' is missing or empty")
 	}
 
 	parts := strings.Split(replicationOrderStr, ",")
-	// ⚡ Bolt: Pre-allocate the slice capacity to minimize memory allocations and improve performance.
-	// Optimization: Pre-allocate slice capacity to avoid reallocation overhead.
 	globalCfg.ReplicationOrder = make([]int, 0, len(parts))
 	for _, part := range parts {
 		order, err := strconv.Atoi(strings.TrimSpace(part))
@@ -127,11 +130,8 @@ func loadMetricsConfig(section *ini.Section) (ConfigurationMetrics, error) {
 
 // loadDaemons loads all [daemon.*] sections from the configuration.
 func loadDaemons(cfg *ini.File) ([]*Daemon, error) {
+	var daemons []*Daemon
 	daemonSections := cfg.SectionStrings()
-	// ⚡ Bolt: Pre-allocate the slice capacity using the maximum possible size (number of sections)
-	// to minimize memory allocations and improve performance.
-	// Optimization: Pre-allocate slice capacity to avoid reallocation overhead.
-	daemons := make([]*Daemon, 0, len(daemonSections))
 
 	for _, sectionName := range daemonSections {
 		if !strings.HasPrefix(sectionName, prefixDaemon) {
