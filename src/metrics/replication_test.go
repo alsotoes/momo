@@ -47,15 +47,18 @@ func TestPushNewReplicationMode(t *testing.T) {
 		},
 	}
 
-	// Override GetConfigFromFile to return the mock config
-	originalGetConfig := momo_common.GetConfigFromFile
-	momo_common.GetConfigFromFile = func() (momo_common.Configuration, error) {
-		return cfg, nil
-	}
-	defer func() { momo_common.GetConfigFromFile = originalGetConfig }()
-
-	pushNewReplicationMode(5)
+	pushNewReplicationMode(cfg, 5)
 
 	// Give the server time to process the request
 	time.Sleep(100 * time.Millisecond)
+}
+
+func TestPushNewReplicationMode_NoDaemons(t *testing.T) {
+	// Mock config with no daemons
+	cfg := momo_common.Configuration{
+		Daemons: []*momo_common.Daemon{},
+	}
+
+	// This should not panic and should return early
+	pushNewReplicationMode(cfg, 5)
 }
