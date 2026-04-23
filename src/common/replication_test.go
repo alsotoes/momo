@@ -1,7 +1,6 @@
 package common
 
 import (
-	"fmt"
 	"io"
 	"net"
 	"os"
@@ -153,7 +152,7 @@ func TestConnect(t *testing.T) {
 		defer conn.Close()
 		buf := make([]byte, TimestampLength)
 		io.ReadFull(conn, buf)
-		conn.Write([]byte(fmt.Sprintf("%d", ReplicationPrimarySplay))) // Send 3
+		conn.Write([]byte(strconv.Itoa(ReplicationPrimarySplay))) // Send 3
 
 		// Read file metadata
 		bufHash := make([]byte, hashLength)
