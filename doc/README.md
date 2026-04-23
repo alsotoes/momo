@@ -242,10 +242,10 @@ This section is automatically updated by our GitHub Actions workflow.
 ```
                                    │ old_bench_filtered.txt │       new_bench_filtered.txt       │
                                    │         sec/op         │    sec/op     vs base              │
-ParseReplicationOrder_NoPrealloc-4             226.2n ± ∞ ¹   234.2n ± ∞ ¹       ~ (p=0.056 n=5)
-ParseReplicationOrder_Prealloc-4               106.8n ± ∞ ¹   112.9n ± ∞ ¹  +5.71% (p=0.008 n=5)
-CheckMetricsAndSwap-4                          8.432n ± ∞ ¹   8.439n ± ∞ ¹       ~ (p=0.254 n=5)
-geomean                                        58.84n         60.65n        +3.08%
+ParseReplicationOrder_NoPrealloc-4             230.5n ± ∞ ¹   228.9n ± ∞ ¹       ~ (p=0.341 n=5)
+ParseReplicationOrder_Prealloc-4               109.0n ± ∞ ¹   108.9n ± ∞ ¹       ~ (p=0.738 n=5)
+CheckMetricsAndSwap-4                          8.444n ± ∞ ¹   8.435n ± ∞ ¹       ~ (p=0.690 n=5)
+geomean                                        59.64n         59.46n        -0.30%
 ¹ need >= 6 samples for confidence interval at level 0.95
 
                                    │ old_bench_filtered.txt │       new_bench_filtered.txt        │
@@ -274,7 +274,7 @@ geomean                                                   ³                +0.0
 
 | Benchmark | Avg. Time/Op | Avg. Bytes/Op | Avg. Allocs/Op |
 |-----------|--------------|---------------|----------------|
-| BenchmarkCheckMetricsAndSwap-4 | 8.44 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkParseReplicationOrder_NoPrealloc-4 | 234.20 ns/op | 248.00 B/op | 5.00 allocs/op |\n| BenchmarkParseReplicationOrder_Prealloc-4 | 112.00 ns/op | 80.00 B/op | 1.00 allocs/op |\n
+| BenchmarkCheckMetricsAndSwap-4 | 8.45 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkParseReplicationOrder_NoPrealloc-4 | 229.30 ns/op | 248.00 B/op | 5.00 allocs/op |\n| BenchmarkParseReplicationOrder_Prealloc-4 | 108.94 ns/op | 80.00 B/op | 1.00 allocs/op |\n
 
 ### Performance History
 
@@ -292,12 +292,12 @@ xychart-beta
     title "Performance Trend (Avg. Time, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Time (ns/op)"
-    x-axis [4701,3c85,b5e2,6def,7c1c,1b3e,660a,483b,70fb,a5c7]
-    line "CheckMetricsAndSwap" [9,8,8,8,8,8,8,8,8,8]
+    x-axis [3c85,b5e2,6def,7c1c,1b3e,660a,483b,70fb,a5c7,4486]
+    line "CheckMetricsAndSwap" [8,8,8,8,8,8,8,8,8,8]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [4,2,2,2,2,2,2,2,2,2]
-    line "ParseReplicationOrder_NoPrealloc" [229,228,207,228,230,225,225,205,208,234]
-    line "ParseReplicationOrder_Prealloc" [107,107,102,106,107,107,107,103,102,112]
+    line "ParseReplicationOrder_NoPrealloc" [228,207,228,230,225,225,205,208,234,229]
+    line "ParseReplicationOrder_Prealloc" [107,102,106,107,107,107,103,102,112,109]
 ```
 
 ```mermaid
@@ -305,7 +305,7 @@ xychart-beta
     title "Memory Trend (Avg. Bytes/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Bytes/Op"
-    x-axis [4701,3c85,b5e2,6def,7c1c,1b3e,660a,483b,70fb,a5c7]
+    x-axis [3c85,b5e2,6def,7c1c,1b3e,660a,483b,70fb,a5c7,4486]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [0,0,0,0,0,0,0,0,0,0]
@@ -318,7 +318,7 @@ xychart-beta
     title "Allocation Trend (Avg. Allocs/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Allocs/Op"
-    x-axis [4701,3c85,b5e2,6def,7c1c,1b3e,660a,483b,70fb,a5c7]
+    x-axis [3c85,b5e2,6def,7c1c,1b3e,660a,483b,70fb,a5c7,4486]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [0,0,0,0,0,0,0,0,0,0]
