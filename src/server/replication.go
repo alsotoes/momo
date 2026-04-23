@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"io"
 	"log"
@@ -104,7 +105,7 @@ func ChangeReplicationModeServer(ctx context.Context, daemons []*momo_common.Dae
 				return
 			}
 			expectedToken := momo_common.PadString(authToken, 64)
-			if string(bufferAuthToken) != expectedToken {
+			if subtle.ConstantTimeCompare(bufferAuthToken, []byte(expectedToken)) != 1 {
 				log.Printf("Authentication failed")
 				return
 			}

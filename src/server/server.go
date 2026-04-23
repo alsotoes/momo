@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	"crypto/subtle"
 	"io"
 	"log"
 	"net"
@@ -84,7 +85,7 @@ func Daemon(ctx context.Context, daemons []*momo_common.Daemon, serverId int, au
 				return
 			}
 			expectedToken := momo_common.PadString(authToken, 64)
-			if string(bufferAuthToken) != expectedToken {
+			if subtle.ConstantTimeCompare(bufferAuthToken, []byte(expectedToken)) != 1 {
 				log.Printf("Authentication failed")
 				return
 			}

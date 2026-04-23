@@ -2,6 +2,7 @@
 package server
 
 import (
+	"crypto/subtle"
 	"io"
 	"net"
 	"os"
@@ -52,7 +53,7 @@ func handleConnection(t *testing.T, connection net.Conn, daemons []*momo_common.
 		return
 	}
 	expectedToken := momo_common.PadString(authToken, 64)
-	if string(bufferAuthToken) != expectedToken {
+	if subtle.ConstantTimeCompare(bufferAuthToken, []byte(expectedToken)) != 1 {
 		t.Logf("Authentication failed")
 		return
 	}
