@@ -72,6 +72,11 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 		return ConfigurationGlobal{}, fmt.Errorf("failed to parse 'debug': %w", err)
 	}
 
+	globalCfg.AuthToken = section.Key("auth_token").String()
+	if globalCfg.AuthToken == "" {
+		return ConfigurationGlobal{}, fmt.Errorf("'auth_token' is missing or empty")
+	}
+
 	replicationOrderStr := section.Key("replication_order").String()
 	if replicationOrderStr == "" {
 		return ConfigurationGlobal{}, fmt.Errorf("'replication_order' is missing or empty")
