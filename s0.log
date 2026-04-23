@@ -1,6 +1,0 @@
-2026/04/23 21:51:30.726400 momo.go:76: *** SERVER CODE
-2026/04/23 21:51:30.726450 metrics.go:84: Daemon GetMetrics stated...
-2026/04/23 21:51:30.726552 replication.go:16: Notifying primary daemon of new replication mode: 4
-2026/04/23 21:51:30.727033 server.go:49: Server primary Daemon started... at localhost:8080
-2026/04/23 21:51:30.727048 server.go:50: ...Waiting for connections...
-2026/04/23 21:51:30.727115 replication.go:61: Error listening: listen tcp 127.0.0.1:9090: bind: address already in use

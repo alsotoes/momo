@@ -1,7 +1,0 @@
-2026/04/23 21:51:30.726623 momo.go:76: *** SERVER CODE
-2026/04/23 21:51:30.727203 replication.go:73: Server changeReplicationMode started... at localhost:9092
-2026/04/23 21:51:30.727224 replication.go:74: Waiting for connections: changeReplicationMode...
-2026/04/23 21:51:30.727234 replication.go:75: default ReplicationMode value: 4
-2026/04/23 21:51:30.727234 server.go:49: Server primary Daemon started... at localhost:8082
-2026/04/23 21:51:30.727283 replication.go:80: ReplicationData struct: {"old":4,"new":4,"timestamp":1776981090726659646}
-2026/04/23 21:51:30.727286 server.go:50: ...Waiting for connections...
