@@ -115,12 +115,12 @@ func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 // It logs the progress and the result of the hash check.
 func getFile(connection net.Conn, path string, fileName string, expectedHash string, fileSize int64) (err error) {
 	fullPath := filepath.Join(path, fileName)
-	tmpPath := fullPath + ".tmp"
-	newFile, err := os.Create(tmpPath)
-
+	// 🛡️ Sentinel: Use os.CreateTemp to create a unique temporary file and prevent race conditions.
+	newFile, err := os.CreateTemp(path, fileName+".*.tmp")
 	if err != nil {
 		return err
 	}
+	tmpPath := newFile.Name()
 
 	defer func() {
 		newFile.Close()

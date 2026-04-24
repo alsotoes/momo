@@ -52,3 +52,8 @@
 **Vulnerability:** The server called `os.Exit(1)` inside the main `server.Accept()` loops upon encountering any network error. This allows a trivial Denial of Service (DoS) attack, as exhausting temporary resources (like `EMFILE` for open file descriptors) would crash the entire application instead of allowing it to recover gracefully.
 **Learning:** Network `Accept()` loops operate in long-running daemon processes where transient errors are expected under load or adversarial conditions. Crashing the process entirely on a transient error turns a temporary bottleneck into a permanent outage.
 **Prevention:** In long-running network daemon loops, log the `Accept()` error, implement a brief sleep (`time.Sleep`) to prevent high CPU spinning, and use `continue` to keep the server alive and processing subsequent requests once resources free up. Never use `os.Exit(1)` or `panic` on expected runtime network errors.
+
+## 2026-04-08 - Race Condition in Temporary File Creation
+**Vulnerability:** Using a predictable temporary file name (e.g., `filename.tmp`) via `os.Create` introduces a race condition. An attacker can create a symbolic link at that location before the application does, potentially leading to unauthorized file overwrites or data leakage if the application writes sensitive data to the path.
+**Learning:** Predictable temporary filenames are insecure in shared or untrusted directories. Multiple concurrent processes might also attempt to create the same temporary file, leading to data corruption or errors.
+**Prevention:** Always use `os.CreateTemp` to generate unique, unpredictable temporary file names. This ensures the file is created with appropriate permissions and that the name does not collide with existing files or symbolic links.

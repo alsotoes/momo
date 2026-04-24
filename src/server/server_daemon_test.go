@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net"
 	"os"
 	"testing"
@@ -92,6 +93,9 @@ func TestDaemonReal(t *testing.T) {
 		conn.Write([]byte("data"))
 
 		ackBuf := make([]byte, 4)
-		conn.Read(ackBuf)
+		_, err := io.ReadFull(conn, ackBuf)
+		if err != nil {
+			t.Logf("Failed to read ACK from server: %v", err)
+		}
 	}
 }
