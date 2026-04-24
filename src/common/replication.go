@@ -6,7 +6,6 @@ import (
 	"net"
 	"os"
 	"strconv"
-	"strings"
 	"sync"
 )
 
@@ -14,8 +13,10 @@ import (
 // It first connects to a specified daemon to determine the replication mode.
 // If splay replication is active, it connects to all other daemons.
 // Finally, it sends the file to all established connections concurrently.
-func Connect(wg *sync.WaitGroup, daemons []*Daemon, filePath string, serverId int, timestamp int64) {
+func Connect(wg *sync.WaitGroup, cfg Configuration, filePath string, serverId int, timestamp int64) {
 	defer wg.Done()
+	daemons := cfg.Daemons
+	authToken := cfg.Global.AuthToken
 	var connections []net.Conn
 	var wgSendFile sync.WaitGroup
 
@@ -28,9 +29,14 @@ func Connect(wg *sync.WaitGroup, daemons []*Daemon, filePath string, serverId in
 	connections = append(connections, initialConn)
 
 	// Perform handshake to get replication mode
-	// ⚡ Bolt: Use strconv.AppendInt instead of []byte(strconv.FormatInt())
-	// to avoid intermediate string allocations when formatting integers into byte slices for network transmission.
-	if _, err := initialConn.Write(strconv.AppendInt(make([]byte, 0, 32), timestamp, 10)); err != nil {
+	// First, send the AuthToken
+	if _, err := initialConn.Write([]byte(PadString(authToken, AuthTokenLength))); err != nil {
+		log.Printf("Failed to send AuthToken to %s: %v", daemons[serverId].Host, err)
+		initialConn.Close()
+		return
+	}
+
+	if _, err := initialConn.Write([]byte(PadString(strconv.FormatInt(timestamp, 10), TimestampLength))); err != nil {
 		log.Printf("Failed to send timestamp to %s: %v", daemons[serverId].Host, err)
 		initialConn.Close()
 		return
@@ -64,8 +70,14 @@ func Connect(wg *sync.WaitGroup, daemons []*Daemon, filePath string, serverId in
 			}
 
 			// Perform handshake with the other daemons
-			// ⚡ Bolt: Use strconv.AppendInt to prevent string allocation
-			if _, err := conn.Write(strconv.AppendInt(make([]byte, 0, 32), timestamp, 10)); err != nil {
+			// First, send the AuthToken
+			if _, err := conn.Write([]byte(PadString(authToken, AuthTokenLength))); err != nil {
+				log.Printf("Failed to send AuthToken to %s: %v", daemon.Host, err)
+				conn.Close()
+				continue
+			}
+
+			if _, err := conn.Write([]byte(PadString(strconv.FormatInt(timestamp, 10), TimestampLength))); err != nil {
 				log.Printf("Failed to send timestamp to %s: %v", daemon.Host, err)
 				conn.Close()
 				continue
@@ -135,7 +147,7 @@ func sendFile(wg *sync.WaitGroup, connection net.Conn, fileName string) {
 	metadataBuffer := make([]byte, hashLength+FileInfoLength+FileInfoLength)
 
 	copy(metadataBuffer[0:hashLength], fileHash)
-	copy(metadataBuffer[hashLength:hashLength+FileInfoLength], padString(fileInfo.Name(), FileInfoLength))
+	copy(metadataBuffer[hashLength:hashLength+FileInfoLength], PadString(fileInfo.Name(), FileInfoLength))
 
 	// Format size directly into the buffer avoiding fmt.Sprintf
 	sizeBytes := strconv.AppendInt(make([]byte, 0, FileInfoLength), fileSize, 10)
@@ -168,11 +180,11 @@ func sendFile(wg *sync.WaitGroup, connection net.Conn, fileName string) {
 
 // padString pads a string with null characters to a specified length.
 // If the string is longer than the specified length, it is truncated.
-func padString(input string, length int) string {
+func PadString(input string, length int) string {
 	if len(input) >= length {
 		return input[:length]
 	}
-	// ⚡ Bolt: Use strings.Repeat for a simpler, faster, and more readable optimization.
-	// This reduces memory allocations compared to string(make([]byte, n)) while maintaining clarity.
-	return input + strings.Repeat("\x00", length-len(input))
+	b := make([]byte, length)
+	copy(b, input)
+	return string(b)
 }
