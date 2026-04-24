@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"io"
 	"log"
@@ -103,7 +104,9 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 				log.Printf("Error reading AuthToken: %v", err)
 				return
 			}
-			if string(bufferAuthToken) != cfg.Global.AuthToken {
+			// 🛡️ Sentinel: Use constant-time comparison to prevent timing attacks during authentication
+			expectedAuthToken := []byte(momo_common.PadString(cfg.Global.AuthToken, momo_common.AuthTokenLength))
+			if subtle.ConstantTimeCompare(bufferAuthToken, expectedAuthToken) != 1 {
 				log.Printf("Invalid AuthToken received")
 				return
 			}
