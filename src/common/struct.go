@@ -40,6 +40,8 @@ type ConfigurationGlobal struct {
 	ReplicationOrder []int
 	// PolymorphicSystem enables or disables the polymorphic system.
 	PolymorphicSystem bool
+	// AuthToken is the system authentication token.
+	AuthToken string
 }
 
 // ConfigurationMetrics holds the metrics configuration for the application.
