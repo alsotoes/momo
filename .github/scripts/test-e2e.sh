@@ -12,9 +12,9 @@ mkdir -p $E2E_DIR/0 $E2E_DIR/1 $E2E_DIR/2
 cat << 'EOF' > $E2E_DIR/e2e.conf
 [global]
 debug=true
+auth_token=a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6
 replication_order=4,3,2,1
 polymorphic_system=false
-auth_token=super_secret_test_token
 
 [metrics]
 interval=10
@@ -58,9 +58,8 @@ sleep 3
 # Switch replication to Chain (1) to ensure data reaches all nodes
 echo "Triggering replication mode change to Chain (1)..."
 TS=$(date +%s%N)
-echo -n -e 'super_secret_test_token\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0' > $E2E_DIR/repl.json
-echo "{\"old\":4,\"new\":1,\"timestamp\":$TS}" >> $E2E_DIR/repl.json
-nc 127.0.0.1 5550 < $E2E_DIR/repl.json
+echo "{\"old\":4,\"new\":1,\"timestamp\":$TS}" > $E2E_DIR/repl.json
+printf "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" | cat - $E2E_DIR/repl.json | nc 127.0.0.1 5550
 sleep 1
 
 # Create dummy file to send

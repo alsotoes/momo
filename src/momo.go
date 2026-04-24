@@ -45,8 +45,7 @@ func Run() {
 	common.LogStdOut(cfg.Global.Debug)
 
 	if *impersonationPtr == "server" && (*serverIdPtr >= len(cfg.Daemons) || *serverIdPtr < 0) {
-		log.Printf("panic: index out of range")
-		os.Exit(1)
+		log.Fatalf("index out of range")
 	}
 
 	switch *impersonationPtr {
@@ -56,12 +55,11 @@ func Run() {
 			serverId = *serverIdPtr
 		}
 		if serverId >= len(cfg.Daemons) || serverId < 0 {
-			log.Printf("panic: index out of range")
-			os.Exit(1)
+			log.Fatalf("index out of range")
 		}
 		var wg sync.WaitGroup
 		wg.Add(1)
-		common.Connect(&wg, cfg.Daemons, *filePathPtr, serverId, common.DummyEpoch, cfg.Global.AuthToken)
+		common.Connect(&wg, cfg, *filePathPtr, serverId, common.DummyEpoch)
 		wg.Wait()
 	case "server":
 		runServer(cfg, *serverIdPtr)
@@ -89,12 +87,12 @@ func runServer(cfg common.Configuration, serverId int) {
 
 	go func() {
 		defer wg.Done()
-		server.ChangeReplicationModeServer(context.Background(), cfg.Daemons, serverId, timestamp, cfg.Global.AuthToken)
+		server.ChangeReplicationModeServer(context.Background(), cfg, serverId, timestamp)
 	}()
 
 	go func() {
 		defer wg.Done()
-		server.Daemon(context.Background(), cfg.Daemons, serverId, cfg.Global.AuthToken)
+		server.Daemon(context.Background(), cfg, serverId)
 	}()
 
 	wg.Wait()

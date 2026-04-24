@@ -1,7 +1,6 @@
 package common
 
 import (
-	"io/ioutil"
 	"os"
 	"testing"
 )
@@ -9,7 +8,7 @@ import (
 func TestHashFile(t *testing.T) {
 	// Create a temporary file with known content
 	content := []byte("hello world")
-	tmpfile, err := ioutil.TempFile("", "test.txt")
+	tmpfile, err := os.CreateTemp("", "test.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
