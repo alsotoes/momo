@@ -28,3 +28,7 @@
 **Vulnerability:** The daemon accepted connections and proceeded to read the file timestamp, metadata and content directly without validating the caller. An authentication handshake was missing.
 **Learning:** Accepting network connections and processing data without a verification step (authentication) allows unauthorized users to interact with the system, leading to various security risks including unauthorized data upload and system configuration changes.
 **Prevention:** Always implement a mandatory authentication handshake at the beginning of any network communication before processing any protocol-specific data.
+## 2024-05-24 - Timing Attack on AuthToken Validation
+**Vulnerability:** The server used standard Go string comparison `string(bufferAuthToken) != cfg.Global.AuthToken` to validate the client's authentication token. This exposed the system to timing attacks, where an attacker could deduce the correct token length and contents by measuring response times.
+**Learning:** Even simple string equality checks in security contexts can be dangerous in Go. Additionally, when using `subtle.ConstantTimeCompare`, both byte slices must be exactly the same length or the function will immediately return 0, which still leaks length information.
+**Prevention:** Always use `crypto/subtle.ConstantTimeCompare` for verifying cryptographic secrets and tokens. Ensure the expected token is properly padded to match the protocol's fixed length before comparison.
