@@ -80,13 +80,13 @@ func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 // It logs the progress and the result of the hash check.
 func getFile(connection net.Conn, path string, fileName string, expectedHash string, fileSize int64) (err error) {
 	fullPath := filepath.Join(path, fileName)
-	// 🛡️ Sentinel: Write to a temporary file first to prevent truncating existing files before validation.
-	tempPath := fullPath + ".tmp"
-	newFile, err := os.Create(tempPath)
+	// 🛡️ Sentinel: Use os.CreateTemp for secure, unpredictable temporary file creation.
+	newFile, err := os.CreateTemp(path, fileName+"-*.tmp")
 
 	if err != nil {
 		return err
 	}
+	tempPath := newFile.Name()
 
 	defer func() {
 		newFile.Close()
