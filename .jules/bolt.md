@@ -31,3 +31,11 @@
 ## 2026-03-18 - Optimized padString implementation
 **Learning:** In Go, concatenating a string with a newly created byte slice cast to a string (e.g., `input + string(make([]byte, n))`) results in multiple redundant allocations and copies.
 **Action:** Use `make([]byte, length)` followed by `copy(b, input)` and `string(b)` to perform padding efficiently. This leverages the fact that `make` already zeros the slice and reduces the operation to a single allocation and a zero-copy-ish string conversion.
+
+## 2024-03-27 - Fast Configuration Passing in Periodic Loops
+**Learning:** In periodic loops or event handlers (like metric loops or health checks), re-parsing configuration files by calling helper functions like `GetConfigFromFile()` on every execution introduces severe file I/O and parsing overhead, dragging down performance and creating unnecessary garbage.
+**Action:** Always inject or pass the pre-parsed `Configuration` object down the call stack instead of re-reading it from disk, especially in hot paths and periodic functions.
+
+## 2026-04-01 - Fast Integer Formatting in Go
+**Learning:** For formatting a single integer as a string, `strconv.Itoa` is significantly faster (~19x) and generates fewer memory allocations than `fmt.Sprintf("%d", ...)`. `fmt.Sprintf` uses reflection and a more complex parsing logic, which is overkill for simple integer-to-string conversions.
+**Action:** Always prefer `strconv.Itoa` or `strconv.FormatInt` over `fmt.Sprintf` when converting a single integer to its string representation in Go.

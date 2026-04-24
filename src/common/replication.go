@@ -178,7 +178,7 @@ func sendFile(wg *sync.WaitGroup, connection net.Conn, fileName string) {
 	log.Printf("File %s sent successfully.", fileName)
 }
 
-// padString pads a string with null characters to a specified length.
+// PadString pads a string with null characters to a specified length.
 // If the string is longer than the specified length, it is truncated.
 func PadString(input string, length int) string {
 	if len(input) >= length {
