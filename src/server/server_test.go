@@ -53,8 +53,7 @@ func handleConnection(t *testing.T, connection net.Conn, cfg momo_common.Configu
 		t.Logf("Error reading AuthToken: %v", err)
 		return
 	}
-	expectedToken := momo_common.PadString(cfg.Global.AuthToken, momo_common.AuthTokenLength)
-	if subtle.ConstantTimeCompare(bufferAuthToken, []byte(expectedToken)) != 1 {
+	if string(bufferAuthToken) != cfg.Global.AuthToken {
 		t.Logf("Invalid AuthToken received")
 		return
 	}

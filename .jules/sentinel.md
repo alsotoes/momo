@@ -28,7 +28,3 @@
 **Vulnerability:** The daemon accepted connections and proceeded to read the file timestamp, metadata and content directly without validating the caller. An authentication handshake was missing.
 **Learning:** Accepting network connections and processing data without a verification step (authentication) allows unauthorized users to interact with the system, leading to various security risks including unauthorized data upload and system configuration changes.
 **Prevention:** Always implement a mandatory authentication handshake at the beginning of any network communication before processing any protocol-specific data.
-## 2024-05-24 - Prevent Timing Attacks in Authentication Handshake
-**Vulnerability:** Standard string inequality comparison (`!=`) was used to verify the authentication token in `server.go` and `replication.go`, making the system vulnerable to timing side-channel attacks.
-**Learning:** The time taken to compare strings using `!=` depends on how many initial characters match. An attacker can exploit this by sending a series of incorrect tokens and measuring the response time to incrementally deduce the correct token, bypassing authentication.
-**Prevention:** Always use `crypto/subtle.ConstantTimeCompare` when verifying secrets, tokens, or hashes to ensure the comparison time is constant regardless of the input, mitigating timing attacks.

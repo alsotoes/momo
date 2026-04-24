@@ -104,8 +104,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 				log.Printf("Error reading AuthToken: %v", err)
 				return
 			}
-			expectedToken := momo_common.PadString(cfg.Global.AuthToken, momo_common.AuthTokenLength)
-			if subtle.ConstantTimeCompare(bufferAuthToken, []byte(expectedToken)) != 1 {
+			if string(bufferAuthToken) != cfg.Global.AuthToken {
 				log.Printf("Invalid AuthToken received")
 				return
 			}
