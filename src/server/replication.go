@@ -80,6 +80,9 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 	replicationJson, _ := json.Marshal(initialState)
 	log.Printf("ReplicationData struct: %s", string(replicationJson))
 
+	// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
+	expectedAuthToken := []byte(momo_common.PadString(cfg.Global.AuthToken, momo_common.AuthTokenLength))
+
 	for {
 		connection, err := server.Accept()
 		if err != nil {
@@ -105,7 +108,6 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 				return
 			}
 			// 🛡️ Sentinel: Use constant-time comparison to prevent timing attacks during authentication
-			expectedAuthToken := []byte(momo_common.PadString(cfg.Global.AuthToken, momo_common.AuthTokenLength))
 			if subtle.ConstantTimeCompare(bufferAuthToken, expectedAuthToken) != 1 {
 				log.Printf("Invalid AuthToken received")
 				return

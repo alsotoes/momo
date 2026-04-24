@@ -1,6 +1,7 @@
 package common
 
 import (
+	"crypto/subtle"
 	"io"
 	"net"
 	"os"
@@ -45,7 +46,8 @@ func startMockServer(t *testing.T, authToken string, expectedMode int, delay tim
 
 		bufAuth := make([]byte, AuthTokenLength)
 		io.ReadFull(conn, bufAuth)
-		if string(bufAuth) != authToken {
+		expectedAuthToken := []byte(PadString(authToken, AuthTokenLength))
+		if subtle.ConstantTimeCompare(bufAuth, expectedAuthToken) != 1 {
 			t.Logf("Server: Invalid AuthToken received: %s", string(bufAuth))
 			return
 		}
@@ -89,7 +91,8 @@ func startDummyServer(t *testing.T, authToken string) (string, net.Listener) {
 				// Just read and respond basic handshake then ACK
 				bufAuth := make([]byte, AuthTokenLength)
 				io.ReadFull(c, bufAuth)
-				if string(bufAuth) != authToken {
+				expectedAuthToken := []byte(PadString(authToken, AuthTokenLength))
+				if subtle.ConstantTimeCompare(bufAuth, expectedAuthToken) != 1 {
 					t.Logf("Dummy Server: Invalid AuthToken received: %s", string(bufAuth))
 					return
 				}
@@ -175,7 +178,8 @@ func TestConnect(t *testing.T) {
 
 		bufAuth := make([]byte, AuthTokenLength)
 		io.ReadFull(conn, bufAuth)
-		if string(bufAuth) != authToken {
+		expectedAuthToken := []byte(PadString(authToken, AuthTokenLength))
+		if subtle.ConstantTimeCompare(bufAuth, expectedAuthToken) != 1 {
 			t.Logf("Splay Server: Invalid AuthToken received: %s", string(bufAuth))
 			return
 		}

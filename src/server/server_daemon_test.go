@@ -70,6 +70,11 @@ func TestDaemonReal(t *testing.T) {
 		{Host: "127.0.0.1:45682", Data: tempDir + "/002"},
 		{Host: "127.0.0.1:45683", Data: tempDir + "/003"},
 	}
+
+	for _, d := range daemons {
+		os.MkdirAll(d.Data, 0755)
+	}
+
 	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
 	cfg := momo_common.Configuration{
 		Daemons: daemons,
