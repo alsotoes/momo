@@ -3,6 +3,7 @@ package server
 
 import (
 	"bytes"
+	"crypto/subtle"
 	"encoding/json"
 	"io"
 	"net"
@@ -26,12 +27,13 @@ func handleReplicationChange(t *testing.T, authToken string, connection net.Conn
 		t.Logf("Error reading AuthToken: %v", err)
 		return
 	}
-	if string(bufferAuthToken) != authToken {
+	expectedAuthToken := []byte(momo_common.PadString(authToken, momo_common.AuthTokenLength))
+	if subtle.ConstantTimeCompare(bufferAuthToken, expectedAuthToken) != 1 {
 		t.Logf("Invalid AuthToken received")
 		return
 	}
 
-	bufferReplicationMode := make([]byte, momo_common.FileInfoLength)
+	bufferReplicationMode := make([]byte, 256)
 	_, err := connection.Read(bufferReplicationMode)
 	if err != nil {
 		t.Logf("connection read error: %v", err) // Log as info, as pipe closure can cause an expected EOF.
@@ -40,8 +42,15 @@ func handleReplicationChange(t *testing.T, authToken string, connection net.Conn
 
 	replicationJSON := momo_common.ReplicationData{}
 	// Trim null bytes before decoding
-	trimmedBytes := bytes.TrimRight(bufferReplicationMode, "\x00")
+	idx := bytes.IndexByte(bufferReplicationMode, 0)
+	var trimmedBytes []byte
+	if idx != -1 {
+		trimmedBytes = bufferReplicationMode[:idx]
+	} else {
+		trimmedBytes = bufferReplicationMode
+	}
 	if err := json.NewDecoder(bytes.NewReader(trimmedBytes)).Decode(&replicationJSON); err != nil {
+
 		t.Errorf("JSON decode error: %v", err)
 		return
 	}
@@ -138,8 +147,9 @@ func TestChangeReplicationModeClient(t *testing.T) {
 	// Assert: Verify the mock server received the correct data.
 	select {
 	case auth := <-receivedAuth:
-		if string(auth) != authToken {
-			t.Errorf("Expected AuthToken '%s', but got '%s'", authToken, string(auth))
+		expectedAuthToken := []byte(momo_common.PadString(authToken, momo_common.AuthTokenLength))
+		if subtle.ConstantTimeCompare(auth, expectedAuthToken) != 1 {
+			t.Errorf("Expected AuthToken '%s' (padded), but got '%s'", authToken, string(auth))
 		}
 	case <-time.After(1 * time.Second):
 		t.Fatal("Test timed out, no AuthToken received by the server.")

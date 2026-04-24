@@ -36,10 +36,18 @@ func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 	bufferFileName := buffer[64 : 64+momo_common.FileInfoLength]
 	bufferFileSize := buffer[64+momo_common.FileInfoLength:]
 
-	fileHash := string(bytes.Trim(bufferFileHash, "\x00"))
+	// ⚡ Bolt: Use bytes.IndexByte to find the first null character for faster trimming.
+	trimNull := func(b []byte) string {
+		if i := bytes.IndexByte(b, 0); i != -1 {
+			return string(b[:i])
+		}
+		return string(b)
+	}
+
+	fileHash := trimNull(bufferFileHash)
 
 	// 🛡️ Sentinel: Sanitize fileName immediately to prevent path traversal in all downstream consumers.
-	rawFileName := string(bytes.Trim(bufferFileName, "\x00"))
+	rawFileName := trimNull(bufferFileName)
 	if rawFileName == "." || rawFileName == ".." || strings.Contains(rawFileName, "/") || strings.Contains(rawFileName, "\\") {
 		return metadata, &os.PathError{Op: "getMetadata", Path: rawFileName, Err: os.ErrInvalid}
 	}
@@ -48,7 +56,8 @@ func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 		return metadata, &os.PathError{Op: "getMetadata", Path: fileName, Err: os.ErrInvalid}
 	}
 
-	fileSize, err := strconv.ParseInt(string(bytes.Trim(bufferFileSize, "\x00")), 10, 64)
+	fileSizeStr := trimNull(bufferFileSize)
+	fileSize, err := strconv.ParseInt(fileSizeStr, 10, 64)
 	if err != nil {
 		return metadata, err
 	}
@@ -71,7 +80,9 @@ func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 // It logs the progress and the result of the hash check.
 func getFile(connection net.Conn, path string, fileName string, expectedHash string, fileSize int64) (err error) {
 	fullPath := filepath.Join(path, fileName)
-	newFile, err := os.Create(fullPath)
+	// 🛡️ Sentinel: Write to a temporary file first to prevent truncating existing files before validation.
+	tempPath := fullPath + ".tmp"
+	newFile, err := os.Create(tempPath)
 
 	if err != nil {
 		return err
@@ -80,21 +91,17 @@ func getFile(connection net.Conn, path string, fileName string, expectedHash str
 
 	defer func() {
 		newFile.Close()
-		// 🛡️ Sentinel: Clean up potentially malicious/corrupt/partial files on any error
+		// 🛡️ Sentinel: Clean up the temporary file on any error.
 		if err != nil {
-			os.Remove(fullPath)
+			os.Remove(tempPath)
 		}
 	}()
 
 	// ⚡ Bolt: Compute SHA-256 hash simultaneously while writing to disk using an io.TeeReader.
-	// This eliminates the need to re-read the entire file from disk just to hash it,
-	// cutting disk I/O in half and significantly speeding up file processing.
 	hashCalc := sha256.New()
 	reader := io.TeeReader(connection, hashCalc)
 
 	// Optimization: Use a single io.CopyN instead of manually chunking in a loop.
-	// This enables the Go standard library to utilize zero-copy system calls
-	// (like splice or sendfile) and reduces function call overhead.
 	if fileSize > 0 {
 		if _, copyErr := io.CopyN(newFile, reader, fileSize); copyErr != nil {
 			err = copyErr
@@ -107,6 +114,12 @@ func getFile(connection net.Conn, path string, fileName string, expectedHash str
 	if hash != expectedHash {
 		// 🛡️ Sentinel: Reject files with mismatched hashes to prevent integrity check bypass
 		err = fmt.Errorf("file hash mismatch: expected %s, got %s", expectedHash, hash)
+		return err
+	}
+
+	// 🛡️ Sentinel: Atomically rename the temporary file to the final destination after all checks pass.
+	newFile.Close()
+	if err = os.Rename(tempPath, fullPath); err != nil {
 		return err
 	}
 

@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	"crypto/subtle"
 	"io"
 	"log"
 	"net"
@@ -49,6 +50,9 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) {
 	log.Printf("Server primary Daemon started... at %s", daemons[serverId].Host)
 	log.Printf("...Waiting for connections...")
 
+	// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
+	expectedAuthToken := []byte(momo_common.PadString(cfg.Global.AuthToken, momo_common.AuthTokenLength))
+
 	for {
 		connection, err := server.Accept()
 		if err != nil {
@@ -83,7 +87,8 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) {
 				log.Printf("Error reading AuthToken: %v", err)
 				return
 			}
-			if string(bufferAuthToken) != cfg.Global.AuthToken {
+			// 🛡️ Sentinel: Use constant-time comparison to prevent timing attacks during authentication
+			if subtle.ConstantTimeCompare(bufferAuthToken, expectedAuthToken) != 1 {
 				log.Printf("Invalid AuthToken received")
 				return
 			}
