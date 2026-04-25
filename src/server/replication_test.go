@@ -15,9 +15,16 @@ import (
 
 // handleReplicationChange is a testable version of the connection handling logic inside ChangeReplicationModeServer.
 // It reads replication data from a connection and updates the global CurrentReplicationMode.
-func handleReplicationChange(t *testing.T, connection net.Conn, wg *sync.WaitGroup) {
+func handleReplicationChange(t *testing.T, connection net.Conn, wg *sync.WaitGroup, authToken string) {
 	defer wg.Done()
 	defer connection.Close()
+
+	authBuffer := make([]byte, momo_common.FileInfoLength)
+	connection.Read(authBuffer)
+	if string(authBuffer) != momo_common.PadString(authToken, momo_common.FileInfoLength) {
+		t.Logf("Authentication failed")
+		return
+	}
 
 	bufferReplicationMode := make([]byte, momo_common.FileInfoLength)
 	_, err := connection.Read(bufferReplicationMode)
@@ -48,10 +55,13 @@ func TestChangeReplicationModeServerLogic(t *testing.T) {
 	// Arrange: Set initial state and create a network pipe to simulate a client-server connection.
 	SetReplicationState(momo_common.ReplicationNone, 0) // Initial mode
 	client, server := net.Pipe()
+	dummyAuthToken := "test_auth_token"
 
 	var wg sync.WaitGroup
 	wg.Add(1)
-	go handleReplicationChange(t, server, &wg)
+	go handleReplicationChange(t, server, &wg, dummyAuthToken)
+
+	client.Write([]byte(momo_common.PadString(dummyAuthToken, momo_common.FileInfoLength)))
 
 	// Act: Marshal and send the new replication data from the client side of the pipe.
 	expectedMode := momo_common.ReplicationSplay
@@ -104,6 +114,9 @@ func TestChangeReplicationModeClient(t *testing.T) {
 		}
 		defer conn.Close()
 
+		authBuffer := make([]byte, momo_common.FileInfoLength)
+		conn.Read(authBuffer)
+
 		buf := make([]byte, momo_common.FileInfoLength)
 		n, _ := conn.Read(buf)
 		received <- buf[:n] // Send received data to the channel.
@@ -114,8 +127,9 @@ func TestChangeReplicationModeClient(t *testing.T) {
 		{ChangeReplication: serverAddr}, // Configure the daemon to connect to our mock server.
 	}
 	jsonString := `{"New":5,"TimeStamp":1662756600}`
+	dummyAuthToken := "test_auth_token"
 
-	changeReplicationModeClient(daemons, jsonString, 0)
+	changeReplicationModeClient(daemons, jsonString, 0, dummyAuthToken)
 
 	// Assert: Verify the mock server received the correct data.
 	select {

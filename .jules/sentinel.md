@@ -52,3 +52,8 @@
 **Vulnerability:** The server called `os.Exit(1)` inside the main `server.Accept()` loops upon encountering any network error. This allows a trivial Denial of Service (DoS) attack, as exhausting temporary resources (like `EMFILE` for open file descriptors) would crash the entire application instead of allowing it to recover gracefully.
 **Learning:** Network `Accept()` loops operate in long-running daemon processes where transient errors are expected under load or adversarial conditions. Crashing the process entirely on a transient error turns a temporary bottleneck into a permanent outage.
 **Prevention:** In long-running network daemon loops, log the `Accept()` error, implement a brief sleep (`time.Sleep`) to prevent high CPU spinning, and use `continue` to keep the server alive and processing subsequent requests once resources free up. Never use `os.Exit(1)` or `panic` on expected runtime network errors.
+
+## 2026-04-08 - Missing Network Authentication Handshake
+**Vulnerability:** The MOMO protocol relied on connection boundaries and hardcoded server logic (like `changeReplicationModeClient`) but entirely lacked authentication. Anyone who could reach the TCP ports could spoof node behavior, send arbitrary files, or maliciously change the cluster replication mode without restrictions.
+**Learning:** Operating entirely over plain TCP without application-level authentication allows unauthenticated attackers to execute core protocol operations (like data destruction or reconfiguration).
+**Prevention:** Implement a mandatory authentication handshake immediately upon establishing a network connection (e.g., sending a padded 64-byte `auth_token` that must be validated) before processing any metadata or payload.

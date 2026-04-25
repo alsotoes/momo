@@ -13,6 +13,7 @@ const validConfig = `
 debug = true
 replication_order = 2,3,1
 polymorphic_system = true
+auth_token = dummy_auth_token
 
 [metrics]
 interval = 10

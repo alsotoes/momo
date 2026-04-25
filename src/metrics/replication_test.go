@@ -26,6 +26,9 @@ func TestPushNewReplicationMode(t *testing.T) {
 		}
 		defer fd.Close()
 
+		authBuffer := make([]byte, momo_common.FileInfoLength)
+		fd.Read(authBuffer)
+
 		decoder := json.NewDecoder(fd)
 		var data momo_common.ReplicationData
 		if err := decoder.Decode(&data); err != nil {
@@ -40,6 +43,9 @@ func TestPushNewReplicationMode(t *testing.T) {
 
 	// Mock config
 	cfg := momo_common.Configuration{
+		Global: momo_common.ConfigurationGlobal{
+			AuthToken: "dummy_token",
+		},
 		Daemons: []*momo_common.Daemon{
 			{
 				ChangeReplication: serverAddr,

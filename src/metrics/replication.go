@@ -28,6 +28,9 @@ func pushNewReplicationMode(config momo_common.Configuration, newReplicationMode
 	}
 	defer conn.Close()
 
+	// Send authentication token
+	conn.Write([]byte(momo_common.PadString(config.Global.AuthToken, momo_common.FileInfoLength)))
+
 	encoder := json.NewEncoder(conn)
 	data := momo_common.ReplicationData{
 		New:       newReplicationMode,
