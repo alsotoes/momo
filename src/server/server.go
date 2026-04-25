@@ -99,7 +99,7 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) {
 				log.Printf("Error reading timestamp: %v", err)
 				return
 			}
-			timestamp, err = strconv.ParseInt(string(bufferTimestamp), 10, 64)
+			timestamp, err = parsePaddedIntFast(bufferTimestamp)
 			if err != nil {
 				log.Printf("Error parsing timestamp: %v", err)
 				return
