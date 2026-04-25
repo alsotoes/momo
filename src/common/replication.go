@@ -6,7 +6,6 @@ import (
 	"net"
 	"os"
 	"strconv"
-	"strings"
 	"sync"
 )
 
@@ -14,8 +13,10 @@ import (
 // It first connects to a specified daemon to determine the replication mode.
 // If splay replication is active, it connects to all other daemons.
 // Finally, it sends the file to all established connections concurrently.
-func Connect(wg *sync.WaitGroup, daemons []*Daemon, filePath string, serverId int, timestamp int64, authToken string) {
+func Connect(wg *sync.WaitGroup, cfg Configuration, filePath string, serverId int, timestamp int64) {
 	defer wg.Done()
+	daemons := cfg.Daemons
+	authToken := cfg.Global.AuthToken
 	var connections []net.Conn
 	var wgSendFile sync.WaitGroup
 
@@ -27,17 +28,15 @@ func Connect(wg *sync.WaitGroup, daemons []*Daemon, filePath string, serverId in
 	}
 	connections = append(connections, initialConn)
 
-	// Send authentication token
-	if _, err := initialConn.Write([]byte(PadString(authToken, FileInfoLength))); err != nil {
-		log.Printf("Failed to send auth token to %s: %v", daemons[serverId].Host, err)
+	// Perform handshake to get replication mode
+	// First, send the AuthToken
+	if _, err := initialConn.Write([]byte(PadString(authToken, AuthTokenLength))); err != nil {
+		log.Printf("Failed to send AuthToken to %s: %v", daemons[serverId].Host, err)
 		initialConn.Close()
 		return
 	}
 
-	// Perform handshake to get replication mode
-	// ⚡ Bolt: Use strconv.AppendInt instead of []byte(strconv.FormatInt())
-	// to avoid intermediate string allocations when formatting integers into byte slices for network transmission.
-	if _, err := initialConn.Write(strconv.AppendInt(make([]byte, 0, 32), timestamp, 10)); err != nil {
+	if _, err := initialConn.Write([]byte(PadString(strconv.FormatInt(timestamp, 10), TimestampLength))); err != nil {
 		log.Printf("Failed to send timestamp to %s: %v", daemons[serverId].Host, err)
 		initialConn.Close()
 		return
@@ -70,16 +69,15 @@ func Connect(wg *sync.WaitGroup, daemons []*Daemon, filePath string, serverId in
 				continue
 			}
 
-			// Send authentication token
-			if _, err := conn.Write([]byte(PadString(authToken, FileInfoLength))); err != nil {
-				log.Printf("Failed to send auth token to %s: %v", daemon.Host, err)
+			// Perform handshake with the other daemons
+			// First, send the AuthToken
+			if _, err := conn.Write([]byte(PadString(authToken, AuthTokenLength))); err != nil {
+				log.Printf("Failed to send AuthToken to %s: %v", daemon.Host, err)
 				conn.Close()
 				continue
 			}
 
-			// Perform handshake with the other daemons
-			// ⚡ Bolt: Use strconv.AppendInt to prevent string allocation
-			if _, err := conn.Write(strconv.AppendInt(make([]byte, 0, 32), timestamp, 10)); err != nil {
+			if _, err := conn.Write([]byte(PadString(strconv.FormatInt(timestamp, 10), TimestampLength))); err != nil {
 				log.Printf("Failed to send timestamp to %s: %v", daemon.Host, err)
 				conn.Close()
 				continue
@@ -186,7 +184,7 @@ func PadString(input string, length int) string {
 	if len(input) >= length {
 		return input[:length]
 	}
-	// ⚡ Bolt: Use strings.Repeat for a simpler, faster, and more readable optimization.
-	// This reduces memory allocations compared to string(make([]byte, n)) while maintaining clarity.
-	return input + strings.Repeat("\x00", length-len(input))
+	b := make([]byte, length)
+	copy(b, input)
+	return string(b)
 }
