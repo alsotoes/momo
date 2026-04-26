@@ -90,8 +90,9 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 			case <-ctx.Done():
 				return // Shutting down gracefully
 			default:
-				log.Printf("Error: %v", err)
-				os.Exit(1)
+				log.Printf("Error accepting connection: %v", err)
+				time.Sleep(10 * time.Millisecond) // Prevent CPU spinning on transient errors like EMFILE
+				continue
 			}
 		}
 		go func() {
