@@ -60,8 +60,11 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) {
 			case <-ctx.Done():
 				return // Shutting down gracefully
 			default:
-				log.Printf("Error: %v", err)
-				os.Exit(1)
+				log.Printf("Error accepting connection: %v", err)
+				// 🛡️ Sentinel: Sleep briefly to prevent tight loop on transient errors (like EMFILE)
+				// and avoid DoS via os.Exit(1).
+				time.Sleep(10 * time.Millisecond)
+				continue
 			}
 		}
 		log.Printf("Client connected to primary Daemon")
