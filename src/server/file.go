@@ -11,11 +11,32 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	momo_common "github.com/alsotoes/momo/src/common"
 )
+
+// ⚡ Bolt: Fast parsing of null-padded integers without string allocation.
+func parsePaddedIntFast(b []byte) (int64, error) {
+	if len(b) == 0 || b[0] == 0 {
+		return 0, fmt.Errorf("empty input")
+	}
+	var res int64
+	for _, c := range b {
+		if c == 0 {
+			break
+		}
+		if c < '0' || c > '9' {
+			return 0, fmt.Errorf("invalid character '%c' in integer", c)
+		}
+		// simple overflow check for positive int64
+		if res > (1<<63-1)/10 || (res == (1<<63-1)/10 && int64(c-'0') > (1<<63-1)%10) {
+			return 0, fmt.Errorf("overflow")
+		}
+		res = res*10 + int64(c-'0')
+	}
+	return res, nil
+}
 
 // getMetadata reads file metadata (Hash, name, size) from a network connection.
 // It reads the Hash string, file name, and file size from the connection, trims any null characters,
@@ -56,8 +77,8 @@ func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 		return metadata, &os.PathError{Op: "getMetadata", Path: fileName, Err: os.ErrInvalid}
 	}
 
-	fileSizeStr := trimNull(bufferFileSize)
-	fileSize, err := strconv.ParseInt(fileSizeStr, 10, 64)
+	// ⚡ Bolt: Parse integer directly from pre-allocated buffer padding.
+	fileSize, err := parsePaddedIntFast(bufferFileSize)
 	if err != nil {
 		return metadata, err
 	}

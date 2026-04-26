@@ -39,3 +39,6 @@
 ## 2026-04-01 - Fast Integer Formatting in Go
 **Learning:** For formatting a single integer as a string, `strconv.Itoa` is significantly faster (~19x) and generates fewer memory allocations than `fmt.Sprintf("%d", ...)`. `fmt.Sprintf` uses reflection and a more complex parsing logic, which is overkill for simple integer-to-string conversions.
 **Action:** Always prefer `strconv.Itoa` or `strconv.FormatInt` over `fmt.Sprintf` when converting a single integer to its string representation in Go.
+## 2026-04-26 - [Fast integer parsing from byte slice]
+**Learning:** Parsing numeric byte slices from network buffers by converting to a string (`strconv.ParseInt(string(bytes))`) incurs unnecessary heap allocations. A custom fast parser iterating over the byte slice directly eliminates this overhead.
+**Action:** Always parse null-padded network byte slices using direct byte-level iteration mapping when reading simple integers like timestamps or sizes, avoiding string conversions. Ensure custom parsers correctly handle empty bounds, stop at null bytes, and include appropriate integer overflow safety checks.
