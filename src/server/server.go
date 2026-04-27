@@ -60,8 +60,9 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) {
 			case <-ctx.Done():
 				return // Shutting down gracefully
 			default:
-				log.Printf("Error: %v", err)
-				os.Exit(1)
+				log.Printf("Error accepting connection: %v", err)
+				time.Sleep(10 * time.Millisecond) // Prevent CPU spinning on transient errors like EMFILE
+				continue
 			}
 		}
 		log.Printf("Client connected to primary Daemon")
@@ -99,6 +100,7 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) {
 				log.Printf("Error reading timestamp: %v", err)
 				return
 			}
+
 			// ⚡ Bolt: Parse timestamp directly from byte slice to avoid allocation
 			timestamp, err = parsePaddedIntFast(bufferTimestamp)
 			if err != nil {
