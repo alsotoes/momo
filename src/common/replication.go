@@ -100,10 +100,34 @@ func Connect(wg *sync.WaitGroup, cfg Configuration, filePath string, serverId in
 		}
 	}()
 
+	// Optimization: Pre-compute file metadata (hash, size, name) before concurrent transmission.
+	// This avoids redundant disk reads and hashing for each connection in splay replication.
+	fileInfo, err := os.Stat(filePath)
+	if err != nil {
+		log.Printf("Failed to get file info for %s: %v", filePath, err)
+		return
+	}
+
+	fileHash, err := HashFile(filePath)
+	if err != nil {
+		log.Printf("Failed to hash file %s: %v", filePath, err)
+		return
+	}
+
+	meta := &FileMetadata{
+		Name: fileInfo.Name(),
+		Hash: fileHash,
+		Size: fileInfo.Size(),
+	}
+
+	log.Printf("=> Hash:    %s", meta.Hash)
+	log.Printf("=> Name:    %s", meta.Name)
+	log.Printf("=> Size:    %d", meta.Size)
+
 	// Send the file to all established connections concurrently
 	wgSendFile.Add(len(connections))
 	for _, conn := range connections {
-		go sendFile(&wgSendFile, conn, filePath)
+		go sendFile(&wgSendFile, conn, filePath, meta)
 	}
 	wgSendFile.Wait()
 }
@@ -114,7 +138,7 @@ const hashLength = 64
 // sendFile sends a file over a network connection.
 // It first sends the file's metadata (SHA-256 hash, name, and size) and then the file's content.
 // It waits for an acknowledgment ("ACK") from the server upon successful reception.
-func sendFile(wg *sync.WaitGroup, connection net.Conn, fileName string) {
+func sendFile(wg *sync.WaitGroup, connection net.Conn, fileName string, meta *FileMetadata) {
 	defer wg.Done()
 
 	file, err := os.Open(fileName)
@@ -124,33 +148,16 @@ func sendFile(wg *sync.WaitGroup, connection net.Conn, fileName string) {
 	}
 	defer file.Close()
 
-	fileInfo, err := file.Stat()
-	if err != nil {
-		log.Printf("Failed to get file info for %s: %v", fileName, err)
-		return
-	}
-
-	fileSize := fileInfo.Size()
-	fileHash, err := HashFile(fileName)
-	if err != nil {
-		log.Printf("Failed to hash file %s: %v", fileName, err)
-		return
-	}
-
-	log.Printf("=> Hash:    %s", fileHash)
-	log.Printf("=> Name:    %s", fileInfo.Name())
-	log.Printf("=> Size:    %d", fileSize)
-
 	// Send metadata
 	// Optimization: Pre-allocate a single buffer for the exact packet size.
 	// This avoids multiple string formatting allocations and multiple system calls.
 	metadataBuffer := make([]byte, hashLength+FileInfoLength+FileInfoLength)
 
-	copy(metadataBuffer[0:hashLength], fileHash)
-	copy(metadataBuffer[hashLength:hashLength+FileInfoLength], PadString(fileInfo.Name(), FileInfoLength))
+	copy(metadataBuffer[0:hashLength], meta.Hash)
+	copy(metadataBuffer[hashLength:hashLength+FileInfoLength], PadString(meta.Name, FileInfoLength))
 
 	// Format size directly into the buffer avoiding fmt.Sprintf
-	sizeBytes := strconv.AppendInt(make([]byte, 0, FileInfoLength), fileSize, 10)
+	sizeBytes := strconv.AppendInt(make([]byte, 0, FileInfoLength), meta.Size, 10)
 	copy(metadataBuffer[hashLength+FileInfoLength:], sizeBytes)
 
 	connection.Write(metadataBuffer)
@@ -178,7 +185,7 @@ func sendFile(wg *sync.WaitGroup, connection net.Conn, fileName string) {
 	log.Printf("File %s sent successfully.", fileName)
 }
 
-// padString pads a string with null characters to a specified length.
+// PadString pads a string with null characters to a specified length.
 // If the string is longer than the specified length, it is truncated.
 func PadString(input string, length int) string {
 	if len(input) >= length {

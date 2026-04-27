@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	"crypto/subtle"
 	"io"
 	"log"
 	"net"
@@ -49,6 +50,9 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) {
 	log.Printf("Server primary Daemon started... at %s", daemons[serverId].Host)
 	log.Printf("...Waiting for connections...")
 
+	// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
+	expectedAuthToken := []byte(momo_common.PadString(cfg.Global.AuthToken, momo_common.AuthTokenLength))
+
 	for {
 		connection, err := server.Accept()
 		if err != nil {
@@ -56,8 +60,11 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) {
 			case <-ctx.Done():
 				return // Shutting down gracefully
 			default:
-				log.Printf("Error: %v", err)
-				os.Exit(1)
+				log.Printf("Error accepting connection: %v", err)
+				// 🛡️ Sentinel: Sleep briefly to prevent tight loop on transient errors (like EMFILE)
+				// and avoid DoS via os.Exit(1).
+				time.Sleep(10 * time.Millisecond)
+				continue
 			}
 		}
 		log.Printf("Client connected to primary Daemon")
@@ -84,7 +91,8 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) {
 				log.Printf("Error reading AuthToken: %v", err)
 				return
 			}
-			if string(bufferAuthToken) != cfg.Global.AuthToken {
+			// 🛡️ Sentinel: Use constant-time comparison to prevent timing attacks during authentication
+			if subtle.ConstantTimeCompare(bufferAuthToken, expectedAuthToken) != 1 {
 				log.Printf("Invalid AuthToken received")
 				return
 			}
@@ -95,7 +103,9 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) {
 				log.Printf("Error reading timestamp: %v", err)
 				return
 			}
-			timestamp, err = strconv.ParseInt(string(bufferTimestamp), 10, 64)
+
+			// ⚡ Bolt: Parse timestamp directly from byte slice to avoid allocation
+			timestamp, err = parsePaddedIntFast(bufferTimestamp)
 			if err != nil {
 				log.Printf("Error parsing timestamp: %v", err)
 				return
