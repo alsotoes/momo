@@ -240,6 +240,21 @@ func TestSendFile(t *testing.T) {
 
 	var wg sync.WaitGroup
 	wg.Add(1)
-	sendFile(&wg, conn, file.Name())
+
+	fileInfo, err := os.Stat(file.Name())
+	if err != nil {
+		t.Fatalf("Failed to stat file: %v", err)
+	}
+	fileHash, err := HashFile(file.Name())
+	if err != nil {
+		t.Fatalf("Failed to hash file: %v", err)
+	}
+	meta := &FileMetadata{
+		Name: fileInfo.Name(),
+		Hash: fileHash,
+		Size: fileInfo.Size(),
+	}
+
+	sendFile(&wg, conn, file.Name(), meta)
 	wg.Wait()
 }
