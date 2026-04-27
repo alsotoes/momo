@@ -61,7 +61,9 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) {
 				return // Shutting down gracefully
 			default:
 				log.Printf("Error accepting connection: %v", err)
-				time.Sleep(10 * time.Millisecond) // Prevent CPU spinning on transient errors like EMFILE
+				// 🛡️ Sentinel: Sleep briefly to prevent tight loop on transient errors (like EMFILE)
+				// and avoid DoS via os.Exit(1).
+				time.Sleep(10 * time.Millisecond)
 				continue
 			}
 		}
@@ -100,6 +102,8 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) {
 				log.Printf("Error reading timestamp: %v", err)
 				return
 			}
+
+			// ⚡ Bolt: Parse timestamp directly from byte slice to avoid allocation
 			timestamp, err = parsePaddedIntFast(bufferTimestamp)
 			if err != nil {
 				log.Printf("Error parsing timestamp: %v", err)

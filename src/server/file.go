@@ -56,6 +56,7 @@ func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 		return metadata, &os.PathError{Op: "getMetadata", Path: fileName, Err: os.ErrInvalid}
 	}
 
+	// ⚡ Bolt: Parse integer directly from pre-allocated buffer padding.
 	fileSize, err := parsePaddedIntFast(bufferFileSize)
 	if err != nil {
 		return metadata, err
