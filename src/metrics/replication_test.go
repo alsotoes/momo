@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"encoding/json"
+	"io"
 	"net"
 	"testing"
 	"time"
@@ -26,8 +27,12 @@ func TestPushNewReplicationMode(t *testing.T) {
 		}
 		defer fd.Close()
 
-		authBuf := make([]byte, 64)
-		fd.Read(authBuf)
+		// Read and validate the AuthToken
+		bufferAuthToken := make([]byte, momo_common.AuthTokenLength)
+		if _, err := io.ReadFull(fd, bufferAuthToken); err != nil {
+			t.Logf("Error reading AuthToken: %v", err)
+			return
+		}
 
 		decoder := json.NewDecoder(fd)
 		var data momo_common.ReplicationData
@@ -42,14 +47,15 @@ func TestPushNewReplicationMode(t *testing.T) {
 	}()
 
 	// Mock config
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
 	cfg := momo_common.Configuration{
-		Global: momo_common.ConfigurationGlobal{
-			AuthToken: "test-auth-token",
-		},
 		Daemons: []*momo_common.Daemon{
 			{
 				ChangeReplication: serverAddr,
 			},
+		},
+		Global: momo_common.ConfigurationGlobal{
+			AuthToken: authToken,
 		},
 	}
 

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"io"
 	"net"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -17,23 +18,22 @@ import (
 
 // handleReplicationChange is a testable version of the connection handling logic inside ChangeReplicationModeServer.
 // It reads replication data from a connection and updates the global CurrentReplicationMode.
-func handleReplicationChange(t *testing.T, connection net.Conn, wg *sync.WaitGroup, config momo_common.Configuration) {
+func handleReplicationChange(t *testing.T, authToken string, connection net.Conn, wg *sync.WaitGroup) {
 	defer wg.Done()
 	defer connection.Close()
 
-	// Read and verify auth token
-	authBuffer := make([]byte, 64)
-	if _, err := connection.Read(authBuffer); err != nil {
-		t.Logf("Error reading auth token: %v", err)
+	bufferAuthToken := make([]byte, momo_common.AuthTokenLength)
+	if _, err := io.ReadFull(connection, bufferAuthToken); err != nil {
+		t.Logf("Error reading AuthToken: %v", err)
 		return
 	}
-	expectedAuthToken := []byte(momo_common.PadString(config.Global.AuthToken, 64))
-	if subtle.ConstantTimeCompare(authBuffer, expectedAuthToken) != 1 {
-		t.Logf("Authentication failed from client")
+	expectedAuthToken := []byte(momo_common.PadString(authToken, momo_common.AuthTokenLength))
+	if subtle.ConstantTimeCompare(bufferAuthToken, expectedAuthToken) != 1 {
+		t.Logf("Invalid AuthToken received")
 		return
 	}
 
-	bufferReplicationMode := make([]byte, momo_common.FileInfoLength)
+	bufferReplicationMode := make([]byte, 256)
 	_, err := connection.Read(bufferReplicationMode)
 	if err != nil {
 		t.Logf("connection read error: %v", err) // Log as info, as pipe closure can cause an expected EOF.
@@ -42,12 +42,15 @@ func handleReplicationChange(t *testing.T, connection net.Conn, wg *sync.WaitGro
 
 	replicationJSON := momo_common.ReplicationData{}
 	// Trim null bytes before decoding
-	// ⚡ Bolt: Use bytes.IndexByte to find null terminator instead of bytes.TrimRight
-	trimmedBytes := bufferReplicationMode
-	if idx := bytes.IndexByte(bufferReplicationMode, 0); idx != -1 {
+	idx := bytes.IndexByte(bufferReplicationMode, 0)
+	var trimmedBytes []byte
+	if idx != -1 {
 		trimmedBytes = bufferReplicationMode[:idx]
+	} else {
+		trimmedBytes = bufferReplicationMode
 	}
 	if err := json.NewDecoder(bytes.NewReader(trimmedBytes)).Decode(&replicationJSON); err != nil {
+
 		t.Errorf("JSON decode error: %v", err)
 		return
 	}
@@ -59,21 +62,18 @@ func handleReplicationChange(t *testing.T, connection net.Conn, wg *sync.WaitGro
 // updates its replication mode based on data from a client connection.
 func TestChangeReplicationModeServerLogic(t *testing.T) {
 	defer goleak.VerifyNone(t)
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+
 	// Arrange: Set initial state and create a network pipe to simulate a client-server connection.
 	SetReplicationState(momo_common.ReplicationNone, 0) // Initial mode
 	client, server := net.Pipe()
 
-	config := momo_common.Configuration{
-		Global: momo_common.ConfigurationGlobal{
-			AuthToken: "test-auth-token",
-		},
-	}
-
 	var wg sync.WaitGroup
 	wg.Add(1)
-	go handleReplicationChange(t, server, &wg, config)
+	go handleReplicationChange(t, authToken, server, &wg)
 
 	// Act: Marshal and send the new replication data from the client side of the pipe.
+	client.Write([]byte(authToken))
 	expectedMode := momo_common.ReplicationSplay
 	data := momo_common.ReplicationData{
 		New:       expectedMode,
@@ -87,12 +87,6 @@ func TestChangeReplicationModeServerLogic(t *testing.T) {
 	// Copy to a fixed-size buffer to simulate the network read.
 	buffer := make([]byte, momo_common.FileInfoLength)
 	copy(buffer, jsonBytes)
-
-	// Send auth token first
-	_, err = client.Write([]byte(momo_common.PadString(config.Global.AuthToken, 64)))
-	if err != nil {
-		t.Fatalf("Client auth write failed: %v", err)
-	}
 
 	_, err = client.Write(buffer)
 	if err != nil {
@@ -113,6 +107,8 @@ func TestChangeReplicationModeServerLogic(t *testing.T) {
 // replication mode JSON payload to a listening server.
 func TestChangeReplicationModeClient(t *testing.T) {
 	defer goleak.VerifyNone(t)
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+
 	// Arrange: Set up a listener to act as a mock server.
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -121,7 +117,8 @@ func TestChangeReplicationModeClient(t *testing.T) {
 	defer listener.Close()
 
 	serverAddr := listener.Addr().String()
-	received := make(chan []byte, 1) // Channel to receive data from the mock server.
+	receivedAuth := make(chan []byte, 1)
+	receivedJSON := make(chan []byte, 1)
 
 	go func() {
 		conn, err := listener.Accept()
@@ -130,36 +127,37 @@ func TestChangeReplicationModeClient(t *testing.T) {
 		}
 		defer conn.Close()
 
-		authBuf := make([]byte, 64)
-		io.ReadFull(conn, authBuf)
+		bufAuth := make([]byte, momo_common.AuthTokenLength)
+		io.ReadFull(conn, bufAuth)
+		receivedAuth <- bufAuth
 
-		buf := make([]byte, momo_common.FileInfoLength)
-		n, _ := conn.Read(buf)
-		received <- buf[:n] // Send received data to the channel.
+		bufJSON := make([]byte, momo_common.FileInfoLength)
+		n, _ := conn.Read(bufJSON)
+		receivedJSON <- bufJSON[:n] // Send received data to the channel.
 	}()
 
 	// Act: Call the function under test.
-	config := momo_common.Configuration{
-		Global: momo_common.ConfigurationGlobal{
-			AuthToken: "test-auth-token",
-		},
-		Daemons: []*momo_common.Daemon{
-			{ChangeReplication: serverAddr}, // Configure the daemon to connect to our mock server.
-		},
+	daemons := []*momo_common.Daemon{
+		{ChangeReplication: serverAddr}, // Configure the daemon to connect to our mock server.
 	}
 	jsonString := `{"New":5,"TimeStamp":1662756600}`
 
-	changeReplicationModeClient(config, jsonString, 0)
+	changeReplicationModeClient(authToken, daemons, jsonString, 0)
 
 	// Assert: Verify the mock server received the correct data.
 	select {
-	case data := <-received:
-		var trimmedData string
-		if idx := bytes.IndexByte(data, 0); idx != -1 {
-			trimmedData = string(data[:idx])
-		} else {
-			trimmedData = string(data)
+	case auth := <-receivedAuth:
+		expectedAuthToken := []byte(momo_common.PadString(authToken, momo_common.AuthTokenLength))
+		if subtle.ConstantTimeCompare(auth, expectedAuthToken) != 1 {
+			t.Errorf("Expected AuthToken '%s' (padded), but got '%s'", authToken, string(auth))
 		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("Test timed out, no AuthToken received by the server.")
+	}
+
+	select {
+	case data := <-receivedJSON:
+		trimmedData := strings.TrimRight(string(data), "\x00")
 		if trimmedData != jsonString {
 			t.Errorf("Expected to receive '%s', but got '%s'", jsonString, trimmedData)
 		}

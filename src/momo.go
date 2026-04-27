@@ -45,8 +45,7 @@ func Run() {
 	common.LogStdOut(cfg.Global.Debug)
 
 	if *impersonationPtr == "server" && (*serverIdPtr >= len(cfg.Daemons) || *serverIdPtr < 0) {
-		log.Printf("panic: index out of range")
-		os.Exit(1)
+		log.Fatalf("index out of range")
 	}
 
 	switch *impersonationPtr {
@@ -56,8 +55,7 @@ func Run() {
 			serverId = *serverIdPtr
 		}
 		if serverId >= len(cfg.Daemons) || serverId < 0 {
-			log.Printf("panic: index out of range")
-			os.Exit(1)
+			log.Fatalf("index out of range")
 		}
 		var wg sync.WaitGroup
 		wg.Add(1)

@@ -55,8 +55,8 @@ func SetReplicationState(newMode int, timestamp int64) momo_common.ReplicationDa
 // When a client connects, it sends a JSON object containing the new replication mode.
 // This function updates the server's replication mode and, if the server is the primary (serverId 0),
 // it propagates the change to the other servers in the cluster.
-func ChangeReplicationModeServer(ctx context.Context, config momo_common.Configuration, serverId int, timestamp int64) {
-	daemons := config.Daemons
+func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configuration, serverId int, timestamp int64) {
+	daemons := cfg.Daemons
 	server, err := net.Listen("tcp", daemons[serverId].ChangeReplication)
 	if err != nil {
 		log.Printf("Error listening: %v", err)
@@ -80,6 +80,9 @@ func ChangeReplicationModeServer(ctx context.Context, config momo_common.Configu
 	replicationJson, _ := json.Marshal(initialState)
 	log.Printf("ReplicationData struct: %s", string(replicationJson))
 
+	// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
+	expectedAuthToken := []byte(momo_common.PadString(cfg.Global.AuthToken, momo_common.AuthTokenLength))
+
 	for {
 		connection, err := server.Accept()
 		if err != nil {
@@ -87,8 +90,9 @@ func ChangeReplicationModeServer(ctx context.Context, config momo_common.Configu
 			case <-ctx.Done():
 				return // Shutting down gracefully
 			default:
-				// 🛡️ Sentinel: Do not exit on Accept errors (e.g. EMFILE) to prevent Denial of Service.
 				log.Printf("Error accepting connection: %v", err)
+				// 🛡️ Sentinel: Sleep briefly to prevent tight loop on transient errors (like EMFILE)
+				// and avoid DoS via os.Exit(1).
 				time.Sleep(10 * time.Millisecond)
 				continue
 			}
@@ -100,15 +104,15 @@ func ChangeReplicationModeServer(ctx context.Context, config momo_common.Configu
 			// 🛡️ Sentinel: Enforce a read/write timeout to prevent slowloris DoS attacks
 			connection.SetDeadline(time.Now().Add(10 * time.Second))
 
-			// 🛡️ Sentinel: Enforce mandatory authentication handshake
-			authBuffer := make([]byte, 64)
-			if _, err := io.ReadFull(connection, authBuffer); err != nil {
-				log.Printf("Error reading auth token: %v", err)
+			// Read and validate the AuthToken
+			bufferAuthToken := make([]byte, momo_common.AuthTokenLength)
+			if _, err := io.ReadFull(connection, bufferAuthToken); err != nil {
+				log.Printf("Error reading AuthToken: %v", err)
 				return
 			}
-			expectedAuthToken := []byte(momo_common.PadString(config.Global.AuthToken, 64))
-			if subtle.ConstantTimeCompare(authBuffer, expectedAuthToken) != 1 {
-				log.Printf("Authentication failed from client")
+			// 🛡️ Sentinel: Use constant-time comparison to prevent timing attacks during authentication
+			if subtle.ConstantTimeCompare(bufferAuthToken, expectedAuthToken) != 1 {
+				log.Printf("Invalid AuthToken received")
 				return
 			}
 
@@ -128,8 +132,8 @@ func ChangeReplicationModeServer(ctx context.Context, config momo_common.Configu
 
 			// If this is the primary server, propagate the change to the other servers
 			if 0 == serverId {
-				go changeReplicationModeClient(config, string(newReplicationJson), 1)
-				go changeReplicationModeClient(config, string(newReplicationJson), 2)
+				go changeReplicationModeClient(cfg.Global.AuthToken, daemons, string(newReplicationJson), 1)
+				go changeReplicationModeClient(cfg.Global.AuthToken, daemons, string(newReplicationJson), 2)
 			}
 		}()
 	}
@@ -137,17 +141,17 @@ func ChangeReplicationModeServer(ctx context.Context, config momo_common.Configu
 
 // changeReplicationModeClient connects to another server in the cluster and sends the new replication mode.
 // It is used by the primary server to propagate replication mode changes to the other servers.
-func changeReplicationModeClient(config momo_common.Configuration, replicationJson string, serverId int) {
-	conn, err := momo_common.DialSocket(config.Daemons[serverId].ChangeReplication)
+func changeReplicationModeClient(authToken string, daemons []*momo_common.Daemon, replicationJson string, serverId int) {
+	conn, err := momo_common.DialSocket(daemons[serverId].ChangeReplication)
 	if err != nil {
 		log.Printf("Dial error: %v", err)
 		return
 	}
 	defer conn.Close()
 
-	// 🛡️ Sentinel: Send mandatory authentication token immediately upon connection
-	if _, err := conn.Write([]byte(momo_common.PadString(config.Global.AuthToken, 64))); err != nil {
-		log.Printf("Failed to send auth token: %v", err)
+	// Send the AuthToken first
+	if _, err := conn.Write([]byte(momo_common.PadString(authToken, momo_common.AuthTokenLength))); err != nil {
+		log.Printf("Failed to send AuthToken: %v", err)
 		return
 	}
 

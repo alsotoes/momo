@@ -6,7 +6,6 @@ import (
 	"net"
 	"os"
 	"strconv"
-	"strings"
 	"sync"
 )
 
@@ -14,12 +13,12 @@ import (
 // It first connects to a specified daemon to determine the replication mode.
 // If splay replication is active, it connects to all other daemons.
 // Finally, it sends the file to all established connections concurrently.
-func Connect(wg *sync.WaitGroup, config Configuration, filePath string, serverId int, timestamp int64) {
+func Connect(wg *sync.WaitGroup, cfg Configuration, filePath string, serverId int, timestamp int64) {
 	defer wg.Done()
+	daemons := cfg.Daemons
+	authToken := cfg.Global.AuthToken
 	var connections []net.Conn
 	var wgSendFile sync.WaitGroup
-
-	daemons := config.Daemons
 
 	// Connect to the initial daemon to check replication mode
 	initialConn, err := DialSocket(daemons[serverId].Host)
@@ -27,20 +26,17 @@ func Connect(wg *sync.WaitGroup, config Configuration, filePath string, serverId
 		log.Printf("Failed to connect to initial daemon %s: %v", daemons[serverId].Host, err)
 		return
 	}
+	connections = append(connections, initialConn)
 
-	// 🛡️ Sentinel: Send mandatory authentication token immediately upon connection
-	if _, err := initialConn.Write([]byte(PadString(config.Global.AuthToken, 64))); err != nil {
-		log.Printf("Failed to send auth token to initial daemon %s: %v", daemons[serverId].Host, err)
+	// Perform handshake to get replication mode
+	// First, send the AuthToken
+	if _, err := initialConn.Write([]byte(PadString(authToken, AuthTokenLength))); err != nil {
+		log.Printf("Failed to send AuthToken to %s: %v", daemons[serverId].Host, err)
 		initialConn.Close()
 		return
 	}
 
-	connections = append(connections, initialConn)
-
-	// Perform handshake to get replication mode
-	// ⚡ Bolt: Use strconv.AppendInt instead of []byte(strconv.FormatInt())
-	// to avoid intermediate string allocations when formatting integers into byte slices for network transmission.
-	if _, err := initialConn.Write(strconv.AppendInt(make([]byte, 0, 32), timestamp, 10)); err != nil {
+	if _, err := initialConn.Write([]byte(PadString(strconv.FormatInt(timestamp, 10), TimestampLength))); err != nil {
 		log.Printf("Failed to send timestamp to %s: %v", daemons[serverId].Host, err)
 		initialConn.Close()
 		return
@@ -73,16 +69,15 @@ func Connect(wg *sync.WaitGroup, config Configuration, filePath string, serverId
 				continue
 			}
 
-			// 🛡️ Sentinel: Send mandatory authentication token immediately upon connection
-			if _, err := conn.Write([]byte(PadString(config.Global.AuthToken, 64))); err != nil {
-				log.Printf("Failed to send auth token to daemon %s: %v", daemon.Host, err)
+			// Perform handshake with the other daemons
+			// First, send the AuthToken
+			if _, err := conn.Write([]byte(PadString(authToken, AuthTokenLength))); err != nil {
+				log.Printf("Failed to send AuthToken to %s: %v", daemon.Host, err)
 				conn.Close()
 				continue
 			}
 
-			// Perform handshake with the other daemons
-			// ⚡ Bolt: Use strconv.AppendInt to prevent string allocation
-			if _, err := conn.Write(strconv.AppendInt(make([]byte, 0, 32), timestamp, 10)); err != nil {
+			if _, err := conn.Write([]byte(PadString(strconv.FormatInt(timestamp, 10), TimestampLength))); err != nil {
 				log.Printf("Failed to send timestamp to %s: %v", daemon.Host, err)
 				conn.Close()
 				continue
@@ -105,10 +100,34 @@ func Connect(wg *sync.WaitGroup, config Configuration, filePath string, serverId
 		}
 	}()
 
+	// Optimization: Pre-compute file metadata (hash, size, name) before concurrent transmission.
+	// This avoids redundant disk reads and hashing for each connection in splay replication.
+	fileInfo, err := os.Stat(filePath)
+	if err != nil {
+		log.Printf("Failed to get file info for %s: %v", filePath, err)
+		return
+	}
+
+	fileHash, err := HashFile(filePath)
+	if err != nil {
+		log.Printf("Failed to hash file %s: %v", filePath, err)
+		return
+	}
+
+	meta := &FileMetadata{
+		Name: fileInfo.Name(),
+		Hash: fileHash,
+		Size: fileInfo.Size(),
+	}
+
+	log.Printf("=> Hash:    %s", meta.Hash)
+	log.Printf("=> Name:    %s", meta.Name)
+	log.Printf("=> Size:    %d", meta.Size)
+
 	// Send the file to all established connections concurrently
 	wgSendFile.Add(len(connections))
 	for _, conn := range connections {
-		go sendFile(&wgSendFile, conn, filePath)
+		go sendFile(&wgSendFile, conn, filePath, meta)
 	}
 	wgSendFile.Wait()
 }
@@ -119,7 +138,7 @@ const hashLength = 64
 // sendFile sends a file over a network connection.
 // It first sends the file's metadata (SHA-256 hash, name, and size) and then the file's content.
 // It waits for an acknowledgment ("ACK") from the server upon successful reception.
-func sendFile(wg *sync.WaitGroup, connection net.Conn, fileName string) {
+func sendFile(wg *sync.WaitGroup, connection net.Conn, fileName string, meta *FileMetadata) {
 	defer wg.Done()
 
 	file, err := os.Open(fileName)
@@ -129,33 +148,16 @@ func sendFile(wg *sync.WaitGroup, connection net.Conn, fileName string) {
 	}
 	defer file.Close()
 
-	fileInfo, err := file.Stat()
-	if err != nil {
-		log.Printf("Failed to get file info for %s: %v", fileName, err)
-		return
-	}
-
-	fileSize := fileInfo.Size()
-	fileHash, err := HashFile(fileName)
-	if err != nil {
-		log.Printf("Failed to hash file %s: %v", fileName, err)
-		return
-	}
-
-	log.Printf("=> Hash:    %s", fileHash)
-	log.Printf("=> Name:    %s", fileInfo.Name())
-	log.Printf("=> Size:    %d", fileSize)
-
 	// Send metadata
 	// Optimization: Pre-allocate a single buffer for the exact packet size.
 	// This avoids multiple string formatting allocations and multiple system calls.
 	metadataBuffer := make([]byte, hashLength+FileInfoLength+FileInfoLength)
 
-	copy(metadataBuffer[0:hashLength], fileHash)
-	copy(metadataBuffer[hashLength:hashLength+FileInfoLength], PadString(fileInfo.Name(), FileInfoLength))
+	copy(metadataBuffer[0:hashLength], meta.Hash)
+	copy(metadataBuffer[hashLength:hashLength+FileInfoLength], PadString(meta.Name, FileInfoLength))
 
 	// Format size directly into the buffer avoiding fmt.Sprintf
-	sizeBytes := strconv.AppendInt(make([]byte, 0, FileInfoLength), fileSize, 10)
+	sizeBytes := strconv.AppendInt(make([]byte, 0, FileInfoLength), meta.Size, 10)
 	copy(metadataBuffer[hashLength+FileInfoLength:], sizeBytes)
 
 	connection.Write(metadataBuffer)
@@ -189,7 +191,7 @@ func PadString(input string, length int) string {
 	if len(input) >= length {
 		return input[:length]
 	}
-	// ⚡ Bolt: Use strings.Repeat for a simpler, faster, and more readable optimization.
-	// This reduces memory allocations compared to string(make([]byte, n)) while maintaining clarity.
-	return input + strings.Repeat("\x00", length-len(input))
+	b := make([]byte, length)
+	copy(b, input)
+	return string(b)
 }
