@@ -37,7 +37,8 @@
 **Vulnerability:** The server used standard Go string comparison `string(bufferAuthToken) != cfg.Global.AuthToken` to validate the client's authentication token. This exposed the system to timing attacks, where an attacker could deduce the correct token length and contents by measuring response times.
 **Learning:** Even simple string equality checks in security contexts can be dangerous in Go. Additionally, when using `subtle.ConstantTimeCompare`, both byte slices must be exactly the same length or the function will immediately return 0, which still leaks length information.
 **Prevention:** Always use `crypto/subtle.ConstantTimeCompare` for verifying cryptographic secrets and tokens. Ensure the expected token is properly padded to match the protocol's fixed length before comparison.
-## 2026-04-25 - Denial of Service via Unhandled Accept Errors
-**Vulnerability:** The daemon `Accept()` loops in `src/server/server.go` and `src/server/replication.go` called `os.Exit(1)` when encountering an error. Transient errors, such as `EMFILE` (too many open files), could thus crash the entire server, creating a severe Denial of Service (DoS) vulnerability.
-**Learning:** Network listener loops must be resilient against transient connection errors. Exiting the process on `Accept()` failure allows trivial resource exhaustion attacks to take down the service.
-**Prevention:** Always log the error, sleep briefly (e.g., `time.Sleep(10 * time.Millisecond)`) to prevent CPU spinning on persistent errors like `EMFILE`, and `continue` the loop rather than crashing the process.
+
+## 2024-05-25 - Denial of Service via os.Exit in Accept Loop
+**Vulnerability:** The server called `os.Exit(1)` when `server.Accept()` returned an error (such as transient EMFILE/ENFILE errors). An attacker could intentionally or unintentionally trigger a flood of connections, exhausting file descriptors and causing the server to crash.
+**Learning:** Crashing the entire application on transient network accept errors creates a critical Denial of Service vulnerability. `Accept()` errors are often temporary resource constraints, not fatal application state errors.
+**Prevention:** In network listener loops, log the error and use a brief `time.Sleep(10 * time.Millisecond)` to prevent high CPU spinning on persistent errors like `EMFILE`, and `continue` the loop rather than crashing the process.
