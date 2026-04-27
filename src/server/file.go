@@ -56,8 +56,7 @@ func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 		return metadata, &os.PathError{Op: "getMetadata", Path: fileName, Err: os.ErrInvalid}
 	}
 
-	fileSizeStr := trimNull(bufferFileSize)
-	fileSize, err := strconv.ParseInt(fileSizeStr, 10, 64)
+	fileSize, err := parsePaddedIntFast(bufferFileSize)
 	if err != nil {
 		return metadata, err
 	}
@@ -128,4 +127,53 @@ func getFile(connection net.Conn, path string, fileName string, expectedHash str
 	log.Printf("Received file completely!")
 	log.Printf("Sending ACK to client connection")
 	return nil
+}
+
+// parsePaddedIntFast parses a null-padded or null-terminated byte slice into an int64
+// without allocating an intermediate string.
+func parsePaddedIntFast(b []byte) (int64, error) {
+	idx := bytes.IndexByte(b, 0)
+	if idx == -1 {
+		idx = len(b)
+	}
+
+	if idx == 0 {
+		return 0, strconv.ErrSyntax
+	}
+
+	var res int64
+	var sign int64 = 1
+	start := 0
+
+	if b[0] == '-' {
+		sign = -1
+		start = 1
+		if idx == 1 {
+			return 0, strconv.ErrSyntax
+		}
+	} else if b[0] == '+' {
+		start = 1
+		if idx == 1 {
+			return 0, strconv.ErrSyntax
+		}
+	}
+
+	for i := start; i < idx; i++ {
+		c := b[i]
+		if c < '0' || c > '9' {
+			return 0, strconv.ErrSyntax
+		}
+
+		// overflow check for int64
+		if res > (1<<63-1)/10 {
+			return 0, strconv.ErrRange
+		}
+		if res == (1<<63-1)/10 && int64(c-'0') > (1<<63-1)%10 {
+			return 0, strconv.ErrRange
+		}
+
+		res = res*10 + int64(c-'0')
+	}
+
+	return res * sign, nil
 }
