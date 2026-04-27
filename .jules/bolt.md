@@ -31,3 +31,10 @@
 ## 2026-03-18 - Optimized padString implementation
 **Learning:** In Go, concatenating a string with a newly created byte slice cast to a string (e.g., `input + string(make([]byte, n))`) results in multiple redundant allocations and copies.
 **Action:** Use `make([]byte, length)` followed by `copy(b, input)` and `string(b)` to perform padding efficiently. This leverages the fact that `make` already zeros the slice and reduces the operation to a single allocation and a zero-copy-ish string conversion.
+## 2024-05-24 - Avoiding Custom Parsing Micro-Optimizations
+**Learning:** Replacing standard library functions (like `strconv.ParseInt`) with custom byte-slice parsers to save a single allocation sacrifices codebase readability and is highly prone to edge-case bugs (e.g., `math.MinInt64` overflow checks).
+**Action:** Stick to standard library functions for parsing. If allocations are a bottleneck, look for higher-level architectural optimizations or safe standard library alternatives (like `strconv.AppendInt` for formatting).
+
+## 2024-05-24 - Preserving Network Protocol Padding
+**Learning:** When optimizing string or integer formatting, replacing a custom padding function (like `PadString`) with `strconv.AppendInt` on a pre-allocated zeroed buffer changes the padding behavior (e.g., right-padding instead of left/space padding) and breaks the network protocol.
+**Action:** Always fully understand the implementation of any custom padding or serialization functions before attempting to optimize them away.
