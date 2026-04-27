@@ -100,6 +100,8 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) {
 				log.Printf("Error reading timestamp: %v", err)
 				return
 			}
+
+			// ⚡ Bolt: Parse timestamp directly from byte slice to avoid allocation
 			timestamp, err = parsePaddedIntFast(bufferTimestamp)
 			if err != nil {
 				log.Printf("Error parsing timestamp: %v", err)
