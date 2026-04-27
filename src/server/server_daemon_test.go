@@ -40,8 +40,25 @@ func TestChangeReplicationModeServerReal(t *testing.T) {
 
 	l1, _ := net.Listen("tcp", "127.0.0.1:45679")
 	defer l1.Close()
+	go func() {
+		conn, err := l1.Accept()
+		if err == nil {
+			defer conn.Close()
+			authBuf := make([]byte, momo_common.AuthTokenLength)
+			io.ReadFull(conn, authBuf)
+		}
+	}()
+
 	l2, _ := net.Listen("tcp", "127.0.0.1:45680")
 	defer l2.Close()
+	go func() {
+		conn, err := l2.Accept()
+		if err == nil {
+			defer conn.Close()
+			authBuf := make([]byte, momo_common.AuthTokenLength)
+			io.ReadFull(conn, authBuf)
+		}
+	}()
 
 	go ChangeReplicationModeServer(ctx, cfg, 0, time.Now().UnixNano())
 	time.Sleep(100 * time.Millisecond)
@@ -52,7 +69,7 @@ func TestChangeReplicationModeServerReal(t *testing.T) {
 	}
 	defer conn.Close()
 
-	conn.Write([]byte(authToken))
+	conn.Write([]byte(momo_common.PadString(authToken, momo_common.AuthTokenLength)))
 
 	data := momo_common.ReplicationData{
 		New:       momo_common.ReplicationSplay,
@@ -96,7 +113,7 @@ func TestDaemonReal(t *testing.T) {
 	}
 	defer conn.Close()
 
-	conn.Write([]byte(authToken))
+	conn.Write([]byte(momo_common.PadString(authToken, momo_common.AuthTokenLength)))
 
 	timestampStr := "1234567890123456789"
 	conn.Write([]byte(timestampStr))

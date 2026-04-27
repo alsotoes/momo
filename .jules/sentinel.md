@@ -42,3 +42,8 @@
 **Vulnerability:** The server called `os.Exit(1)` when `server.Accept()` returned an error (such as transient EMFILE/ENFILE errors). An attacker could intentionally or unintentionally trigger a flood of connections, exhausting file descriptors and causing the server to crash.
 **Learning:** Crashing the entire application on transient network accept errors creates a critical Denial of Service vulnerability. `Accept()` errors are often temporary resource constraints, not fatal application state errors.
 **Prevention:** In network listener loops, log the error and use a brief `time.Sleep(10 * time.Millisecond)` to prevent high CPU spinning on persistent errors like `EMFILE`, and `continue` the loop rather than crashing the process.
+
+## 2026-04-27 - Missing Network Authentication Boundary
+**Vulnerability:** The `Daemon` and `ChangeReplicationModeServer` network endpoints accepted and processed protocol data before any authentication occurred, allowing unauthenticated connections to send data and potentially exploit other vulnerabilities.
+**Learning:** Security controls like authentication must be enforced at the outermost boundary of the application, before any potentially vulnerable parsing or processing logic is executed.
+**Prevention:** Require a mandatory authentication handshake (e.g., sending a padded `AuthToken`) as the very first operation upon establishing a connection, and terminate the connection immediately if the handshake fails.

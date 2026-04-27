@@ -189,7 +189,7 @@ func TestDaemonLogic(t *testing.T) {
 			}()
 
 			// Test Execution
-			client.Write([]byte(authToken))
+			client.Write([]byte(momo_common.PadString(authToken, momo_common.AuthTokenLength)))
 			timestamp := strconv.FormatInt(time.Now().UnixNano(), 10)
 			client.Write([]byte(timestamp))
 
@@ -254,7 +254,7 @@ func TestUnauthenticatedConnection(t *testing.T) {
 	}()
 
 	// Try with wrong token
-	client.Write([]byte(wrongToken))
+	client.Write([]byte(momo_common.PadString(wrongToken, momo_common.AuthTokenLength)))
 
 	// Attempt to read something (e.g., replication mode) - should fail because server closes connection
 	replicationModeBuf := make([]byte, 1)
