@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net"
 	"os"
 	"testing"
@@ -21,10 +22,15 @@ func padTestString(input string, length int) string {
 
 func TestChangeReplicationModeServerReal(t *testing.T) {
 	defer goleak.VerifyNone(t)
-	daemons := []*momo_common.Daemon{
-		{ChangeReplication: "127.0.0.1:45678"},
-		{ChangeReplication: "127.0.0.1:45679"},
-		{ChangeReplication: "127.0.0.1:45680"},
+	config := momo_common.Configuration{
+		Global: momo_common.ConfigurationGlobal{
+			AuthToken: "test-auth-token",
+		},
+		Daemons: []*momo_common.Daemon{
+			{ChangeReplication: "127.0.0.1:45678"},
+			{ChangeReplication: "127.0.0.1:45679"},
+			{ChangeReplication: "127.0.0.1:45680"},
+		},
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -32,10 +38,27 @@ func TestChangeReplicationModeServerReal(t *testing.T) {
 
 	l1, _ := net.Listen("tcp", "127.0.0.1:45679")
 	defer l1.Close()
+	go func() {
+		conn, err := l1.Accept()
+		if err == nil {
+			defer conn.Close()
+			authBuf := make([]byte, 64)
+			io.ReadFull(conn, authBuf)
+		}
+	}()
+
 	l2, _ := net.Listen("tcp", "127.0.0.1:45680")
 	defer l2.Close()
+	go func() {
+		conn, err := l2.Accept()
+		if err == nil {
+			defer conn.Close()
+			authBuf := make([]byte, 64)
+			io.ReadFull(conn, authBuf)
+		}
+	}()
 
-	go ChangeReplicationModeServer(ctx, daemons, 0, time.Now().UnixNano())
+	go ChangeReplicationModeServer(ctx, config, 0, time.Now().UnixNano())
 	time.Sleep(100 * time.Millisecond)
 
 	conn, err := net.Dial("tcp", "127.0.0.1:45678")
@@ -43,6 +66,9 @@ func TestChangeReplicationModeServerReal(t *testing.T) {
 		t.Fatalf("Failed to dial test server: %v", err)
 	}
 	defer conn.Close()
+
+	// Send auth token
+	conn.Write([]byte(momo_common.PadString(config.Global.AuthToken, 64)))
 
 	data := momo_common.ReplicationData{
 		New:       momo_common.ReplicationSplay,
@@ -56,16 +82,21 @@ func TestChangeReplicationModeServerReal(t *testing.T) {
 func TestDaemonReal(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	tempDir := t.TempDir()
-	daemons := []*momo_common.Daemon{
-		{Host: "127.0.0.1:45681", Data: tempDir + "/001"},
-		{Host: "127.0.0.1:45682", Data: tempDir + "/002"},
-		{Host: "127.0.0.1:45683", Data: tempDir + "/003"},
+	config := momo_common.Configuration{
+		Global: momo_common.ConfigurationGlobal{
+			AuthToken: "test-auth-token",
+		},
+		Daemons: []*momo_common.Daemon{
+			{Host: "127.0.0.1:45681", Data: tempDir + "/001"},
+			{Host: "127.0.0.1:45682", Data: tempDir + "/002"},
+			{Host: "127.0.0.1:45683", Data: tempDir + "/003"},
+		},
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go Daemon(ctx, daemons, 0)
+	go Daemon(ctx, config, 0)
 	time.Sleep(100 * time.Millisecond)
 
 	conn, err := net.Dial("tcp", "127.0.0.1:45681")
@@ -73,6 +104,9 @@ func TestDaemonReal(t *testing.T) {
 		t.Fatalf("Failed to dial Daemon test server: %v", err)
 	}
 	defer conn.Close()
+
+	// Send auth token
+	conn.Write([]byte(momo_common.PadString(config.Global.AuthToken, 64)))
 
 	timestampStr := "1234567890123456789"
 	conn.Write([]byte(timestampStr))

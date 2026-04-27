@@ -28,6 +28,12 @@ func pushNewReplicationMode(config momo_common.Configuration, newReplicationMode
 	}
 	defer conn.Close()
 
+	// 🛡️ Sentinel: Send mandatory authentication token immediately upon connection
+	if _, err := conn.Write([]byte(momo_common.PadString(config.Global.AuthToken, 64))); err != nil {
+		log.Printf("Failed to send auth token: %v", err)
+		return
+	}
+
 	encoder := json.NewEncoder(conn)
 	data := momo_common.ReplicationData{
 		New:       newReplicationMode,

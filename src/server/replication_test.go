@@ -3,7 +3,9 @@ package server
 
 import (
 	"bytes"
+	"crypto/subtle"
 	"encoding/json"
+	"io"
 	"net"
 	"sync"
 	"testing"
@@ -15,9 +17,21 @@ import (
 
 // handleReplicationChange is a testable version of the connection handling logic inside ChangeReplicationModeServer.
 // It reads replication data from a connection and updates the global CurrentReplicationMode.
-func handleReplicationChange(t *testing.T, connection net.Conn, wg *sync.WaitGroup) {
+func handleReplicationChange(t *testing.T, connection net.Conn, wg *sync.WaitGroup, config momo_common.Configuration) {
 	defer wg.Done()
 	defer connection.Close()
+
+	// Read and verify auth token
+	authBuffer := make([]byte, 64)
+	if _, err := connection.Read(authBuffer); err != nil {
+		t.Logf("Error reading auth token: %v", err)
+		return
+	}
+	expectedAuthToken := []byte(momo_common.PadString(config.Global.AuthToken, 64))
+	if subtle.ConstantTimeCompare(authBuffer, expectedAuthToken) != 1 {
+		t.Logf("Authentication failed from client")
+		return
+	}
 
 	bufferReplicationMode := make([]byte, momo_common.FileInfoLength)
 	_, err := connection.Read(bufferReplicationMode)
@@ -49,9 +63,15 @@ func TestChangeReplicationModeServerLogic(t *testing.T) {
 	SetReplicationState(momo_common.ReplicationNone, 0) // Initial mode
 	client, server := net.Pipe()
 
+	config := momo_common.Configuration{
+		Global: momo_common.ConfigurationGlobal{
+			AuthToken: "test-auth-token",
+		},
+	}
+
 	var wg sync.WaitGroup
 	wg.Add(1)
-	go handleReplicationChange(t, server, &wg)
+	go handleReplicationChange(t, server, &wg, config)
 
 	// Act: Marshal and send the new replication data from the client side of the pipe.
 	expectedMode := momo_common.ReplicationSplay
@@ -67,6 +87,12 @@ func TestChangeReplicationModeServerLogic(t *testing.T) {
 	// Copy to a fixed-size buffer to simulate the network read.
 	buffer := make([]byte, momo_common.FileInfoLength)
 	copy(buffer, jsonBytes)
+
+	// Send auth token first
+	_, err = client.Write([]byte(momo_common.PadString(config.Global.AuthToken, 64)))
+	if err != nil {
+		t.Fatalf("Client auth write failed: %v", err)
+	}
 
 	_, err = client.Write(buffer)
 	if err != nil {
@@ -104,18 +130,26 @@ func TestChangeReplicationModeClient(t *testing.T) {
 		}
 		defer conn.Close()
 
+		authBuf := make([]byte, 64)
+		io.ReadFull(conn, authBuf)
+
 		buf := make([]byte, momo_common.FileInfoLength)
 		n, _ := conn.Read(buf)
 		received <- buf[:n] // Send received data to the channel.
 	}()
 
 	// Act: Call the function under test.
-	daemons := []*momo_common.Daemon{
-		{ChangeReplication: serverAddr}, // Configure the daemon to connect to our mock server.
+	config := momo_common.Configuration{
+		Global: momo_common.ConfigurationGlobal{
+			AuthToken: "test-auth-token",
+		},
+		Daemons: []*momo_common.Daemon{
+			{ChangeReplication: serverAddr}, // Configure the daemon to connect to our mock server.
+		},
 	}
 	jsonString := `{"New":5,"TimeStamp":1662756600}`
 
-	changeReplicationModeClient(daemons, jsonString, 0)
+	changeReplicationModeClient(config, jsonString, 0)
 
 	// Assert: Verify the mock server received the correct data.
 	select {

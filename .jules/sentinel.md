@@ -52,3 +52,8 @@
 **Vulnerability:** The server called `os.Exit(1)` inside the main `server.Accept()` loops upon encountering any network error. This allows a trivial Denial of Service (DoS) attack, as exhausting temporary resources (like `EMFILE` for open file descriptors) would crash the entire application instead of allowing it to recover gracefully.
 **Learning:** Network `Accept()` loops operate in long-running daemon processes where transient errors are expected under load or adversarial conditions. Crashing the process entirely on a transient error turns a temporary bottleneck into a permanent outage.
 **Prevention:** In long-running network daemon loops, log the `Accept()` error, implement a brief sleep (`time.Sleep`) to prevent high CPU spinning, and use `continue` to keep the server alive and processing subsequent requests once resources free up. Never use `os.Exit(1)` or `panic` on expected runtime network errors.
+
+## 2026-04-27 - Missing Network Authentication
+**Vulnerability:** The `Daemon` and `ChangeReplicationModeServer` network endpoints accepted and processed protocol data before any authentication occurred, allowing unauthenticated connections to send data and potentially exploit other vulnerabilities.
+**Learning:** Security controls like authentication must be enforced at the outermost boundary of the application, before any potentially vulnerable parsing or processing logic is executed.
+**Prevention:** Require a mandatory authentication handshake (e.g., sending a padded `AuthToken`) as the very first operation upon establishing a connection, and terminate the connection immediately if the handshake fails.

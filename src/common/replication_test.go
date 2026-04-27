@@ -25,7 +25,7 @@ func TestPadString(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		result := padString(tc.input, tc.length)
+		result := PadString(tc.input, tc.length)
 		if result != tc.expected {
 			t.Errorf("Expected '%s', got '%s'", tc.expected, result)
 		}
@@ -43,6 +43,9 @@ func startMockServer(t *testing.T, expectedMode int, delay time.Duration) (strin
 			return
 		}
 		defer conn.Close()
+
+		authBuf := make([]byte, 64)
+		io.ReadFull(conn, authBuf)
 
 		buf := make([]byte, TimestampLength)
 		io.ReadFull(conn, buf)
@@ -80,6 +83,10 @@ func startDummyServer(t *testing.T) (string, net.Listener) {
 			}
 			go func(c net.Conn) {
 				defer c.Close()
+
+				authBuf := make([]byte, 64)
+				io.ReadFull(c, authBuf)
+
 				// Just read and respond basic handshake then ACK
 				buf := make([]byte, TimestampLength)
 				io.ReadFull(c, buf)
@@ -115,13 +122,18 @@ func TestConnect(t *testing.T) {
 	addr1, ln1 := startMockServer(t, ReplicationNone, 10*time.Millisecond)
 	defer ln1.Close()
 
-	daemons := []*Daemon{
-		{Host: addr1, ChangeReplication: addr1, Data: "/tmp", Drive: "/dev/sda1"},
+	config := Configuration{
+		Global: ConfigurationGlobal{
+			AuthToken: "test-auth-token",
+		},
+		Daemons: []*Daemon{
+			{Host: addr1, ChangeReplication: addr1, Data: "/tmp", Drive: "/dev/sda1"},
+		},
 	}
 
 	var wg sync.WaitGroup
 	wg.Add(1)
-	Connect(&wg, daemons, file.Name(), 0, time.Now().UnixNano())
+	Connect(&wg, config, file.Name(), 0, time.Now().UnixNano())
 	wg.Wait()
 
 	// Splay Connect
@@ -130,10 +142,15 @@ func TestConnect(t *testing.T) {
 	addr3, ln3 := startDummyServer(t)
 	defer ln3.Close()
 
-	daemonsSplay := []*Daemon{
-		{Host: addr1, ChangeReplication: addr1, Data: "/tmp", Drive: "/dev/sda1"},
-		{Host: addr2, ChangeReplication: addr2, Data: "/tmp", Drive: "/dev/sda1"},
-		{Host: addr3, ChangeReplication: addr3, Data: "/tmp", Drive: "/dev/sda1"},
+	configSplay := Configuration{
+		Global: ConfigurationGlobal{
+			AuthToken: "test-auth-token",
+		},
+		Daemons: []*Daemon{
+			{Host: addr1, ChangeReplication: addr1, Data: "/tmp", Drive: "/dev/sda1"},
+			{Host: addr2, ChangeReplication: addr2, Data: "/tmp", Drive: "/dev/sda1"},
+			{Host: addr3, ChangeReplication: addr3, Data: "/tmp", Drive: "/dev/sda1"},
+		},
 	}
 
 	// For Splay, initial server needs to return ReplicationPrimarySplay (3)
@@ -151,6 +168,10 @@ func TestConnect(t *testing.T) {
 			return
 		}
 		defer conn.Close()
+
+		authBuf := make([]byte, 64)
+		io.ReadFull(conn, authBuf)
+
 		buf := make([]byte, TimestampLength)
 		io.ReadFull(conn, buf)
 		conn.Write([]byte(fmt.Sprintf("%d", ReplicationPrimarySplay))) // Send 3
@@ -165,10 +186,10 @@ func TestConnect(t *testing.T) {
 		conn.Write([]byte("ACK"))
 	}()
 
-	daemonsSplay[0].Host = addrSplay
+	configSplay.Daemons[0].Host = addrSplay
 
 	wg.Add(1)
-	Connect(&wg, daemonsSplay, file.Name(), 0, time.Now().UnixNano())
+	Connect(&wg, configSplay, file.Name(), 0, time.Now().UnixNano())
 	wg.Wait()
 }
 
@@ -190,8 +211,9 @@ func TestSendFile(t *testing.T) {
 		t.Fatalf("Failed to dial: %v", err)
 	}
 
-	// Skip the initial timestamp read/write
-	conn.Write([]byte(padString("123", TimestampLength)))
+	// Send auth token and skip the initial timestamp read/write
+	conn.Write([]byte(PadString("test-auth-token", 64)))
+	conn.Write([]byte(PadString("123", TimestampLength)))
 	io.ReadFull(conn, make([]byte, 1))
 
 	var wg sync.WaitGroup
