@@ -51,3 +51,7 @@
 ## 2026-04-26 - [Fast integer parsing from byte slice]
 **Learning:** Parsing numeric byte slices from network buffers by converting to a string (`strconv.ParseInt(string(bytes))`) incurs unnecessary heap allocations. A custom fast parser iterating over the byte slice directly eliminates this overhead.
 **Action:** Always parse null-padded network byte slices using direct byte-level iteration mapping when reading simple integers like timestamps or sizes, avoiding string conversions. Ensure custom parsers correctly handle empty bounds, stop at null bytes, and include appropriate integer overflow safety checks.
+
+## 2026-04-27 - Hoist Hash Computation in Concurrent File Replication
+**Learning:** In network file replication, computing the file's SHA-256 hash inside each concurrent connection's goroutine (`sendFile`) causes redundant, $O(N)$ CPU-intensive hashing and disk I/O per file.
+**Action:** Always pre-compute file metadata (like hashes and sizes) before entering concurrent transmission loops, passing the pre-computed metadata to each goroutine.
