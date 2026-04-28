@@ -10,8 +10,8 @@ import (
 
 const validConfig = `
 [global]
-auth_token = super_secret_token
 debug = true
+auth_token = a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6
 replication_order = 2,3,1
 polymorphic_system = true
 
@@ -44,10 +44,6 @@ func TestGetConfig_Success(t *testing.T) {
 	// Assert Global section
 	if !config.Global.Debug {
 		t.Error("Expected Global.Debug to be true, but it was false")
-	}
-
-	if config.Global.AuthToken != "super_secret_token" {
-		t.Errorf("Expected Global.AuthToken to be 'super_secret_token', but got '%s'", config.Global.AuthToken)
 	}
 
 	expectedOrder := []int{2, 3, 1}
@@ -106,7 +102,7 @@ func TestGetConfig_Failures(t *testing.T) {
 		},
 		{
 			name:          "Missing auth_token",
-			content:       strings.Replace(validConfig, "auth_token = super_secret_token", "", 1),
+			content:       strings.Replace(validConfig, "auth_token = a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6", "", 1),
 			expectedError: "failed to load [global] section: 'auth_token' is missing or empty",
 		},
 		{

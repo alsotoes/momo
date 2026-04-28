@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net"
 	"os"
 	"testing"
@@ -26,16 +27,40 @@ func TestChangeReplicationModeServerReal(t *testing.T) {
 		{ChangeReplication: "127.0.0.1:45679"},
 		{ChangeReplication: "127.0.0.1:45680"},
 	}
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+	cfg := momo_common.Configuration{
+		Daemons: daemons,
+		Global: momo_common.ConfigurationGlobal{
+			AuthToken: authToken,
+		},
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	l1, _ := net.Listen("tcp", "127.0.0.1:45679")
 	defer l1.Close()
+	go func() {
+		conn, err := l1.Accept()
+		if err == nil {
+			defer conn.Close()
+			authBuf := make([]byte, momo_common.AuthTokenLength)
+			io.ReadFull(conn, authBuf)
+		}
+	}()
+
 	l2, _ := net.Listen("tcp", "127.0.0.1:45680")
 	defer l2.Close()
+	go func() {
+		conn, err := l2.Accept()
+		if err == nil {
+			defer conn.Close()
+			authBuf := make([]byte, momo_common.AuthTokenLength)
+			io.ReadFull(conn, authBuf)
+		}
+	}()
 
-	go ChangeReplicationModeServer(ctx, daemons, 0, time.Now().UnixNano())
+	go ChangeReplicationModeServer(ctx, cfg, 0, time.Now().UnixNano())
 	time.Sleep(100 * time.Millisecond)
 
 	conn, err := net.Dial("tcp", "127.0.0.1:45678")
@@ -43,6 +68,8 @@ func TestChangeReplicationModeServerReal(t *testing.T) {
 		t.Fatalf("Failed to dial test server: %v", err)
 	}
 	defer conn.Close()
+
+	conn.Write([]byte(momo_common.PadString(authToken, momo_common.AuthTokenLength)))
 
 	data := momo_common.ReplicationData{
 		New:       momo_common.ReplicationSplay,
@@ -62,10 +89,22 @@ func TestDaemonReal(t *testing.T) {
 		{Host: "127.0.0.1:45683", Data: tempDir + "/003"},
 	}
 
+	for _, d := range daemons {
+		os.MkdirAll(d.Data, 0755)
+	}
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+	cfg := momo_common.Configuration{
+		Daemons: daemons,
+		Global: momo_common.ConfigurationGlobal{
+			AuthToken: authToken,
+		},
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go Daemon(ctx, daemons, 0, "super_secret_token")
+	go Daemon(ctx, cfg, 0)
 	time.Sleep(100 * time.Millisecond)
 
 	conn, err := net.Dial("tcp", "127.0.0.1:45681")
@@ -74,7 +113,8 @@ func TestDaemonReal(t *testing.T) {
 	}
 	defer conn.Close()
 
-	conn.Write([]byte(momo_common.PadString("super_secret_token", 64)))
+	conn.Write([]byte(momo_common.PadString(authToken, momo_common.AuthTokenLength)))
+
 	timestampStr := "1234567890123456789"
 	conn.Write([]byte(timestampStr))
 
@@ -93,6 +133,9 @@ func TestDaemonReal(t *testing.T) {
 		conn.Write([]byte("data"))
 
 		ackBuf := make([]byte, 4)
-		conn.Read(ackBuf)
+		_, err := io.ReadFull(conn, ackBuf)
+		if err != nil {
+			t.Logf("Failed to read ACK from server: %v", err)
+		}
 	}
 }

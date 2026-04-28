@@ -1,39 +1,65 @@
-## 2024-03-20 - Fast String Padding in Go
-**Learning:** For padding strings with repeating characters (like null bytes) in Go, `strings.Repeat` is significantly faster (~1150ns) and more readable than pre-allocating a `strings.Builder` and writing bytes in a loop (~3200ns), and better than concatenating `string(make([]byte, n))` (~2100ns).
-**Action:** Always prefer `strings.Repeat` when building predictable padding sequences in Go to get the best performance without sacrificing code clarity.
-
-## 2024-05-20 - Fast Null-Terminated String Extraction
-**Learning:** For parsing fixed-size network buffers representing null-terminated strings, using `bytes.IndexByte(b, 0)` to find the terminator and slicing is significantly faster than using `bytes.Trim(b, "\x00")` or `bytes.TrimRight`. `bytes.Trim` does string allocation, rune decoding, and recursive checks which are expensive operations for fixed-length null-padded byte slices.
-**Action:** Always prefer `bytes.IndexByte(buffer, 0)` to find the boundary of null-terminated strings extracted from network packets and simply slice the buffer.
+## 2024-05-24 - [Zero-copy optimizations with io.CopyN]
+**Learning:** Using a single `io.CopyN` call with the full file size is significantly faster than manually chunking the read in a loop when handling network file transfers in Go. This is because the standard library can utilize zero-copy system calls (like `splice` or `sendfile`), which reduces memory copying between kernel and user space, and significantly decreases function call overhead.
+**Action:** Always prefer a single `io.Copy` or `io.CopyN` call when the total size is known, rather than breaking it down into smaller, fixed-size chunks, especially when reading from network connections to files.
+## 2026-03-10 - [Loop invariant code motion in GetMetrics]
+**Learning:** Extracting constant boolean checks (like `PolymorphicSystem`) and redundant type conversions (like `time.Duration(cfg.Metrics.Interval) * time.Millisecond`) out of infinite loops reduces branch evaluation and CPU cycles on every loop tick.
+**Action:** Always inspect infinite `for` loops or long-running daemons for invariant variables, configuration checks, or repeated mathematical computations that can be hoisted outside the loop to improve steady-state performance.
 
 ## 2026-03-21 - Optimize getMetadata trimming
 **Learning:** `bytes.Trim` recursively checks both ends of a byte slice, causing performance overhead. Since padding is strictly null characters (`\x00`), `bytes.IndexByte(b, 0)` is ~6x faster because it immediately returns the index of the first null character and allows taking a direct slice, reducing operations significantly.
 **Action:** Replace `bytes.Trim(b, "\x00")` with a custom inline function utilizing `bytes.IndexByte` and slice manipulation when working with pre-allocated buffer padding.
 
-## 2026-03-26 - Pre-allocate slice capacity
-**Learning:** During configuration loading, `append` inside loops without pre-allocated capacity forces the Go runtime to repeatedly allocate new, larger arrays and copy data, creating unnecessary GC pressure and CPU overhead.
-**Action:** When parsing comma-separated strings or mapping sections into slices, always initialize the slice with `make([]T, 0, len(items))` if the size is known beforehand. This simple change reduces execution time and allocations.
+## 2026-03-25 - Pre-allocate ReplicationOrder slice
+**Learning:** Pre-allocating a slice's capacity using `make([]T, 0, len)` when the final size is known (e.g., after `strings.Split`) significantly reduces memory allocations and improves performance. In `loadGlobalConfig`, this change reduced allocations from 7 to 2 and improved latency by ~38%.
+**Action:** Always pre-allocate slice capacity with `make` when the number of elements can be determined beforehand to avoid multiple re-allocations and copying during `append`.
+## 2026-03-11 - Optimize file sending with io.Copy
+**Learning:** Using io.Copy leverages Go's standard library to potentially use zero-copy operations like sendfile, avoiding user-space buffer allocations and manual loop overhead.
+**Action:** Use io.Copy or io.CopyN instead of manual byte buffer reading/writing loops when transferring streams of data.
 
-## 2026-03-22 - Fast Null-Terminated String Parsing in Go
-**Learning:** For parsing fixed-size network buffers representing null-terminated strings, using `bytes.IndexByte(b, 0)` to find the terminator and slicing is significantly faster than using `bytes.Trim(b, "\x00")` or `bytes.TrimRight`. It avoids recursive checking and extra string allocations, performing ~2.5x to ~3.5x faster in benchmarks.
-**Action:** Always prefer `bytes.IndexByte` to locate the null byte and slice the array when parsing null-padded strings from fixed-size buffers, rather than using `bytes.Trim` or `strings.TrimRight`.
+## 2024-05-25 - [Single-buffer metadata serialization]
+**Learning:** Formatting string fields and sending them in multiple `.Write()` calls over a network connection causes unnecessary memory allocations and slow system call overhead. Pre-allocating a single byte buffer of the exact network packet size and using `copy()` and `strconv.AppendInt` drastically reduces execution time and allocations.
+**Action:** When transmitting simple protocol headers or fields over TCP, allocate a single `[]byte` slice for the expected packet size and map data into it sequentially before dispatching via a single `.Write()` to optimize memory usage and avoid syscall limits.
 
-## 2026-03-25 - Slice pre-allocation for parsing strings
-**Learning:** In Go, dynamically appending elements to a slice like `var res []int` causes the runtime to reallocate memory and copy elements multiple times as the capacity grows. For string splitting or fixed collections, pre-allocating the capacity via `make([]T, 0, len(elements))` avoids this overhead entirely, improving loop execution time and reducing garbage collection pressure.
-**Action:** Always pre-allocate slices when the target length is known beforehand or can be bounded (e.g., after `strings.Split` or iterating over configuration map keys).
+## 2026-03-13 - Optimize Network Reads
+**Learning:** Pre-allocating single buffers for network I/O reduces system calls and memory allocations, resulting in faster and more efficient network communication in Go. We applied this pattern to replace multiple smaller `io.ReadFull` calls with a single chunked read.
+**Action:** Always pre-allocate network buffer slices exactly according to protocol specifications where field lengths are fixed and read all components via a single `io.ReadFull()` or `io.Write()` call.
 
-## 2026-03-29 - Fast Custom Padding String Parsing
-**Learning:** For padding variables, `strconv.ParseInt(string(bytes))` creates unneeded string allocations and conversions. By implementing a custom null-byte padded parsing function directly over the `[]byte` representation, it offers roughly a 40%+ performance boost over standard `strconv.ParseInt` with `string()` conversion, decreasing execution time per loop significantly for fixed-width networking variables.
-**Action:** Replace `strconv.ParseInt` with customized byte-level iteration mapping for networking variables where length and type (like ascii digits) and structure (like null-termination) are known ahead of time.
+## 2026-03-16 - [Simultaneous hashing with io.TeeReader]
+**Learning:** Using `io.TeeReader` to hash a stream of data as it's being written to disk eliminates the need to read the file from disk a second time to compute its checksum. This halves the total disk I/O during file reception. Since the network connection is already wrapped with a timeout reader (defeating zero-copy `splice`), the user-space routing adds no penalty.
+**Action:** Always compute checksums or metrics on the fly using `io.TeeReader` when streaming data to storage, avoiding redundant disk reads.
+
+## 2026-03-18 - Optimized padString implementation
+**Learning:** In Go, concatenating a string with a newly created byte slice cast to a string (e.g., `input + string(make([]byte, n))`) results in multiple redundant allocations and copies.
+**Action:** Use `make([]byte, length)` followed by `copy(b, input)` and `string(b)` to perform padding efficiently. This leverages the fact that `make` already zeros the slice and reduces the operation to a single allocation and a zero-copy-ish string conversion.
 
 ## 2024-03-27 - Fast Configuration Passing in Periodic Loops
 **Learning:** In periodic loops or event handlers (like metric loops or health checks), re-parsing configuration files by calling helper functions like `GetConfigFromFile()` on every execution introduces severe file I/O and parsing overhead, dragging down performance and creating unnecessary garbage.
 **Action:** Always inject or pass the pre-parsed `Configuration` object down the call stack instead of re-reading it from disk, especially in hot paths and periodic functions.
 
-## 2024-05-19 - Fast Integer Parsing from Byte Slices
-**Learning:** Extracting an allocation-free custom byte parser (like `parsePaddedIntFast`) from a closure to a package-level function allows it to be reused on multiple hot paths. For fixed-size, null-padded buffers, this avoids `strconv.ParseInt(string(b))` which forces string allocations, speeding up parsing times by ~50% (~24ns vs ~48ns).
-**Action:** When repeatedly parsing fixed-width numeric network buffers, implement and reuse a zero-allocation byte iterating parser rather than casting `[]byte` to `string` to use standard library functions.
+## 2026-04-01 - Fast Integer Formatting in Go
+**Learning:** For formatting a single integer as a string, `strconv.Itoa` is significantly faster (~19x) and generates fewer memory allocations than `fmt.Sprintf("%d", ...)`. `fmt.Sprintf` uses reflection and a more complex parsing logic, which is overkill for simple integer-to-string conversions.
+**Action:** Always prefer `strconv.Itoa` or `strconv.FormatInt` over `fmt.Sprintf` when converting a single integer to its string representation in Go.
 
-## 2026-04-03 - Avoid Intermediate String Allocations for Integer Networking Writes
-**Learning:** Converting an integer to a byte slice using `[]byte(strconv.FormatInt(val, 10))` or `[]byte(strconv.Itoa(val))` creates an intermediate string allocation before converting it to bytes. Using `strconv.AppendInt(make([]byte, 0, 32), val, 10)` writes the integer directly to the byte slice, avoiding the intermediate string allocation and improving performance significantly during network transmission.
-**Action:** Always prefer `strconv.AppendInt` onto an existing or pre-allocated byte slice instead of using `strconv.FormatInt` or `strconv.Itoa` when preparing integers for network transmission.
+## 2026-04-25 - Prevent Wrap-Around in Fast Integer Parsing
+**Learning:** When writing custom integer parsing functions in Go to avoid allocations (like `parsePaddedIntFast` reading from `[]byte`), checking `res > (1<<63-1)/10` is insufficient for `int64` overflow protection. It misses wrap-arounds on the final digit.
+**Action:** Always include a check for the final digit: `if res == (1<<63-1)/10 && int64(c-'0') > (1<<63-1)%10` to correctly return `strconv.ErrRange`.
+
+## 2026-04-25 - strconv.ParseInt Optimization Insight
+**Learning:** In modern Go, `strconv.ParseInt(string(b[:i]), 10, 64)` is compiler-optimized and does not allocate strings on the heap, so rewriting it purely to remove allocations is unnecessary. However, a custom inline loop still avoids the overhead of function calls and generalized base-10 parsing logic, proving ~2x faster.
+**Action:** When pursuing byte-level integer parsing optimizations in performance-critical network paths, measure speed, not just allocations, as custom parsing can reduce CPU time significantly even if allocations are already zero.
+
+## 2026-04-26 - [Fast integer parsing from byte slice]
+**Learning:** Parsing numeric byte slices from network buffers by converting to a string (`strconv.ParseInt(string(bytes))`) incurs unnecessary heap allocations. A custom fast parser iterating over the byte slice directly eliminates this overhead.
+**Action:** Always parse null-padded network byte slices using direct byte-level iteration mapping when reading simple integers like timestamps or sizes, avoiding string conversions. Ensure custom parsers correctly handle empty bounds, stop at null bytes, and include appropriate integer overflow safety checks.
+
+## 2026-04-27 - Hoist Hash Computation in Concurrent File Replication
+**Learning:** In network file replication, computing the file's SHA-256 hash inside each concurrent connection's goroutine (`sendFile`) causes redundant, $O(N)$ CPU-intensive hashing and disk I/O per file.
+**Action:** Always pre-compute file metadata (like hashes and sizes) before entering concurrent transmission loops, passing the pre-computed metadata to each goroutine.
+
+## 2024-05-24 - Avoiding Custom Parsing Micro-Optimizations
+**Learning:** Replacing standard library functions (like `strconv.ParseInt`) with custom byte-slice parsers to save a single allocation sacrifices codebase readability and is highly prone to edge-case bugs (e.g., `math.MinInt64` overflow checks).
+**Action:** Stick to standard library functions for parsing. If allocations are a bottleneck, look for higher-level architectural optimizations or safe standard library alternatives (like `strconv.AppendInt` for formatting).
+
+## 2024-05-24 - Preserving Network Protocol Padding
+**Learning:** When optimizing string or integer formatting, replacing a custom padding function (like `PadString`) with `strconv.AppendInt` on a pre-allocated zeroed buffer changes the padding behavior (e.g., right-padding instead of left/space padding) and breaks the network protocol.
+**Action:** Always fully understand the implementation of any custom padding or serialization functions before attempting to optimize them away.
