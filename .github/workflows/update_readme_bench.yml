@@ -51,5 +51,6 @@ jobs:
           echo "No changes to commit."
         else
           git commit -m "docs: update benchmark results in README"
+          git pull --rebase origin master
           git push
         fi

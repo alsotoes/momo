@@ -1,7 +1,7 @@
 package common
 
 import (
-	"fmt"
+	"crypto/subtle"
 	"io"
 	"net"
 	"os"
@@ -25,14 +25,14 @@ func TestPadString(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		result := padString(tc.input, tc.length)
+		result := PadString(tc.input, tc.length)
 		if result != tc.expected {
 			t.Errorf("Expected '%s', got '%s'", tc.expected, result)
 		}
 	}
 }
 
-func startMockServer(t *testing.T, expectedMode int, delay time.Duration) (string, net.Listener) {
+func startMockServer(t *testing.T, authToken string, expectedMode int, delay time.Duration) (string, net.Listener) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Failed to start listener: %v", err)
@@ -43,6 +43,14 @@ func startMockServer(t *testing.T, expectedMode int, delay time.Duration) (strin
 			return
 		}
 		defer conn.Close()
+
+		bufAuth := make([]byte, AuthTokenLength)
+		io.ReadFull(conn, bufAuth)
+		expectedAuthToken := []byte(PadString(authToken, AuthTokenLength))
+		if subtle.ConstantTimeCompare(bufAuth, expectedAuthToken) != 1 {
+			t.Logf("Server: Invalid AuthToken received: %s", string(bufAuth))
+			return
+		}
 
 		buf := make([]byte, TimestampLength)
 		io.ReadFull(conn, buf)
@@ -67,7 +75,7 @@ func startMockServer(t *testing.T, expectedMode int, delay time.Duration) (strin
 	return ln.Addr().String(), ln
 }
 
-func startDummyServer(t *testing.T) (string, net.Listener) {
+func startDummyServer(t *testing.T, authToken string) (string, net.Listener) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Failed to start listener: %v", err)
@@ -81,6 +89,14 @@ func startDummyServer(t *testing.T) (string, net.Listener) {
 			go func(c net.Conn) {
 				defer c.Close()
 				// Just read and respond basic handshake then ACK
+				bufAuth := make([]byte, AuthTokenLength)
+				io.ReadFull(c, bufAuth)
+				expectedAuthToken := []byte(PadString(authToken, AuthTokenLength))
+				if subtle.ConstantTimeCompare(bufAuth, expectedAuthToken) != 1 {
+					t.Logf("Dummy Server: Invalid AuthToken received: %s", string(bufAuth))
+					return
+				}
+
 				buf := make([]byte, TimestampLength)
 				io.ReadFull(c, buf)
 				c.Write([]byte("4")) // Not Splay
@@ -102,6 +118,8 @@ func startDummyServer(t *testing.T) (string, net.Listener) {
 
 func TestConnect(t *testing.T) {
 	defer goleak.VerifyNone(t)
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+
 	// Create a temp file to send
 	file, err := os.CreateTemp("", "test_connect_*.txt")
 	if err != nil {
@@ -112,22 +130,28 @@ func TestConnect(t *testing.T) {
 	file.Close()
 
 	// Normal Connect non-splay
-	addr1, ln1 := startMockServer(t, ReplicationNone, 10*time.Millisecond)
+	addr1, ln1 := startMockServer(t, authToken, ReplicationNone, 10*time.Millisecond)
 	defer ln1.Close()
 
 	daemons := []*Daemon{
 		{Host: addr1, ChangeReplication: addr1, Data: "/tmp", Drive: "/dev/sda1"},
 	}
+	cfg := Configuration{
+		Daemons: daemons,
+		Global: ConfigurationGlobal{
+			AuthToken: authToken,
+		},
+	}
 
 	var wg sync.WaitGroup
 	wg.Add(1)
-	Connect(&wg, daemons, file.Name(), 0, time.Now().UnixNano())
+	Connect(&wg, cfg, file.Name(), 0, time.Now().UnixNano())
 	wg.Wait()
 
 	// Splay Connect
-	addr2, ln2 := startDummyServer(t)
+	addr2, ln2 := startDummyServer(t, authToken)
 	defer ln2.Close()
-	addr3, ln3 := startDummyServer(t)
+	addr3, ln3 := startDummyServer(t, authToken)
 	defer ln3.Close()
 
 	daemonsSplay := []*Daemon{
@@ -151,9 +175,18 @@ func TestConnect(t *testing.T) {
 			return
 		}
 		defer conn.Close()
+
+		bufAuth := make([]byte, AuthTokenLength)
+		io.ReadFull(conn, bufAuth)
+		expectedAuthToken := []byte(PadString(authToken, AuthTokenLength))
+		if subtle.ConstantTimeCompare(bufAuth, expectedAuthToken) != 1 {
+			t.Logf("Splay Server: Invalid AuthToken received: %s", string(bufAuth))
+			return
+		}
+
 		buf := make([]byte, TimestampLength)
 		io.ReadFull(conn, buf)
-		conn.Write([]byte(fmt.Sprintf("%d", ReplicationPrimarySplay))) // Send 3
+		conn.Write([]byte(strconv.Itoa(ReplicationPrimarySplay))) // Send 3
 
 		// Read file metadata
 		bufHash := make([]byte, hashLength)
@@ -166,14 +199,22 @@ func TestConnect(t *testing.T) {
 	}()
 
 	daemonsSplay[0].Host = addrSplay
+	cfgSplay := Configuration{
+		Daemons: daemonsSplay,
+		Global: ConfigurationGlobal{
+			AuthToken: authToken,
+		},
+	}
 
 	wg.Add(1)
-	Connect(&wg, daemonsSplay, file.Name(), 0, time.Now().UnixNano())
+	Connect(&wg, cfgSplay, file.Name(), 0, time.Now().UnixNano())
 	wg.Wait()
 }
 
 func TestSendFile(t *testing.T) {
 	defer goleak.VerifyNone(t)
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+
 	file, err := os.CreateTemp("", "test_sendfile_*.txt")
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
@@ -182,7 +223,7 @@ func TestSendFile(t *testing.T) {
 	file.WriteString("test sendFile data")
 	file.Close()
 
-	addr, ln := startMockServer(t, 0, 10*time.Millisecond)
+	addr, ln := startMockServer(t, authToken, 0, 10*time.Millisecond)
 	defer ln.Close()
 
 	conn, err := DialSocket(addr)
@@ -190,19 +231,30 @@ func TestSendFile(t *testing.T) {
 		t.Fatalf("Failed to dial: %v", err)
 	}
 
+	// First, send the AuthToken
+	conn.Write([]byte(authToken))
+
 	// Skip the initial timestamp read/write
-	conn.Write([]byte(padString("123", TimestampLength)))
+	conn.Write([]byte(PadString("123", TimestampLength)))
 	io.ReadFull(conn, make([]byte, 1))
 
 	var wg sync.WaitGroup
 	wg.Add(1)
-	fileInfo, _ := os.Stat(file.Name())
-	fileHash, _ := HashFile(file.Name())
-	metadata := &FileMetadata{
-		Name: fileInfo.Name(),
-		Size: fileInfo.Size(),
-		Hash: fileHash,
+
+	fileInfo, err := os.Stat(file.Name())
+	if err != nil {
+		t.Fatalf("Failed to stat file: %v", err)
 	}
-	sendFile(&wg, conn, file.Name(), metadata)
+	fileHash, err := HashFile(file.Name())
+	if err != nil {
+		t.Fatalf("Failed to hash file: %v", err)
+	}
+	meta := &FileMetadata{
+		Name: fileInfo.Name(),
+		Hash: fileHash,
+		Size: fileInfo.Size(),
+	}
+
+	sendFile(&wg, conn, file.Name(), meta)
 	wg.Wait()
 }

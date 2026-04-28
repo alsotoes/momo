@@ -36,10 +36,6 @@ func (c *IdleTimeoutConn) Write(b []byte) (n int, err error) {
 // DialSocket connects to the given address.
 // It returns a net.Conn or an error.
 func DialSocket(servAddr string) (net.Conn, error) {
-	// 🛡️ Sentinel: Use DialTimeout instead of DialTCP to prevent hanging connections
-	// and resource exhaustion (DoS) attacks when connecting to external nodes.
-	// Use DialTimeout to prevent Denial of Service (DoS) attacks via hanging outbound connections
-	// 🛡️ Sentinel: Enforce a timeout to prevent DoS via hanging outbound connections
 	connection, err := net.DialTimeout("tcp", servAddr, 10*time.Second)
 	if err != nil {
 		return nil, errors.New("Dial failed: " + err.Error())
