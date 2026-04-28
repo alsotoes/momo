@@ -47,3 +47,8 @@
 **Vulnerability:** The `Daemon` and `ChangeReplicationModeServer` network endpoints accepted and processed protocol data before any authentication occurred, allowing unauthenticated connections to send data and potentially exploit other vulnerabilities.
 **Learning:** Security controls like authentication must be enforced at the outermost boundary of the application, before any potentially vulnerable parsing or processing logic is executed.
 **Prevention:** Require a mandatory authentication handshake (e.g., sending a padded `AuthToken`) as the very first operation upon establishing a connection, and terminate the connection immediately if the handshake fails.
+
+## 2025-03-27 - Missing Authentication on Network Endpoints
+**Vulnerability:** The application's network endpoints (`Daemon` and `ChangeReplicationModeServer`) accepted connections and processed data/state-changes from any client without authentication. This allowed unauthorized clients to upload arbitrary files or alter the cluster replication state.
+**Learning:** Network endpoints handling state changes or file storage must authenticate clients immediately upon connection to prevent unauthorized access and system abuse. Plain TCP connections over untrusted networks cannot rely on obscurity.
+**Prevention:** Enforce a mandatory authentication handshake (e.g., verifying a fixed-length null-padded `AuthToken` using `crypto/subtle.ConstantTimeCompare`) before parsing any protocol data. Reject unauthorized connections immediately.
