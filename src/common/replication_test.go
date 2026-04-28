@@ -25,9 +25,9 @@ func TestPadString(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		result := padString(tc.input, tc.length)
+		result := PadString(tc.input, tc.length)
 		if result != tc.expected {
-			t.Errorf("Expected '%s', got '%s'", tc.expected, result)
+			t.Errorf("PadString(%q, %d) expected %q, got %q", tc.input, tc.length, tc.expected, result)
 		}
 	}
 }
@@ -43,6 +43,9 @@ func startMockServer(t *testing.T, expectedMode int, delay time.Duration) (strin
 			return
 		}
 		defer conn.Close()
+
+		bufToken := make([]byte, 64)
+		io.ReadFull(conn, bufToken)
 
 		buf := make([]byte, TimestampLength)
 		io.ReadFull(conn, buf)
@@ -81,6 +84,9 @@ func startDummyServer(t *testing.T) (string, net.Listener) {
 			go func(c net.Conn) {
 				defer c.Close()
 				// Just read and respond basic handshake then ACK
+				bufToken := make([]byte, 64)
+				io.ReadFull(c, bufToken)
+
 				buf := make([]byte, TimestampLength)
 				io.ReadFull(c, buf)
 				c.Write([]byte("4")) // Not Splay
@@ -121,7 +127,7 @@ func TestConnect(t *testing.T) {
 
 	var wg sync.WaitGroup
 	wg.Add(1)
-	Connect(&wg, daemons, file.Name(), 0, time.Now().UnixNano())
+	Connect(&wg, daemons, file.Name(), 0, time.Now().UnixNano(), "super_secret_token")
 	wg.Wait()
 
 	// Splay Connect
@@ -151,6 +157,9 @@ func TestConnect(t *testing.T) {
 			return
 		}
 		defer conn.Close()
+		bufToken := make([]byte, 64)
+		io.ReadFull(conn, bufToken)
+
 		buf := make([]byte, TimestampLength)
 		io.ReadFull(conn, buf)
 		conn.Write([]byte(fmt.Sprintf("%d", ReplicationPrimarySplay))) // Send 3
@@ -168,7 +177,7 @@ func TestConnect(t *testing.T) {
 	daemonsSplay[0].Host = addrSplay
 
 	wg.Add(1)
-	Connect(&wg, daemonsSplay, file.Name(), 0, time.Now().UnixNano())
+	Connect(&wg, daemonsSplay, file.Name(), 0, time.Now().UnixNano(), "super_secret_token")
 	wg.Wait()
 }
 
@@ -190,8 +199,9 @@ func TestSendFile(t *testing.T) {
 		t.Fatalf("Failed to dial: %v", err)
 	}
 
-	// Skip the initial timestamp read/write
-	conn.Write([]byte(padString("123", TimestampLength)))
+	// Send mock auth token and timestamp
+	conn.Write([]byte(PadString("super_secret_token", 64)))
+	conn.Write([]byte(PadString("123", TimestampLength)))
 	io.ReadFull(conn, make([]byte, 1))
 
 	var wg sync.WaitGroup

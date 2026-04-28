@@ -65,7 +65,7 @@ func TestDaemonReal(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go Daemon(ctx, daemons, 0)
+	go Daemon(ctx, daemons, 0, "super_secret_token")
 	time.Sleep(100 * time.Millisecond)
 
 	conn, err := net.Dial("tcp", "127.0.0.1:45681")
@@ -74,6 +74,7 @@ func TestDaemonReal(t *testing.T) {
 	}
 	defer conn.Close()
 
+	conn.Write([]byte(momo_common.PadString("super_secret_token", 64)))
 	timestampStr := "1234567890123456789"
 	conn.Write([]byte(timestampStr))
 

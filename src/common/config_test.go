@@ -10,6 +10,7 @@ import (
 
 const validConfig = `
 [global]
+auth_token = super_secret_token
 debug = true
 replication_order = 2,3,1
 polymorphic_system = true
@@ -43,6 +44,10 @@ func TestGetConfig_Success(t *testing.T) {
 	// Assert Global section
 	if !config.Global.Debug {
 		t.Error("Expected Global.Debug to be true, but it was false")
+	}
+
+	if config.Global.AuthToken != "super_secret_token" {
+		t.Errorf("Expected Global.AuthToken to be 'super_secret_token', but got '%s'", config.Global.AuthToken)
 	}
 
 	expectedOrder := []int{2, 3, 1}
@@ -98,6 +103,11 @@ func TestGetConfig_Failures(t *testing.T) {
 			name:          "Invalid replication_order value",
 			content:       strings.Replace(validConfig, "replication_order = 2,3,1", "replication_order = 2,a,1", 1),
 			expectedError: "failed to load [global] section: failed to parse 'replication_order'",
+		},
+		{
+			name:          "Missing auth_token",
+			content:       strings.Replace(validConfig, "auth_token = super_secret_token", "", 1),
+			expectedError: "failed to load [global] section: 'auth_token' is missing or empty",
 		},
 		{
 			name:          "Missing host in daemon",
