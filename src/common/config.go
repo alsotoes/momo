@@ -97,6 +97,11 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 		return ConfigurationGlobal{}, fmt.Errorf("failed to parse 'polymorphic_system': %w", err)
 	}
 
+	globalCfg.AuthToken = section.Key("auth_token").String()
+	if globalCfg.AuthToken == "" {
+		return ConfigurationGlobal{}, fmt.Errorf("'auth_token' is missing or empty")
+	}
+
 	return globalCfg, nil
 }
 
