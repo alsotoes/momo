@@ -5,10 +5,10 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net"
-	"os"
 	"sync"
 	"time"
 
@@ -55,12 +55,11 @@ func SetReplicationState(newMode int, timestamp int64) momo_common.ReplicationDa
 // When a client connects, it sends a JSON object containing the new replication mode.
 // This function updates the server's replication mode and, if the server is the primary (serverId 0),
 // it propagates the change to the other servers in the cluster.
-func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configuration, serverId int, timestamp int64) {
+func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configuration, serverId int, timestamp int64) error {
 	daemons := cfg.Daemons
 	server, err := net.Listen("tcp", daemons[serverId].ChangeReplication)
 	if err != nil {
-		log.Printf("Error listening: %v", err)
-		os.Exit(1)
+		return fmt.Errorf("Error listening: %v", err)
 	}
 
 	defer server.Close()
@@ -88,7 +87,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 		if err != nil {
 			select {
 			case <-ctx.Done():
-				return // Shutting down gracefully
+				return nil // Shutting down gracefully
 			default:
 				log.Printf("Error accepting connection: %v", err)
 				// 🛡️ Sentinel: Sleep briefly to prevent tight loop on transient errors (like EMFILE)

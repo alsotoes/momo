@@ -2,6 +2,7 @@
 package metrics
 
 import (
+	"context"
 	"log"
 	"time"
 
@@ -76,7 +77,7 @@ func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, curren
 // It periodically checks the system metrics and, if the polymorphic system is enabled,
 // adjusts the replication mode based on the configured thresholds and fallback interval.
 // This function is intended to be run as a goroutine and will run indefinitely.
-func GetMetrics(cfg momo_common.Configuration, serverId int) {
+func GetMetrics(ctx context.Context, cfg momo_common.Configuration, serverId int) {
 	if serverId != 0 {
 		return
 	}
@@ -99,6 +100,12 @@ func GetMetrics(cfg momo_common.Configuration, serverId int) {
 	intervalDuration := time.Duration(cfg.Metrics.Interval) * time.Millisecond
 
 	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
 		newIndex, changed := checkMetricsAndSwap(cfg, sm, currentIndex, replicationOrder)
 		if changed {
 			currentIndex = newIndex

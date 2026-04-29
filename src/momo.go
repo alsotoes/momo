@@ -62,39 +62,48 @@ func Run() {
 		common.Connect(&wg, cfg, *filePathPtr, serverId, common.DummyEpoch)
 		wg.Wait()
 	case "server":
-		runServer(cfg, *serverIdPtr)
+		if err := runServer(cfg, *serverIdPtr); err != nil {
+			log.Fatalf("Server error: %v", err)
+		}
 	default:
-		log.Printf("*** ERROR: Option unknown: %s", *impersonationPtr)
-		os.Exit(1)
+		log.Fatalf("*** ERROR: Option unknown: %s", *impersonationPtr)
 	}
 }
 
 // runServer starts the momo server.
 // It initializes the metrics collector, the replication mode change listener, and the main daemon.
 // It waits for all three components to finish before shutting down.
-func runServer(cfg common.Configuration, serverId int) {
+func runServer(cfg common.Configuration, serverId int) error {
 	log.Printf("*** SERVER CODE")
 	now := time.Now()
 	timestamp := now.UnixNano()
 
-	var wg sync.WaitGroup
-	wg.Add(3)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errChan := make(chan error, 3)
 
 	go func() {
-		defer wg.Done()
-		metrics.GetMetrics(cfg, serverId)
+		metrics.GetMetrics(ctx, cfg, serverId)
 	}()
 
 	go func() {
-		defer wg.Done()
-		server.ChangeReplicationModeServer(context.Background(), cfg, serverId, timestamp)
+		errChan <- server.ChangeReplicationModeServer(ctx, cfg, serverId, timestamp)
 	}()
 
 	go func() {
-		defer wg.Done()
-		server.Daemon(context.Background(), cfg, serverId)
+		errChan <- server.Daemon(ctx, cfg, serverId)
 	}()
 
-	wg.Wait()
-	log.Printf("Server shutting down")
+	// Wait for any component to return an error or for the program to be interrupted
+	// In a real application, we might want to catch SIGINT/SIGTERM here.
+	select {
+	case err := <-errChan:
+		if err != nil {
+			cancel() // Shut down other components
+			return err
+		}
+	}
+
+	return nil
 }
