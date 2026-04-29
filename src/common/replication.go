@@ -29,15 +29,13 @@ func Connect(wg *sync.WaitGroup, cfg Configuration, filePath string, serverId in
 	connections = append(connections, initialConn)
 
 	// Perform handshake to get replication mode
-	// First, send the AuthToken
-	if _, err := initialConn.Write([]byte(PadString(authToken, AuthTokenLength))); err != nil {
-		log.Printf("Failed to send AuthToken to %s: %v", daemons[serverId].Host, err)
-		initialConn.Close()
-		return
-	}
+	// ⚡ Bolt: Send AuthToken and timestamp in a single write operation to reduce system calls.
+	handshakeBuf := make([]byte, AuthTokenLength+TimestampLength)
+	copy(handshakeBuf[0:AuthTokenLength], PadString(authToken, AuthTokenLength))
+	copy(handshakeBuf[AuthTokenLength:AuthTokenLength+TimestampLength], PadString(strconv.FormatInt(timestamp, 10), TimestampLength))
 
-	if _, err := initialConn.Write([]byte(PadString(strconv.FormatInt(timestamp, 10), TimestampLength))); err != nil {
-		log.Printf("Failed to send timestamp to %s: %v", daemons[serverId].Host, err)
+	if _, err := initialConn.Write(handshakeBuf); err != nil {
+		log.Printf("Failed to send handshake to %s: %v", daemons[serverId].Host, err)
 		initialConn.Close()
 		return
 	}
@@ -70,15 +68,8 @@ func Connect(wg *sync.WaitGroup, cfg Configuration, filePath string, serverId in
 			}
 
 			// Perform handshake with the other daemons
-			// First, send the AuthToken
-			if _, err := conn.Write([]byte(PadString(authToken, AuthTokenLength))); err != nil {
-				log.Printf("Failed to send AuthToken to %s: %v", daemon.Host, err)
-				conn.Close()
-				continue
-			}
-
-			if _, err := conn.Write([]byte(PadString(strconv.FormatInt(timestamp, 10), TimestampLength))); err != nil {
-				log.Printf("Failed to send timestamp to %s: %v", daemon.Host, err)
+			if _, err := conn.Write(handshakeBuf); err != nil {
+				log.Printf("Failed to send handshake to %s: %v", daemon.Host, err)
 				conn.Close()
 				continue
 			}
