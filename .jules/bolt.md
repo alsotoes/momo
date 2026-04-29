@@ -63,3 +63,7 @@
 ## 2024-05-24 - Preserving Network Protocol Padding
 **Learning:** When optimizing string or integer formatting, replacing a custom padding function (like `PadString`) with `strconv.AppendInt` on a pre-allocated zeroed buffer changes the padding behavior (e.g., right-padding instead of left/space padding) and breaks the network protocol.
 **Action:** Always fully understand the implementation of any custom padding or serialization functions before attempting to optimize them away.
+
+## 2026-04-29 - [Optimize network handshakes with single write]
+**Learning:** When performing sequential network writes during a protocol handshake (like sending an AuthToken followed by a Timestamp), executing separate `conn.Write()` calls for each field incurs multiple system call overheads and potential network delays (e.g., Nagle's algorithm).
+**Action:** Always pre-allocate a single byte buffer sized for the combined payload, populate it using `copy()`, and dispatch it with a single `conn.Write()` call to improve throughput and reduce CPU usage.
