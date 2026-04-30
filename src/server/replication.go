@@ -131,8 +131,8 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 
 			// If this is the primary server, propagate the change to the other servers
 			if 0 == serverId {
-				go changeReplicationModeClient(cfg.Global.AuthToken, daemons, string(newReplicationJson), 1)
-				go changeReplicationModeClient(cfg.Global.AuthToken, daemons, string(newReplicationJson), 2)
+				go changeReplicationModeClient(expectedAuthToken, daemons, string(newReplicationJson), 1)
+				go changeReplicationModeClient(expectedAuthToken, daemons, string(newReplicationJson), 2)
 			}
 		}()
 	}
@@ -140,7 +140,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 
 // changeReplicationModeClient connects to another server in the cluster and sends the new replication mode.
 // It is used by the primary server to propagate replication mode changes to the other servers.
-func changeReplicationModeClient(authToken string, daemons []*momo_common.Daemon, replicationJson string, serverId int) {
+func changeReplicationModeClient(paddedAuthToken []byte, daemons []*momo_common.Daemon, replicationJson string, serverId int) {
 	conn, err := momo_common.DialSocket(daemons[serverId].ChangeReplication)
 	if err != nil {
 		log.Printf("Dial error: %v", err)
@@ -149,7 +149,8 @@ func changeReplicationModeClient(authToken string, daemons []*momo_common.Daemon
 	defer conn.Close()
 
 	// Send the AuthToken first
-	if _, err := conn.Write([]byte(momo_common.PadString(authToken, momo_common.AuthTokenLength))); err != nil {
+	// ⚡ Bolt: Use the pre-computed AuthToken to eliminate redundant allocations and padding operations.
+	if _, err := conn.Write(paddedAuthToken); err != nil {
 		log.Printf("Failed to send AuthToken: %v", err)
 		return
 	}

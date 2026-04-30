@@ -84,9 +84,12 @@ func GetMetrics(ctx context.Context, cfg momo_common.Configuration, serverId int
 
 	log.Printf("Daemon GetMetrics stated...")
 
+	// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
+	paddedAuthToken := []byte(momo_common.PadString(cfg.Global.AuthToken, momo_common.AuthTokenLength))
+
 	replicationOrder := cfg.Global.ReplicationOrder
 	currentIndex := 0
-	pushNewReplicationMode(cfg, replicationOrder[currentIndex])
+	pushNewReplicationMode(cfg, paddedAuthToken, replicationOrder[currentIndex])
 
 	sm := &RealSystemMetrics{}
 	start := time.Now()
@@ -109,7 +112,7 @@ func GetMetrics(ctx context.Context, cfg momo_common.Configuration, serverId int
 		newIndex, changed := checkMetricsAndSwap(cfg, sm, currentIndex, replicationOrder)
 		if changed {
 			currentIndex = newIndex
-			pushNewReplicationMode(cfg, replicationOrder[currentIndex])
+			pushNewReplicationMode(cfg, paddedAuthToken, replicationOrder[currentIndex])
 			start = time.Now()
 		}
 
@@ -119,7 +122,7 @@ func GetMetrics(ctx context.Context, cfg momo_common.Configuration, serverId int
 			if currentIndex > 0 {
 				log.Printf("Replication fallback because of timeout")
 				currentIndex--
-				pushNewReplicationMode(cfg, replicationOrder[currentIndex])
+				pushNewReplicationMode(cfg, paddedAuthToken, replicationOrder[currentIndex])
 				start = time.Now()
 			} else {
 				log.Printf("Replication method has no fallback")
