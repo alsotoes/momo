@@ -82,7 +82,12 @@ func GetMetrics(ctx context.Context, cfg momo_common.Configuration, serverId int
 		return
 	}
 
-	log.Printf("Daemon GetMetrics stated...")
+	if !cfg.Global.PolymorphicSystem {
+		log.Printf("Replication will not change because polymorphic_system is set to false")
+		return
+	}
+
+	log.Printf("Daemon GetMetrics started...")
 
 	// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
 	paddedAuthToken := []byte(momo_common.PadString(cfg.Global.AuthToken, momo_common.AuthTokenLength))
@@ -93,11 +98,6 @@ func GetMetrics(ctx context.Context, cfg momo_common.Configuration, serverId int
 
 	sm := &RealSystemMetrics{}
 	start := time.Now()
-
-	if !cfg.Global.PolymorphicSystem {
-		log.Printf("Replication will not change beacuse polymorphic_system is set to false")
-		return
-	}
 
 	fallbackDuration := time.Duration(cfg.Metrics.FallbackInterval) * time.Millisecond
 	intervalDuration := time.Duration(cfg.Metrics.Interval) * time.Millisecond
