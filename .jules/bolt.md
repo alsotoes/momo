@@ -67,11 +67,3 @@
 ## 2026-04-29 - [Optimize network handshakes with single write]
 **Learning:** When performing sequential network writes during a protocol handshake (like sending an AuthToken followed by a Timestamp), executing separate `conn.Write()` calls for each field incurs multiple system call overheads and potential network delays (e.g., Nagle's algorithm).
 **Action:** Always pre-allocate a single byte buffer sized for the combined payload, populate it using `copy()`, and dispatch it with a single `conn.Write()` call to improve throughput and reduce CPU usage.
-
-## 2026-04-30 - [Optimize checkMetricsAndSwap system calls]
-**Learning:** In periodic system monitoring loops, calling functions like `cpu.Percent` incurs costly system calls. If preceding checks (like memory usage exceeding thresholds) already determine the required outcome (e.g., scaling up), subsequent system calls are redundant and waste CPU cycles. Furthermore, pre-calculating thresholds prevents repetitive mathematical operations.
-**Action:** Always short-circuit expensive metric gathering calls when the state can be determined by cheaper or earlier checks. Pre-calculate constant values, like threshold conversions, outside of loops or hot paths.
-
-## 2026-04-30 - [Optimize checkMetricsAndSwap system calls]
-**Learning:** In periodic system monitoring loops, calling functions like `cpu.Percent` incurs costly system calls. If preceding checks (like memory usage exceeding thresholds) already determine the required outcome (e.g., scaling up), subsequent system calls are redundant and waste CPU cycles.
-**Action:** Always short-circuit expensive metric gathering calls when the state can be determined by cheaper or earlier checks.
