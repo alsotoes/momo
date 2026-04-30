@@ -71,3 +71,7 @@
 ## 2026-04-30 - [Optimize checkMetricsAndSwap system calls]
 **Learning:** In periodic system monitoring loops, calling functions like `cpu.Percent` incurs costly system calls. If preceding checks (like memory usage exceeding thresholds) already determine the required outcome (e.g., scaling up), subsequent system calls are redundant and waste CPU cycles. Furthermore, pre-calculating thresholds prevents repetitive mathematical operations.
 **Action:** Always short-circuit expensive metric gathering calls when the state can be determined by cheaper or earlier checks. Pre-calculate constant values, like threshold conversions, outside of loops or hot paths.
+
+## 2026-04-30 - [Optimize checkMetricsAndSwap system calls]
+**Learning:** In periodic system monitoring loops, calling functions like `cpu.Percent` incurs costly system calls. If preceding checks (like memory usage exceeding thresholds) already determine the required outcome (e.g., scaling up), subsequent system calls are redundant and waste CPU cycles.
+**Action:** Always short-circuit expensive metric gathering calls when the state can be determined by cheaper or earlier checks.

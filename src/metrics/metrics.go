@@ -40,19 +40,15 @@ func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, curren
 		return currentIndex, false
 	}
 
-	// ⚡ Bolt: Pre-calculate thresholds as percentages to avoid divisions
-	maxThresholdPct := cfg.Metrics.MaxThreshold * 100.0
-	minThresholdPct := cfg.Metrics.MinThreshold * 100.0
-
 	v, err := sm.VirtualMemory()
 	if err != nil {
 		log.Printf("Error getting memory metrics: %v", err)
 		return currentIndex, false
 	}
-	memUsedPct := float64(v.UsedPercent)
+	memUsed := float64(v.UsedPercent) / 100
 
 	// ⚡ Bolt: Short-circuit CPU check if memory usage alone exceeds the maximum threshold
-	if memUsedPct >= maxThresholdPct {
+	if memUsed >= cfg.Metrics.MaxThreshold {
 		if currentIndex < len(replicationOrder)-1 {
 			log.Printf("Replication changed because cfg.Metrics.MaxThreshold reached")
 			return currentIndex + 1, true
@@ -64,10 +60,10 @@ func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, curren
 		log.Printf("Error getting cpu metrics: %v", err)
 		return currentIndex, false
 	}
-	cpuUsedPct := c[0]
+	cpuUsed := c[0] / 100
 
 	// Increase replication if CPU usage is high
-	if cpuUsedPct >= maxThresholdPct {
+	if cpuUsed >= cfg.Metrics.MaxThreshold {
 		if currentIndex < len(replicationOrder)-1 {
 			log.Printf("Replication changed because cfg.Metrics.MaxThreshold reached")
 			return currentIndex + 1, true
@@ -75,7 +71,7 @@ func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, curren
 	}
 
 	// Decrease replication if usage is low
-	if memUsedPct < minThresholdPct && cpuUsedPct < minThresholdPct {
+	if memUsed < cfg.Metrics.MinThreshold && cpuUsed < cfg.Metrics.MinThreshold {
 		if currentIndex > 0 {
 			log.Printf("Replication changed because resource usage is below MinThreshold")
 			return currentIndex - 1, true
