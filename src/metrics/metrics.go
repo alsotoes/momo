@@ -35,37 +35,49 @@ func (rsm *RealSystemMetrics) CPUPercent() ([]float64, error) {
 // It compares the memory and CPU usage against the configured thresholds and returns the new
 // replication index and a boolean indicating whether the mode was changed.
 func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, currentIndex int, replicationOrder []int) (int, bool) {
+	// ⚡ Bolt: Hoist currentIndex == -1 check to avoid unnecessary work.
+	if currentIndex == -1 {
+		return currentIndex, false
+	}
+
 	v, err := sm.VirtualMemory()
 	if err != nil {
 		log.Printf("Error getting memory metrics: %v", err)
 		return currentIndex, false
 	}
-	memUsed := float64(v.UsedPercent) / 100
+
+	// ⚡ Bolt: Pre-calculate thresholds as percentages to match UsedPercent and CPUPercent (0-100)
+	// and avoid dividing by 100 on every tick.
+	memUsed := float64(v.UsedPercent)
+	maxThreshPercent := cfg.Metrics.MaxThreshold * 100
+	minThreshPercent := cfg.Metrics.MinThreshold * 100
+
+	// ⚡ Bolt: Short-circuit CPUPercent system call if memory alone exceeds the threshold.
+	if memUsed >= maxThreshPercent {
+		if currentIndex < len(replicationOrder)-1 {
+			log.Printf("Replication changed because cfg.Metrics.MaxThreshold reached")
+			return currentIndex + 1, true
+		}
+		return currentIndex, false
+	}
 
 	c, err := sm.CPUPercent()
 	if err != nil {
 		log.Printf("Error getting cpu metrics: %v", err)
 		return currentIndex, false
 	}
-	cpuUsed := c[0] / 100
+	cpuUsed := c[0]
 
-	if currentIndex != -1 {
-		// Increase replication if usage is high
-		if memUsed >= cfg.Metrics.MaxThreshold || cpuUsed >= cfg.Metrics.MaxThreshold {
-			if currentIndex < len(replicationOrder)-1 {
-				log.Printf("Replication changed because cfg.Metrics.MaxThreshold reached")
-				return currentIndex + 1, true
-			}
+	if cpuUsed >= maxThreshPercent {
+		if currentIndex < len(replicationOrder)-1 {
+			log.Printf("Replication changed because cfg.Metrics.MaxThreshold reached")
+			return currentIndex + 1, true
 		}
-
-		// Decrease replication if usage is low
-		if memUsed < cfg.Metrics.MinThreshold && cpuUsed < cfg.Metrics.MinThreshold {
-			if currentIndex > 0 {
-				log.Printf("Replication changed because resource usage is below MinThreshold")
-				return currentIndex - 1, true
-			}
+	} else if memUsed < minThreshPercent && cpuUsed < minThreshPercent {
+		if currentIndex > 0 {
+			log.Printf("Replication changed because resource usage is below MinThreshold")
+			return currentIndex - 1, true
 		}
-
 	}
 
 	return currentIndex, false
