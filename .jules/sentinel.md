@@ -52,3 +52,8 @@
 **Vulnerability:** The application's network endpoints (`Daemon` and `ChangeReplicationModeServer`) accepted connections and processed data/state-changes from any client without authentication. This allowed unauthorized clients to upload arbitrary files or alter the cluster replication state.
 **Learning:** Network endpoints handling state changes or file storage must authenticate clients immediately upon connection to prevent unauthorized access and system abuse. Plain TCP connections over untrusted networks cannot rely on obscurity.
 **Prevention:** Enforce a mandatory authentication handshake (e.g., verifying a fixed-length null-padded `AuthToken` using `crypto/subtle.ConstantTimeCompare`) before parsing any protocol data. Reject unauthorized connections immediately.
+
+## 2026-05-01 - Missing Default Connection Timeouts
+**Vulnerability:** The application used `net.DialTimeout` for outbound connections, but once connected, the connection had no deadlines (read/write timeouts). This could result in slowloris or related resource exhaustion attacks if the server successfully connects to a peer but that peer hangs during the transfer.
+**Learning:** Establishing a connection with a timeout only protects the initial connection phase. Once a TCP connection is established, standard read/write operations can block indefinitely if the remote peer goes silent.
+**Prevention:** Wrap raw `net.Conn` objects returned from `Dial` operations with rolling idle timeouts (`IdleTimeoutConn`) or apply explicit read/write deadlines immediately after connection establishment to ensure long-lived operations don't hang indefinitely.

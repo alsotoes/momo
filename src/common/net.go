@@ -41,5 +41,6 @@ func DialSocket(servAddr string) (net.Conn, error) {
 		return nil, errors.New("Dial failed: " + err.Error())
 	}
 
-	return connection, nil
+	// 🛡️ Sentinel: Wrap outbound connections to apply rolling read/write deadlines, protecting against unresponsive peers.
+	return NewIdleTimeoutConn(connection, 30*time.Second), nil
 }
