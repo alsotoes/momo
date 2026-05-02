@@ -41,5 +41,5 @@ func DialSocket(servAddr string) (net.Conn, error) {
 		return nil, errors.New("Dial failed: " + err.Error())
 	}
 
-	return connection, nil
+	return NewIdleTimeoutConn(connection, 30*time.Second), nil
 }
