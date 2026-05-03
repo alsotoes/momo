@@ -67,3 +67,6 @@
 ## 2026-04-29 - [Optimize network handshakes with single write]
 **Learning:** When performing sequential network writes during a protocol handshake (like sending an AuthToken followed by a Timestamp), executing separate `conn.Write()` calls for each field incurs multiple system call overheads and potential network delays (e.g., Nagle's algorithm).
 **Action:** Always pre-allocate a single byte buffer sized for the combined payload, populate it using `copy()`, and dispatch it with a single `conn.Write()` call to improve throughput and reduce CPU usage.
+## 2026-05-03 - Optimize strconv.AppendInt with stack allocations
+**Learning:** In Go, calling `strconv.AppendInt(make([]byte, 0, x), ...)` or `strconv.AppendInt([]byte("str"), ...)` forces dynamic heap allocations because the slice header/backing array escapes or must be dynamically reallocated to accommodate the append.
+**Action:** Use pre-sized stack-allocated arrays (e.g., `var buf [32]byte`) and dynamically slice them (`buf[:0]`) before passing to `strconv.AppendInt`. To prepend a string, use `append(buf[:0], "str"...)`. This completely eliminates heap allocations and garbage collection overhead on network hot paths.
