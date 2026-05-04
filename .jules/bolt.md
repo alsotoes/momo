@@ -70,3 +70,6 @@
 ## 2026-05-04 - Optimize `checkMetricsAndSwap` by skipping unnecessary CPU percent evaluation
 **Learning:** Checking memory usage against a replication threshold usually dictates whether the cluster replication mode scales up, effectively shadowing the result of CPU usage against the same threshold (if one succeeds, we scale up anyway). CPUPercent requires system calls to gather process status, which is expensive in a periodic loop.
 **Action:** Always ensure early returns or short-circuits are aggressively applied in recurring metric checking routines where the success state is an OR logical condition between memory and CPU metric checks.
+## 2026-05-04 - Fix False-Positive Performance Degradations in CI
+**Learning:** Benchmarks measuring sub-10ns operations (like `IndexSearch`) are extremely sensitive to environmental noise in GitHub Actions runners. A `COUNT` of 5 does not generate enough samples to overcome routine variance, often resulting in false-positive performance degradation warnings exceeding 5%.
+**Action:** Always increase `benchstat` execution count sampling size (`COUNT=15` or higher) in CI workflows like `.github/workflows/benchmark_compare.yml` when measuring highly sensitive micro-benchmarks to improve statistical confidence and prevent failed builds from noise.

@@ -35,20 +35,20 @@ jobs:
 
     - name: Run Benchmark on Current Commit
       run: |
-        make benchmark COUNT=5 | tee current_bench.txt
+        make benchmark COUNT=15 | tee current_bench.txt
 
     - name: Run Benchmark on Base Branch (PR)
       if: github.event_name == 'pull_request'
       run: |
         git checkout ${{ github.event.pull_request.base.sha }}
-        make benchmark COUNT=5 | tee base_bench.txt
+        make benchmark COUNT=15 | tee base_bench.txt
         git checkout -
 
     - name: Run Benchmark on Previous Commit (Push)
       if: github.event_name == 'push'
       run: |
         git checkout HEAD^1
-        make benchmark COUNT=5 | tee base_bench.txt
+        make benchmark COUNT=15 | tee base_bench.txt
         git checkout -
 
     - name: Compare Benchmarks and Enforce Threshold
