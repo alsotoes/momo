@@ -2,6 +2,7 @@
 package metrics
 
 import (
+	"context"
 	"log"
 	"time"
 
@@ -68,6 +69,7 @@ func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, curren
 	}
 	cpuUsed := c[0]
 
+	// ⚡ Bolt: Use pre-calculated percent thresholds to avoid division.
 	if cpuUsed >= maxThreshPercent {
 		if currentIndex < len(replicationOrder)-1 {
 			log.Printf("Replication changed because cfg.Metrics.MaxThreshold reached")
@@ -88,33 +90,42 @@ func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, curren
 // It periodically checks the system metrics and, if the polymorphic system is enabled,
 // adjusts the replication mode based on the configured thresholds and fallback interval.
 // This function is intended to be run as a goroutine and will run indefinitely.
-func GetMetrics(cfg momo_common.Configuration, serverId int) {
+func GetMetrics(ctx context.Context, cfg momo_common.Configuration, serverId int) {
 	if serverId != 0 {
 		return
 	}
 
-	log.Printf("Daemon GetMetrics stated...")
+	if !cfg.Global.PolymorphicSystem {
+		log.Printf("Replication will not change because polymorphic_system is set to false")
+		return
+	}
+
+	log.Printf("Daemon GetMetrics started...")
+
+	// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
+	paddedAuthToken := []byte(momo_common.PadString(cfg.Global.AuthToken, momo_common.AuthTokenLength))
 
 	replicationOrder := cfg.Global.ReplicationOrder
 	currentIndex := 0
-	pushNewReplicationMode(cfg, replicationOrder[currentIndex])
+	pushNewReplicationMode(cfg, paddedAuthToken, replicationOrder[currentIndex])
 
 	sm := &RealSystemMetrics{}
 	start := time.Now()
-
-	if !cfg.Global.PolymorphicSystem {
-		log.Printf("Replication will not change beacuse polymorphic_system is set to false")
-		return
-	}
 
 	fallbackDuration := time.Duration(cfg.Metrics.FallbackInterval) * time.Millisecond
 	intervalDuration := time.Duration(cfg.Metrics.Interval) * time.Millisecond
 
 	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
 		newIndex, changed := checkMetricsAndSwap(cfg, sm, currentIndex, replicationOrder)
 		if changed {
 			currentIndex = newIndex
-			pushNewReplicationMode(cfg, replicationOrder[currentIndex])
+			pushNewReplicationMode(cfg, paddedAuthToken, replicationOrder[currentIndex])
 			start = time.Now()
 		}
 
@@ -124,7 +135,7 @@ func GetMetrics(cfg momo_common.Configuration, serverId int) {
 			if currentIndex > 0 {
 				log.Printf("Replication fallback because of timeout")
 				currentIndex--
-				pushNewReplicationMode(cfg, replicationOrder[currentIndex])
+				pushNewReplicationMode(cfg, paddedAuthToken, replicationOrder[currentIndex])
 				start = time.Now()
 			} else {
 				log.Printf("Replication method has no fallback")
