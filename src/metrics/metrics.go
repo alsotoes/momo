@@ -39,18 +39,16 @@ func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, curren
 		return currentIndex, false
 	}
 
-	maxThreshPercent := cfg.Metrics.MaxThreshold * 100
-	minThreshPercent := cfg.Metrics.MinThreshold * 100
-
 	v, err := sm.VirtualMemory()
 	if err != nil {
 		log.Printf("Error getting memory metrics: %v", err)
 		return currentIndex, false
 	}
+	memUsed := float64(v.UsedPercent) / 100
 
 	// Short-circuit: Increase replication if memory usage alone is high
 	// to avoid the expensive CPUPercent() system call.
-	if float64(v.UsedPercent) >= maxThreshPercent {
+	if memUsed >= cfg.Metrics.MaxThreshold {
 		if currentIndex < len(replicationOrder)-1 {
 			log.Printf("Replication changed because cfg.Metrics.MaxThreshold reached")
 			return currentIndex + 1, true
@@ -63,11 +61,10 @@ func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, curren
 		log.Printf("Error getting cpu metrics: %v", err)
 		return currentIndex, false
 	}
-
-	cpuUsedPercent := c[0]
+	cpuUsed := c[0] / 100
 
 	// Increase replication if cpu usage is high
-	if cpuUsedPercent >= maxThreshPercent {
+	if cpuUsed >= cfg.Metrics.MaxThreshold {
 		if currentIndex < len(replicationOrder)-1 {
 			log.Printf("Replication changed because cfg.Metrics.MaxThreshold reached")
 			return currentIndex + 1, true
@@ -75,7 +72,7 @@ func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, curren
 	}
 
 	// Decrease replication if usage is low
-	if float64(v.UsedPercent) < minThreshPercent && cpuUsedPercent < minThreshPercent {
+	if memUsed < cfg.Metrics.MinThreshold && cpuUsed < cfg.Metrics.MinThreshold {
 		if currentIndex > 0 {
 			log.Printf("Replication changed because resource usage is below MinThreshold")
 			return currentIndex - 1, true
