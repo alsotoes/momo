@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"context"
 	"testing"
 
 	momo_common "github.com/alsotoes/momo/src/common"
@@ -120,5 +121,5 @@ func TestRealSystemMetrics(t *testing.T) {
 func TestGetMetricsNonPrimaryServer(t *testing.T) {
 	// serverId != 0, should return immediately
 	cfg := momo_common.Configuration{}
-	GetMetrics(cfg, 1)
+	GetMetrics(context.Background(), cfg, 1)
 }
