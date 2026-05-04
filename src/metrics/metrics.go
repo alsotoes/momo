@@ -35,37 +35,51 @@ func (rsm *RealSystemMetrics) CPUPercent() ([]float64, error) {
 // It compares the memory and CPU usage against the configured thresholds and returns the new
 // replication index and a boolean indicating whether the mode was changed.
 func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, currentIndex int, replicationOrder []int) (int, bool) {
+	if currentIndex == -1 {
+		return currentIndex, false
+	}
+
+	maxThreshPercent := cfg.Metrics.MaxThreshold * 100
+	minThreshPercent := cfg.Metrics.MinThreshold * 100
+
 	v, err := sm.VirtualMemory()
 	if err != nil {
 		log.Printf("Error getting memory metrics: %v", err)
 		return currentIndex, false
 	}
-	memUsed := float64(v.UsedPercent) / 100
+
+	// Short-circuit: Increase replication if memory usage alone is high
+	// to avoid the expensive CPUPercent() system call.
+	if float64(v.UsedPercent) >= maxThreshPercent {
+		if currentIndex < len(replicationOrder)-1 {
+			log.Printf("Replication changed because cfg.Metrics.MaxThreshold reached")
+			return currentIndex + 1, true
+		}
+		return currentIndex, false
+	}
 
 	c, err := sm.CPUPercent()
 	if err != nil {
 		log.Printf("Error getting cpu metrics: %v", err)
 		return currentIndex, false
 	}
-	cpuUsed := c[0] / 100
 
-	if currentIndex != -1 {
-		// Increase replication if usage is high
-		if memUsed >= cfg.Metrics.MaxThreshold || cpuUsed >= cfg.Metrics.MaxThreshold {
-			if currentIndex < len(replicationOrder)-1 {
-				log.Printf("Replication changed because cfg.Metrics.MaxThreshold reached")
-				return currentIndex + 1, true
-			}
+	cpuUsedPercent := c[0]
+
+	// Increase replication if cpu usage is high
+	if cpuUsedPercent >= maxThreshPercent {
+		if currentIndex < len(replicationOrder)-1 {
+			log.Printf("Replication changed because cfg.Metrics.MaxThreshold reached")
+			return currentIndex + 1, true
 		}
+	}
 
-		// Decrease replication if usage is low
-		if memUsed < cfg.Metrics.MinThreshold && cpuUsed < cfg.Metrics.MinThreshold {
-			if currentIndex > 0 {
-				log.Printf("Replication changed because resource usage is below MinThreshold")
-				return currentIndex - 1, true
-			}
+	// Decrease replication if usage is low
+	if float64(v.UsedPercent) < minThreshPercent && cpuUsedPercent < minThreshPercent {
+		if currentIndex > 0 {
+			log.Printf("Replication changed because resource usage is below MinThreshold")
+			return currentIndex - 1, true
 		}
-
 	}
 
 	return currentIndex, false

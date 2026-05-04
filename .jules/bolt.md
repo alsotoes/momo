@@ -67,3 +67,6 @@
 ## 2026-04-29 - [Optimize network handshakes with single write]
 **Learning:** When performing sequential network writes during a protocol handshake (like sending an AuthToken followed by a Timestamp), executing separate `conn.Write()` calls for each field incurs multiple system call overheads and potential network delays (e.g., Nagle's algorithm).
 **Action:** Always pre-allocate a single byte buffer sized for the combined payload, populate it using `copy()`, and dispatch it with a single `conn.Write()` call to improve throughput and reduce CPU usage.
+## 2026-05-04 - Optimize `checkMetricsAndSwap` by skipping unnecessary CPU percent evaluation
+**Learning:** Checking memory usage against a replication threshold usually dictates whether the cluster replication mode scales up, effectively shadowing the result of CPU usage against the same threshold (if one succeeds, we scale up anyway). CPUPercent requires system calls to gather process status, which is expensive in a periodic loop.
+**Action:** Always ensure early returns or short-circuits are aggressively applied in recurring metric checking routines where the success state is an OR logical condition between memory and CPU metric checks.
