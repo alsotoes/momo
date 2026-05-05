@@ -29,15 +29,15 @@ func Connect(wg *sync.WaitGroup, cfg Configuration, filePath string, serverId in
 	connections = append(connections, initialConn)
 
 	// Perform handshake to get replication mode
-	// ⚡ Bolt: Send AuthToken and timestamp in a single write operation to reduce system calls.
-	handshakeBuf := make([]byte, AuthTokenLength+TimestampLength)
-	copy(handshakeBuf[0:AuthTokenLength], PadString(authToken, AuthTokenLength))
+	// First, send the AuthToken
+	if _, err := initialConn.Write([]byte(PadString(authToken, AuthTokenLength))); err != nil {
+		log.Printf("Failed to send AuthToken to %s: %v", daemons[serverId].Host, err)
+		initialConn.Close()
+		return
+	}
 
-	// Directly format timestamp into the buffer starting after AuthToken
-	strconv.AppendInt(handshakeBuf[AuthTokenLength:AuthTokenLength], timestamp, 10)
-
-	if _, err := initialConn.Write(handshakeBuf); err != nil {
-		log.Printf("Failed to send handshake to %s: %v", daemons[serverId].Host, err)
+	if _, err := initialConn.Write([]byte(PadString(strconv.FormatInt(timestamp, 10), TimestampLength))); err != nil {
+		log.Printf("Failed to send timestamp to %s: %v", daemons[serverId].Host, err)
 		initialConn.Close()
 		return
 	}
@@ -70,8 +70,15 @@ func Connect(wg *sync.WaitGroup, cfg Configuration, filePath string, serverId in
 			}
 
 			// Perform handshake with the other daemons
-			if _, err := conn.Write(handshakeBuf); err != nil {
-				log.Printf("Failed to send handshake to %s: %v", daemon.Host, err)
+			// First, send the AuthToken
+			if _, err := conn.Write([]byte(PadString(authToken, AuthTokenLength))); err != nil {
+				log.Printf("Failed to send AuthToken to %s: %v", daemon.Host, err)
+				conn.Close()
+				continue
+			}
+
+			if _, err := conn.Write([]byte(PadString(strconv.FormatInt(timestamp, 10), TimestampLength))); err != nil {
+				log.Printf("Failed to send timestamp to %s: %v", daemon.Host, err)
 				conn.Close()
 				continue
 			}
@@ -150,8 +157,7 @@ func sendFile(wg *sync.WaitGroup, connection net.Conn, fileName string, meta *Fi
 	copy(metadataBuffer[hashLength:hashLength+FileInfoLength], PadString(meta.Name, FileInfoLength))
 
 	// Format size directly into the buffer avoiding fmt.Sprintf
-	var sizeBuf [FileInfoLength]byte
-	sizeBytes := strconv.AppendInt(sizeBuf[:0], meta.Size, 10)
+	sizeBytes := strconv.AppendInt(make([]byte, 0, FileInfoLength), meta.Size, 10)
 	copy(metadataBuffer[hashLength+FileInfoLength:], sizeBytes)
 
 	connection.Write(metadataBuffer)

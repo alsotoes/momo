@@ -59,8 +59,7 @@ func TestPushNewReplicationMode(t *testing.T) {
 		},
 	}
 
-	paddedAuthToken := []byte(momo_common.PadString(authToken, momo_common.AuthTokenLength))
-	pushNewReplicationMode(cfg, paddedAuthToken, 5)
+	pushNewReplicationMode(cfg, 5)
 
 	// Give the server time to process the request
 	time.Sleep(100 * time.Millisecond)

@@ -104,7 +104,7 @@ File: `conf/momo.conf` (loaded by `src/common/config.go`). Example:
 ```
 [global]
 debug=true
-replication_order=order=1,2,3,4
+replication_order=1,2,3,4
 polymorphic_system=true
 
 [metrics]
@@ -242,12 +242,12 @@ This section is automatically updated by our GitHub Actions workflow.
 ```
                       │ old_bench_filtered.txt │       new_bench_filtered.txt        │
                       │         sec/op         │    sec/op      vs base              │
-LoadGlobalConfig-4                584.6n ± ∞ ¹    584.9n ± ∞ ¹       ~ (p=1.000 n=5)
-PadString-4                       52.07n ± ∞ ¹    51.72n ± ∞ ¹       ~ (p=0.651 n=5)
-CheckMetricsAndSwap-4             9.387n ± ∞ ¹    9.370n ± ∞ ¹       ~ (p=0.651 n=5)
-IndexSearch-4                     2.187n ± ∞ ¹    2.187n ± ∞ ¹       ~ (p=0.810 n=5)
-IndexDirectTracking-4            0.3123n ± ∞ ¹   0.3120n ± ∞ ¹       ~ (p=0.452 n=5)
-geomean                           11.43n          11.41n        -0.18%
+LoadGlobalConfig-4                554.7n ± ∞ ¹    577.5n ± ∞ ¹  +4.11% (p=0.008 n=5)
+PadString-4                       52.90n ± ∞ ¹    53.49n ± ∞ ¹       ~ (p=0.889 n=5)
+CheckMetricsAndSwap-4             8.746n ± ∞ ¹    8.818n ± ∞ ¹       ~ (p=0.079 n=5)
+IndexSearch-4                     2.186n ± ∞ ¹    2.184n ± ∞ ¹       ~ (p=0.389 n=5)
+IndexDirectTracking-4            0.3123n ± ∞ ¹   0.3144n ± ∞ ¹       ~ (p=0.310 n=5)
+geomean                           11.19n          11.33n        +1.32%
 ¹ need >= 6 samples for confidence interval at level 0.95
 
                       │ old_bench_filtered.txt │       new_bench_filtered.txt        │
@@ -280,37 +280,30 @@ geomean                                      ³                +0.00%           
 
 | Benchmark | Avg. Time/Op | Avg. Bytes/Op | Avg. Allocs/Op |
 |-----------|--------------|---------------|----------------|
-| BenchmarkCheckMetricsAndSwap-4 | 7.40 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkIndexDirectTracking-4 | 0.29 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkIndexSearch-4 | 3.92 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkLoadGlobalConfig-4 | 593.98 ns/op | 480.00 B/op | 2.00 allocs/op |
-| BenchmarkPadString-4 | 49.74 ns/op | 128.00 B/op | 2.00 allocs/op |
-
+| BenchmarkCheckMetricsAndSwap-4 | 8.82 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkIndexDirectTracking-4 | 0.31 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkIndexSearch-4 | 2.18 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkLoadGlobalConfig-4 | 583.76 ns/op | 480.00 B/op | 2.00 allocs/op |\n| BenchmarkPadString-4 | 53.38 ns/op | 128.00 B/op | 2.00 allocs/op |\n
 
 ### Performance History
 
 **Legend**
 
-| Color | Benchmark | Description |
-|---|---|---|
-| 🟢 | CheckMetricsAndSwap | Evaluation of system metrics (CPU/Mem) and mode switching logic |
-| 🔵 | IndexDirectTracking | Accessing current replication mode via direct slice index (O(1)) |
-| 🔴 | IndexSearch | Searching for current replication mode in the order slice using `slices.Index` |
-| 🟠 | LoadGlobalConfig | Parsing and loading the `[global]` section from the INI configuration |
-| 🟣 | PadString | Padding strings with null characters to a fixed protocol length |
-| 🟡 | ParseReplicationOrder | Parsing the CSV-formatted replication order string into an integer slice |
+| Color | Benchmark |
+|---|---|
+| 🟢 | CheckMetricsAndSwap |
+| 🔵 | IndexDirectTracking |
+| 🔴 | IndexSearch |
+| 🟠 | LoadGlobalConfig |
 
 ```mermaid
 xychart-beta
     title "Performance Trend (Avg. Time, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Time (ns/op)"
-    x-axis [b659,8b32,262f,7ec7,36a9,ae2b,c8ab,3825,b847,5872]
-    line "CheckMetricsAndSwap" [9,9,9,8,9,10,9,9,9,7]
+    x-axis [218d,22ff,7b82,88b3,6564,3af9,48d5,7784]
+    line "CheckMetricsAndSwap" [7,9,9,9,9,9,9,9,9,9]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
-    line "IndexSearch" [3,2,2,4,3,3,2,2,2,4]
-    line "LoadGlobalConfig" [522,584,581,581,595,544,594,586,586,594]
-    line "PadString" [50,53,54,51,54,50,53,52,53,50]
+    line "IndexSearch" [4,2,2,3,2,3,2,2,3,2]
+    line "LoadGlobalConfig" [565,566,555,531,564,530,552,558,522,584]
+    line "PadString" [49,53,53,49,55,50,52,53,50,53]
     line "ParseReplicationOrder_NoPrealloc" [350,349,357,354,345,225,229,165,232,234]
     line "ParseReplicationOrder_Prealloc" [229,231,237,234,229,108,107,80,110,109]
 ```
@@ -320,7 +313,7 @@ xychart-beta
     title "Memory Trend (Avg. Bytes/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Bytes/Op"
-    x-axis [b659,8b32,262f,7ec7,36a9,ae2b,c8ab,3825,b847,5872]
+    x-axis [218d,22ff,7b82,88b3,6564,3af9,48d5,7784]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [0,0,0,0,0,0,0,0,0,0]
@@ -335,7 +328,7 @@ xychart-beta
     title "Allocation Trend (Avg. Allocs/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Allocs/Op"
-    x-axis [b659,8b32,262f,7ec7,36a9,ae2b,c8ab,3825,b847,5872]
+    x-axis [218d,22ff,7b82,88b3,6564,3af9,48d5,7784]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [0,0,0,0,0,0,0,0,0,0]

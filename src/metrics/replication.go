@@ -12,7 +12,7 @@ import (
 // pushNewReplicationMode notifies the primary daemon of a replication mode change.
 // It connects to the ChangeReplication endpoint of the first daemon listed in the configuration
 // and sends the AuthToken followed by a JSON payload containing the new replication mode and the current timestamp.
-func pushNewReplicationMode(cfg momo_common.Configuration, paddedAuthToken []byte, newReplicationMode int) {
+func pushNewReplicationMode(cfg momo_common.Configuration, newReplicationMode int) {
 	log.Printf("Notifying primary daemon of new replication mode: %d", newReplicationMode)
 
 	conn, err := momo_common.DialSocket(cfg.Daemons[0].ChangeReplication)
@@ -23,8 +23,7 @@ func pushNewReplicationMode(cfg momo_common.Configuration, paddedAuthToken []byt
 	defer conn.Close()
 
 	// Send the AuthToken first
-	// ⚡ Bolt: Use the pre-computed AuthToken to eliminate redundant allocations and padding operations.
-	if _, err := conn.Write(paddedAuthToken); err != nil {
+	if _, err := conn.Write([]byte(momo_common.PadString(cfg.Global.AuthToken, momo_common.AuthTokenLength))); err != nil {
 		log.Printf("Failed to send AuthToken: %v", err)
 		return
 	}

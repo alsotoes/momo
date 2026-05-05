@@ -35,24 +35,20 @@ jobs:
 
     - name: Run Benchmark on Current Commit
       run: |
-<<<<<<< HEAD
         make benchmark COUNT=10 | tee current_bench.txt
-=======
-        make benchmark COUNT=15 | tee current_bench.txt
->>>>>>> master
 
     - name: Run Benchmark on Base Branch (PR)
       if: github.event_name == 'pull_request'
       run: |
         git checkout ${{ github.event.pull_request.base.sha }}
-        make benchmark COUNT=15 | tee base_bench.txt
+        make benchmark COUNT=10 | tee base_bench.txt
         git checkout -
 
     - name: Run Benchmark on Previous Commit (Push)
       if: github.event_name == 'push'
       run: |
         git checkout HEAD^1
-        make benchmark COUNT=15 | tee base_bench.txt
+        make benchmark COUNT=10 | tee base_bench.txt
         git checkout -
 
     - name: Compare Benchmarks and Enforce Threshold
@@ -75,8 +71,5 @@ jobs:
           echo "✅ No significant performance degradation (> 5%) detected." >> $GITHUB_STEP_SUMMARY
         else
           echo "❌ Performance degradation > 5% detected! Failing the pipeline." >> $GITHUB_STEP_SUMMARY
-          exit 1
-        fi
- detected! Failing the pipeline." >> $GITHUB_STEP_SUMMARY
           exit 1
         fi
