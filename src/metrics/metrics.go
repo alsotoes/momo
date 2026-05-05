@@ -82,7 +82,6 @@ func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, curren
 
 	return currentIndex, false
 }
-
 // GetMetrics is the main loop for the metrics daemon.
 //
 // It periodically checks the system metrics and, if the polymorphic system is enabled,
