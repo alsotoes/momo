@@ -27,8 +27,10 @@ func BenchmarkCheckMetricsAndSwap(b *testing.B) {
 	}
 
 	b.ResetTimer()
+	maxThreshPercent := cfg.Metrics.MaxThreshold * 100
+	minThreshPercent := cfg.Metrics.MinThreshold * 100
 	for i := 0; i < b.N; i++ {
-		checkMetricsAndSwap(cfg, sm, 4, replicationOrder)
+		checkMetricsAndSwap(cfg, sm, 4, replicationOrder, maxThreshPercent, minThreshPercent)
 	}
 }
 
