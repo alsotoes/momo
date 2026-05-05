@@ -150,7 +150,8 @@ func sendFile(wg *sync.WaitGroup, connection net.Conn, fileName string, meta *Fi
 	copy(metadataBuffer[hashLength:hashLength+FileInfoLength], PadString(meta.Name, FileInfoLength))
 
 	// Format size directly into the buffer avoiding fmt.Sprintf
-	sizeBytes := strconv.AppendInt(make([]byte, 0, FileInfoLength), meta.Size, 10)
+	var sizeBuf [FileInfoLength]byte
+	sizeBytes := strconv.AppendInt(sizeBuf[:0], meta.Size, 10)
 	copy(metadataBuffer[hashLength+FileInfoLength:], sizeBytes)
 
 	connection.Write(metadataBuffer)
