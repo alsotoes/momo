@@ -104,7 +104,7 @@ File: `conf/momo.conf` (loaded by `src/common/config.go`). Example:
 ```
 [global]
 debug=true
-replication_order=1,2,3,4
+replication_order=order=1,2,3,4
 polymorphic_system=true
 
 [metrics]
@@ -242,12 +242,12 @@ This section is automatically updated by our GitHub Actions workflow.
 ```
                       │ old_bench_filtered.txt │       new_bench_filtered.txt        │
                       │         sec/op         │    sec/op      vs base              │
-LoadGlobalConfig-4                588.5n ± ∞ ¹    590.0n ± ∞ ¹       ~ (p=0.690 n=5)
-PadString-4                       49.37n ± ∞ ¹    49.40n ± ∞ ¹       ~ (p=0.421 n=5)
-CheckMetricsAndSwap-4             7.408n ± ∞ ¹    7.409n ± ∞ ¹       ~ (p=1.000 n=5)
-IndexSearch-4                     3.900n ± ∞ ¹    3.914n ± ∞ ¹       ~ (p=0.341 n=5)
-IndexDirectTracking-4            0.2889n ± ∞ ¹   0.2892n ± ∞ ¹       ~ (p=0.111 n=5)
-geomean                           11.94n          11.96n        +0.16%
+LoadGlobalConfig-4                584.6n ± ∞ ¹    584.9n ± ∞ ¹       ~ (p=1.000 n=5)
+PadString-4                       52.07n ± ∞ ¹    51.72n ± ∞ ¹       ~ (p=0.651 n=5)
+CheckMetricsAndSwap-4             9.387n ± ∞ ¹    9.370n ± ∞ ¹       ~ (p=0.651 n=5)
+IndexSearch-4                     2.187n ± ∞ ¹    2.187n ± ∞ ¹       ~ (p=0.810 n=5)
+IndexDirectTracking-4            0.3123n ± ∞ ¹   0.3120n ± ∞ ¹       ~ (p=0.452 n=5)
+geomean                           11.43n          11.41n        -0.18%
 ¹ need >= 6 samples for confidence interval at level 0.95
 
                       │ old_bench_filtered.txt │       new_bench_filtered.txt        │
@@ -280,25 +280,32 @@ geomean                                      ³                +0.00%           
 
 | Benchmark | Avg. Time/Op | Avg. Bytes/Op | Avg. Allocs/Op |
 |-----------|--------------|---------------|----------------|
-| BenchmarkCheckMetricsAndSwap-4 | 7.40 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkIndexDirectTracking-4 | 0.29 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkIndexSearch-4 | 3.92 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkLoadGlobalConfig-4 | 593.98 ns/op | 480.00 B/op | 2.00 allocs/op |\n| BenchmarkPadString-4 | 49.74 ns/op | 128.00 B/op | 2.00 allocs/op |\n
+| BenchmarkCheckMetricsAndSwap-4 | 7.40 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkIndexDirectTracking-4 | 0.29 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkIndexSearch-4 | 3.92 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkLoadGlobalConfig-4 | 593.98 ns/op | 480.00 B/op | 2.00 allocs/op |
+| BenchmarkPadString-4 | 49.74 ns/op | 128.00 B/op | 2.00 allocs/op |
+
 
 ### Performance History
 
 **Legend**
 
-| Color | Benchmark |
-|---|---|
-| 🟢 | CheckMetricsAndSwap |
-| 🔵 | IndexDirectTracking |
-| 🔴 | IndexSearch |
-| 🟠 | LoadGlobalConfig |
+| Color | Benchmark | Description |
+|---|---|---|
+| 🟢 | CheckMetricsAndSwap | Evaluation of system metrics (CPU/Mem) and mode switching logic |
+| 🔵 | IndexDirectTracking | Accessing current replication mode via direct slice index (O(1)) |
+| 🔴 | IndexSearch | Searching for current replication mode in the order slice using `slices.Index` |
+| 🟠 | LoadGlobalConfig | Parsing and loading the `[global]` section from the INI configuration |
+| 🟣 | PadString | Padding strings with null characters to a fixed protocol length |
+| 🟡 | ParseReplicationOrder | Parsing the CSV-formatted replication order string into an integer slice |
 
 ```mermaid
 xychart-beta
     title "Performance Trend (Avg. Time, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Time (ns/op)"
-    x-axis [b659,8b32,262f,7ec7,36a9,ae2b,c8ab,3825]
+    x-axis [b659,8b32,262f,7ec7,36a9,ae2b,c8ab,3825,b847,5872]
     line "CheckMetricsAndSwap" [9,9,9,8,9,10,9,9,9,7]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [3,2,2,4,3,3,2,2,2,4]
@@ -313,7 +320,7 @@ xychart-beta
     title "Memory Trend (Avg. Bytes/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Bytes/Op"
-    x-axis [b659,8b32,262f,7ec7,36a9,ae2b,c8ab,3825]
+    x-axis [b659,8b32,262f,7ec7,36a9,ae2b,c8ab,3825,b847,5872]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [0,0,0,0,0,0,0,0,0,0]
@@ -328,7 +335,7 @@ xychart-beta
     title "Allocation Trend (Avg. Allocs/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Allocs/Op"
-    x-axis [b659,8b32,262f,7ec7,36a9,ae2b,c8ab,3825]
+    x-axis [b659,8b32,262f,7ec7,36a9,ae2b,c8ab,3825,b847,5872]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [0,0,0,0,0,0,0,0,0,0]
