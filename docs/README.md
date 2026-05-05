@@ -242,12 +242,12 @@ This section is automatically updated by our GitHub Actions workflow.
 ```
                       │ old_bench_filtered.txt │       new_bench_filtered.txt        │
                       │         sec/op         │    sec/op      vs base              │
-LoadGlobalConfig-4                589.7n ± ∞ ¹    586.1n ± ∞ ¹  -0.61% (p=0.016 n=5)
-PadString-4                       51.69n ± ∞ ¹    52.46n ± ∞ ¹  +1.49% (p=0.008 n=5)
-CheckMetricsAndSwap-4             9.373n ± ∞ ¹    9.362n ± ∞ ¹       ~ (p=0.548 n=5)
-IndexSearch-4                     2.470n ± ∞ ¹    2.497n ± ∞ ¹       ~ (p=0.548 n=5)
-IndexDirectTracking-4            0.3118n ± ∞ ¹   0.3126n ± ∞ ¹       ~ (p=0.103 n=5)
-geomean                           11.71n          11.76n        +0.42%
+LoadGlobalConfig-4                588.5n ± ∞ ¹    590.0n ± ∞ ¹       ~ (p=0.690 n=5)
+PadString-4                       49.37n ± ∞ ¹    49.40n ± ∞ ¹       ~ (p=0.421 n=5)
+CheckMetricsAndSwap-4             7.408n ± ∞ ¹    7.409n ± ∞ ¹       ~ (p=1.000 n=5)
+IndexSearch-4                     3.900n ± ∞ ¹    3.914n ± ∞ ¹       ~ (p=0.341 n=5)
+IndexDirectTracking-4            0.2889n ± ∞ ¹   0.2892n ± ∞ ¹       ~ (p=0.111 n=5)
+geomean                           11.94n          11.96n        +0.16%
 ¹ need >= 6 samples for confidence interval at level 0.95
 
                       │ old_bench_filtered.txt │       new_bench_filtered.txt        │
@@ -280,32 +280,30 @@ geomean                                      ³                +0.00%           
 
 | Benchmark | Avg. Time/Op | Avg. Bytes/Op | Avg. Allocs/Op |
 |-----------|--------------|---------------|----------------|
-| BenchmarkCheckMetricsAndSwap-4 | 9.37 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkIndexDirectTracking-4 | 0.31 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkIndexSearch-4 | 2.43 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkLoadGlobalConfig-4 | 586.08 ns/op | 480.00 B/op | 2.00 allocs/op |\n| BenchmarkPadString-4 | 53.15 ns/op | 128.00 B/op | 2.00 allocs/op |\n
+| BenchmarkCheckMetricsAndSwap-4 | 7.40 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkIndexDirectTracking-4 | 0.29 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkIndexSearch-4 | 3.92 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkLoadGlobalConfig-4 | 593.98 ns/op | 480.00 B/op | 2.00 allocs/op |\n| BenchmarkPadString-4 | 49.74 ns/op | 128.00 B/op | 2.00 allocs/op |\n
 
 ### Performance History
 
 **Legend**
 
-| Color | Benchmark | Description |
-|---|---|---|
-| 🟢 | CheckMetricsAndSwap | Evaluation of system metrics (CPU/Mem) and mode switching logic |
-| 🔵 | IndexDirectTracking | Accessing current replication mode via direct slice index (O(1)) |
-| 🔴 | IndexSearch | Searching for current replication mode in the order slice using `slices.Index` |
-| 🟠 | LoadGlobalConfig | Parsing and loading the `[global]` section from the INI configuration |
-| 🟣 | PadString | Padding strings with null characters to a fixed protocol length |
-| 🟡 | ParseReplicationOrder | Parsing the CSV-formatted replication order string into an integer slice |
+| Color | Benchmark |
+|---|---|
+| 🟢 | CheckMetricsAndSwap |
+| 🔵 | IndexDirectTracking |
+| 🔴 | IndexSearch |
+| 🟠 | LoadGlobalConfig |
 
 ```mermaid
 xychart-beta
     title "Performance Trend (Avg. Time, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Time (ns/op)"
-    x-axis [7784,b659,8b32,262f,7ec7,36a9,ae2b,c8ab]
-    line "CheckMetricsAndSwap" [9,9,9,9,8,9,10,9,9,9]
+    x-axis [b659,8b32,262f,7ec7,36a9,ae2b,c8ab,3825]
+    line "CheckMetricsAndSwap" [9,9,9,8,9,10,9,9,9,7]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
-    line "IndexSearch" [2,3,2,2,4,3,3,2,2,2]
-    line "LoadGlobalConfig" [558,522,584,581,581,595,544,594,586,586]
-    line "PadString" [53,50,53,54,51,54,50,53,52,53]
+    line "IndexSearch" [3,2,2,4,3,3,2,2,2,4]
+    line "LoadGlobalConfig" [522,584,581,581,595,544,594,586,586,594]
+    line "PadString" [50,53,54,51,54,50,53,52,53,50]
     line "ParseReplicationOrder_NoPrealloc" [350,349,357,354,345,225,229,165,232,234]
     line "ParseReplicationOrder_Prealloc" [229,231,237,234,229,108,107,80,110,109]
 ```
@@ -315,7 +313,7 @@ xychart-beta
     title "Memory Trend (Avg. Bytes/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Bytes/Op"
-    x-axis [7784,b659,8b32,262f,7ec7,36a9,ae2b,c8ab]
+    x-axis [b659,8b32,262f,7ec7,36a9,ae2b,c8ab,3825]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [0,0,0,0,0,0,0,0,0,0]
@@ -330,7 +328,7 @@ xychart-beta
     title "Allocation Trend (Avg. Allocs/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Allocs/Op"
-    x-axis [7784,b659,8b32,262f,7ec7,36a9,ae2b,c8ab]
+    x-axis [b659,8b32,262f,7ec7,36a9,ae2b,c8ab,3825]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [0,0,0,0,0,0,0,0,0,0]
