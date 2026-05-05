@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"slices"
 	"testing"
 
 	momo_common "github.com/alsotoes/momo/src/common"
@@ -37,14 +38,7 @@ func BenchmarkIndexSearch(b *testing.B) {
 	currentReplicationMode := 5
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		index := -1
-		for j, v := range replicationOrder {
-			if v == currentReplicationMode {
-				index = j
-				break
-			}
-		}
-		_ = index
+		_ = slices.Index(replicationOrder, currentReplicationMode)
 	}
 }
 
