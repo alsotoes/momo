@@ -166,3 +166,23 @@ func TestChangeReplicationModeClient(t *testing.T) {
 		t.Fatal("Test timed out, no data received by the server.")
 	}
 }
+
+// TestGetCurrentReplicationMode verifies that GetCurrentReplicationMode
+// returns the expected current replication mode.
+func TestGetCurrentReplicationMode(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	// Arrange
+	expectedMode := momo_common.ReplicationChain
+	timestamp := time.Now().Unix()
+
+	// Set the replication state to a known value
+	SetReplicationState(expectedMode, timestamp)
+
+	// Act
+	currentMode := GetCurrentReplicationMode()
+
+	// Assert
+	if currentMode != expectedMode {
+		t.Errorf("Expected replication mode %d, got %d", expectedMode, currentMode)
+	}
+}
