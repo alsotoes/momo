@@ -5,10 +5,10 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net"
-	"os"
 	"sync"
 	"time"
 
@@ -55,12 +55,11 @@ func SetReplicationState(newMode int, timestamp int64) momo_common.ReplicationDa
 // When a client connects, it sends a JSON object containing the new replication mode.
 // This function updates the server's replication mode and, if the server is the primary (serverId 0),
 // it propagates the change to the other servers in the cluster.
-func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configuration, serverId int, timestamp int64) {
+func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configuration, serverId int, timestamp int64) error {
 	daemons := cfg.Daemons
 	server, err := net.Listen("tcp", daemons[serverId].ChangeReplication)
 	if err != nil {
-		log.Printf("Error listening: %v", err)
-		os.Exit(1)
+		return fmt.Errorf("Error listening: %v", err)
 	}
 
 	defer server.Close()
@@ -88,7 +87,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 		if err != nil {
 			select {
 			case <-ctx.Done():
-				return // Shutting down gracefully
+				return nil // Shutting down gracefully
 			default:
 				log.Printf("Error accepting connection: %v", err)
 				// 🛡️ Sentinel: Sleep briefly to prevent tight loop on transient errors (like EMFILE)
@@ -132,8 +131,8 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 
 			// If this is the primary server, propagate the change to the other servers
 			if 0 == serverId {
-				go changeReplicationModeClient(cfg.Global.AuthToken, daemons, string(newReplicationJson), 1)
-				go changeReplicationModeClient(cfg.Global.AuthToken, daemons, string(newReplicationJson), 2)
+				go changeReplicationModeClient(expectedAuthToken, daemons, string(newReplicationJson), 1)
+				go changeReplicationModeClient(expectedAuthToken, daemons, string(newReplicationJson), 2)
 			}
 		}()
 	}
@@ -141,7 +140,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 
 // changeReplicationModeClient connects to another server in the cluster and sends the new replication mode.
 // It is used by the primary server to propagate replication mode changes to the other servers.
-func changeReplicationModeClient(authToken string, daemons []*momo_common.Daemon, replicationJson string, serverId int) {
+func changeReplicationModeClient(paddedAuthToken []byte, daemons []*momo_common.Daemon, replicationJson string, serverId int) {
 	conn, err := momo_common.DialSocket(daemons[serverId].ChangeReplication)
 	if err != nil {
 		log.Printf("Dial error: %v", err)
@@ -150,7 +149,8 @@ func changeReplicationModeClient(authToken string, daemons []*momo_common.Daemon
 	defer conn.Close()
 
 	// Send the AuthToken first
-	if _, err := conn.Write([]byte(momo_common.PadString(authToken, momo_common.AuthTokenLength))); err != nil {
+	// ⚡ Bolt: Use the pre-computed AuthToken to eliminate redundant allocations and padding operations.
+	if _, err := conn.Write(paddedAuthToken); err != nil {
 		log.Printf("Failed to send AuthToken: %v", err)
 		return
 	}

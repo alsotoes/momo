@@ -2,6 +2,7 @@
 package metrics
 
 import (
+	"context"
 	"log"
 	"time"
 
@@ -34,38 +35,49 @@ func (rsm *RealSystemMetrics) CPUPercent() ([]float64, error) {
 //
 // It compares the memory and CPU usage against the configured thresholds and returns the new
 // replication index and a boolean indicating whether the mode was changed.
-func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, currentIndex int, replicationOrder []int) (int, bool) {
+func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, currentIndex int, replicationOrder []int, maxThreshPercent, minThreshPercent float64) (int, bool) {
+	// ⚡ Bolt: Hoist currentIndex == -1 check to avoid unnecessary work.
+	if currentIndex == -1 {
+		return currentIndex, false
+	}
+
 	v, err := sm.VirtualMemory()
 	if err != nil {
 		log.Printf("Error getting memory metrics: %v", err)
 		return currentIndex, false
 	}
-	memUsed := float64(v.UsedPercent) / 100
+
+	// ⚡ Bolt: Use pre-calculated thresholds as percentages to match UsedPercent and CPUPercent (0-100)
+	// and avoid dividing by 100 on every tick.
+	memUsed := float64(v.UsedPercent)
+
+	// ⚡ Bolt: Short-circuit CPUPercent system call if memory alone exceeds the threshold.
+	if memUsed >= maxThreshPercent {
+		if currentIndex < len(replicationOrder)-1 {
+			log.Printf("Replication changed because cfg.Metrics.MaxThreshold reached")
+			return currentIndex + 1, true
+		}
+		return currentIndex, false
+	}
 
 	c, err := sm.CPUPercent()
 	if err != nil {
 		log.Printf("Error getting cpu metrics: %v", err)
 		return currentIndex, false
 	}
-	cpuUsed := c[0] / 100
+	cpuUsed := c[0]
 
-	if currentIndex != -1 {
-		// Increase replication if usage is high
-		if memUsed >= cfg.Metrics.MaxThreshold || cpuUsed >= cfg.Metrics.MaxThreshold {
-			if currentIndex < len(replicationOrder)-1 {
-				log.Printf("Replication changed because cfg.Metrics.MaxThreshold reached")
-				return currentIndex + 1, true
-			}
+	// ⚡ Bolt: Use pre-calculated percent thresholds to avoid division.
+	if cpuUsed >= maxThreshPercent {
+		if currentIndex < len(replicationOrder)-1 {
+			log.Printf("Replication changed because cfg.Metrics.MaxThreshold reached")
+			return currentIndex + 1, true
 		}
-
-		// Decrease replication if usage is low
-		if memUsed < cfg.Metrics.MinThreshold && cpuUsed < cfg.Metrics.MinThreshold {
-			if currentIndex > 0 {
-				log.Printf("Replication changed because resource usage is below MinThreshold")
-				return currentIndex - 1, true
-			}
+	} else if memUsed < minThreshPercent && cpuUsed < minThreshPercent {
+		if currentIndex > 0 {
+			log.Printf("Replication changed because resource usage is below MinThreshold")
+			return currentIndex - 1, true
 		}
-
 	}
 
 	return currentIndex, false
@@ -76,33 +88,46 @@ func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, curren
 // It periodically checks the system metrics and, if the polymorphic system is enabled,
 // adjusts the replication mode based on the configured thresholds and fallback interval.
 // This function is intended to be run as a goroutine and will run indefinitely.
-func GetMetrics(cfg momo_common.Configuration, serverId int) {
+func GetMetrics(ctx context.Context, cfg momo_common.Configuration, serverId int) {
 	if serverId != 0 {
 		return
 	}
 
-	log.Printf("Daemon GetMetrics stated...")
+	if !cfg.Global.PolymorphicSystem {
+		log.Printf("Replication will not change because polymorphic_system is set to false")
+		return
+	}
+
+	log.Printf("Daemon GetMetrics started...")
+
+	// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
+	paddedAuthToken := []byte(momo_common.PadString(cfg.Global.AuthToken, momo_common.AuthTokenLength))
+
+	// ⚡ Bolt: Pre-calculate thresholds as percentages to avoid multiplication/division in the loop.
+	maxThreshPercent := cfg.Metrics.MaxThreshold * 100
+	minThreshPercent := cfg.Metrics.MinThreshold * 100
 
 	replicationOrder := cfg.Global.ReplicationOrder
 	currentIndex := 0
-	pushNewReplicationMode(cfg, replicationOrder[currentIndex])
+	pushNewReplicationMode(cfg, paddedAuthToken, replicationOrder[currentIndex])
 
 	sm := &RealSystemMetrics{}
 	start := time.Now()
-
-	if !cfg.Global.PolymorphicSystem {
-		log.Printf("Replication will not change beacuse polymorphic_system is set to false")
-		return
-	}
 
 	fallbackDuration := time.Duration(cfg.Metrics.FallbackInterval) * time.Millisecond
 	intervalDuration := time.Duration(cfg.Metrics.Interval) * time.Millisecond
 
 	for {
-		newIndex, changed := checkMetricsAndSwap(cfg, sm, currentIndex, replicationOrder)
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		newIndex, changed := checkMetricsAndSwap(cfg, sm, currentIndex, replicationOrder, maxThreshPercent, minThreshPercent)
 		if changed {
 			currentIndex = newIndex
-			pushNewReplicationMode(cfg, replicationOrder[currentIndex])
+			pushNewReplicationMode(cfg, paddedAuthToken, replicationOrder[currentIndex])
 			start = time.Now()
 		}
 
@@ -112,7 +137,7 @@ func GetMetrics(cfg momo_common.Configuration, serverId int) {
 			if currentIndex > 0 {
 				log.Printf("Replication fallback because of timeout")
 				currentIndex--
-				pushNewReplicationMode(cfg, replicationOrder[currentIndex])
+				pushNewReplicationMode(cfg, paddedAuthToken, replicationOrder[currentIndex])
 				start = time.Now()
 			} else {
 				log.Printf("Replication method has no fallback")
