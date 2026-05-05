@@ -71,6 +71,10 @@
 **Learning:** Checking percentage metrics (0-100) against threshold values (0.0-1.0) requires division (e.g. `memUsed / 100`) inside a hot loop. Pre-calculating the thresholds as percentages outside the loop (or at least doing it once and avoiding the division) saves CPU cycles. Furthermore, checking if `currentIndex == -1` before doing heavy lifting and system calls is beneficial. Short-circuiting evaluation when memory usage already triggers an increase avoids reading CPU percent altogether.
 **Action:** Always pre-calculate float thresholds to match metric inputs natively and hoist common checks to early-return before executing heavy system metrics calls.
 
+## 2026-05-02 - Eliminate allocations using stack-allocated arrays
+**Learning:** Using `make([]byte, 0, N)` or converting literal strings to slices inline `[]byte("ACK")` forces allocations onto the heap because the compiler cannot statically determine their escape profile. This adds measurable overhead and triggers garbage collection.
+**Action:** To eliminate heap allocations and garbage collection overhead when formatting strings and integers for frequent network writes, use stack-allocated arrays (e.g., `var buf [32]byte`) sliced dynamically (`buf[:0]`) with `strconv.AppendInt` or `append()`.
+
 ## 2026-05-04 - Optimize `checkMetricsAndSwap` by skipping unnecessary CPU percent evaluation
 **Learning:** Checking memory usage against a replication threshold usually dictates whether the cluster replication mode scales up, effectively shadowing the result of CPU usage against the same threshold (if one succeeds, we scale up anyway). CPUPercent requires system calls to gather process status, which is expensive in a periodic loop.
 **Action:** Always ensure early returns or short-circuits are aggressively applied in recurring metric checking routines where the success state is an OR logical condition between memory and CPU metric checks.

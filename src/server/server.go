@@ -78,8 +78,9 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 			defer func() {
 				if success {
 					log.Printf("Server ACK to Client => ACK%d", serverId)
-					// ⚡ Bolt: Avoid string allocations during formatting
-					idleConn.Write(strconv.AppendInt([]byte("ACK"), int64(serverId), 10))
+					// ⚡ Bolt: Avoid string allocations during formatting by using a stack-allocated buffer
+					var ackBuf [32]byte
+					idleConn.Write(strconv.AppendInt(append(ackBuf[:0], "ACK"...), int64(serverId), 10))
 				}
 				idleConn.Close()
 			}()
@@ -132,8 +133,9 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 
 			log.Printf("Cluster object global timestamp: %d", timestamp)
 			log.Printf("Server Daemon replicationMode: %d", replicationMode)
-			// ⚡ Bolt: Avoid string allocations during formatting
-			if _, err := idleConn.Write(strconv.AppendInt(make([]byte, 0, 10), int64(replicationMode), 10)); err != nil {
+			// ⚡ Bolt: Avoid string allocations during formatting by using a stack-allocated buffer
+			var repModeBuf [16]byte
+			if _, err := idleConn.Write(strconv.AppendInt(repModeBuf[:0], int64(replicationMode), 10)); err != nil {
 				log.Printf("Error sending replication mode: %v", err)
 				return
 			}
