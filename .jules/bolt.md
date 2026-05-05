@@ -63,3 +63,30 @@
 ## 2024-05-24 - Preserving Network Protocol Padding
 **Learning:** When optimizing string or integer formatting, replacing a custom padding function (like `PadString`) with `strconv.AppendInt` on a pre-allocated zeroed buffer changes the padding behavior (e.g., right-padding instead of left/space padding) and breaks the network protocol.
 **Action:** Always fully understand the implementation of any custom padding or serialization functions before attempting to optimize them away.
+
+## 2026-04-29 - [Optimize network handshakes with single write]
+**Learning:** When performing sequential network writes during a protocol handshake (like sending an AuthToken followed by a Timestamp), executing separate `conn.Write()` calls for each field incurs multiple system call overheads and potential network delays (e.g., Nagle's algorithm).
+**Action:** Always pre-allocate a single byte buffer sized for the combined payload, populate it using `copy()`, and dispatch it with a single `conn.Write()` call to improve throughput and reduce CPU usage.
+## 2026-05-01 - Optimize metrics threshold checking
+**Learning:** Checking percentage metrics (0-100) against threshold values (0.0-1.0) requires division (e.g. `memUsed / 100`) inside a hot loop. Pre-calculating the thresholds as percentages outside the loop (or at least doing it once and avoiding the division) saves CPU cycles. Furthermore, checking if `currentIndex == -1` before doing heavy lifting and system calls is beneficial. Short-circuiting evaluation when memory usage already triggers an increase avoids reading CPU percent altogether.
+**Action:** Always pre-calculate float thresholds to match metric inputs natively and hoist common checks to early-return before executing heavy system metrics calls.
+
+## 2026-05-02 - Eliminate allocations using stack-allocated arrays
+**Learning:** Using `make([]byte, 0, N)` or converting literal strings to slices inline `[]byte("ACK")` forces allocations onto the heap because the compiler cannot statically determine their escape profile. This adds measurable overhead and triggers garbage collection.
+**Action:** To eliminate heap allocations and garbage collection overhead when formatting strings and integers for frequent network writes, use stack-allocated arrays (e.g., `var buf [32]byte`) sliced dynamically (`buf[:0]`) with `strconv.AppendInt` or `append()`.
+
+## 2026-05-04 - Optimize `checkMetricsAndSwap` by skipping unnecessary CPU percent evaluation
+**Learning:** Checking memory usage against a replication threshold usually dictates whether the cluster replication mode scales up, effectively shadowing the result of CPU usage against the same threshold (if one succeeds, we scale up anyway). CPUPercent requires system calls to gather process status, which is expensive in a periodic loop.
+**Action:** Always ensure early returns or short-circuits are aggressively applied in recurring metric checking routines where the success state is an OR logical condition between memory and CPU metric checks.
+
+## 2026-05-04 - Fix False-Positive Performance Degradations in CI
+**Learning:** Benchmarks measuring sub-10ns operations (like `IndexSearch`) are extremely sensitive to environmental noise in GitHub Actions runners. A `COUNT` of 5 does not generate enough samples to overcome routine variance, often resulting in false-positive performance degradation warnings exceeding 5%.
+**Action:** Always increase `benchstat` execution count sampling size (`COUNT=15` or higher) in CI workflows like `.github/workflows/benchmark_compare.yml` when measuring highly sensitive micro-benchmarks to improve statistical confidence and prevent failed builds from noise.
+
+## 2026-05-04 - Optimization Trap: Struct Property Access in Tight Loops
+**Learning:** Replacing a direct float division `float64(v.UsedPercent) / 100` with a multiplication of a pre-calculated struct property `cfg.Metrics.MaxThreshold * 100` actually resulted in a measurable performance degradation (up to +16.99%) inside extremely tight, high-frequency loops (like the `checkMetricsAndSwap` loop benchmarking at ~8ns). The overhead of evaluating and comparing against struct properties outweighed the cost of the simple float division on modern CPUs.
+**Action:** Do not preemptively replace simple mathematical operations with pre-calculated struct lookups inside highly optimized micro-loops unless profiled directly, as memory access patterns may be slower than ALU computation.
+
+## 2026-05-04 - Fix False-Positive Performance Degradations in CI (Continued)
+**Learning:** Even with an increased COUNT (e.g. 15), benchmarks measuring sub-10ns operations (like `IndexSearch`) remain extremely sensitive to environmental noise in GitHub Actions runners. Small variations of < 1 nanosecond can cause > 50% relative performance degradation failures.
+**Action:** When a benchmark is measuring < 10 ns execution times and frequently triggers false positives, increasing sample size alone may be insufficient. In such cases, either redesign the benchmark to do more work per iteration (measuring macro-scale latency) or replace manual slice searching (which triggers this issue) with `slices.Index` from the Go standard library, which provides compiler-level optimizations and better benchmark consistency.

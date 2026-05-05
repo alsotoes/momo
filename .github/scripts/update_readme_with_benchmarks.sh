@@ -7,7 +7,7 @@ set -e
 
 OLD_BENCH=$1
 NEW_BENCH=$2
-README_FILE="doc/README.md"
+README_FILE="docs/README.md"
 MARKER_START="<!-- BENCHMARK_RESULTS_START -->"
 MARKER_END="<!-- BENCHMARK_RESULTS_END -->"
 
@@ -47,7 +47,8 @@ while IFS= read -r line; do
     avg_ns=$(echo "$line" | awk '{printf "%.2f", $2}')
     avg_B=$(echo "$line" | awk '{printf "%.2f", $3}')
     avg_allocs=$(echo "$line" | awk '{printf "%.2f", $4}')
-    MARKDOWN_TABLE="$MARKDOWN_TABLE| $name | $avg_ns ns/op | $avg_B B/op | $avg_allocs allocs/op |\n"
+    MARKDOWN_TABLE="${MARKDOWN_TABLE}| $name | $avg_ns ns/op | $avg_B B/op | $avg_allocs allocs/op |
+"
 done <<< "$AVG_RESULTS"
 
 HISTORY_FILE=".github/data/benchmark_history.csv"
@@ -64,6 +65,19 @@ done <<< "$AVG_RESULTS"
 
 # Get the list of unique benchmark names
 BENCHMARK_NAMES=$(awk -F, 'NR>1 {print $2}' "$HISTORY_FILE" | sort -u)
+
+# Function to get description for a benchmark
+get_desc() {
+    case "$1" in
+        "CheckMetricsAndSwap") echo "Evaluation of system metrics (CPU/Mem) and mode switching logic" ;;
+        "IndexDirectTracking") echo "Accessing current replication mode via direct slice index (O(1))" ;;
+        "IndexSearch") echo "Searching for current replication mode in the order slice using \`slices.Index\`" ;;
+        "LoadGlobalConfig") echo "Parsing and loading the \`[global]\` section from the INI configuration" ;;
+        "PadString") echo "Padding strings with null characters to a fixed protocol length" ;;
+        "ParseReplicationOrder"*) echo "Parsing the CSV-formatted replication order string into an integer slice" ;;
+        *) echo "No description available" ;;
+    esac
+}
 
 # Prepare the content to be injected into the README
 # Use a temporary file to avoid issues with special characters in variables.
@@ -87,12 +101,14 @@ $MARKDOWN_TABLE
 
 **Legend**
 
-| Color | Benchmark |
-|---|---|
-| 🟢 | $(echo "$BENCHMARK_NAMES" | sed -n 1p | sed -e 's/Benchmark//' -e 's/-[0-9]\+$//') |
-| 🔵 | $(echo "$BENCHMARK_NAMES" | sed -n 2p | sed -e 's/Benchmark//' -e 's/-[0-9]\+$//') |
-| 🔴 | $(echo "$BENCHMARK_NAMES" | sed -n 3p | sed -e 's/Benchmark//' -e 's/-[0-9]\+$//') |
-| 🟠 | $(echo "$BENCHMARK_NAMES" | sed -n 4p | sed -e 's/Benchmark//' -e 's/-[0-9]\+$//') |
+| Color | Benchmark | Description |
+|---|---|---|
+| 🟢 | CheckMetricsAndSwap | $(get_desc "CheckMetricsAndSwap") |
+| 🔵 | IndexDirectTracking | $(get_desc "IndexDirectTracking") |
+| 🔴 | IndexSearch | $(get_desc "IndexSearch") |
+| 🟠 | LoadGlobalConfig | $(get_desc "LoadGlobalConfig") |
+| 🟣 | PadString | $(get_desc "PadString") |
+| 🟡 | ParseReplicationOrder | $(get_desc "ParseReplicationOrder") |
 
 \`\`\`mermaid
 xychart-beta

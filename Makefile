@@ -2,7 +2,7 @@ SHELL := /bin/bash
 GO ?= go
 
 BIN_DIR := bin
-DOCS_DIR := doc
+DOCS_DIR := docs
 HTML_DOCS := $(DOCS_DIR)/html
 SRC := $(shell find src -name '*.go')
 BIN := $(BIN_DIR)/momo

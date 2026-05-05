@@ -94,7 +94,9 @@ func TestCheckMetricsAndSwap(t *testing.T) {
 				cpuStat: []float64{tt.cpuUsedPercent},
 			}
 
-			newIndex, changed := checkMetricsAndSwap(cfg, sm, tt.currentIndex, replicationOrder)
+			maxThreshPercent := cfg.Metrics.MaxThreshold * 100
+			minThreshPercent := cfg.Metrics.MinThreshold * 100
+			newIndex, changed := checkMetricsAndSwap(cfg, sm, tt.currentIndex, replicationOrder, maxThreshPercent, minThreshPercent)
 
 			if newIndex != tt.expectedIndex {
 				t.Errorf("Expected index %d, got %d", tt.expectedIndex, newIndex)
