@@ -67,6 +67,10 @@
 ## 2026-04-29 - [Optimize network handshakes with single write]
 **Learning:** When performing sequential network writes during a protocol handshake (like sending an AuthToken followed by a Timestamp), executing separate `conn.Write()` calls for each field incurs multiple system call overheads and potential network delays (e.g., Nagle's algorithm).
 **Action:** Always pre-allocate a single byte buffer sized for the combined payload, populate it using `copy()`, and dispatch it with a single `conn.Write()` call to improve throughput and reduce CPU usage.
+## 2026-05-01 - Optimize metrics threshold checking
+**Learning:** Checking percentage metrics (0-100) against threshold values (0.0-1.0) requires division (e.g. `memUsed / 100`) inside a hot loop. Pre-calculating the thresholds as percentages outside the loop (or at least doing it once and avoiding the division) saves CPU cycles. Furthermore, checking if `currentIndex == -1` before doing heavy lifting and system calls is beneficial. Short-circuiting evaluation when memory usage already triggers an increase avoids reading CPU percent altogether.
+**Action:** Always pre-calculate float thresholds to match metric inputs natively and hoist common checks to early-return before executing heavy system metrics calls.
+
 ## 2026-05-02 - Eliminate allocations using stack-allocated arrays
 **Learning:** Using `make([]byte, 0, N)` or converting literal strings to slices inline `[]byte("ACK")` forces allocations onto the heap because the compiler cannot statically determine their escape profile. This adds measurable overhead and triggers garbage collection.
 **Action:** To eliminate heap allocations and garbage collection overhead when formatting strings and integers for frequent network writes, use stack-allocated arrays (e.g., `var buf [32]byte`) sliced dynamically (`buf[:0]`) with `strconv.AppendInt` or `append()`.

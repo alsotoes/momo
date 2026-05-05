@@ -4,10 +4,10 @@ package server
 import (
 	"context"
 	"crypto/subtle"
+	"fmt"
 	"io"
 	"log"
 	"net"
-	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -30,13 +30,12 @@ var connectToPeer = momo_common.Connect
 //   - ReplicationPrimarySplay: This mode is currently handled as ReplicationNone, which means no replication is performed.
 //
 // The replication mode is determined by the client, and for secondary servers, it's influenced by the timestamp of the operation.
-func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) {
+func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) error {
 	daemons := cfg.Daemons
 	var timestamp int64
 	server, err := net.Listen("tcp", daemons[serverId].Host)
 	if err != nil {
-		log.Printf("Error listening: %v", err)
-		os.Exit(1)
+		return fmt.Errorf("Error listening: %v", err)
 	}
 
 	defer server.Close()
@@ -58,7 +57,7 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) {
 		if err != nil {
 			select {
 			case <-ctx.Done():
-				return // Shutting down gracefully
+				return nil // Shutting down gracefully
 			default:
 				log.Printf("Error accepting connection: %v", err)
 				// 🛡️ Sentinel: Sleep briefly to prevent tight loop on transient errors (like EMFILE)

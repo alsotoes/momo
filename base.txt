@@ -1,0 +1,65 @@
+go test -run=^$ -bench=. -benchmem -count=10 ./src/common ./src/metrics ./src/server
+goos: linux
+goarch: amd64
+pkg: github.com/alsotoes/momo/src/common
+cpu: Intel(R) Xeon(R) Processor @ 2.30GHz
+BenchmarkLoadGlobalConfig-4   	 1163698	      1031 ns/op	     480 B/op	       2 allocs/op
+BenchmarkLoadGlobalConfig-4   	 1164390	      1064 ns/op	     480 B/op	       2 allocs/op
+BenchmarkLoadGlobalConfig-4   	 1135346	      1057 ns/op	     480 B/op	       2 allocs/op
+BenchmarkLoadGlobalConfig-4   	 1000000	      1023 ns/op	     480 B/op	       2 allocs/op
+BenchmarkLoadGlobalConfig-4   	 1174218	      1021 ns/op	     480 B/op	       2 allocs/op
+BenchmarkLoadGlobalConfig-4   	  991771	      1029 ns/op	     480 B/op	       2 allocs/op
+BenchmarkLoadGlobalConfig-4   	 1168999	      1010 ns/op	     480 B/op	       2 allocs/op
+BenchmarkLoadGlobalConfig-4   	 1177441	      1017 ns/op	     480 B/op	       2 allocs/op
+BenchmarkLoadGlobalConfig-4   	 1000000	      1016 ns/op	     480 B/op	       2 allocs/op
+BenchmarkLoadGlobalConfig-4   	 1181500	      1022 ns/op	     480 B/op	       2 allocs/op
+BenchmarkPadString-4          	13073215	        92.52 ns/op	     128 B/op	       2 allocs/op
+BenchmarkPadString-4          	12659274	        94.20 ns/op	     128 B/op	       2 allocs/op
+BenchmarkPadString-4          	12359538	        93.40 ns/op	     128 B/op	       2 allocs/op
+BenchmarkPadString-4          	12706345	        92.52 ns/op	     128 B/op	       2 allocs/op
+BenchmarkPadString-4          	12906984	        92.77 ns/op	     128 B/op	       2 allocs/op
+BenchmarkPadString-4          	12483127	        97.68 ns/op	     128 B/op	       2 allocs/op
+BenchmarkPadString-4          	12774621	        91.59 ns/op	     128 B/op	       2 allocs/op
+BenchmarkPadString-4          	12973174	        92.71 ns/op	     128 B/op	       2 allocs/op
+BenchmarkPadString-4          	12669439	        94.23 ns/op	     128 B/op	       2 allocs/op
+BenchmarkPadString-4          	12604915	        93.95 ns/op	     128 B/op	       2 allocs/op
+PASS
+ok  	github.com/alsotoes/momo/src/common	31.323s
+goos: linux
+goarch: amd64
+pkg: github.com/alsotoes/momo/src/metrics
+cpu: Intel(R) Xeon(R) Processor @ 2.30GHz
+BenchmarkCheckMetricsAndSwap-4   	100000000	        11.26 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCheckMetricsAndSwap-4   	108590912	        11.50 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCheckMetricsAndSwap-4   	100000000	        10.96 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCheckMetricsAndSwap-4   	100000000	        10.97 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCheckMetricsAndSwap-4   	100000000	        10.95 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCheckMetricsAndSwap-4   	100000000	        11.02 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCheckMetricsAndSwap-4   	100000000	        10.94 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCheckMetricsAndSwap-4   	100000000	        10.94 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCheckMetricsAndSwap-4   	100000000	        11.39 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCheckMetricsAndSwap-4   	100000000	        11.23 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIndexSearch-4           	227646132	         5.228 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIndexSearch-4           	228671180	         5.324 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIndexSearch-4           	229383050	         5.250 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIndexSearch-4           	225626190	         5.287 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIndexSearch-4           	229827842	         5.225 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIndexSearch-4           	227728594	         5.259 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIndexSearch-4           	229498327	         5.308 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIndexSearch-4           	214609522	         5.263 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIndexSearch-4           	226585246	         5.717 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIndexSearch-4           	223084011	         5.231 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIndexDirectTracking-4   	1000000000	         0.3848 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIndexDirectTracking-4   	1000000000	         0.3908 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIndexDirectTracking-4   	1000000000	         0.3945 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIndexDirectTracking-4   	1000000000	         0.3940 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIndexDirectTracking-4   	1000000000	         0.3913 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIndexDirectTracking-4   	1000000000	         0.3934 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIndexDirectTracking-4   	1000000000	         0.3925 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIndexDirectTracking-4   	1000000000	         0.3988 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIndexDirectTracking-4   	1000000000	         0.3871 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIndexDirectTracking-4   	1000000000	         0.3880 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/alsotoes/momo/src/metrics	34.130s
+PASS
+ok  	github.com/alsotoes/momo/src/server	0.007s
