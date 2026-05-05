@@ -229,3 +229,8 @@ c8abaddf7f6d42d5fc5d5da094e419d3df30f449,BenchmarkPadString-4,53.15,128.00,2.00
 8fa7e6fe0b9d7422f27e68f7dd42dd39ffb36757,BenchmarkIndexSearch-4,2.20,0.00,0.00
 8fa7e6fe0b9d7422f27e68f7dd42dd39ffb36757,BenchmarkLoadGlobalConfig-4,594.68,480.00,2.00
 8fa7e6fe0b9d7422f27e68f7dd42dd39ffb36757,BenchmarkPadString-4,52.70,128.00,2.00
+06558e85653090615fdd92fd9cd5a9659cd67985,BenchmarkCheckMetricsAndSwap-4,9.37,0.00,0.00
+06558e85653090615fdd92fd9cd5a9659cd67985,BenchmarkIndexDirectTracking-4,0.31,0.00,0.00
+06558e85653090615fdd92fd9cd5a9659cd67985,BenchmarkIndexSearch-4,2.31,0.00,0.00
+06558e85653090615fdd92fd9cd5a9659cd67985,BenchmarkLoadGlobalConfig-4,596.14,480.00,2.00
+06558e85653090615fdd92fd9cd5a9659cd67985,BenchmarkPadString-4,53.20,128.00,2.00
