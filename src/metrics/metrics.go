@@ -35,7 +35,7 @@ func (rsm *RealSystemMetrics) CPUPercent() ([]float64, error) {
 //
 // It compares the memory and CPU usage against the configured thresholds and returns the new
 // replication index and a boolean indicating whether the mode was changed.
-func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, currentIndex int, replicationOrder []int) (int, bool) {
+func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, currentIndex int, replicationOrder []int, maxThreshPercent, minThreshPercent float64) (int, bool) {
 	// ⚡ Bolt: Hoist currentIndex == -1 check to avoid unnecessary work.
 	if currentIndex == -1 {
 		return currentIndex, false
@@ -47,11 +47,9 @@ func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, curren
 		return currentIndex, false
 	}
 
-	// ⚡ Bolt: Pre-calculate thresholds as percentages to match UsedPercent and CPUPercent (0-100)
+	// ⚡ Bolt: Use pre-calculated thresholds as percentages to match UsedPercent and CPUPercent (0-100)
 	// and avoid dividing by 100 on every tick.
 	memUsed := float64(v.UsedPercent)
-	maxThreshPercent := cfg.Metrics.MaxThreshold * 100
-	minThreshPercent := cfg.Metrics.MinThreshold * 100
 
 	// ⚡ Bolt: Short-circuit CPUPercent system call if memory alone exceeds the threshold.
 	if memUsed >= maxThreshPercent {
@@ -105,6 +103,10 @@ func GetMetrics(ctx context.Context, cfg momo_common.Configuration, serverId int
 	// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
 	paddedAuthToken := []byte(momo_common.PadString(cfg.Global.AuthToken, momo_common.AuthTokenLength))
 
+	// ⚡ Bolt: Pre-calculate thresholds as percentages to avoid multiplication/division in the loop.
+	maxThreshPercent := cfg.Metrics.MaxThreshold * 100
+	minThreshPercent := cfg.Metrics.MinThreshold * 100
+
 	replicationOrder := cfg.Global.ReplicationOrder
 	currentIndex := 0
 	pushNewReplicationMode(cfg, paddedAuthToken, replicationOrder[currentIndex])
@@ -122,7 +124,7 @@ func GetMetrics(ctx context.Context, cfg momo_common.Configuration, serverId int
 		default:
 		}
 
-		newIndex, changed := checkMetricsAndSwap(cfg, sm, currentIndex, replicationOrder)
+		newIndex, changed := checkMetricsAndSwap(cfg, sm, currentIndex, replicationOrder, maxThreshPercent, minThreshPercent)
 		if changed {
 			currentIndex = newIndex
 			pushNewReplicationMode(cfg, paddedAuthToken, replicationOrder[currentIndex])
