@@ -32,7 +32,9 @@ func Connect(wg *sync.WaitGroup, cfg Configuration, filePath string, serverId in
 	// ⚡ Bolt: Send AuthToken and timestamp in a single write operation to reduce system calls.
 	handshakeBuf := make([]byte, AuthTokenLength+TimestampLength)
 	copy(handshakeBuf[0:AuthTokenLength], PadString(authToken, AuthTokenLength))
-	copy(handshakeBuf[AuthTokenLength:AuthTokenLength+TimestampLength], PadString(strconv.FormatInt(timestamp, 10), TimestampLength))
+
+	// Directly format timestamp into the buffer starting after AuthToken
+	strconv.AppendInt(handshakeBuf[AuthTokenLength:AuthTokenLength], timestamp, 10)
 
 	if _, err := initialConn.Write(handshakeBuf); err != nil {
 		log.Printf("Failed to send handshake to %s: %v", daemons[serverId].Host, err)

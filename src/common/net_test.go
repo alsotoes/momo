@@ -8,33 +8,6 @@ import (
 	"go.uber.org/goleak"
 )
 
-func TestDialSocket(t *testing.T) {
-	defer goleak.VerifyNone(t)
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("Failed to start listener: %v", err)
-	}
-	defer ln.Close()
-
-	addr := ln.Addr().String()
-
-	conn, err := DialSocket(addr)
-	if err != nil {
-		t.Errorf("DialSocket failed: %v", err)
-	}
-	if conn == nil {
-		t.Error("Expected connection, got nil")
-	} else {
-		conn.Close()
-	}
-
-	_, err = DialSocket("invalid_address")
-	if err == nil {
-		t.Error("Expected error for invalid address, got nil")
-	}
-}
-
-// mockConn is a mock implementation of net.Conn for testing.
 type mockConn struct {
 	net.Conn
 	readDeadlineSet  bool
@@ -60,19 +33,44 @@ func (m *mockConn) Write(b []byte) (n int, err error) {
 }
 
 func TestIdleTimeoutConn(t *testing.T) {
-	mock := &mockConn{}
-	idleConn := NewIdleTimeoutConn(mock, 30*time.Second)
+	mc := &mockConn{}
+	idleConn := NewIdleTimeoutConn(mc, 30*time.Second)
 
-	// Test Read
-	buf := make([]byte, 10)
-	_, _ = idleConn.Read(buf)
-	if !mock.readDeadlineSet {
-		t.Error("Expected SetReadDeadline to be called on Read")
+	// Test Read sets deadline
+	idleConn.Read([]byte("test"))
+	if !mc.readDeadlineSet {
+		t.Error("Expected Read to set read deadline")
 	}
 
-	// Test Write
-	_, _ = idleConn.Write(buf)
-	if !mock.writeDeadlineSet {
-		t.Error("Expected SetWriteDeadline to be called on Write")
+	// Test Write sets deadline
+	idleConn.Write([]byte("test"))
+	if !mc.writeDeadlineSet {
+		t.Error("Expected Write to set write deadline")
+	}
+}
+
+func TestDialSocket(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to start listener: %v", err)
+	}
+	defer ln.Close()
+
+	addr := ln.Addr().String()
+
+	conn, err := DialSocket(addr)
+	if err != nil {
+		t.Errorf("DialSocket failed: %v", err)
+	}
+	if conn == nil {
+		t.Error("Expected connection, got nil")
+	} else {
+		conn.Close()
+	}
+
+	_, err = DialSocket("invalid_address")
+	if err == nil {
+		t.Error("Expected error for invalid address, got nil")
 	}
 }

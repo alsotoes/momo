@@ -52,8 +52,7 @@
 **Vulnerability:** The application's network endpoints (`Daemon` and `ChangeReplicationModeServer`) accepted connections and processed data/state-changes from any client without authentication. This allowed unauthorized clients to upload arbitrary files or alter the cluster replication state.
 **Learning:** Network endpoints handling state changes or file storage must authenticate clients immediately upon connection to prevent unauthorized access and system abuse. Plain TCP connections over untrusted networks cannot rely on obscurity.
 **Prevention:** Enforce a mandatory authentication handshake (e.g., verifying a fixed-length null-padded `AuthToken` using `crypto/subtle.ConstantTimeCompare`) before parsing any protocol data. Reject unauthorized connections immediately.
-
-## 2026-05-04 - DoS via Hanging Outbound Connections
-**Vulnerability:** The `DialSocket` function used `net.DialTimeout` but did not apply any read/write timeouts to the returned connection. If a remote peer became unresponsive after the initial TCP handshake, the connection could hang indefinitely, leading to resource exhaustion (DoS).
-**Learning:** `net.DialTimeout` only applies a deadline to the connection establishment phase. It does not protect against slow or hanging reads/writes on an established connection.
-**Prevention:** Always apply explicit read/write deadlines (e.g., using a rolling idle timeout wrapper like `IdleTimeoutConn`) to all established network connections to ensure they eventually time out and release resources when peers are unresponsive.
+## 2026-04-29 - Denial of Service via Outbound Connection Leak
+**Vulnerability:** The application used `net.DialTimeout` for outbound network connections but failed to apply any idle timeout to the returned `net.Conn`. If a remote peer accepted the connection but never sent data or closed it, the local goroutine reading/writing to it would block indefinitely, leading to a resource leak (goroutines and file descriptors) and eventual Denial of Service (DoS).
+**Learning:** Establishing a network connection with a timeout only protects the initial TCP handshake. It does not protect against a slowloris-style attack or an unresponsive peer holding the connection open without transmitting data.
+**Prevention:** Always wrap outbound `net.Conn` instances with an idle timeout mechanism (e.g., using `SetReadDeadline` and `SetWriteDeadline` on every operation, like `momo_common.NewIdleTimeoutConn`) to ensure connections are forcibly closed if the peer goes silent.
