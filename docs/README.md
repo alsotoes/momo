@@ -286,22 +286,14 @@ geomean                                      ³                +0.00%           
 
 **Legend**
 
-| Color | Benchmark |
-|---|---|
+| Color | Benchmark | Description |
+|---|---|---|
 | 🟢 | CheckMetricsAndSwap | Evaluation of system metrics (CPU/Mem) and mode switching logic |
 | 🔵 | IndexDirectTracking | Accessing current replication mode via direct slice index (O(1)) |
 | 🔴 | IndexSearch | Searching for current replication mode in the order slice using `slices.Index` |
 | 🟠 | LoadGlobalConfig | Parsing and loading the `[global]` section from the INI configuration |
 | 🟣 | PadString | Padding strings with null characters to a fixed protocol length |
 | 🟡 | ParseReplicationOrder | Parsing the CSV-formatted replication order string into an integer slice |
-| 🔵 | IndexDirectTracking | Accessing current replication mode via direct slice index (O(1)) |
-| 🔴 | IndexSearch | Searching for current replication mode in the order slice using `slices.Index` |
-| 🟠 | LoadGlobalConfig | Parsing and loading the `[global]` section from the INI configuration |
-| 🟣 | PadString | Padding strings with null characters to a fixed protocol length |
-| 🟡 | ParseReplicationOrder | Parsing the CSV-formatted replication order string into an integer slice |
-| 🔵 | IndexDirectTracking |
-| 🔴 | IndexSearch |
-| 🟠 | LoadGlobalConfig |
 
 ```mermaid
 xychart-beta
