@@ -35,8 +35,8 @@ func (rsm *RealSystemMetrics) CPUPercent() ([]float64, error) {
 //
 // It compares the memory and CPU usage against the configured thresholds and returns the new
 // replication index and a boolean indicating whether the mode was changed.
-func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, currentIndex int, replicationOrder []int) (int, bool) {
-	// ⚡ Bolt: Hoist check to avoid any system calls when disabled
+func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, currentIndex int, replicationOrder []int, maxThreshPercent, minThreshPercent float64) (int, bool) {
+	// ⚡ Bolt: Hoist currentIndex == -1 check to avoid unnecessary work.
 	if currentIndex == -1 {
 		return currentIndex, false
 	}
@@ -46,14 +46,18 @@ func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, curren
 		log.Printf("Error getting memory metrics: %v", err)
 		return currentIndex, false
 	}
-	memUsed := float64(v.UsedPercent) / 100
 
-	// ⚡ Bolt: Short-circuit CPU check if memory usage alone exceeds the maximum threshold
-	if memUsed >= cfg.Metrics.MaxThreshold {
+	// ⚡ Bolt: Use pre-calculated thresholds as percentages to match UsedPercent and CPUPercent (0-100)
+	// and avoid dividing by 100 on every tick.
+	memUsed := float64(v.UsedPercent)
+
+	// ⚡ Bolt: Short-circuit CPUPercent system call if memory alone exceeds the threshold.
+	if memUsed >= maxThreshPercent {
 		if currentIndex < len(replicationOrder)-1 {
 			log.Printf("Replication changed because cfg.Metrics.MaxThreshold reached")
 			return currentIndex + 1, true
 		}
+		return currentIndex, false
 	}
 
 	c, err := sm.CPUPercent()
@@ -61,18 +65,15 @@ func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, curren
 		log.Printf("Error getting cpu metrics: %v", err)
 		return currentIndex, false
 	}
-	cpuUsed := c[0] / 100
+	cpuUsed := c[0]
 
-	// Increase replication if CPU usage is high
-	if cpuUsed >= cfg.Metrics.MaxThreshold {
+	// ⚡ Bolt: Use pre-calculated percent thresholds to avoid division.
+	if cpuUsed >= maxThreshPercent {
 		if currentIndex < len(replicationOrder)-1 {
 			log.Printf("Replication changed because cfg.Metrics.MaxThreshold reached")
 			return currentIndex + 1, true
 		}
-	}
-
-	// Decrease replication if usage is low
-	if memUsed < cfg.Metrics.MinThreshold && cpuUsed < cfg.Metrics.MinThreshold {
+	} else if memUsed < minThreshPercent && cpuUsed < minThreshPercent {
 		if currentIndex > 0 {
 			log.Printf("Replication changed because resource usage is below MinThreshold")
 			return currentIndex - 1, true
@@ -102,6 +103,10 @@ func GetMetrics(ctx context.Context, cfg momo_common.Configuration, serverId int
 	// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
 	paddedAuthToken := []byte(momo_common.PadString(cfg.Global.AuthToken, momo_common.AuthTokenLength))
 
+	// ⚡ Bolt: Pre-calculate thresholds as percentages to avoid multiplication/division in the loop.
+	maxThreshPercent := cfg.Metrics.MaxThreshold * 100
+	minThreshPercent := cfg.Metrics.MinThreshold * 100
+
 	replicationOrder := cfg.Global.ReplicationOrder
 	currentIndex := 0
 	pushNewReplicationMode(cfg, paddedAuthToken, replicationOrder[currentIndex])
@@ -119,7 +124,7 @@ func GetMetrics(ctx context.Context, cfg momo_common.Configuration, serverId int
 		default:
 		}
 
-		newIndex, changed := checkMetricsAndSwap(cfg, sm, currentIndex, replicationOrder)
+		newIndex, changed := checkMetricsAndSwap(cfg, sm, currentIndex, replicationOrder, maxThreshPercent, minThreshPercent)
 		if changed {
 			currentIndex = newIndex
 			pushNewReplicationMode(cfg, paddedAuthToken, replicationOrder[currentIndex])
