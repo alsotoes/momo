@@ -242,12 +242,12 @@ This section is automatically updated by our GitHub Actions workflow.
 ```
                       │ old_bench_filtered.txt │       new_bench_filtered.txt        │
                       │         sec/op         │    sec/op      vs base              │
-LoadGlobalConfig-4                584.6n ± ∞ ¹    584.9n ± ∞ ¹       ~ (p=1.000 n=5)
-PadString-4                       52.07n ± ∞ ¹    51.72n ± ∞ ¹       ~ (p=0.651 n=5)
-CheckMetricsAndSwap-4             9.387n ± ∞ ¹    9.370n ± ∞ ¹       ~ (p=0.651 n=5)
-IndexSearch-4                     2.187n ± ∞ ¹    2.187n ± ∞ ¹       ~ (p=0.810 n=5)
-IndexDirectTracking-4            0.3123n ± ∞ ¹   0.3120n ± ∞ ¹       ~ (p=0.452 n=5)
-geomean                           11.43n          11.41n        -0.18%
+LoadGlobalConfig-4                589.7n ± ∞ ¹    586.1n ± ∞ ¹  -0.61% (p=0.016 n=5)
+PadString-4                       51.69n ± ∞ ¹    52.46n ± ∞ ¹  +1.49% (p=0.008 n=5)
+CheckMetricsAndSwap-4             9.373n ± ∞ ¹    9.362n ± ∞ ¹       ~ (p=0.548 n=5)
+IndexSearch-4                     2.470n ± ∞ ¹    2.497n ± ∞ ¹       ~ (p=0.548 n=5)
+IndexDirectTracking-4            0.3118n ± ∞ ¹   0.3126n ± ∞ ¹       ~ (p=0.103 n=5)
+geomean                           11.71n          11.76n        +0.42%
 ¹ need >= 6 samples for confidence interval at level 0.95
 
                       │ old_bench_filtered.txt │       new_bench_filtered.txt        │
@@ -280,7 +280,7 @@ geomean                                      ³                +0.00%           
 
 | Benchmark | Avg. Time/Op | Avg. Bytes/Op | Avg. Allocs/Op |
 |-----------|--------------|---------------|----------------|
-| BenchmarkCheckMetricsAndSwap-4 | 9.37 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkIndexDirectTracking-4 | 0.31 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkIndexSearch-4 | 2.23 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkLoadGlobalConfig-4 | 586.34 ns/op | 480.00 B/op | 2.00 allocs/op |\n| BenchmarkPadString-4 | 51.88 ns/op | 128.00 B/op | 2.00 allocs/op |\n
+| BenchmarkCheckMetricsAndSwap-4 | 9.37 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkIndexDirectTracking-4 | 0.31 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkIndexSearch-4 | 2.43 ns/op | 0.00 B/op | 0.00 allocs/op |\n| BenchmarkLoadGlobalConfig-4 | 586.08 ns/op | 480.00 B/op | 2.00 allocs/op |\n| BenchmarkPadString-4 | 53.15 ns/op | 128.00 B/op | 2.00 allocs/op |\n
 
 ### Performance History
 
@@ -298,12 +298,12 @@ xychart-beta
     title "Performance Trend (Avg. Time, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Time (ns/op)"
-    x-axis [48d5,7784,b659,8b32,262f,7ec7,36a9,ae2b]
-    line "CheckMetricsAndSwap" [9,9,9,9,9,8,9,10,9,9]
+    x-axis [7784,b659,8b32,262f,7ec7,36a9,ae2b,c8ab]
+    line "CheckMetricsAndSwap" [9,9,9,9,8,9,10,9,9,9]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
-    line "IndexSearch" [2,2,3,2,2,4,3,3,2,2]
-    line "LoadGlobalConfig" [552,558,522,584,581,581,595,544,594,586]
-    line "PadString" [52,53,50,53,54,51,54,50,53,52]
+    line "IndexSearch" [2,3,2,2,4,3,3,2,2,2]
+    line "LoadGlobalConfig" [558,522,584,581,581,595,544,594,586,586]
+    line "PadString" [53,50,53,54,51,54,50,53,52,53]
     line "ParseReplicationOrder_NoPrealloc" [350,349,357,354,345,225,229,165,232,234]
     line "ParseReplicationOrder_Prealloc" [229,231,237,234,229,108,107,80,110,109]
 ```
@@ -313,7 +313,7 @@ xychart-beta
     title "Memory Trend (Avg. Bytes/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Bytes/Op"
-    x-axis [48d5,7784,b659,8b32,262f,7ec7,36a9,ae2b]
+    x-axis [7784,b659,8b32,262f,7ec7,36a9,ae2b,c8ab]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [0,0,0,0,0,0,0,0,0,0]
@@ -328,7 +328,7 @@ xychart-beta
     title "Allocation Trend (Avg. Allocs/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Allocs/Op"
-    x-axis [48d5,7784,b659,8b32,262f,7ec7,36a9,ae2b]
+    x-axis [7784,b659,8b32,262f,7ec7,36a9,ae2b,c8ab]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [0,0,0,0,0,0,0,0,0,0]
