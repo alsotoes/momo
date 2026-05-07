@@ -86,26 +86,28 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 			}()
 
 			// Read and validate the AuthToken
-			bufferAuthToken := make([]byte, momo_common.AuthTokenLength)
-			if _, err := io.ReadFull(idleConn, bufferAuthToken); err != nil {
+			// ⚡ Bolt: Stack allocate buffer to avoid heap allocations
+			var bufferAuthToken [momo_common.AuthTokenLength]byte
+			if _, err := io.ReadFull(idleConn, bufferAuthToken[:]); err != nil {
 				log.Printf("Error reading AuthToken: %v", err)
 				return
 			}
 			// 🛡️ Sentinel: Use constant-time comparison to prevent timing attacks during authentication
-			if subtle.ConstantTimeCompare(bufferAuthToken, expectedAuthToken) != 1 {
+			if subtle.ConstantTimeCompare(bufferAuthToken[:], expectedAuthToken) != 1 {
 				log.Printf("Invalid AuthToken received")
 				return
 			}
 
 			// Read the timestamp from the connection
-			bufferTimestamp := make([]byte, momo_common.TimestampLength)
-			if _, err := io.ReadFull(idleConn, bufferTimestamp); err != nil {
+			// ⚡ Bolt: Stack allocate buffer to avoid heap allocations
+			var bufferTimestamp [momo_common.TimestampLength]byte
+			if _, err := io.ReadFull(idleConn, bufferTimestamp[:]); err != nil {
 				log.Printf("Error reading timestamp: %v", err)
 				return
 			}
 
 			// ⚡ Bolt: Parse timestamp directly from byte slice to avoid allocation
-			timestamp, err = parsePaddedIntFast(bufferTimestamp)
+			timestamp, err = parsePaddedIntFast(bufferTimestamp[:])
 			if err != nil {
 				log.Printf("Error parsing timestamp: %v", err)
 				return

@@ -104,13 +104,14 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 			connection.SetDeadline(time.Now().Add(10 * time.Second))
 
 			// Read and validate the AuthToken
-			bufferAuthToken := make([]byte, momo_common.AuthTokenLength)
-			if _, err := io.ReadFull(connection, bufferAuthToken); err != nil {
+			// ⚡ Bolt: Stack allocate buffer to avoid heap allocations
+			var bufferAuthToken [momo_common.AuthTokenLength]byte
+			if _, err := io.ReadFull(connection, bufferAuthToken[:]); err != nil {
 				log.Printf("Error reading AuthToken: %v", err)
 				return
 			}
 			// 🛡️ Sentinel: Use constant-time comparison to prevent timing attacks during authentication
-			if subtle.ConstantTimeCompare(bufferAuthToken, expectedAuthToken) != 1 {
+			if subtle.ConstantTimeCompare(bufferAuthToken[:], expectedAuthToken) != 1 {
 				log.Printf("Invalid AuthToken received")
 				return
 			}

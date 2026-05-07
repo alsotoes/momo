@@ -93,3 +93,7 @@
 ## 2026-05-05 - Leverage slices.Index for loop performance
 **Learning:** Using `slices.Index` from the Go standard library can be significantly faster (up to ~7x in benchmarks) compared to manually iterating through a slice with a `for range` loop to find a string. The compiler optimization for standard library functions offers better baseline performance than a manual loop implementation.
 **Action:** Always prefer using `slices.Index` or `slices.Contains` over custom loop implementations for slice searching, to maximize performance and improve readability.
+
+## 2026-05-07 - Zero-Allocation Handshakes via Stack Arrays
+**Learning:** In Go, passing a dynamically allocated slice (e.g., `make([]byte, 64)`) to interface methods like `io.ReadFull(io.Reader, []byte)` forces the slice to escape to the heap, creating garbage collection overhead for every connection.
+**Action:** Always use fixed-size stack arrays (e.g., `var buffer [64]byte`) and slice them (`buffer[:]`) when reading small, fixed-length packets (like authentication tokens or fixed-width timestamps) to eliminate heap allocations and improve network throughput on hot paths.
