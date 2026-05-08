@@ -25,9 +25,9 @@ func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 	var metadata momo_common.FileMetadata
 
 	// ⚡ Bolt: Use a single buffer and single io.ReadFull call to reduce system calls and allocations.
-	buffer := make([]byte, 64+momo_common.FileInfoLength+momo_common.FileInfoLength)
+	var buffer [64 + momo_common.FileInfoLength + momo_common.FileInfoLength]byte
 
-	if _, err := io.ReadFull(connection, buffer); err != nil {
+	if _, err := io.ReadFull(connection, buffer[:]); err != nil {
 		return metadata, err
 	}
 
