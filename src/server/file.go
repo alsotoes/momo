@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
 	momo_common "github.com/alsotoes/momo/src/common"
 )
@@ -112,7 +113,8 @@ func getFile(connection net.Conn, path string, fileName string, expectedHash str
 
 	if hash != expectedHash {
 		// 🛡️ Sentinel: Reject files with mismatched hashes to prevent integrity check bypass
-		err = fmt.Errorf("file hash mismatch: expected %s, got %s", expectedHash, hash)
+		// ⚡ Bolt: Return syscall.EBADMSG to indicate data corruption, as requested in issue #27.
+		err = fmt.Errorf("file hash mismatch: expected %s, got %s: %w", expectedHash, hash, syscall.EBADMSG)
 		return err
 	}
 

@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"sync"
+	"syscall"
 	"time"
 
 	momo_common "github.com/alsotoes/momo/src/common"
@@ -112,7 +113,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 			}
 			// 🛡️ Sentinel: Use constant-time comparison to prevent timing attacks during authentication
 			if subtle.ConstantTimeCompare(bufferAuthToken[:], expectedAuthToken) != 1 {
-				log.Printf("Invalid AuthToken received")
+				log.Printf("Invalid AuthToken received: %v", syscall.EACCES)
 				return
 			}
 

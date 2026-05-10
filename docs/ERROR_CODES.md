@@ -16,12 +16,13 @@ Below is a list of common `errno` values that might be encountered and their spe
 | :--- | :--- | :--- | :--- |
 | `EPROTO` | Protocol error | A protocol error was detected on the communication link. | This is a critical error. It most likely means there is a bug or a version mismatch between the client and server, or that a non-Momo client is trying to connect. The handshake or message framing has failed. |
 | `ENOLINK` | Link has been severed | A communication link has been severed. | This error is particularly relevant for **Chain Replication**. It indicates that a server in the middle of the chain has disconnected, breaking the replication flow. The file transfer will fail. |
-| `EBADMSG` | Bad message | The message received does not conform to the protocol. | This often points to data corruption during transit or an issue with how the message was framed (e.g., incorrect metadata size). The MD5 checksum validation might also trigger conditions that lead to this. |
+| `EBADMSG` | Bad message | The message received does not conform to the protocol. | This often points to data corruption during transit or an issue with how the message was framed (e.g., incorrect metadata size). The SHA-256 hash validation failure triggers this error (returned as part of the error chain). |
+| `EACCES` | Permission denied | An attempt was made to access a file in a way forbidden by its file access permissions. | In Momo, this is used to indicate an authentication failure when an invalid AuthToken is provided during the handshake. |
 | `ETIMEDOUT`| Connection timed out | A connection attempt timed out, or a connected partner has not responded. | Could occur during the initial handshake if the server is unresponsive, or during the file transfer if there is a network partition or a server becomes overloaded and cannot respond. |
 | `ECONNREFUSED`| Connection refused | The target machine actively refused the connection. | This is a straightforward network error. It means a Momo server is not running or is not reachable at the specified IP address and port, or a firewall is blocking the connection. |
 | `EPIPE` | Broken pipe | An attempt was made to write to a pipe or socket that is not open for reading on the other end. | This commonly occurs if the client or a downstream server closes the connection while an upstream server is still trying to send data. |
 | `ENOSPC` | No space left on device | An attempt to write a file to a device has failed because the device is full. | A server in the cluster has run out of disk space. The replication for the current file will fail on that specific server. |
-| `EIO` | I/O error | A physical I/O error has occurred. | This indicates a problem with the underlying storage hardware on one of the servers. It is a serious error that points to potential disk failure. |
+| `EIO` | I/O error | A physical I/O error has occurred. | This indicates a problem with the underlying storage hardware on one of the servers, or a serious data integrity issue. |
 
 ## Application-Specific Exit Codes
 
