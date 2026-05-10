@@ -144,7 +144,7 @@ func parsePaddedIntFast(b []byte) (int64, error) {
 		return 0, strconv.ErrSyntax
 	}
 
-	var res int64
+	var res uint64
 	var sign int64 = 1
 	start := 0
 
@@ -161,22 +161,35 @@ func parsePaddedIntFast(b []byte) (int64, error) {
 		}
 	}
 
+	var cutoff uint64 = (1<<63 - 1)
+	if sign == -1 {
+		cutoff = 1 << 63
+	}
+
+	maxVal := cutoff / 10
+
 	for i := start; i < idx; i++ {
 		c := b[i]
 		if c < '0' || c > '9' {
 			return 0, strconv.ErrSyntax
 		}
 
+		v := uint64(c - '0')
+
 		// overflow check for int64
-		if res > (1<<63-1)/10 {
+		if res > maxVal {
 			return 0, strconv.ErrRange
 		}
-		if res == (1<<63-1)/10 && int64(c-'0') > (1<<63-1)%10 {
+		if res == maxVal && v > cutoff%10 {
 			return 0, strconv.ErrRange
 		}
 
-		res = res*10 + int64(c-'0')
+		res = res*10 + v
 	}
 
-	return res * sign, nil
+	if sign == -1 {
+		return int64(^res + 1), nil
+	}
+
+	return int64(res), nil
 }

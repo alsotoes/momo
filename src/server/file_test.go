@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
+	"math"
 	"net"
 	"os"
 	"path/filepath"
@@ -185,5 +186,81 @@ func TestGetFileTraversal(t *testing.T) {
 	safeFilePath := filepath.Join(storageDir, "traversal.txt")
 	if _, err := os.Stat(safeFilePath); os.IsNotExist(err) {
 		t.Errorf("Expected file to be created at %s, but it was not", safeFilePath)
+	}
+}
+
+func TestParsePaddedIntFast(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []byte
+		expected int64
+		err      error
+	}{
+		{
+			name:     "positive number",
+			input:    []byte("12345\x00\x00"),
+			expected: 12345,
+			err:      nil,
+		},
+		{
+			name:     "negative number",
+			input:    []byte("-12345\x00"),
+			expected: -12345,
+			err:      nil,
+		},
+		{
+			name:     "math.MaxInt64",
+			input:    []byte("9223372036854775807\x00"),
+			expected: math.MaxInt64,
+			err:      nil,
+		},
+		{
+			name:     "math.MinInt64",
+			input:    []byte("-9223372036854775808\x00"),
+			expected: math.MinInt64,
+			err:      nil,
+		},
+		{
+			name:     "overflow math.MaxInt64 + 1",
+			input:    []byte("9223372036854775808\x00"),
+			expected: 0,
+			err:      strconv.ErrRange,
+		},
+		{
+			name:     "underflow math.MinInt64 - 1",
+			input:    []byte("-9223372036854775809\x00"),
+			expected: 0,
+			err:      strconv.ErrRange,
+		},
+		{
+			name:     "invalid characters",
+			input:    []byte("12a45\x00"),
+			expected: 0,
+			err:      strconv.ErrSyntax,
+		},
+		{
+			name:     "empty string",
+			input:    []byte("\x00"),
+			expected: 0,
+			err:      strconv.ErrSyntax,
+		},
+		{
+			name:     "just minus sign",
+			input:    []byte("-\x00"),
+			expected: 0,
+			err:      strconv.ErrSyntax,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := parsePaddedIntFast(tt.input)
+			if result != tt.expected {
+				t.Errorf("expected %d, got %d", tt.expected, result)
+			}
+			if err != tt.err {
+				t.Errorf("expected error %v, got %v", tt.err, err)
+			}
+		})
 	}
 }
