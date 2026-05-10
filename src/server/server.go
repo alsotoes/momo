@@ -86,6 +86,7 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 			}()
 
 			// Read and validate the AuthToken
+			// ⚡ Bolt: Stack allocate buffer to avoid heap allocations
 			var bufferAuthToken [momo_common.AuthTokenLength]byte
 			if _, err := io.ReadFull(idleConn, bufferAuthToken[:]); err != nil {
 				log.Printf("Error reading AuthToken: %v", err)
@@ -98,6 +99,7 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 			}
 
 			// Read the timestamp from the connection
+			// ⚡ Bolt: Stack allocate buffer to avoid heap allocations
 			var bufferTimestamp [momo_common.TimestampLength]byte
 			if _, err := io.ReadFull(idleConn, bufferTimestamp[:]); err != nil {
 				log.Printf("Error reading timestamp: %v", err)

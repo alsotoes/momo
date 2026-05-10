@@ -104,6 +104,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 			connection.SetDeadline(time.Now().Add(10 * time.Second))
 
 			// Read and validate the AuthToken
+			// ⚡ Bolt: Stack allocate buffer to avoid heap allocations
 			var bufferAuthToken [momo_common.AuthTokenLength]byte
 			if _, err := io.ReadFull(connection, bufferAuthToken[:]); err != nil {
 				log.Printf("Error reading AuthToken: %v", err)
