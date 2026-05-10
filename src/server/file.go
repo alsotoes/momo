@@ -24,7 +24,7 @@ import (
 func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
 	var metadata momo_common.FileMetadata
 
-	// ⚡ Bolt: Use a single buffer and single io.ReadFull call to reduce system calls and allocations.
+	// ⚡ Bolt: Use a single stack-allocated buffer and single io.ReadFull call to reduce system calls and eliminate heap allocations.
 	var buffer [64 + momo_common.FileInfoLength + momo_common.FileInfoLength]byte
 
 	if _, err := io.ReadFull(connection, buffer[:]); err != nil {
