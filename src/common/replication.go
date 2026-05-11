@@ -30,26 +30,27 @@ func Connect(wg *sync.WaitGroup, cfg Configuration, filePath string, serverId in
 
 	// Perform handshake to get replication mode
 	// ⚡ Bolt: Send AuthToken and timestamp in a single write operation to reduce system calls.
-	handshakeBuf := make([]byte, AuthTokenLength+TimestampLength)
+	// Stack-allocate array to eliminate heap escapes.
+	var handshakeBuf [AuthTokenLength + TimestampLength]byte
 	copy(handshakeBuf[0:AuthTokenLength], PadString(authToken, AuthTokenLength))
 
 	// Directly format timestamp into the buffer starting after AuthToken
 	strconv.AppendInt(handshakeBuf[AuthTokenLength:AuthTokenLength], timestamp, 10)
 
-	if _, err := initialConn.Write(handshakeBuf); err != nil {
+	if _, err := initialConn.Write(handshakeBuf[:]); err != nil {
 		log.Printf("Failed to send handshake to %s: %v", daemons[serverId].Host, err)
 		initialConn.Close()
 		return
 	}
-	bufferReplicationMode := make([]byte, 1)
-	if _, err := io.ReadFull(initialConn, bufferReplicationMode); err != nil {
+	var bufferReplicationMode [1]byte
+	if _, err := io.ReadFull(initialConn, bufferReplicationMode[:]); err != nil {
 		log.Printf("Failed to read replication mode from %s: %v", daemons[serverId].Host, err)
 		initialConn.Close()
 		return
 	}
-	log.Printf("Client replicationMode: %s", string(bufferReplicationMode))
+	log.Printf("Client replicationMode: %s", string(bufferReplicationMode[:]))
 
-	replicationMode, err := strconv.Atoi(string(bufferReplicationMode))
+	replicationMode, err := strconv.Atoi(string(bufferReplicationMode[:]))
 	if err != nil {
 		log.Printf("Invalid replication mode received from %s: %v", daemons[serverId].Host, err)
 		initialConn.Close()
@@ -70,13 +71,13 @@ func Connect(wg *sync.WaitGroup, cfg Configuration, filePath string, serverId in
 			}
 
 			// Perform handshake with the other daemons
-			if _, err := conn.Write(handshakeBuf); err != nil {
+			if _, err := conn.Write(handshakeBuf[:]); err != nil {
 				log.Printf("Failed to send handshake to %s: %v", daemon.Host, err)
 				conn.Close()
 				continue
 			}
-			dummyBuffer := make([]byte, 1)
-			if _, err := io.ReadFull(conn, dummyBuffer); err != nil {
+			var dummyBuffer [1]byte
+			if _, err := io.ReadFull(conn, dummyBuffer[:]); err != nil {
 				log.Printf("Failed to complete handshake with %s: %v", daemon.Host, err)
 				conn.Close()
 				continue
@@ -144,7 +145,8 @@ func sendFile(wg *sync.WaitGroup, connection net.Conn, fileName string, meta *Fi
 	// Send metadata
 	// Optimization: Pre-allocate a single buffer for the exact packet size.
 	// This avoids multiple string formatting allocations and multiple system calls.
-	metadataBuffer := make([]byte, hashLength+FileInfoLength+FileInfoLength)
+	// ⚡ Bolt: Stack allocate array to eliminate heap escape.
+	var metadataBuffer [hashLength + FileInfoLength + FileInfoLength]byte
 
 	copy(metadataBuffer[0:hashLength], meta.Hash)
 	copy(metadataBuffer[hashLength:hashLength+FileInfoLength], PadString(meta.Name, FileInfoLength))
@@ -154,7 +156,7 @@ func sendFile(wg *sync.WaitGroup, connection net.Conn, fileName string, meta *Fi
 	sizeBytes := strconv.AppendInt(sizeBuf[:0], meta.Size, 10)
 	copy(metadataBuffer[hashLength+FileInfoLength:], sizeBytes)
 
-	connection.Write(metadataBuffer)
+	connection.Write(metadataBuffer[:])
 
 	// Send file content
 	// Optimization: Use io.Copy to avoid manual buffer allocation and read/write loops.
@@ -165,14 +167,14 @@ func sendFile(wg *sync.WaitGroup, connection net.Conn, fileName string, meta *Fi
 	}
 
 	// Wait for ACK
-	ackBuffer := make([]byte, 3)
-	if _, err := io.ReadFull(connection, ackBuffer); err != nil {
+	var ackBuffer [3]byte
+	if _, err := io.ReadFull(connection, ackBuffer[:]); err != nil {
 		log.Printf("Failed to read ACK from server: %v", err)
 		return
 	}
 
-	if string(ackBuffer) != "ACK" {
-		log.Printf("Received unexpected response from server: %s", string(ackBuffer))
+	if string(ackBuffer[:]) != "ACK" {
+		log.Printf("Received unexpected response from server: %s", string(ackBuffer[:]))
 		return
 	}
 
