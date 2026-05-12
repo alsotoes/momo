@@ -83,6 +83,10 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 	// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
 	expectedAuthToken := []byte(momo_common.PadString(cfg.Global.AuthToken, momo_common.AuthTokenLength))
 
+	// 🛡️ Sentinel: Enforce a limit on concurrent connections to prevent resource exhaustion (DoS).
+	const maxConcurrentConnections = 1000
+	sem := make(chan struct{}, maxConcurrentConnections)
+
 	for {
 		connection, err := server.Accept()
 		if err != nil {
@@ -97,7 +101,12 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 				continue
 			}
 		}
+
+		// Acquire semaphore slot before spinning up a new goroutine
+		sem <- struct{}{}
+
 		go func() {
+			defer func() { <-sem }() // Release semaphore slot when done
 			defer connection.Close()
 			log.Printf("Client connected to changeReplicationMode")
 

@@ -53,6 +53,11 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 	// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
 	expectedAuthToken := []byte(momo_common.PadString(cfg.Global.AuthToken, momo_common.AuthTokenLength))
 
+	// 🛡️ Sentinel: Enforce a limit on concurrent connections to prevent resource exhaustion (DoS).
+	// Without this limit, an attacker could open unbounded connections, crashing the server via OOM or FD exhaustion.
+	const maxConcurrentConnections = 1000
+	sem := make(chan struct{}, maxConcurrentConnections)
+
 	for {
 		connection, err := server.Accept()
 		if err != nil {
@@ -69,7 +74,11 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 		}
 		log.Printf("Client connected to primary Daemon")
 
+		// Acquire semaphore slot before spinning up a new goroutine
+		sem <- struct{}{}
+
 		go func() {
+			defer func() { <-sem }() // Release semaphore slot when done
 			var replicationMode int
 			var success bool
 
@@ -148,6 +157,12 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 				log.Printf("Error getting metadata: %v", err)
 				return
 			}
+
+			// 🛡️ Sentinel: Apply an absolute deadline to prevent Slowloris-style trickle attacks
+			// during the actual file transfer. Base the deadline on a generous estimate: 5 minutes + 1 minute per 10MB.
+			absoluteDeadline := time.Now().Add(5*time.Minute + time.Duration(metadata.Size/(10*1024*1024))*time.Minute)
+			idleConn.SetAbsoluteDeadline(absoluteDeadline)
+
 			var wg sync.WaitGroup
 
 			// Handle the file based on the replication mode
