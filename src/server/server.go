@@ -53,6 +53,9 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 	// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
 	expectedAuthToken := []byte(momo_common.PadString(cfg.Global.AuthToken, momo_common.AuthTokenLength))
 
+	// 🛡️ Sentinel: Limit concurrent connections to prevent DoS via resource exhaustion.
+	sem := make(chan struct{}, 100)
+
 	for {
 		connection, err := server.Accept()
 		if err != nil {
@@ -67,14 +70,17 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 				continue
 			}
 		}
+
+		sem <- struct{}{}
 		log.Printf("Client connected to primary Daemon")
 
-		go func() {
+		go func(conn net.Conn) {
+			defer func() { <-sem }()
 			var replicationMode int
 			var success bool
 
 			// 🛡️ Sentinel: Use an idle timeout to prevent Slowloris attacks without breaking large file uploads
-			idleConn := momo_common.NewIdleTimeoutConn(connection, 30*time.Second)
+			idleConn := momo_common.NewIdleTimeoutConn(conn, 30*time.Second)
 
 			defer func() {
 				if success {
@@ -193,6 +199,6 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 				return
 			}
 			success = true
-		}()
+		}(connection)
 	}
 }

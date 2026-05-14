@@ -83,6 +83,9 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 	// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
 	expectedAuthToken := []byte(momo_common.PadString(cfg.Global.AuthToken, momo_common.AuthTokenLength))
 
+	// 🛡️ Sentinel: Limit concurrent connections to prevent DoS via resource exhaustion.
+	sem := make(chan struct{}, 100)
+
 	for {
 		connection, err := server.Accept()
 		if err != nil {
@@ -97,17 +100,20 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 				continue
 			}
 		}
-		go func() {
-			defer connection.Close()
+
+		sem <- struct{}{}
+		go func(conn net.Conn) {
+			defer func() { <-sem }()
+			defer conn.Close()
 			log.Printf("Client connected to changeReplicationMode")
 
 			// 🛡️ Sentinel: Enforce a read/write timeout to prevent slowloris DoS attacks
-			connection.SetDeadline(time.Now().Add(10 * time.Second))
+			conn.SetDeadline(time.Now().Add(10 * time.Second))
 
 			// Read and validate the AuthToken
 			// ⚡ Bolt: Stack allocate buffer to avoid heap allocations
 			var bufferAuthToken [momo_common.AuthTokenLength]byte
-			if _, err := io.ReadFull(connection, bufferAuthToken[:]); err != nil {
+			if _, err := io.ReadFull(conn, bufferAuthToken[:]); err != nil {
 				log.Printf("Error reading AuthToken: %v", err)
 				return
 			}
@@ -120,7 +126,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 			// Decode the replication data directly from the connection
 			// 🛡️ Sentinel: Limit the JSON payload size to prevent DoS via memory exhaustion
 			replicationJson := momo_common.ReplicationData{}
-			if err := json.NewDecoder(io.LimitReader(connection, 1024)).Decode(&replicationJson); err != nil {
+			if err := json.NewDecoder(io.LimitReader(conn, 1024)).Decode(&replicationJson); err != nil {
 				log.Printf("Failed to decode replication data: %v", err)
 				return
 			}
@@ -136,7 +142,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 				go changeReplicationModeClient(expectedAuthToken, daemons, string(newReplicationJson), 1)
 				go changeReplicationModeClient(expectedAuthToken, daemons, string(newReplicationJson), 2)
 			}
-		}()
+		}(connection)
 	}
 }
 
