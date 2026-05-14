@@ -102,6 +102,12 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 		return ConfigurationGlobal{}, fmt.Errorf("'auth_token' is missing or empty")
 	}
 
+	// 🛡️ Sentinel: Fail securely if the AuthToken exceeds the maximum allowed length (64 bytes).
+	// Silently truncating long tokens reduces their effective entropy and can hide configuration errors.
+	if len(globalCfg.AuthToken) > AuthTokenLength {
+		return ConfigurationGlobal{}, fmt.Errorf("'auth_token' length exceeds maximum allowed length of %d bytes", AuthTokenLength)
+	}
+
 	return globalCfg, nil
 }
 

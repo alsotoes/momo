@@ -9,9 +9,11 @@ import (
 // IdleTimeoutConn wraps a net.Conn to provide a rolling idle timeout.
 // Every successful Read or Write resets the deadline, preventing slowloris
 // attacks without interrupting large, active file transfers.
+// An optional absolute deadline can be set to enforce a maximum connection duration.
 type IdleTimeoutConn struct {
 	net.Conn
-	timeout time.Duration
+	timeout          time.Duration
+	absoluteDeadline time.Time
 }
 
 // NewIdleTimeoutConn creates a new IdleTimeoutConn.
@@ -19,16 +21,34 @@ func NewIdleTimeoutConn(conn net.Conn, timeout time.Duration) *IdleTimeoutConn {
 	return &IdleTimeoutConn{Conn: conn, timeout: timeout}
 }
 
+// SetAbsoluteDeadline sets an absolute hard deadline for the connection.
+// If the absolute deadline is reached, reads and writes will fail regardless of idle activity.
+func (c *IdleTimeoutConn) SetAbsoluteDeadline(t time.Time) {
+	c.absoluteDeadline = t
+}
+
+func (c *IdleTimeoutConn) applyDeadlines(isRead bool) {
+	deadline := time.Now().Add(c.timeout)
+	if !c.absoluteDeadline.IsZero() && c.absoluteDeadline.Before(deadline) {
+		deadline = c.absoluteDeadline
+	}
+	if isRead {
+		c.Conn.SetReadDeadline(deadline)
+	} else {
+		c.Conn.SetWriteDeadline(deadline)
+	}
+}
+
 // Read reads data from the connection and resets the read deadline.
 func (c *IdleTimeoutConn) Read(b []byte) (n int, err error) {
-	c.Conn.SetReadDeadline(time.Now().Add(c.timeout))
+	c.applyDeadlines(true)
 	n, err = c.Conn.Read(b)
 	return n, err
 }
 
 // Write writes data to the connection and resets the write deadline.
 func (c *IdleTimeoutConn) Write(b []byte) (n int, err error) {
-	c.Conn.SetWriteDeadline(time.Now().Add(c.timeout))
+	c.applyDeadlines(false)
 	n, err = c.Conn.Write(b)
 	return n, err
 }
