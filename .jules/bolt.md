@@ -103,3 +103,7 @@
 ## 2024-05-11 - Do not replace PadString with zero-initialized arrays
 **Learning:** While replacing `make([]byte, ...)` with stack allocated arrays (`var buffer [...]byte`) to avoid heap escapes, do not replace the explicit `PadString` method call with a direct `copy()` into a zero-initialized array to try to save the formatting memory allocation overhead. Although `copy()` null-pads correctly, it lacks the logic to truncate the string if the string exceeds the buffer size, which `PadString` safely handles. Automated reviews flag this explicitly as a critical regression.
 **Action:** When replacing dynamically allocated byte slices with stack-allocated byte arrays, preserve the `PadString` usage and just copy its output into the new stack array.
+
+## 2024-05-16 - Single Read Optimization
+**Learning:** Combining multiple sequential network reads (like AuthToken and Timestamp) into a single pre-allocated stack array and a single `io.ReadFull` call can result in an observable performance improvement (e.g. 100ns to 70ns in benchmark) and fewer system calls without breaking the protocol or leading to heap escape.
+**Action:** When performing sequential network reads of fixed-size payloads, pre-calculate the total length, stack-allocate a single buffer, slice it dynamically, and perform a single read to optimize performance.
