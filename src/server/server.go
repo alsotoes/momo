@@ -72,7 +72,7 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 				continue
 			}
 		}
-		log.Printf("Client connected to primary Daemon")
+		log.Printf("Client connected to primary Daemon from %s", connection.RemoteAddr())
 
 		// Acquire semaphore slot before spinning up a new goroutine
 		sem <- struct{}{}
@@ -104,9 +104,11 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 			}
 			// 🛡️ Sentinel: Use constant-time comparison to prevent timing attacks during authentication
 			if subtle.ConstantTimeCompare(bufferAuthToken[:], expectedAuthToken) != 1 {
-				log.Printf("Invalid AuthToken received: %v", syscall.EACCES)
+				log.Printf("Invalid AuthToken received from %s: %v", idleConn.RemoteAddr(), syscall.EACCES)
 				return
 			}
+			// 🛡️ Sentinel: Log successful authentication with remote IP for audit traceability
+			log.Printf("Authentication successful for %s", idleConn.RemoteAddr())
 
 			// Read the timestamp from the connection
 			// ⚡ Bolt: Stack allocate buffer to avoid heap allocations

@@ -108,7 +108,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 		go func() {
 			defer func() { <-sem }() // Release semaphore slot when done
 			defer connection.Close()
-			log.Printf("Client connected to changeReplicationMode")
+			log.Printf("Client connected to changeReplicationMode from %s", connection.RemoteAddr())
 
 			// 🛡️ Sentinel: Enforce a read/write timeout to prevent slowloris DoS attacks
 			connection.SetDeadline(time.Now().Add(10 * time.Second))
@@ -122,9 +122,11 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 			}
 			// 🛡️ Sentinel: Use constant-time comparison to prevent timing attacks during authentication
 			if subtle.ConstantTimeCompare(bufferAuthToken[:], expectedAuthToken) != 1 {
-				log.Printf("Invalid AuthToken received: %v", syscall.EACCES)
+				log.Printf("Invalid AuthToken received from %s: %v", connection.RemoteAddr(), syscall.EACCES)
 				return
 			}
+			// 🛡️ Sentinel: Log successful authentication with remote IP for audit traceability
+			log.Printf("Authentication successful for %s", connection.RemoteAddr())
 
 			// Decode the replication data directly from the connection
 			// 🛡️ Sentinel: Limit the JSON payload size to prevent DoS via memory exhaustion
