@@ -76,3 +76,7 @@
 **Vulnerability:** The application used an `IdleTimeoutConn` that updated `SetReadDeadline` relative to the current time on every successful read. This rolling timeout allows an attacker to upload a large file indefinitely by sending exactly one byte just before the rolling timeout expires, tying up connection slots and memory (Slowloris variant).
 **Learning:** Rolling idle timeouts protect against dead peers, but they do not guarantee a maximum transaction time. An active but malicious peer can game rolling timeouts to hold resources forever.
 **Prevention:** In addition to rolling idle timeouts, establish a hard, absolute deadline for resource-intensive operations based on logical constraints (e.g., maximum expected duration for a 1GB transfer) and ensure the connection honors the stricter of the two deadlines.
+## 2024-05-17 - Missing audit trails on authentication failures
+**Vulnerability:** The daemon handled network connections and authentication attempts but logged generic errors, completely omitting the remote IP address. This obscures malicious activity such as brute force attacks or DoS from monitoring systems and prevents effective mitigation (like fail2ban).
+**Learning:** Security auditing requires actionable data. Logging that an error occurred is insufficient if it cannot be attributed to a source.
+**Prevention:** For network endpoints, especially those handling authentication, state changes, or data parsing, always include the remote peer identifier (e.g., `connection.RemoteAddr().String()`) in success and failure logs.

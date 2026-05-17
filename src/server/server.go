@@ -72,7 +72,8 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 				continue
 			}
 		}
-		log.Printf("Client connected to primary Daemon")
+		remoteAddr := connection.RemoteAddr().String()
+		log.Printf("Client connected to primary Daemon from %s", remoteAddr)
 
 		// Acquire semaphore slot before spinning up a new goroutine
 		sem <- struct{}{}
@@ -87,7 +88,7 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 
 			defer func() {
 				if success {
-					log.Printf("Server ACK to Client => ACK%d", serverId)
+					log.Printf("Server ACK to Client %s => ACK%d", remoteAddr, serverId)
 					// ⚡ Bolt: Avoid string allocations during formatting by using a stack-allocated buffer
 					var ackBuf [32]byte
 					idleConn.Write(strconv.AppendInt(append(ackBuf[:0], "ACK"...), int64(serverId), 10))
@@ -99,12 +100,12 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 			// ⚡ Bolt: Stack allocate buffer to avoid heap allocations
 			var bufferAuthToken [momo_common.AuthTokenLength]byte
 			if _, err := io.ReadFull(idleConn, bufferAuthToken[:]); err != nil {
-				log.Printf("Error reading AuthToken: %v", err)
+				log.Printf("Error reading AuthToken from %s: %v", remoteAddr, err)
 				return
 			}
 			// 🛡️ Sentinel: Use constant-time comparison to prevent timing attacks during authentication
 			if subtle.ConstantTimeCompare(bufferAuthToken[:], expectedAuthToken) != 1 {
-				log.Printf("Invalid AuthToken received: %v", syscall.EACCES)
+				log.Printf("Invalid AuthToken received from %s: %v", remoteAddr, syscall.EACCES)
 				return
 			}
 
@@ -112,14 +113,14 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 			// ⚡ Bolt: Stack allocate buffer to avoid heap allocations
 			var bufferTimestamp [momo_common.TimestampLength]byte
 			if _, err := io.ReadFull(idleConn, bufferTimestamp[:]); err != nil {
-				log.Printf("Error reading timestamp: %v", err)
+				log.Printf("Error reading timestamp from %s: %v", remoteAddr, err)
 				return
 			}
 
 			// ⚡ Bolt: Parse timestamp directly from byte slice to avoid allocation
 			timestamp, err = parsePaddedIntFast(bufferTimestamp[:])
 			if err != nil {
-				log.Printf("Error parsing timestamp: %v", err)
+				log.Printf("Error parsing timestamp from %s: %v", remoteAddr, err)
 				return
 			}
 

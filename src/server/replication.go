@@ -102,13 +102,15 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 			}
 		}
 
+		remoteAddr := connection.RemoteAddr().String()
+
 		// Acquire semaphore slot before spinning up a new goroutine
 		sem <- struct{}{}
 
 		go func() {
 			defer func() { <-sem }() // Release semaphore slot when done
 			defer connection.Close()
-			log.Printf("Client connected to changeReplicationMode")
+			log.Printf("Client connected to changeReplicationMode from %s", remoteAddr)
 
 			// 🛡️ Sentinel: Enforce a read/write timeout to prevent slowloris DoS attacks
 			connection.SetDeadline(time.Now().Add(10 * time.Second))
@@ -117,12 +119,12 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 			// ⚡ Bolt: Stack allocate buffer to avoid heap allocations
 			var bufferAuthToken [momo_common.AuthTokenLength]byte
 			if _, err := io.ReadFull(connection, bufferAuthToken[:]); err != nil {
-				log.Printf("Error reading AuthToken: %v", err)
+				log.Printf("Error reading AuthToken from %s: %v", remoteAddr, err)
 				return
 			}
 			// 🛡️ Sentinel: Use constant-time comparison to prevent timing attacks during authentication
 			if subtle.ConstantTimeCompare(bufferAuthToken[:], expectedAuthToken) != 1 {
-				log.Printf("Invalid AuthToken received: %v", syscall.EACCES)
+				log.Printf("Invalid AuthToken received from %s: %v", remoteAddr, syscall.EACCES)
 				return
 			}
 
@@ -130,7 +132,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 			// 🛡️ Sentinel: Limit the JSON payload size to prevent DoS via memory exhaustion
 			replicationJson := momo_common.ReplicationData{}
 			if err := json.NewDecoder(io.LimitReader(connection, 1024)).Decode(&replicationJson); err != nil {
-				log.Printf("Failed to decode replication data: %v", err)
+				log.Printf("Failed to decode replication data from %s: %v", remoteAddr, err)
 				return
 			}
 
