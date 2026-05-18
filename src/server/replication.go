@@ -108,7 +108,10 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 		go func() {
 			defer func() { <-sem }() // Release semaphore slot when done
 			defer connection.Close()
-			log.Printf("Client connected to changeReplicationMode")
+
+			// 🛡️ Sentinel: Capture remote address for audit logging and traceability
+			remoteAddr := connection.RemoteAddr().String()
+			log.Printf("[%s] Client connected to changeReplicationMode", remoteAddr)
 
 			// 🛡️ Sentinel: Enforce a read/write timeout to prevent slowloris DoS attacks
 			connection.SetDeadline(time.Now().Add(10 * time.Second))
@@ -117,12 +120,12 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 			// ⚡ Bolt: Stack allocate buffer to avoid heap allocations
 			var bufferAuthToken [momo_common.AuthTokenLength]byte
 			if _, err := io.ReadFull(connection, bufferAuthToken[:]); err != nil {
-				log.Printf("Error reading AuthToken: %v", err)
+				log.Printf("[%s] Error reading AuthToken: %v", remoteAddr, err)
 				return
 			}
 			// 🛡️ Sentinel: Use constant-time comparison to prevent timing attacks during authentication
 			if subtle.ConstantTimeCompare(bufferAuthToken[:], expectedAuthToken) != 1 {
-				log.Printf("Invalid AuthToken received: %v", syscall.EACCES)
+				log.Printf("[%s] Invalid AuthToken received: %v", remoteAddr, syscall.EACCES)
 				return
 			}
 
@@ -130,15 +133,15 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 			// 🛡️ Sentinel: Limit the JSON payload size to prevent DoS via memory exhaustion
 			replicationJson := momo_common.ReplicationData{}
 			if err := json.NewDecoder(io.LimitReader(connection, 1024)).Decode(&replicationJson); err != nil {
-				log.Printf("Failed to decode replication data: %v", err)
+				log.Printf("[%s] Failed to decode replication data: %v", remoteAddr, err)
 				return
 			}
 
 			// Update the replication state
 			newState := SetReplicationState(replicationJson.New, replicationJson.TimeStamp)
 			newReplicationJson, _ := json.Marshal(newState)
-			log.Printf("changeReplicationMode new value: %d", replicationJson.New)
-			log.Printf("ReplicationData new struct: %s", string(newReplicationJson))
+			log.Printf("[%s] changeReplicationMode new value: %d", remoteAddr, replicationJson.New)
+			log.Printf("[%s] ReplicationData new struct: %s", remoteAddr, string(newReplicationJson))
 
 			// If this is the primary server, propagate the change to the other servers
 			if 0 == serverId {
