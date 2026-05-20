@@ -95,31 +95,27 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 				idleConn.Close()
 			}()
 
-			// Read and validate the AuthToken
+			// Read handshake (AuthToken + Timestamp) in a single read to avoid multiple system calls.
 			// ⚡ Bolt: Stack allocate buffer to avoid heap allocations
-			var bufferAuthToken [momo_common.AuthTokenLength]byte
-			if _, err := io.ReadFull(idleConn, bufferAuthToken[:]); err != nil {
-				log.Printf("Error reading AuthToken from %s: %v", connection.RemoteAddr(), err)
+			var handshakeBuffer [momo_common.AuthTokenLength + momo_common.TimestampLength]byte
+			if _, err := io.ReadFull(idleConn, handshakeBuffer[:]); err != nil {
+				log.Printf("Error reading handshake from %s: %v", connection.RemoteAddr(), err)
 				return
 			}
+
+			bufferAuthToken := handshakeBuffer[:momo_common.AuthTokenLength]
+			bufferTimestamp := handshakeBuffer[momo_common.AuthTokenLength:]
+
 			// 🛡️ Sentinel: Use constant-time comparison to prevent timing attacks during authentication
-			if subtle.ConstantTimeCompare(bufferAuthToken[:], expectedAuthToken) != 1 {
+			if subtle.ConstantTimeCompare(bufferAuthToken, expectedAuthToken) != 1 {
 				log.Printf("Invalid AuthToken received from %s: %v", connection.RemoteAddr(), syscall.EACCES)
 				return
 			}
 			// 🛡️ Sentinel: Add audit logging for successful authentication
 			log.Printf("Successful authentication from %s", connection.RemoteAddr())
 
-			// Read the timestamp from the connection
-			// ⚡ Bolt: Stack allocate buffer to avoid heap allocations
-			var bufferTimestamp [momo_common.TimestampLength]byte
-			if _, err := io.ReadFull(idleConn, bufferTimestamp[:]); err != nil {
-				log.Printf("Error reading timestamp: %v", err)
-				return
-			}
-
 			// ⚡ Bolt: Parse timestamp directly from byte slice to avoid allocation
-			timestamp, err = parsePaddedIntFast(bufferTimestamp[:])
+			timestamp, err = parsePaddedIntFast(bufferTimestamp)
 			if err != nil {
 				log.Printf("Error parsing timestamp: %v", err)
 				return

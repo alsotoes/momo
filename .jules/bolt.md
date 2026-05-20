@@ -103,3 +103,7 @@
 ## 2024-05-11 - Do not replace PadString with zero-initialized arrays
 **Learning:** While replacing `make([]byte, ...)` with stack allocated arrays (`var buffer [...]byte`) to avoid heap escapes, do not replace the explicit `PadString` method call with a direct `copy()` into a zero-initialized array to try to save the formatting memory allocation overhead. Although `copy()` null-pads correctly, it lacks the logic to truncate the string if the string exceeds the buffer size, which `PadString` safely handles. Automated reviews flag this explicitly as a critical regression.
 **Action:** When replacing dynamically allocated byte slices with stack-allocated byte arrays, preserve the `PadString` usage and just copy its output into the new stack array.
+
+## 2026-05-20 - [Optimize Handshake Reads via Stack Buffer]
+**Learning:** Performing multiple sequential `io.ReadFull` calls for small, fixed-length protocol headers (like AuthToken and Timestamp) incurs unnecessary system call overhead on every connection.
+**Action:** Always combine sequential reads of fixed-size network payloads into a single stack-allocated byte array of their total length and use a single `io.ReadFull` call to reduce system calls and improve performance without causing heap escapes.
