@@ -81,3 +81,8 @@
 **Vulnerability:** The application handled sensitive operations (authentication failures and cluster replication mode changes) but did not log the IP address or remote peer identifier (`connection.RemoteAddr()`) in the associated warning or audit logs.
 **Learning:** Security logs are insufficient if they indicate *what* happened but not *who* did it. Without remote peer identifiers, incident response teams cannot investigate the source of an attack, and automated protections like fail2ban cannot dynamically block brute-force or unauthorized access attempts.
 **Prevention:** For all network endpoints enforcing authentication or performing state/configuration changes, log the remote peer identifier (e.g., `connection.RemoteAddr()`) on failure, success, and explicitly prefix sensitive operations with `AUDIT:` to facilitate log ingestion and monitoring.
+
+## 2026-05-21 - Securing Handshakes Against Trickle Attacks
+**Vulnerability:** Slowloris trickle attacks during connection handshakes.
+**Learning:** Rolling idle timeouts are insufficient for handshakes as attackers can trickle data to keep the connection alive. Absolute deadlines must be used.
+**Prevention:** Apply a strict absolute deadline upon connection creation, and clear or recalculate it after the handshake completes to allow large data transfers.

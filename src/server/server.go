@@ -84,6 +84,8 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 
 			// 🛡️ Sentinel: Use an idle timeout to prevent Slowloris attacks without breaking large file uploads
 			idleConn := momo_common.NewIdleTimeoutConn(connection, 30*time.Second)
+			// 🛡️ Sentinel: Set a strict absolute deadline for the handshake to prevent trickle attacks.
+			idleConn.SetAbsoluteDeadline(time.Now().Add(10 * time.Second))
 
 			defer func() {
 				if success {
@@ -153,6 +155,11 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 				log.Printf("Error sending replication mode: %v", err)
 				return
 			}
+
+			// 🛡️ Sentinel: Clear the strict handshake deadline to allow the client time to establish
+			// splay connections and start sending the file metadata. The connection is still protected
+			// by the rolling idle timeout during this idle period.
+			idleConn.SetAbsoluteDeadline(time.Time{})
 
 			metadata, err := getMetadata(idleConn)
 			if err != nil {
