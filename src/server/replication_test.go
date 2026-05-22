@@ -158,7 +158,7 @@ func TestChangeReplicationModeClient(t *testing.T) {
 
 	select {
 	case data := <-receivedJSON:
-		trimmedData := strings.TrimRight(string(data), "\x00")
+		trimmedData := strings.TrimRight(string(data), "\x00\n")
 		if trimmedData != jsonString {
 			t.Errorf("Expected to receive '%s', but got '%s'", jsonString, trimmedData)
 		}

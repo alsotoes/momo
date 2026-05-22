@@ -162,13 +162,17 @@ func changeReplicationModeClient(paddedAuthToken []byte, daemons []*momo_common.
 	}
 	defer conn.Close()
 
-	// Send the AuthToken first
-	// ⚡ Bolt: Use the pre-computed AuthToken to eliminate redundant allocations and padding operations.
-	if _, err := conn.Write(paddedAuthToken); err != nil {
-		log.Printf("Failed to send AuthToken: %v", err)
+	// ⚡ Bolt: Consolidate network writes to avoid multiple system calls and network delays.
+	// Allocate a single dynamic slice sized for the payload.
+	payload := make([]byte, 0, len(paddedAuthToken)+len(replicationJson)+1)
+	payload = append(payload, paddedAuthToken...)
+	payload = append(payload, []byte(replicationJson)...)
+	payload = append(payload, '\n') // Required for decoder compatibility
+
+	if _, err := conn.Write(payload); err != nil {
+		log.Printf("Failed to send replication data: %v", err)
 		return
 	}
 
-	conn.Write([]byte(replicationJson))
 	log.Printf("ReplicationData sent to serverId: %d", serverId)
 }

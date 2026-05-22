@@ -22,20 +22,25 @@ func pushNewReplicationMode(cfg momo_common.Configuration, paddedAuthToken []byt
 	}
 	defer conn.Close()
 
-	// Send the AuthToken first
-	// ⚡ Bolt: Use the pre-computed AuthToken to eliminate redundant allocations and padding operations.
-	if _, err := conn.Write(paddedAuthToken); err != nil {
-		log.Printf("Failed to send AuthToken: %v", err)
-		return
-	}
-
-	encoder := json.NewEncoder(conn)
 	data := momo_common.ReplicationData{
 		New:       newReplicationMode,
 		TimeStamp: time.Now().UnixNano(),
 	}
 
-	if err := encoder.Encode(data); err != nil {
-		log.Printf("Encode error: %v", err)
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		log.Printf("Marshal error: %v", err)
+		return
+	}
+
+	// ⚡ Bolt: Consolidate network writes to avoid multiple system calls and network delays.
+	// Allocate a single dynamic slice sized for the payload + newline.
+	payload := make([]byte, 0, len(paddedAuthToken)+len(jsonData)+1)
+	payload = append(payload, paddedAuthToken...)
+	payload = append(payload, jsonData...)
+	payload = append(payload, '\n') // Required for decoder compatibility
+
+	if _, err := conn.Write(payload); err != nil {
+		log.Printf("Failed to send replication data: %v", err)
 	}
 }
