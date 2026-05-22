@@ -85,6 +85,10 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 			// 🛡️ Sentinel: Use an idle timeout to prevent Slowloris attacks without breaking large file uploads
 			idleConn := momo_common.NewIdleTimeoutConn(connection, 30*time.Second)
 
+			// 🛡️ Sentinel: Enforce a strict absolute deadline for the initial handshake phase
+			// to prevent attackers from trickling bytes and gaming the rolling idle timeout.
+			idleConn.SetAbsoluteDeadline(time.Now().Add(10 * time.Second))
+
 			defer func() {
 				if success {
 					log.Printf("Server ACK to Client => ACK%d", serverId)
