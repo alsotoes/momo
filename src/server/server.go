@@ -53,8 +53,10 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 	// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
 	expectedAuthToken := []byte(momo_common.PadString(cfg.Global.AuthToken, momo_common.AuthTokenLength))
 
-	// 🛡️ Sentinel: Limit concurrent connections to prevent DoS via resource exhaustion.
-	sem := make(chan struct{}, 100)
+	// 🛡️ Sentinel: Enforce a limit on concurrent connections to prevent resource exhaustion (DoS).
+	// Without this limit, an attacker could open unbounded connections, crashing the server via OOM or FD exhaustion.
+	const maxConcurrentConnections = 1000
+	sem := make(chan struct{}, maxConcurrentConnections)
 
 	for {
 		connection, err := server.Accept()
@@ -70,10 +72,10 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 				continue
 			}
 		}
-		sem <- struct{}{}
-		remoteAddr := connection.RemoteAddr().String()
-		log.Printf("Client connected to primary Daemon from %s", remoteAddr)
+		log.Printf("Client connected to primary Daemon")
 
+		// Acquire semaphore slot before spinning up a new goroutine
+		sem <- struct{}{}
 		go func(conn net.Conn) {
 			defer func() { <-sem }()
 			var replicationMode int
@@ -84,6 +86,10 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 
 			// 🛡️ Sentinel: Use an idle timeout to prevent Slowloris attacks without breaking large file uploads
 			idleConn := momo_common.NewIdleTimeoutConn(conn, 30*time.Second)
+
+			// 🛡️ Sentinel: Apply a strict absolute deadline for the handshake phase to prevent Slowloris trickle attacks
+			// before the dynamic file transfer deadline is calculated.
+			idleConn.SetAbsoluteDeadline(time.Now().Add(10 * time.Second))
 
 			defer func() {
 				if success {
@@ -99,7 +105,7 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 			// ⚡ Bolt: Combine reads into a single buffer to reduce system calls and improve performance.
 			var handshakeBuf [momo_common.AuthTokenLength + momo_common.TimestampLength]byte
 			if _, err := io.ReadFull(idleConn, handshakeBuf[:]); err != nil {
-				log.Printf("Error reading handshake from %s: %v", remoteAddr, err)
+				log.Printf("AUDIT: Error reading handshake from %s: %v", remoteAddr, err)
 				return
 			}
 
@@ -117,7 +123,7 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 			// ⚡ Bolt: Parse timestamp directly from byte slice to avoid allocation
 			timestamp, err = parsePaddedIntFast(bufferTimestamp)
 			if err != nil {
-				log.Printf("Error parsing timestamp from %s: %v", remoteAddr, err)
+				log.Printf("AUDIT: Error parsing timestamp from %s: %v", remoteAddr, err)
 				return
 			}
 
@@ -141,20 +147,25 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 				replicationMode = momo_common.ReplicationNone
 			}
 
-			log.Printf("AUDIT: Cluster object global timestamp: %d from %s", timestamp, remoteAddr)
-			log.Printf("AUDIT: Server Daemon replicationMode: %d from %s", replicationMode, remoteAddr)
+			log.Printf("Cluster object global timestamp: %d", timestamp)
+			log.Printf("Server Daemon replicationMode: %d", replicationMode)
 			// ⚡ Bolt: Avoid string allocations during formatting by using a stack-allocated buffer
 			var repModeBuf [16]byte
 			if _, err := idleConn.Write(strconv.AppendInt(repModeBuf[:0], int64(replicationMode), 10)); err != nil {
-				log.Printf("Error sending replication mode to %s: %v", remoteAddr, err)
+				log.Printf("Error sending replication mode: %v", err)
 				return
 			}
 
 			metadata, err := getMetadata(idleConn)
 			if err != nil {
-				log.Printf("Error getting metadata from %s: %v", remoteAddr, err)
+				log.Printf("Error getting metadata: %v", err)
 				return
 			}
+
+			// 🛡️ Sentinel: Apply an absolute deadline to prevent Slowloris-style trickle attacks
+			// during the actual file transfer. Base the deadline on a generous estimate: 5 minutes + 1 minute per 10MB.
+			absoluteDeadline := time.Now().Add(5*time.Minute + time.Duration(metadata.Size/(10*1024*1024))*time.Minute)
+			idleConn.SetAbsoluteDeadline(absoluteDeadline)
 
 			var wg sync.WaitGroup
 
@@ -162,14 +173,14 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 			switch replicationMode {
 			case momo_common.ReplicationNone, momo_common.ReplicationPrimarySplay:
 				if err := getFile(idleConn, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size); err != nil {
-					log.Printf("Error getting file from %s: %v", remoteAddr, err)
+					log.Printf("Error getting file: %v", err)
 					return
 				}
 			case momo_common.ReplicationChain:
 				if serverId == 1 {
 					wg.Add(1)
 					if err := getFile(idleConn, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size); err != nil {
-						log.Printf("Error getting file from %s: %v", remoteAddr, err)
+						log.Printf("Error getting file: %v", err)
 						wg.Done()
 						return
 					}
@@ -178,7 +189,7 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 				} else {
 					wg.Add(1)
 					if err := getFile(idleConn, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size); err != nil {
-						log.Printf("Error getting file from %s: %v", remoteAddr, err)
+						log.Printf("Error getting file: %v", err)
 						wg.Done()
 						return
 					}
@@ -188,7 +199,7 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 			case momo_common.ReplicationSplay:
 				wg.Add(2)
 				if err := getFile(idleConn, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size); err != nil {
-					log.Printf("Error getting file from %s: %v", remoteAddr, err)
+					log.Printf("Error getting file: %v", err)
 					wg.Done() // Need to handle waitgroup correctly if one fails
 					wg.Done()
 					return
@@ -197,7 +208,7 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 				go connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 2, timestamp)
 				wg.Wait()
 			default:
-				log.Println("*** ERROR: Unknown replication type")
+				log.Printf("AUDIT: *** ERROR: Unknown replication type from %s", remoteAddr)
 				return
 			}
 			success = true

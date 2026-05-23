@@ -19,8 +19,7 @@ Momo is a minimalistic, high-performance TCP replication playground. Simplicity,
    - `make test` (with `-race` and `goleak`)
    - `make benchmark`
    - `make test-e2e` (Docker Compose)
-6. **Local-First Testing Mandate:** To conserve CI credits and ensure high-signal builds, all changes MUST be verified locally using `make build` and `go test ./src/...` BEFORE being pushed to the remote repository. Pushing code that fails basic local compilation or tests is a violation of this mandate.
-7. **Clean Repository:** Do not commit `.dat` files or logs. Use `.gitignore` strictly.
+5. **Clean Repository:** Do not commit `.dat` files or logs. Use `.gitignore` strictly.
 
 ## Technical Integrity
 - Prefer `net.Pipe` for unit testing protocol logic to avoid port contention.
