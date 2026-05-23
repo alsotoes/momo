@@ -136,7 +136,8 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 			// Update the replication state
 			newState := SetReplicationState(replicationJson.New, replicationJson.TimeStamp)
 			newReplicationJson, _ := json.Marshal(newState)
-			log.Printf("changeReplicationMode new value: %d", replicationJson.New)
+			// 🛡️ Sentinel: Audit log the sensitive operation
+			log.Printf("AUDIT: Replication mode changed to %d by %s", replicationJson.New, conn.RemoteAddr())
 			log.Printf("ReplicationData new struct: %s", string(newReplicationJson))
 
 			// If this is the primary server, propagate the change to the other servers
@@ -158,13 +159,15 @@ func changeReplicationModeClient(paddedAuthToken []byte, daemons []*momo_common.
 	}
 	defer conn.Close()
 
-	// Send the AuthToken first
-	// ⚡ Bolt: Use the pre-computed AuthToken to eliminate redundant allocations and padding operations.
-	if _, err := conn.Write(paddedAuthToken); err != nil {
-		log.Printf("Failed to send AuthToken: %v", err)
+	// ⚡ Bolt: Combine AuthToken and JSON payload into a single network write using a stack-allocated buffer
+	// to reduce system calls and eliminate heap allocations.
+	var payloadBuf [1024]byte
+	payload := append(payloadBuf[:0], paddedAuthToken...)
+	payload = append(payload, replicationJson...)
+
+	if _, err := conn.Write(payload); err != nil {
+		log.Printf("Failed to send replication data: %v", err)
 		return
 	}
-
-	conn.Write([]byte(replicationJson))
 	log.Printf("ReplicationData sent to serverId: %d", serverId)
 }
