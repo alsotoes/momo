@@ -79,12 +79,15 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 			var replicationMode int
 			var success bool
 
+			// 🛡️ Sentinel: Capture remote address for audit logging and traceability
+			remoteAddr := conn.RemoteAddr().String()
+
 			// 🛡️ Sentinel: Use an idle timeout to prevent Slowloris attacks without breaking large file uploads
 			idleConn := momo_common.NewIdleTimeoutConn(conn, 30*time.Second)
 
 			defer func() {
 				if success {
-					log.Printf("Server ACK to Client %s => ACK%d", remoteAddr, serverId)
+					log.Printf("AUDIT: Server ACK to Client %s => ACK%d", remoteAddr, serverId)
 					// ⚡ Bolt: Avoid string allocations during formatting by using a stack-allocated buffer
 					var ackBuf [32]byte
 					idleConn.Write(strconv.AppendInt(append(ackBuf[:0], "ACK"...), int64(serverId), 10))
@@ -105,7 +108,7 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 
 			// 🛡️ Sentinel: Use constant-time comparison to prevent timing attacks during authentication
 			if subtle.ConstantTimeCompare(bufferAuthToken, expectedAuthToken) != 1 {
-				log.Printf("Invalid AuthToken received from %s: %v", remoteAddr, syscall.EACCES)
+				log.Printf("AUDIT: Invalid AuthToken received from %s: %v", remoteAddr, syscall.EACCES)
 				return
 			}
 			// 🛡️ Sentinel: Add audit logging for successful authentication
@@ -138,34 +141,35 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 				replicationMode = momo_common.ReplicationNone
 			}
 
-			log.Printf("Cluster object global timestamp: %d", timestamp)
-			log.Printf("Server Daemon replicationMode: %d", replicationMode)
+			log.Printf("AUDIT: Cluster object global timestamp: %d from %s", timestamp, remoteAddr)
+			log.Printf("AUDIT: Server Daemon replicationMode: %d from %s", replicationMode, remoteAddr)
 			// ⚡ Bolt: Avoid string allocations during formatting by using a stack-allocated buffer
 			var repModeBuf [16]byte
 			if _, err := idleConn.Write(strconv.AppendInt(repModeBuf[:0], int64(replicationMode), 10)); err != nil {
-				log.Printf("Error sending replication mode: %v", err)
+				log.Printf("Error sending replication mode to %s: %v", remoteAddr, err)
 				return
 			}
 
 			metadata, err := getMetadata(idleConn)
 			if err != nil {
-				log.Printf("Error getting metadata: %v", err)
+				log.Printf("Error getting metadata from %s: %v", remoteAddr, err)
 				return
 			}
+
 			var wg sync.WaitGroup
 
 			// Handle the file based on the replication mode
 			switch replicationMode {
 			case momo_common.ReplicationNone, momo_common.ReplicationPrimarySplay:
 				if err := getFile(idleConn, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size); err != nil {
-					log.Printf("Error getting file: %v", err)
+					log.Printf("Error getting file from %s: %v", remoteAddr, err)
 					return
 				}
 			case momo_common.ReplicationChain:
 				if serverId == 1 {
 					wg.Add(1)
 					if err := getFile(idleConn, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size); err != nil {
-						log.Printf("Error getting file: %v", err)
+						log.Printf("Error getting file from %s: %v", remoteAddr, err)
 						wg.Done()
 						return
 					}
@@ -174,7 +178,7 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 				} else {
 					wg.Add(1)
 					if err := getFile(idleConn, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size); err != nil {
-						log.Printf("Error getting file: %v", err)
+						log.Printf("Error getting file from %s: %v", remoteAddr, err)
 						wg.Done()
 						return
 					}
@@ -184,7 +188,7 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 			case momo_common.ReplicationSplay:
 				wg.Add(2)
 				if err := getFile(idleConn, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size); err != nil {
-					log.Printf("Error getting file: %v", err)
+					log.Printf("Error getting file from %s: %v", remoteAddr, err)
 					wg.Done() // Need to handle waitgroup correctly if one fails
 					wg.Done()
 					return
