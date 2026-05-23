@@ -71,7 +71,8 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 			}
 		}
 		sem <- struct{}{}
-		log.Printf("Client connected to primary Daemon from %s", connection.RemoteAddr())
+		remoteAddr := connection.RemoteAddr().String()
+		log.Printf("Client connected to primary Daemon from %s", remoteAddr)
 
 		go func(conn net.Conn) {
 			defer func() { <-sem }()
@@ -83,7 +84,7 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 
 			defer func() {
 				if success {
-					log.Printf("Server ACK to Client => ACK%d", serverId)
+					log.Printf("Server ACK to Client %s => ACK%d", remoteAddr, serverId)
 					// ⚡ Bolt: Avoid string allocations during formatting by using a stack-allocated buffer
 					var ackBuf [32]byte
 					idleConn.Write(strconv.AppendInt(append(ackBuf[:0], "ACK"...), int64(serverId), 10))
@@ -95,7 +96,7 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 			// ⚡ Bolt: Combine reads into a single buffer to reduce system calls and improve performance.
 			var handshakeBuf [momo_common.AuthTokenLength + momo_common.TimestampLength]byte
 			if _, err := io.ReadFull(idleConn, handshakeBuf[:]); err != nil {
-				log.Printf("Error reading handshake from %s: %v", connection.RemoteAddr(), err)
+				log.Printf("Error reading handshake from %s: %v", remoteAddr, err)
 				return
 			}
 
@@ -104,16 +105,16 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 
 			// 🛡️ Sentinel: Use constant-time comparison to prevent timing attacks during authentication
 			if subtle.ConstantTimeCompare(bufferAuthToken, expectedAuthToken) != 1 {
-				log.Printf("Invalid AuthToken received from %s: %v", connection.RemoteAddr(), syscall.EACCES)
+				log.Printf("Invalid AuthToken received from %s: %v", remoteAddr, syscall.EACCES)
 				return
 			}
 			// 🛡️ Sentinel: Add audit logging for successful authentication
-			log.Printf("AUDIT: Successful authentication from %s", connection.RemoteAddr())
+			log.Printf("AUDIT: Successful authentication from %s", remoteAddr)
 
 			// ⚡ Bolt: Parse timestamp directly from byte slice to avoid allocation
 			timestamp, err = parsePaddedIntFast(bufferTimestamp)
 			if err != nil {
-				log.Printf("Error parsing timestamp: %v", err)
+				log.Printf("Error parsing timestamp from %s: %v", remoteAddr, err)
 				return
 			}
 

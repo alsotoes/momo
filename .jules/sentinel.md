@@ -62,7 +62,23 @@
 **Learning:** Naive bounds checks like `res > (1<<63-1)/10` using `int64` are insufficient because the absolute value of `math.MinInt64` cannot be represented in a signed `int64`. Furthermore, if an overflow happens and wraps the accumulator into a negative value, subsequent "greater than" bounds checks might silently pass.
 **Prevention:** When writing custom integer parsing functions in Go, ensure comprehensive overflow protection. Accumulate the absolute value using an unsigned integer (`uint64`), dynamically adjust the maximum allowed digit based on the sign to correctly handle two's-complement edge cases, and ensure bounds checks accurately protect against wrap-around.
 
+## 2026-05-11 - Silent Reduction of Token Entropy
+**Vulnerability:** The application used `momo_common.PadString` to enforce a fixed length for the `AuthToken`. However, `PadString` also silently truncated inputs longer than the target length. This meant administrators providing long, highly secure passwords would unwittingly have their security reduced to the first 64 bytes without any warning or error.
+**Learning:** Security configurations must never fail silently by dropping data. Silent truncation converts a secure configuration into a less secure one while maintaining a false sense of security for the operator.
+**Prevention:** When validating security inputs (like passwords or tokens) that have a maximum length constraint, always error explicitly if the input exceeds the constraint, rather than silently truncating it.
+
+## 2026-05-11 - Slowloris Bypass via Rolling Timeouts
+**Vulnerability:** The application used an `IdleTimeoutConn` that updated `SetReadDeadline` relative to the current time on every successful read. This rolling timeout allows an attacker to upload a large file indefinitely by sending exactly one byte just before the rolling timeout expires, tying up connection slots and memory (Slowloris variant).
+**Learning:** Rolling idle timeouts protect against dead peers, but they do not guarantee a maximum transaction time. An active but malicious peer can game rolling timeouts to hold resources forever.
+**Prevention:** In addition to rolling idle timeouts, establish a hard, absolute deadline for resource-intensive operations based on logical constraints (e.g., maximum expected duration for a 1GB transfer) and ensure the connection honors the stricter of the two deadlines.
+
+## 2024-05-17 - Missing audit trails on authentication failures
+**Vulnerability:** The daemon handled network connections and authentication attempts but logged generic errors, completely omitting the remote IP address. This obscures malicious activity such as brute force attacks or DoS from monitoring systems and prevents effective mitigation (like fail2ban).
+**Learning:** Security auditing requires actionable data. Logging that an error occurred is insufficient if it cannot be attributed to a source.
+**Prevention:** For network endpoints, especially those handling authentication, state changes, or data parsing, always include the remote peer identifier (e.g., `connection.RemoteAddr().String()`) in success and failure logs.
+
 ## 2026-05-14 - Denial of Service via Unbounded Concurrent Connections
 **Vulnerability:** The server `Accept()` loops dispatched new goroutines to handle connections without any upper bound. An attacker could flood the server with connections, exhausting system resources (like memory for goroutine stacks or file descriptors), causing a Denial of Service (DoS).
 **Learning:** Even if individual connection timeouts are properly configured, accepting and processing an unbounded number of concurrent connections can exhaust server resources before timeouts take effect.
 **Prevention:** Always apply a concurrent connection limit (e.g., using a buffered channel as a semaphore) before dispatching new handler goroutines in network `Accept()` loops to prevent resource exhaustion.
+

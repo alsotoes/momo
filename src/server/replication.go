@@ -129,7 +129,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 			// 🛡️ Sentinel: Limit the JSON payload size to prevent DoS via memory exhaustion
 			replicationJson := momo_common.ReplicationData{}
 			if err := json.NewDecoder(io.LimitReader(conn, 1024)).Decode(&replicationJson); err != nil {
-				log.Printf("Failed to decode replication data: %v", err)
+				log.Printf("Failed to decode replication data from %s: %v", conn.RemoteAddr(), err)
 				return
 			}
 
