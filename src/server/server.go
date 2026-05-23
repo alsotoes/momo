@@ -99,16 +99,16 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 			// ⚡ Bolt: Stack allocate buffer to avoid heap allocations
 			var bufferAuthToken [momo_common.AuthTokenLength]byte
 			if _, err := io.ReadFull(idleConn, bufferAuthToken[:]); err != nil {
-				log.Printf("Error reading AuthToken: %v", err)
+				log.Printf("Error reading AuthToken from %s: %v", connection.RemoteAddr(), err)
 				return
 			}
 			// 🛡️ Sentinel: Use constant-time comparison to prevent timing attacks during authentication
 			if subtle.ConstantTimeCompare(bufferAuthToken[:], expectedAuthToken) != 1 {
-				log.Printf("Invalid AuthToken received from %s: %v", idleConn.RemoteAddr(), syscall.EACCES)
+				log.Printf("Invalid AuthToken received from %s: %v", connection.RemoteAddr(), syscall.EACCES)
 				return
 			}
-			// 🛡️ Sentinel: Log successful authentication with remote IP for audit traceability
-			log.Printf("Authentication successful for %s", idleConn.RemoteAddr())
+			// 🛡️ Sentinel: Add audit logging for successful authentication
+			log.Printf("AUDIT: Successful authentication from %s", connection.RemoteAddr())
 
 			// Read the timestamp from the connection
 			// ⚡ Bolt: Stack allocate buffer to avoid heap allocations
