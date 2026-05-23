@@ -99,33 +99,29 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 				idleConn.Close()
 			}()
 
-			// Read and validate the AuthToken
-			// ⚡ Bolt: Stack allocate buffer to avoid heap allocations
-			var bufferAuthToken [momo_common.AuthTokenLength]byte
-			if _, err := io.ReadFull(idleConn, bufferAuthToken[:]); err != nil {
-				log.Printf("Error reading AuthToken from %s: %v", connection.RemoteAddr(), err)
+			// Read the AuthToken and timestamp from the connection in a single call
+			// ⚡ Bolt: Combine reads into a single buffer to reduce system calls and improve performance.
+			var handshakeBuf [momo_common.AuthTokenLength + momo_common.TimestampLength]byte
+			if _, err := io.ReadFull(idleConn, handshakeBuf[:]); err != nil {
+				log.Printf("AUDIT: Error reading handshake from %s: %v", connection.RemoteAddr(), err)
 				return
 			}
+
+			bufferAuthToken := handshakeBuf[:momo_common.AuthTokenLength]
+			bufferTimestamp := handshakeBuf[momo_common.AuthTokenLength:]
+
 			// 🛡️ Sentinel: Use constant-time comparison to prevent timing attacks during authentication
-			if subtle.ConstantTimeCompare(bufferAuthToken[:], expectedAuthToken) != 1 {
-				log.Printf("Invalid AuthToken received from %s: %v", connection.RemoteAddr(), syscall.EACCES)
+			if subtle.ConstantTimeCompare(bufferAuthToken, expectedAuthToken) != 1 {
+				log.Printf("AUDIT: Invalid AuthToken received from %s: %v", connection.RemoteAddr(), syscall.EACCES)
 				return
 			}
 			// 🛡️ Sentinel: Add audit logging for successful authentication
-			log.Printf("Successful authentication from %s", connection.RemoteAddr())
-
-			// Read the timestamp from the connection
-			// ⚡ Bolt: Stack allocate buffer to avoid heap allocations
-			var bufferTimestamp [momo_common.TimestampLength]byte
-			if _, err := io.ReadFull(idleConn, bufferTimestamp[:]); err != nil {
-				log.Printf("Error reading timestamp: %v", err)
-				return
-			}
+			log.Printf("AUDIT: Successful authentication from %s", connection.RemoteAddr())
 
 			// ⚡ Bolt: Parse timestamp directly from byte slice to avoid allocation
-			timestamp, err = parsePaddedIntFast(bufferTimestamp[:])
+			timestamp, err = parsePaddedIntFast(bufferTimestamp)
 			if err != nil {
-				log.Printf("Error parsing timestamp: %v", err)
+				log.Printf("AUDIT: Error parsing timestamp from %s: %v", connection.RemoteAddr(), err)
 				return
 			}
 
