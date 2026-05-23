@@ -3,6 +3,7 @@ package common
 import (
 	"errors"
 	"net"
+	"sync/atomic"
 	"time"
 )
 
@@ -14,6 +15,8 @@ type IdleTimeoutConn struct {
 	net.Conn
 	timeout          time.Duration
 	absoluteDeadline time.Time
+	readCalls        atomic.Uint32
+	writeCalls       atomic.Uint32
 }
 
 // NewIdleTimeoutConn creates a new IdleTimeoutConn.

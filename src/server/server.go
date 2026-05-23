@@ -208,10 +208,10 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 				go connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 2, timestamp)
 				wg.Wait()
 			default:
-				log.Println("*** ERROR: Unknown replication type")
+				log.Printf("AUDIT: *** ERROR: Unknown replication type from %s", remoteAddr)
 				return
 			}
 			success = true
-		}()
+		}(connection)
 	}
 }
