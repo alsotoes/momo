@@ -62,6 +62,11 @@
 **Learning:** Naive bounds checks like `res > (1<<63-1)/10` using `int64` are insufficient because the absolute value of `math.MinInt64` cannot be represented in a signed `int64`. Furthermore, if an overflow happens and wraps the accumulator into a negative value, subsequent "greater than" bounds checks might silently pass.
 **Prevention:** When writing custom integer parsing functions in Go, ensure comprehensive overflow protection. Accumulate the absolute value using an unsigned integer (`uint64`), dynamically adjust the maximum allowed digit based on the sign to correctly handle two's-complement edge cases, and ensure bounds checks accurately protect against wrap-around.
 
+## 2026-05-11 - DoS via Missing Concurrent Connection Bounds
+**Vulnerability:** The server `Accept` loop spawned a new goroutine for every incoming connection without tracking or limiting the total active number. An attacker could open unbounded concurrent connections without completing requests, exhausting server memory, TCP ports, and file descriptors (DoS).
+**Learning:** Even simple, fast handlers require a concurrency ceiling. Unbounded goroutine creation in a network loop is a structural vulnerability.
+**Prevention:** Implement a maximum concurrent connection limit (e.g., using a buffered channel as a semaphore `sem := make(chan struct{}, maxConns)`) in the `Accept` loop before dispatching connection handlers.
+
 ## 2026-05-11 - Silent Reduction of Token Entropy
 **Vulnerability:** The application used `momo_common.PadString` to enforce a fixed length for the `AuthToken`. However, `PadString` also silently truncated inputs longer than the target length. This meant administrators providing long, highly secure passwords would unwittingly have their security reduced to the first 64 bytes without any warning or error.
 **Learning:** Security configurations must never fail silently by dropping data. Silent truncation converts a secure configuration into a less secure one while maintaining a false sense of security for the operator.
@@ -72,13 +77,7 @@
 **Learning:** Rolling idle timeouts protect against dead peers, but they do not guarantee a maximum transaction time. An active but malicious peer can game rolling timeouts to hold resources forever.
 **Prevention:** In addition to rolling idle timeouts, establish a hard, absolute deadline for resource-intensive operations based on logical constraints (e.g., maximum expected duration for a 1GB transfer) and ensure the connection honors the stricter of the two deadlines.
 
-## 2024-05-17 - Missing audit trails on authentication failures
-**Vulnerability:** The daemon handled network connections and authentication attempts but logged generic errors, completely omitting the remote IP address. This obscures malicious activity such as brute force attacks or DoS from monitoring systems and prevents effective mitigation (like fail2ban).
-**Learning:** Security auditing requires actionable data. Logging that an error occurred is insufficient if it cannot be attributed to a source.
-**Prevention:** For network endpoints, especially those handling authentication, state changes, or data parsing, always include the remote peer identifier (e.g., `connection.RemoteAddr().String()`) in success and failure logs.
-
-## 2026-05-14 - Denial of Service via Unbounded Concurrent Connections
-**Vulnerability:** The server `Accept()` loops dispatched new goroutines to handle connections without any upper bound. An attacker could flood the server with connections, exhausting system resources (like memory for goroutine stacks or file descriptors), causing a Denial of Service (DoS).
-**Learning:** Even if individual connection timeouts are properly configured, accepting and processing an unbounded number of concurrent connections can exhaust server resources before timeouts take effect.
-**Prevention:** Always apply a concurrent connection limit (e.g., using a buffered channel as a semaphore) before dispatching new handler goroutines in network `Accept()` loops to prevent resource exhaustion.
-
+## 2026-05-15 - Missing Audit Logging for Remote Authentication and Configuration Changes
+**Vulnerability:** The application handled sensitive operations (authentication failures and cluster replication mode changes) but did not log the IP address or remote peer identifier (`connection.RemoteAddr()`) in the associated warning or audit logs.
+**Learning:** Security logs are insufficient if they indicate *what* happened but not *who* did it. Without remote peer identifiers, incident response teams cannot investigate the source of an attack, and automated protections like fail2ban cannot dynamically block brute-force or unauthorized access attempts.
+**Prevention:** For all network endpoints enforcing authentication or performing state/configuration changes, log the remote peer identifier (e.g., `connection.RemoteAddr()`) on failure, success, and explicitly prefix sensitive operations with `AUDIT:` to facilitate log ingestion and monitoring.
