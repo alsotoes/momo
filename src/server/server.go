@@ -199,6 +199,6 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 				return
 			}
 			success = true
-		}(connection)
+		}()
 	}
 }
