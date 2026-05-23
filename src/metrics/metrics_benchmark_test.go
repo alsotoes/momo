@@ -37,24 +37,19 @@ func BenchmarkCheckMetricsAndSwap(b *testing.B) {
 
 func BenchmarkIndexSearch(b *testing.B) {
 	replicationOrder := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-	// Redesign micro-benchmark to do more work per iteration to reduce CI noise
-	searchValues := []int{1, 5, 10, -1}
+	currentReplicationMode := 5
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		for _, val := range searchValues {
-			index := slices.Index(replicationOrder, val)
-			_ = index
-		}
+		index := slices.Index(replicationOrder, currentReplicationMode)
+		_ = index
 	}
 }
 
 func BenchmarkIndexDirectTracking(b *testing.B) {
 	replicationOrder := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-	searchIndices := []int{0, 4, 9, 0} // Mimic the work of the other benchmark
+	currentIndex := 4 // tracks currentReplicationMode = 5
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		for _, idx := range searchIndices {
-			_ = replicationOrder[idx]
-		}
+		_ = replicationOrder[currentIndex]
 	}
 }

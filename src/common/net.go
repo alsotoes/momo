@@ -3,7 +3,6 @@ package common
 import (
 	"errors"
 	"net"
-	"sync/atomic"
 	"time"
 )
 
@@ -15,8 +14,6 @@ type IdleTimeoutConn struct {
 	net.Conn
 	timeout          time.Duration
 	absoluteDeadline time.Time
-	lastReadUpdate   atomic.Int64
-	lastWriteUpdate  atomic.Int64
 }
 
 // NewIdleTimeoutConn creates a new IdleTimeoutConn.
@@ -31,34 +28,15 @@ func (c *IdleTimeoutConn) SetAbsoluteDeadline(t time.Time) {
 }
 
 func (c *IdleTimeoutConn) applyDeadlines(isRead bool) {
-	var lastUpdate *atomic.Int64
-	if isRead {
-		lastUpdate = &c.lastReadUpdate
-	} else {
-		lastUpdate = &c.lastWriteUpdate
-	}
-
-	now := time.Now()
-	nowNano := now.UnixNano()
-
-	// ⚡ Bolt: Only update the deadline if at least 1/4 of the timeout has elapsed.
-	// This drastically reduces the number of SetDeadline system calls during high-frequency I/O.
-	last := lastUpdate.Load()
-	if last != 0 && nowNano-last < int64(c.timeout/4) {
-		return
-	}
-
-	deadline := now.Add(c.timeout)
+	deadline := time.Now().Add(c.timeout)
 	if !c.absoluteDeadline.IsZero() && c.absoluteDeadline.Before(deadline) {
 		deadline = c.absoluteDeadline
 	}
-
 	if isRead {
 		c.Conn.SetReadDeadline(deadline)
 	} else {
 		c.Conn.SetWriteDeadline(deadline)
 	}
-	lastUpdate.Store(nowNano)
 }
 
 // Read reads data from the connection and resets the read deadline.
