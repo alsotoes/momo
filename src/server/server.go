@@ -91,6 +91,10 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 			// before the dynamic file transfer deadline is calculated.
 			idleConn.SetAbsoluteDeadline(time.Now().Add(10 * time.Second))
 
+			// 🛡️ Sentinel: Apply a strict absolute deadline for the handshake phase to prevent Slowloris trickle attacks.
+			// This deadline is explicitly recalculated and extended before the actual file transfer begins.
+			idleConn.SetAbsoluteDeadline(time.Now().Add(10 * time.Second))
+
 			defer func() {
 				if success {
 					log.Printf("AUDIT: Server ACK to Client %s => ACK%d", remoteAddr, serverId)
