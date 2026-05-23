@@ -240,14 +240,14 @@ This section is automatically updated by our GitHub Actions workflow.
 ### Comparison with previous commit
 
 ```
-                      │ old_bench_filtered.txt │        new_bench_filtered.txt        │
-                      │         sec/op         │    sec/op      vs base               │
-LoadGlobalConfig-4                544.2n ± ∞ ¹    546.5n ± ∞ ¹        ~ (p=0.421 n=5)
-PadString-4                       50.20n ± ∞ ¹    50.02n ± ∞ ¹        ~ (p=0.389 n=5)
-CheckMetricsAndSwap-4             9.166n ± ∞ ¹    8.817n ± ∞ ¹   -3.81% (p=0.008 n=5)
-IndexSearch-4                     2.469n ± ∞ ¹    3.884n ± ∞ ¹  +57.31% (p=0.008 n=5)
-IndexDirectTracking-4            0.3524n ± ∞ ¹   0.3529n ± ∞ ¹        ~ (p=0.103 n=5)
-geomean                           11.69n          12.70n         +8.68%
+                      │ old_bench_filtered.txt │       new_bench_filtered.txt        │
+                      │         sec/op         │    sec/op      vs base              │
+LoadGlobalConfig-4                590.0n ± ∞ ¹    588.7n ± ∞ ¹       ~ (p=0.579 n=5)
+PadString-4                       53.21n ± ∞ ¹    52.70n ± ∞ ¹       ~ (p=0.151 n=5)
+CheckMetricsAndSwap-4             9.064n ± ∞ ¹    9.058n ± ∞ ¹       ~ (p=0.667 n=5)
+IndexSearch-4                     3.435n ± ∞ ¹    3.443n ± ∞ ¹       ~ (p=0.151 n=5)
+IndexDirectTracking-4            0.3122n ± ∞ ¹   0.3123n ± ∞ ¹       ~ (p=0.397 n=5)
+geomean                           12.50n          12.48n        -0.20%
 ¹ need >= 6 samples for confidence interval at level 0.95
 
                       │ old_bench_filtered.txt │       new_bench_filtered.txt        │
@@ -280,11 +280,11 @@ geomean                                      ³                +0.00%           
 
 | Benchmark | Avg. Time/Op | Avg. Bytes/Op | Avg. Allocs/Op |
 |-----------|--------------|---------------|----------------|
-| BenchmarkCheckMetricsAndSwap-4 | 8.83 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkIndexDirectTracking-4 | 0.35 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkIndexSearch-4 | 3.89 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkLoadGlobalConfig-4 | 550.04 ns/op | 480.00 B/op | 2.00 allocs/op |
-| BenchmarkPadString-4 | 49.97 ns/op | 128.00 B/op | 2.00 allocs/op |
+| BenchmarkCheckMetricsAndSwap-4 | 9.06 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkIndexDirectTracking-4 | 0.31 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkIndexSearch-4 | 3.45 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkLoadGlobalConfig-4 | 592.10 ns/op | 480.00 B/op | 2.00 allocs/op |
+| BenchmarkPadString-4 | 52.79 ns/op | 128.00 B/op | 2.00 allocs/op |
 
 
 ### Performance History
@@ -305,12 +305,12 @@ xychart-beta
     title "Performance Trend (Avg. Time, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Time (ns/op)"
-    x-axis [e06c,d135,ffcd,edb2,0eaa,e6e8,3601,8c97]
-    line "CheckMetricsAndSwap" [9,9,9,7,9,9,7,9,9,9]
+    x-axis [d135,ffcd,edb2,0eaa,e6e8,3601,8c97,9623]
+    line "CheckMetricsAndSwap" [9,9,7,9,9,7,9,9,9,9]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
-    line "IndexSearch" [2,3,3,4,3,3,4,3,4,4]
-    line "LoadGlobalConfig" [596,546,551,589,552,546,588,596,608,550]
-    line "PadString" [53,52,51,50,50,50,50,53,53,50]
+    line "IndexSearch" [3,3,4,3,3,4,3,4,4,3]
+    line "LoadGlobalConfig" [546,551,589,552,546,588,596,608,550,592]
+    line "PadString" [52,51,50,50,50,50,53,53,50,53]
     line "ParseReplicationOrder_NoPrealloc" [350,349,357,354,345,225,229,165,232,234]
     line "ParseReplicationOrder_Prealloc" [229,231,237,234,229,108,107,80,110,109]
 ```
@@ -320,7 +320,7 @@ xychart-beta
     title "Memory Trend (Avg. Bytes/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Bytes/Op"
-    x-axis [e06c,d135,ffcd,edb2,0eaa,e6e8,3601,8c97]
+    x-axis [d135,ffcd,edb2,0eaa,e6e8,3601,8c97,9623]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [0,0,0,0,0,0,0,0,0,0]
@@ -335,7 +335,7 @@ xychart-beta
     title "Allocation Trend (Avg. Allocs/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Allocs/Op"
-    x-axis [e06c,d135,ffcd,edb2,0eaa,e6e8,3601,8c97]
+    x-axis [d135,ffcd,edb2,0eaa,e6e8,3601,8c97,9623]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [0,0,0,0,0,0,0,0,0,0]
