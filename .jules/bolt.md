@@ -106,3 +106,6 @@
 ## 2026-05-20 - [Optimize Handshake Reads via Stack Buffer]
 **Learning:** Performing multiple sequential `io.ReadFull` calls for small, fixed-length protocol headers (like AuthToken and Timestamp) incurs unnecessary system call overhead on every connection.
 **Action:** Always combine sequential reads of fixed-size network payloads into a single stack-allocated byte array of their total length and use a single `io.ReadFull` call to reduce system calls and improve performance without causing heap escapes.
+## 2026-05-21 - Consolidate Network Writes and Reduce Allocations in Replication Metrics and Server
+**Learning:** In Go, repeatedly calling `conn.Write` or using `json.NewEncoder` for small payloads (like authentication tokens + JSON structs) causes unnecessary memory allocations and system call overhead.
+**Action:** Consolidate network writes by marshalling JSON first and appending it to a dynamically-sized buffer using `make` and `append`, then sending the unified byte slice via a single `conn.Write` call. This prevents string-to-byte allocation of JSON, the encoder's intermediate buffer allocation, and halves the number of write system calls while maintaining memory safety.
