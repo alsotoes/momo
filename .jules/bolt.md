@@ -106,3 +106,7 @@
 ## 2026-05-18 - [Combine AuthToken and JSON payload in network writes]
 **Learning:** When sending an AuthToken followed by a JSON payload (e.g., in `pushNewReplicationMode` or `changeReplicationModeClient`), sending them as two separate `conn.Write` calls incurs multiple system calls and can be delayed by Nagle's algorithm. Combining them into a single byte slice using a stack-allocated buffer before calling `conn.Write` improves performance and reduces network overhead.
 **Action:** Always pre-allocate a single byte buffer on the stack for the combined payload, serialize the JSON into it (or `json.Marshal` then append), and dispatch it with a single `conn.Write()` call to improve throughput.
+
+## 2024-05-16 - Single Read Optimization
+**Learning:** Combining multiple sequential network reads (like AuthToken and Timestamp) into a single pre-allocated stack array and a single `io.ReadFull` call can result in an observable performance improvement (e.g. 100ns to 70ns in benchmark) and fewer system calls without breaking the protocol or leading to heap escape.
+**Action:** When performing sequential network reads of fixed-size payloads, pre-calculate the total length, stack-allocate a single buffer, slice it dynamically, and perform a single read to optimize performance.
