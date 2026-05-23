@@ -26,9 +26,11 @@ func pushNewReplicationMode(cfg momo_common.Configuration, paddedAuthToken []byt
 		New:       newReplicationMode,
 		TimeStamp: time.Now().UnixNano(),
 	}
+	// ⚡ Bolt: Avoid json.NewEncoder(conn) to prevent un-consolidated network writes.
+	// Serialize first, then combine with AuthToken to send in a single write operation.
 	jsonData, err := json.Marshal(data)
 	if err != nil {
-		log.Printf("Encode error: %v", err)
+		log.Printf("Marshal error: %v", err)
 		return
 	}
 
