@@ -83,9 +83,8 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 	// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
 	expectedAuthToken := []byte(momo_common.PadString(cfg.Global.AuthToken, momo_common.AuthTokenLength))
 
-	// 🛡️ Sentinel: Enforce a limit on concurrent connections to prevent resource exhaustion (DoS).
-	const maxConcurrentConnections = 1000
-	sem := make(chan struct{}, maxConcurrentConnections)
+	// 🛡️ Sentinel: Limit concurrent connections to prevent DoS via resource exhaustion.
+	sem := make(chan struct{}, 100)
 
 	for {
 		connection, err := server.Accept()
@@ -102,37 +101,35 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 			}
 		}
 
-		// Acquire semaphore slot before spinning up a new goroutine
 		sem <- struct{}{}
-
-		go func() {
-			defer func() { <-sem }() // Release semaphore slot when done
-			defer connection.Close()
-			log.Printf("Client connected to changeReplicationMode")
+		go func(conn net.Conn) {
+			defer func() { <-sem }()
+			defer conn.Close()
+			log.Printf("Client connected to changeReplicationMode from %s", conn.RemoteAddr())
 
 			// 🛡️ Sentinel: Enforce a read/write timeout to prevent slowloris DoS attacks
-			connection.SetDeadline(time.Now().Add(10 * time.Second))
+			conn.SetDeadline(time.Now().Add(10 * time.Second))
 
 			// Read and validate the AuthToken
 			// ⚡ Bolt: Stack allocate buffer to avoid heap allocations
 			var bufferAuthToken [momo_common.AuthTokenLength]byte
-			if _, err := io.ReadFull(connection, bufferAuthToken[:]); err != nil {
-				log.Printf("Error reading AuthToken from %s: %v", connection.RemoteAddr(), err)
+			if _, err := io.ReadFull(conn, bufferAuthToken[:]); err != nil {
+				log.Printf("Error reading AuthToken from %s: %v", conn.RemoteAddr(), err)
 				return
 			}
 			// 🛡️ Sentinel: Use constant-time comparison to prevent timing attacks during authentication
 			if subtle.ConstantTimeCompare(bufferAuthToken[:], expectedAuthToken) != 1 {
-				log.Printf("Invalid AuthToken received from %s: %v", connection.RemoteAddr(), syscall.EACCES)
+				log.Printf("Invalid AuthToken received from %s: %v", conn.RemoteAddr(), syscall.EACCES)
 				return
 			}
 			// 🛡️ Sentinel: Add audit logging for successful authentication
-			log.Printf("Successful authentication for changeReplicationMode from %s", connection.RemoteAddr())
+			log.Printf("AUDIT: Successful authentication for changeReplicationMode from %s", conn.RemoteAddr())
 
 			// Decode the replication data directly from the connection
 			// 🛡️ Sentinel: Limit the JSON payload size to prevent DoS via memory exhaustion
 			replicationJson := momo_common.ReplicationData{}
-			if err := json.NewDecoder(io.LimitReader(connection, 1024)).Decode(&replicationJson); err != nil {
-				log.Printf("Failed to decode replication data from %s: %v", connection.RemoteAddr(), err)
+			if err := json.NewDecoder(io.LimitReader(conn, 1024)).Decode(&replicationJson); err != nil {
+				log.Printf("Failed to decode replication data from %s: %v", conn.RemoteAddr(), err)
 				return
 			}
 
@@ -140,7 +137,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 			newState := SetReplicationState(replicationJson.New, replicationJson.TimeStamp)
 			newReplicationJson, _ := json.Marshal(newState)
 			// 🛡️ Sentinel: Audit log the sensitive operation
-			log.Printf("AUDIT: Replication mode changed to %d by %s", replicationJson.New, connection.RemoteAddr())
+			log.Printf("AUDIT: Replication mode changed to %d by %s", replicationJson.New, conn.RemoteAddr())
 			log.Printf("ReplicationData new struct: %s", string(newReplicationJson))
 
 			// If this is the primary server, propagate the change to the other servers
@@ -148,7 +145,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 				go changeReplicationModeClient(expectedAuthToken, daemons, string(newReplicationJson), 1)
 				go changeReplicationModeClient(expectedAuthToken, daemons, string(newReplicationJson), 2)
 			}
-		}()
+		}(connection)
 	}
 }
 
@@ -162,16 +159,15 @@ func changeReplicationModeClient(paddedAuthToken []byte, daemons []*momo_common.
 	}
 	defer conn.Close()
 
-	// ⚡ Bolt: Use a dynamic slice based on a small pre-allocated stack array
-	// to consolidate network writes and reduce system calls without risking truncation.
-	var stackBuf [128]byte
-	payload := append(stackBuf[:0], paddedAuthToken...)
-	payload = append(payload, []byte(replicationJson)...)
+	// ⚡ Bolt: Combine AuthToken and JSON payload into a single network write using a stack-allocated buffer
+	// to reduce system calls and eliminate heap allocations.
+	var payloadBuf [1024]byte
+	payload := append(payloadBuf[:0], paddedAuthToken...)
+	payload = append(payload, replicationJson...)
 
 	if _, err := conn.Write(payload); err != nil {
-		log.Printf("Failed to send combined payload: %v", err)
+		log.Printf("Failed to send replication data: %v", err)
 		return
 	}
-
 	log.Printf("ReplicationData sent to serverId: %d", serverId)
 }

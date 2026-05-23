@@ -26,7 +26,6 @@ func pushNewReplicationMode(cfg momo_common.Configuration, paddedAuthToken []byt
 		New:       newReplicationMode,
 		TimeStamp: time.Now().UnixNano(),
 	}
-
 	// ⚡ Bolt: Avoid json.NewEncoder(conn) to prevent un-consolidated network writes.
 	// Serialize first, then combine with AuthToken to send in a single write operation.
 	jsonData, err := json.Marshal(data)
@@ -35,14 +34,14 @@ func pushNewReplicationMode(cfg momo_common.Configuration, paddedAuthToken []byt
 		return
 	}
 
-	// ⚡ Bolt: Use a dynamic slice based on a small pre-allocated stack array,
-	// appending the json data and a trailing newline (which json.NewEncoder does).
-	var stackBuf [128]byte
-	payload := append(stackBuf[:0], paddedAuthToken...)
+	// ⚡ Bolt: Combine AuthToken and JSON payload into a single network write using a stack-allocated buffer
+	// to reduce system calls and eliminate heap allocations. json.Encoder adds a newline, so we append it here too.
+	var payloadBuf [1024]byte
+	payload := append(payloadBuf[:0], paddedAuthToken...)
 	payload = append(payload, jsonData...)
 	payload = append(payload, '\n')
 
 	if _, err := conn.Write(payload); err != nil {
-		log.Printf("Failed to send combined payload: %v", err)
+		log.Printf("Failed to send replication data: %v", err)
 	}
 }

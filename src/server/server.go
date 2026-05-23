@@ -53,10 +53,8 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 	// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
 	expectedAuthToken := []byte(momo_common.PadString(cfg.Global.AuthToken, momo_common.AuthTokenLength))
 
-	// 🛡️ Sentinel: Enforce a limit on concurrent connections to prevent resource exhaustion (DoS).
-	// Without this limit, an attacker could open unbounded connections, crashing the server via OOM or FD exhaustion.
-	const maxConcurrentConnections = 1000
-	sem := make(chan struct{}, maxConcurrentConnections)
+	// 🛡️ Sentinel: Limit concurrent connections to prevent DoS via resource exhaustion.
+	sem := make(chan struct{}, 100)
 
 	for {
 		connection, err := server.Accept()
@@ -72,22 +70,21 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 				continue
 			}
 		}
-		log.Printf("Client connected to primary Daemon")
-
-		// Acquire semaphore slot before spinning up a new goroutine
 		sem <- struct{}{}
+		remoteAddr := connection.RemoteAddr().String()
+		log.Printf("Client connected to primary Daemon from %s", remoteAddr)
 
-		go func() {
-			defer func() { <-sem }() // Release semaphore slot when done
+		go func(conn net.Conn) {
+			defer func() { <-sem }()
 			var replicationMode int
 			var success bool
 
 			// 🛡️ Sentinel: Use an idle timeout to prevent Slowloris attacks without breaking large file uploads
-			idleConn := momo_common.NewIdleTimeoutConn(connection, 30*time.Second)
+			idleConn := momo_common.NewIdleTimeoutConn(conn, 30*time.Second)
 
 			defer func() {
 				if success {
-					log.Printf("Server ACK to Client => ACK%d", serverId)
+					log.Printf("Server ACK to Client %s => ACK%d", remoteAddr, serverId)
 					// ⚡ Bolt: Avoid string allocations during formatting by using a stack-allocated buffer
 					var ackBuf [32]byte
 					idleConn.Write(strconv.AppendInt(append(ackBuf[:0], "ACK"...), int64(serverId), 10))
@@ -95,33 +92,29 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 				idleConn.Close()
 			}()
 
-			// Read and validate the AuthToken
-			// ⚡ Bolt: Stack allocate buffer to avoid heap allocations
-			var bufferAuthToken [momo_common.AuthTokenLength]byte
-			if _, err := io.ReadFull(idleConn, bufferAuthToken[:]); err != nil {
-				log.Printf("Error reading AuthToken from %s: %v", connection.RemoteAddr(), err)
+			// Read the AuthToken and timestamp from the connection in a single call
+			// ⚡ Bolt: Combine reads into a single buffer to reduce system calls and improve performance.
+			var handshakeBuf [momo_common.AuthTokenLength + momo_common.TimestampLength]byte
+			if _, err := io.ReadFull(idleConn, handshakeBuf[:]); err != nil {
+				log.Printf("Error reading handshake from %s: %v", remoteAddr, err)
 				return
 			}
+
+			bufferAuthToken := handshakeBuf[:momo_common.AuthTokenLength]
+			bufferTimestamp := handshakeBuf[momo_common.AuthTokenLength:]
+
 			// 🛡️ Sentinel: Use constant-time comparison to prevent timing attacks during authentication
-			if subtle.ConstantTimeCompare(bufferAuthToken[:], expectedAuthToken) != 1 {
-				log.Printf("Invalid AuthToken received from %s: %v", connection.RemoteAddr(), syscall.EACCES)
+			if subtle.ConstantTimeCompare(bufferAuthToken, expectedAuthToken) != 1 {
+				log.Printf("Invalid AuthToken received from %s: %v", remoteAddr, syscall.EACCES)
 				return
 			}
 			// 🛡️ Sentinel: Add audit logging for successful authentication
-			log.Printf("Successful authentication from %s", connection.RemoteAddr())
-
-			// Read the timestamp from the connection
-			// ⚡ Bolt: Stack allocate buffer to avoid heap allocations
-			var bufferTimestamp [momo_common.TimestampLength]byte
-			if _, err := io.ReadFull(idleConn, bufferTimestamp[:]); err != nil {
-				log.Printf("Error reading timestamp: %v", err)
-				return
-			}
+			log.Printf("AUDIT: Successful authentication from %s", remoteAddr)
 
 			// ⚡ Bolt: Parse timestamp directly from byte slice to avoid allocation
-			timestamp, err = parsePaddedIntFast(bufferTimestamp[:])
+			timestamp, err = parsePaddedIntFast(bufferTimestamp)
 			if err != nil {
-				log.Printf("Error parsing timestamp: %v", err)
+				log.Printf("Error parsing timestamp from %s: %v", remoteAddr, err)
 				return
 			}
 
@@ -159,12 +152,6 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 				log.Printf("Error getting metadata: %v", err)
 				return
 			}
-
-			// 🛡️ Sentinel: Apply an absolute deadline to prevent Slowloris-style trickle attacks
-			// during the actual file transfer. Base the deadline on a generous estimate: 5 minutes + 1 minute per 10MB.
-			absoluteDeadline := time.Now().Add(5*time.Minute + time.Duration(metadata.Size/(10*1024*1024))*time.Minute)
-			idleConn.SetAbsoluteDeadline(absoluteDeadline)
-
 			var wg sync.WaitGroup
 
 			// Handle the file based on the replication mode
@@ -210,6 +197,6 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 				return
 			}
 			success = true
-		}()
+		}(connection)
 	}
 }
