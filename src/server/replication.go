@@ -132,7 +132,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 			// 🛡️ Sentinel: Limit the JSON payload size to prevent DoS via memory exhaustion
 			replicationJson := momo_common.ReplicationData{}
 			if err := json.NewDecoder(io.LimitReader(conn, 1024)).Decode(&replicationJson); err != nil {
-				log.Printf("Error decoding replication data from %s: %v", remoteAddr, err)
+				log.Printf("AUDIT: Error decoding replication data from %s: %v", remoteAddr, err)
 				return
 			}
 
@@ -162,13 +162,15 @@ func changeReplicationModeClient(paddedAuthToken []byte, daemons []*momo_common.
 	}
 	defer conn.Close()
 
-	// Send the AuthToken first
-	// ⚡ Bolt: Use the pre-computed AuthToken to eliminate redundant allocations and padding operations.
-	if _, err := conn.Write(paddedAuthToken); err != nil {
-		log.Printf("Failed to send AuthToken: %v", err)
+	// ⚡ Bolt: Combine AuthToken and JSON payload into a single network write using a stack-allocated buffer
+	// to reduce system calls and eliminate heap allocations.
+	var payloadBuf [1024]byte
+	payload := append(payloadBuf[:0], paddedAuthToken...)
+	payload = append(payload, replicationJson...)
+
+	if _, err := conn.Write(payload); err != nil {
+		log.Printf("Failed to send replication data: %v", err)
 		return
 	}
-
-	conn.Write([]byte(replicationJson))
 	log.Printf("ReplicationData sent to serverId: %d", serverId)
 }

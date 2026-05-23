@@ -103,6 +103,9 @@
 ## 2024-05-11 - Do not replace PadString with zero-initialized arrays
 **Learning:** While replacing `make([]byte, ...)` with stack allocated arrays (`var buffer [...]byte`) to avoid heap escapes, do not replace the explicit `PadString` method call with a direct `copy()` into a zero-initialized array to try to save the formatting memory allocation overhead. Although `copy()` null-pads correctly, it lacks the logic to truncate the string if the string exceeds the buffer size, which `PadString` safely handles. Automated reviews flag this explicitly as a critical regression.
 **Action:** When replacing dynamically allocated byte slices with stack-allocated byte arrays, preserve the `PadString` usage and just copy its output into the new stack array.
+## 2026-05-18 - [Combine AuthToken and JSON payload in network writes]
+**Learning:** When sending an AuthToken followed by a JSON payload (e.g., in `pushNewReplicationMode` or `changeReplicationModeClient`), sending them as two separate `conn.Write` calls incurs multiple system calls and can be delayed by Nagle's algorithm. Combining them into a single byte slice using a stack-allocated buffer before calling `conn.Write` improves performance and reduces network overhead.
+**Action:** Always pre-allocate a single byte buffer on the stack for the combined payload, serialize the JSON into it (or `json.Marshal` then append), and dispatch it with a single `conn.Write()` call to improve throughput.
 
 ## 2024-05-16 - Single Read Optimization
 **Learning:** Combining multiple sequential network reads (like AuthToken and Timestamp) into a single pre-allocated stack array and a single `io.ReadFull` call can result in an observable performance improvement (e.g. 100ns to 70ns in benchmark) and fewer system calls without breaking the protocol or leading to heap escape.

@@ -71,7 +71,8 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 			}
 		}
 		sem <- struct{}{}
-		log.Printf("Client connected to primary Daemon from %s", connection.RemoteAddr())
+		remoteAddr := connection.RemoteAddr().String()
+		log.Printf("Client connected to primary Daemon from %s", remoteAddr)
 
 		go func(conn net.Conn) {
 			defer func() { <-sem }()
