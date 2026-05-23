@@ -62,6 +62,11 @@
 **Learning:** Naive bounds checks like `res > (1<<63-1)/10` using `int64` are insufficient because the absolute value of `math.MinInt64` cannot be represented in a signed `int64`. Furthermore, if an overflow happens and wraps the accumulator into a negative value, subsequent "greater than" bounds checks might silently pass.
 **Prevention:** When writing custom integer parsing functions in Go, ensure comprehensive overflow protection. Accumulate the absolute value using an unsigned integer (`uint64`), dynamically adjust the maximum allowed digit based on the sign to correctly handle two's-complement edge cases, and ensure bounds checks accurately protect against wrap-around.
 
+## 2026-05-11 - DoS via Missing Concurrent Connection Bounds
+**Vulnerability:** The server `Accept` loop spawned a new goroutine for every incoming connection without tracking or limiting the total active number. An attacker could open unbounded concurrent connections without completing requests, exhausting server memory, TCP ports, and file descriptors (DoS).
+**Learning:** Even simple, fast handlers require a concurrency ceiling. Unbounded goroutine creation in a network loop is a structural vulnerability.
+**Prevention:** Implement a maximum concurrent connection limit (e.g., using a buffered channel as a semaphore `sem := make(chan struct{}, maxConns)`) in the `Accept` loop before dispatching connection handlers.
+
 ## 2026-05-11 - Silent Reduction of Token Entropy
 **Vulnerability:** The application used `momo_common.PadString` to enforce a fixed length for the `AuthToken`. However, `PadString` also silently truncated inputs longer than the target length. This meant administrators providing long, highly secure passwords would unwittingly have their security reduced to the first 64 bytes without any warning or error.
 **Learning:** Security configurations must never fail silently by dropping data. Silent truncation converts a secure configuration into a less secure one while maintaining a false sense of security for the operator.
@@ -81,9 +86,3 @@
 **Vulnerability:** Even if an absolute deadline is calculated and applied before processing a large payload (like a file transfer), a malicious client can perform a Slowloris-style attack *during* the initial handshake phase (reading authentication tokens, timestamps, metadata) if this phase is only protected by rolling idle timeouts. The client can drip-feed the handshake bytes to tie up the connection handler indefinitely.
 **Learning:** Rolling idle timeouts are insufficient for protecting initial handshake parsing logic from trickling connection exhaustion. Absolute deadlines must be applied immediately upon connection acceptance, before reading any data, to bound the duration of the setup phase.
 **Prevention:** Apply a short, strict absolute deadline (e.g., 10 seconds) immediately upon accepting the connection or wrapping it, to protect the initial handshake and metadata parsing. Once the handshake is complete and the payload size is known, recalculate and apply a new, dynamically sized absolute deadline for the actual transfer phase.
-
-## 2026-05-14 - Denial of Service via Unbounded Concurrent Connections
-**Vulnerability:** The server `Accept()` loops dispatched new goroutines to handle connections without any upper bound. An attacker could flood the server with connections, exhausting system resources (like memory for goroutine stacks or file descriptors), causing a Denial of Service (DoS).
-**Learning:** Even if individual connection timeouts are properly configured, accepting and processing an unbounded number of concurrent connections can exhaust server resources before timeouts take effect.
-**Prevention:** Always apply a concurrent connection limit (e.g., using a buffered channel as a semaphore) before dispatching new handler goroutines in network `Accept()` loops to prevent resource exhaustion.
-
