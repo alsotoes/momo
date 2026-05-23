@@ -108,6 +108,8 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 				log.Printf("Invalid AuthToken received from %s: %v", remoteAddr, syscall.EACCES)
 				return
 			}
+			// 🛡️ Sentinel: Add audit logging for successful authentication
+			log.Printf("AUDIT: Successful authentication from %s", remoteAddr)
 
 			// ⚡ Bolt: Parse timestamp directly from byte slice to avoid allocation
 			timestamp, err = parsePaddedIntFast(bufferTimestamp)

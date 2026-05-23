@@ -122,6 +122,8 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 				log.Printf("Invalid AuthToken received from %s: %v", conn.RemoteAddr(), syscall.EACCES)
 				return
 			}
+			// 🛡️ Sentinel: Add audit logging for successful authentication
+			log.Printf("AUDIT: Successful authentication for changeReplicationMode from %s", conn.RemoteAddr())
 
 			// Decode the replication data directly from the connection
 			// 🛡️ Sentinel: Limit the JSON payload size to prevent DoS via memory exhaustion
