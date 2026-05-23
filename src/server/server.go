@@ -101,16 +101,16 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 				idleConn.Close()
 			}()
 
-			// Read handshake (AuthToken + Timestamp) in a single read to avoid multiple system calls.
-			// ⚡ Bolt: Stack allocate buffer to avoid heap allocations
-			var handshakeBuffer [momo_common.AuthTokenLength + momo_common.TimestampLength]byte
-			if _, err := io.ReadFull(idleConn, handshakeBuffer[:]); err != nil {
+			// Read the AuthToken and timestamp from the connection in a single call
+			// ⚡ Bolt: Combine reads into a single buffer to reduce system calls and improve performance.
+			var handshakeBuf [momo_common.AuthTokenLength + momo_common.TimestampLength]byte
+			if _, err := io.ReadFull(idleConn, handshakeBuf[:]); err != nil {
 				log.Printf("AUDIT: Error reading handshake from %s: %v", remoteAddr, err)
 				return
 			}
 
-			bufferAuthToken := handshakeBuffer[:momo_common.AuthTokenLength]
-			bufferTimestamp := handshakeBuffer[momo_common.AuthTokenLength:]
+			bufferAuthToken := handshakeBuf[:momo_common.AuthTokenLength]
+			bufferTimestamp := handshakeBuf[momo_common.AuthTokenLength:]
 
 			// 🛡️ Sentinel: Use constant-time comparison to prevent timing attacks during authentication
 			if subtle.ConstantTimeCompare(bufferAuthToken, expectedAuthToken) != 1 {
@@ -147,8 +147,8 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 				replicationMode = momo_common.ReplicationNone
 			}
 
-			log.Printf("AUDIT: Cluster object global timestamp: %d from %s", timestamp, remoteAddr)
-			log.Printf("AUDIT: Server Daemon replicationMode: %d from %s", replicationMode, remoteAddr)
+			log.Printf("Cluster object global timestamp: %d", timestamp)
+			log.Printf("Server Daemon replicationMode: %d", replicationMode)
 			// ⚡ Bolt: Avoid string allocations during formatting by using a stack-allocated buffer
 			var repModeBuf [16]byte
 			if _, err := idleConn.Write(strconv.AppendInt(repModeBuf[:0], int64(replicationMode), 10)); err != nil {
