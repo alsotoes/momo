@@ -105,7 +105,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 		go func(conn net.Conn) {
 			defer func() { <-sem }()
 			defer conn.Close()
-			log.Printf("Client connected to changeReplicationMode")
+			log.Printf("Client connected to changeReplicationMode from %s", conn.RemoteAddr())
 
 			// 🛡️ Sentinel: Enforce a read/write timeout to prevent slowloris DoS attacks
 			conn.SetDeadline(time.Now().Add(10 * time.Second))
@@ -114,14 +114,16 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 			// ⚡ Bolt: Stack allocate buffer to avoid heap allocations
 			var bufferAuthToken [momo_common.AuthTokenLength]byte
 			if _, err := io.ReadFull(conn, bufferAuthToken[:]); err != nil {
-				log.Printf("Error reading AuthToken: %v", err)
+				log.Printf("Error reading AuthToken from %s: %v", conn.RemoteAddr(), err)
 				return
 			}
 			// 🛡️ Sentinel: Use constant-time comparison to prevent timing attacks during authentication
 			if subtle.ConstantTimeCompare(bufferAuthToken[:], expectedAuthToken) != 1 {
-				log.Printf("Invalid AuthToken received: %v", syscall.EACCES)
+				log.Printf("Invalid AuthToken received from %s: %v", conn.RemoteAddr(), syscall.EACCES)
 				return
 			}
+			// 🛡️ Sentinel: Add audit logging for successful authentication
+			log.Printf("AUDIT: Successful authentication for changeReplicationMode from %s", conn.RemoteAddr())
 
 			// Decode the replication data directly from the connection
 			// 🛡️ Sentinel: Limit the JSON payload size to prevent DoS via memory exhaustion

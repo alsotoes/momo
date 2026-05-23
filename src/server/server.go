@@ -70,9 +70,8 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 				continue
 			}
 		}
-
 		sem <- struct{}{}
-		log.Printf("Client connected to primary Daemon")
+		log.Printf("Client connected to primary Daemon from %s", connection.RemoteAddr())
 
 		go func(conn net.Conn) {
 			defer func() { <-sem }()
@@ -96,7 +95,7 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 			// ⚡ Bolt: Combine reads into a single buffer to reduce system calls and improve performance.
 			var handshakeBuf [momo_common.AuthTokenLength + momo_common.TimestampLength]byte
 			if _, err := io.ReadFull(idleConn, handshakeBuf[:]); err != nil {
-				log.Printf("Error reading handshake: %v", err)
+				log.Printf("Error reading handshake from %s: %v", connection.RemoteAddr(), err)
 				return
 			}
 
@@ -105,9 +104,11 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 
 			// 🛡️ Sentinel: Use constant-time comparison to prevent timing attacks during authentication
 			if subtle.ConstantTimeCompare(bufferAuthToken, expectedAuthToken) != 1 {
-				log.Printf("Invalid AuthToken received: %v", syscall.EACCES)
+				log.Printf("Invalid AuthToken received from %s: %v", connection.RemoteAddr(), syscall.EACCES)
 				return
 			}
+			// 🛡️ Sentinel: Add audit logging for successful authentication
+			log.Printf("AUDIT: Successful authentication from %s", connection.RemoteAddr())
 
 			// ⚡ Bolt: Parse timestamp directly from byte slice to avoid allocation
 			timestamp, err = parsePaddedIntFast(bufferTimestamp)
