@@ -20,7 +20,8 @@ func HashFile(filePath string) (string, error) {
 	if _, err := io.Copy(hash, file); err != nil {
 		return returnHashString, err
 	}
-	hashInBytes := hash.Sum(nil)
+	var buf [sha256.Size]byte
+	hashInBytes := hash.Sum(buf[:0])
 	returnHashString = hex.EncodeToString(hashInBytes)
 	return returnHashString, nil
 }
