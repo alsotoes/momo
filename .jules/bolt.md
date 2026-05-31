@@ -109,3 +109,6 @@
 ## 2026-05-21 - Consolidate Network Writes and Reduce Allocations in Replication Metrics and Server
 **Learning:** In Go, repeatedly calling `conn.Write` or using `json.NewEncoder` for small payloads (like authentication tokens + JSON structs) causes unnecessary memory allocations and system call overhead.
 **Action:** Consolidate network writes by marshalling JSON first and appending it to a dynamically-sized buffer using `make` and `append`, then sending the unified byte slice via a single `conn.Write` call. This prevents string-to-byte allocation of JSON, the encoder's intermediate buffer allocation, and halves the number of write system calls while maintaining memory safety.
+## 2024-05-31 - Eliminate Heap Allocation in sha256 hash.Sum
+**Learning:** Calling `hash.Sum(nil)` forces Go to allocate a new byte slice on the heap because it cannot statically prove that the nil slice won't escape.
+**Action:** Always pre-allocate a fixed-size array on the stack (e.g., `var buf [sha256.Size]byte`) and slice it (`buf[:0]`) when passing it to `hash.Sum()` to avoid the heap allocation entirely.

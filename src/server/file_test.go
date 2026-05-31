@@ -162,7 +162,8 @@ func TestGetFileTraversal(t *testing.T) {
 
 	hash := sha256.New()
 	io.WriteString(hash, fileContent)
-	fileHash := hex.EncodeToString(hash.Sum(nil))
+	var buf [sha256.Size]byte
+	fileHash := hex.EncodeToString(hash.Sum(buf[:0]))
 	fileSize := int64(len(fileContent))
 
 	go func() {
