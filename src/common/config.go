@@ -82,26 +82,24 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 		return ConfigurationGlobal{}, fmt.Errorf("'replication_order' is missing or empty")
 	}
 
-	// ⚡ Bolt: Manually parse the replication order CSV to avoid intermediate allocations from strings.Split and strings.TrimSpace.
-	globalCfg.ReplicationOrder = make([]int, 0, 4)
-	start := 0
-	for i := 0; i <= len(replicationOrderStr); i++ {
-		if i == len(replicationOrderStr) || replicationOrderStr[i] == ',' {
-			part := strings.TrimSpace(replicationOrderStr[start:i])
-			if part != "" {
-				order, err := strconv.Atoi(part)
-				if err != nil {
-					return ConfigurationGlobal{}, fmt.Errorf("failed to parse 'replication_order': %w", err)
-				}
-				globalCfg.ReplicationOrder = append(globalCfg.ReplicationOrder, order)
-			}
-			start = i + 1
+	parts := strings.Split(replicationOrderStr, ",")
+	globalCfg.ReplicationOrder = make([]int, 0, len(parts))
+	for _, part := range parts {
+		order, err := strconv.Atoi(strings.TrimSpace(part))
+		if err != nil {
+			return ConfigurationGlobal{}, fmt.Errorf("failed to parse 'replication_order': %w", err)
 		}
+		globalCfg.ReplicationOrder = append(globalCfg.ReplicationOrder, order)
 	}
 
 	globalCfg.PolymorphicSystem, err = section.Key("polymorphic_system").Bool()
 	if err != nil {
 		return ConfigurationGlobal{}, fmt.Errorf("failed to parse 'polymorphic_system': %w", err)
+	}
+
+	globalCfg.AuthToken = section.Key("auth_token").String()
+	if globalCfg.AuthToken == "" {
+		return ConfigurationGlobal{}, fmt.Errorf("'auth_token' is missing or empty")
 	}
 
 	// 🛡️ Sentinel: Fail securely if the AuthToken exceeds the maximum allowed length (64 bytes).
