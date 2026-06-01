@@ -109,7 +109,10 @@ func getFile(connection net.Conn, path string, fileName string, expectedHash str
 		}
 	}
 
-	hash := hex.EncodeToString(hashCalc.Sum(nil))
+	// ⚡ Bolt: Pre-allocate a fixed-size array on the stack and pass a zero-length slice of it
+	// to hashCalc.Sum() to eliminate the heap allocation and improve performance.
+	var sumBuf [sha256.Size]byte
+	hash := hex.EncodeToString(hashCalc.Sum(sumBuf[:0]))
 
 	if hash != expectedHash {
 		// 🛡️ Sentinel: Reject files with mismatched hashes to prevent integrity check bypass
