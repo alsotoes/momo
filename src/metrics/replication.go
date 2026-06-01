@@ -1,21 +1,21 @@
-// Package metrics provides the metrics collection and analysis functionality for the momo application.
 package metrics
 
 import (
 	"encoding/json"
 	"log"
+	"net"
 	"time"
 
 	momo_common "github.com/alsotoes/momo/src/common"
 )
 
-// pushNewReplicationMode notifies the primary daemon of a replication mode change.
-// It connects to the ChangeReplication endpoint of the first daemon listed in the configuration
-// and sends the AuthToken followed by a JSON payload containing the new replication mode and the current timestamp.
-func pushNewReplicationMode(cfg momo_common.Configuration, paddedAuthToken []byte, newReplicationMode int) {
-	log.Printf("Notifying primary daemon of new replication mode: %d", newReplicationMode)
+// pushNewReplicationMode connects to the primary server and sends a notification to change the replication mode.
+// ⚡ Bolt: Pass the pre-padded AuthToken to avoid redundant padding/allocation in each call.
+func pushNewReplicationMode(cfg momo_common.Configuration, paddedAuthToken []byte, newMode int) {
+	daemons := cfg.Daemons
+	log.Printf("Notifying primary daemon of new replication mode: %d", newMode)
 
-	conn, err := momo_common.DialSocket(cfg.Daemons[0].ChangeReplication)
+	conn, err := net.Dial("tcp", daemons[0].ChangeReplication)
 	if err != nil {
 		log.Printf("Dial error: %v", err)
 		return
@@ -23,13 +23,14 @@ func pushNewReplicationMode(cfg momo_common.Configuration, paddedAuthToken []byt
 	defer conn.Close()
 
 	data := momo_common.ReplicationData{
-		New:       newReplicationMode,
+		Old:       -1, // Not used by the primary server to update its own state
+		New:       newMode,
 		TimeStamp: time.Now().UnixNano(),
 	}
 
 	jsonData, err := json.Marshal(data)
 	if err != nil {
-		log.Printf("Encode error: %v", err)
+		log.Printf("Marshal error: %v", err)
 		return
 	}
 
