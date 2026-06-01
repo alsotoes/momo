@@ -109,6 +109,6 @@
 ## 2026-05-21 - Consolidate Network Writes and Reduce Allocations in Replication Metrics and Server
 **Learning:** In Go, repeatedly calling `conn.Write` or using `json.NewEncoder` for small payloads (like authentication tokens + JSON structs) causes unnecessary memory allocations and system call overhead.
 **Action:** Consolidate network writes by marshalling JSON first and appending it to a dynamically-sized buffer using `make` and `append`, then sending the unified byte slice via a single `conn.Write` call. This prevents string-to-byte allocation of JSON, the encoder's intermediate buffer allocation, and halves the number of write system calls while maintaining memory safety.
-## 2026-05-27 - Eliminate Heap Allocation in Cryptographic Hashes
-**Learning:** When computing cryptographic hashes using `hash.Sum(nil)` from `crypto/sha256` or similar, passing `nil` forces a heap allocation for the returned byte slice. In high-frequency operations like hashing files, this can add measurable GC overhead.
-**Action:** Always pre-allocate a fixed-size byte array on the stack (e.g., `var buf [sha256.Size]byte`) and slice it (`buf[:0]`) when passing it to `hash.Sum()` to avoid escaping the slice to the heap.
+## 2026-05-24 - Zero-Allocation SHA256 Sum
+**Learning:** When computing cryptographic hashes (e.g., `sha256.New()`), calling `hash.Sum(nil)` forces a heap allocation for the resulting byte slice, adding GC overhead.
+**Action:** Pre-allocate a fixed-size array on the stack (e.g., `var buf [sha256.Size]byte`) and pass a zero-length slice of it (`buf[:0]`) to `hash.Sum()` to eliminate the heap allocation and improve performance.
