@@ -77,10 +77,6 @@ func runServer(cfg common.Configuration, serverId int) error {
 	now := time.Now()
 	timestamp := now.UnixNano()
 
-	// 🛡️ Sentinel: Initialize the replication state with the default mode from configuration
-	// to ensure the server is ready even if the polymorphic system is disabled or slow to start.
-	server.SetReplicationState(cfg.Global.ReplicationOrder[0], timestamp)
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
