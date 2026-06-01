@@ -10,20 +10,18 @@ import (
 // HashFile calculates the SHA-256 hash of a file.
 // It takes the file path as input and returns the SHA-256 hash as a hex-encoded string.
 func HashFile(filePath string) (string, error) {
-	var returnHashString string
 	file, err := os.Open(filePath)
 	if err != nil {
-		return returnHashString, err
+		return "", err
 	}
 	defer file.Close()
 	hash := sha256.New()
 	if _, err := io.Copy(hash, file); err != nil {
-		return returnHashString, err
+		return "", err
 	}
 	// ⚡ Bolt: Pre-allocate a fixed-size array on the stack and pass a zero-length slice of it
 	// to hash.Sum() to eliminate the heap allocation and improve performance.
-	var sumBuf [sha256.Size]byte
-	hashInBytes := hash.Sum(sumBuf[:0])
-	returnHashString = hex.EncodeToString(hashInBytes)
-	return returnHashString, nil
+	var buf [sha256.Size]byte
+	hashInBytes := hash.Sum(buf[:0])
+	return hex.EncodeToString(hashInBytes), nil
 }
