@@ -145,8 +145,8 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 
 			// If this is the primary server, propagate the change to the other servers
 			if 0 == serverId {
-				go changeReplicationModeClient(expectedAuthToken, daemons, string(newReplicationJson), 1)
-				go changeReplicationModeClient(expectedAuthToken, daemons, string(newReplicationJson), 2)
+				go changeReplicationModeClient(expectedAuthToken, daemons, newReplicationJson, 1)
+				go changeReplicationModeClient(expectedAuthToken, daemons, newReplicationJson, 2)
 			}
 		}()
 	}
@@ -154,7 +154,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 
 // changeReplicationModeClient connects to another server in the cluster and sends the new replication mode.
 // It is used by the primary server to propagate replication mode changes to the other servers.
-func changeReplicationModeClient(paddedAuthToken []byte, daemons []*momo_common.Daemon, replicationJson string, serverId int) {
+func changeReplicationModeClient(paddedAuthToken []byte, daemons []*momo_common.Daemon, replicationJson []byte, serverId int) {
 	conn, err := momo_common.DialSocket(daemons[serverId].ChangeReplication)
 	if err != nil {
 		log.Printf("Dial error: %v", err)
@@ -162,13 +162,17 @@ func changeReplicationModeClient(paddedAuthToken []byte, daemons []*momo_common.
 	}
 	defer conn.Close()
 
-	// Send the AuthToken first
-	// ⚡ Bolt: Use the pre-computed AuthToken to eliminate redundant allocations and padding operations.
-	if _, err := conn.Write(paddedAuthToken); err != nil {
-		log.Printf("Failed to send AuthToken: %v", err)
+	// ⚡ Bolt: Consolidate AuthToken and JSON payload into a single optimally-sized buffer
+	// to avoid multiple `conn.Write` calls and `string` allocation overhead.
+	buf := make([]byte, 0, len(paddedAuthToken)+len(replicationJson)+1)
+	buf = append(buf, paddedAuthToken...)
+	buf = append(buf, replicationJson...)
+	buf = append(buf, '\n') // Add trailing newline for `json.Decoder` compatibility on the server
+
+	if _, err := conn.Write(buf); err != nil {
+		log.Printf("Failed to send AuthToken and ReplicationData: %v", err)
 		return
 	}
 
-	conn.Write([]byte(replicationJson))
 	log.Printf("ReplicationData sent to serverId: %d", serverId)
 }

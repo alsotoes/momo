@@ -143,7 +143,7 @@ func TestChangeReplicationModeClient(t *testing.T) {
 	jsonString := `{"New":5,"TimeStamp":1662756600}`
 
 	paddedAuthToken := []byte(momo_common.PadString(authToken, momo_common.AuthTokenLength))
-	changeReplicationModeClient(paddedAuthToken, daemons, jsonString, 0)
+	changeReplicationModeClient(paddedAuthToken, daemons, []byte(jsonString), 0)
 
 	// Assert: Verify the mock server received the correct data.
 	select {
@@ -158,7 +158,7 @@ func TestChangeReplicationModeClient(t *testing.T) {
 
 	select {
 	case data := <-receivedJSON:
-		trimmedData := strings.TrimRight(string(data), "\x00")
+		trimmedData := strings.TrimRight(string(data), "\x00\n")
 		if trimmedData != jsonString {
 			t.Errorf("Expected to receive '%s', but got '%s'", jsonString, trimmedData)
 		}
