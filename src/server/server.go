@@ -156,10 +156,10 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 				return
 			}
 
-			// 🛡️ Sentinel: Clear the strict handshake deadline to allow the client time to establish
-			// splay connections and start sending the file metadata. The connection is still protected
-			// by the rolling idle timeout during this idle period.
-			idleConn.SetAbsoluteDeadline(time.Time{})
+			// 🛡️ Sentinel: Extend the absolute deadline to allow the client time to establish
+			// splay connections and pre-compute file hashes before sending metadata.
+			// The connection remains protected by this 60-second absolute bound.
+			idleConn.SetAbsoluteDeadline(time.Now().Add(60 * time.Second))
 
 			metadata, err := getMetadata(idleConn)
 			if err != nil {
