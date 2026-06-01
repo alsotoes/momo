@@ -16,39 +16,38 @@ import (
 	momo_common "github.com/alsotoes/momo/src/common"
 )
 
-var replicationStateMutex sync.RWMutex
+var (
+	replicationState     momo_common.ReplicationData
+	replicationStateLock sync.RWMutex
+)
 
-// currentReplicationMode is the current replication mode of the server.
-var currentReplicationMode int = momo_common.ReplicationNone
-
-// replicationState stores the old and new replication modes, and the timestamp of the last change.
-var replicationState momo_common.ReplicationData
-
-// GetReplicationState safely returns the current replicationState
-func GetReplicationState() momo_common.ReplicationData {
-	replicationStateMutex.RLock()
-	defer replicationStateMutex.RUnlock()
-	return replicationState
-}
-
-// GetCurrentReplicationMode safely returns the current currentReplicationMode
-func GetCurrentReplicationMode() int {
-	replicationStateMutex.RLock()
-	defer replicationStateMutex.RUnlock()
-	return currentReplicationMode
-}
-
-// SetReplicationState safely updates currentReplicationMode and replicationState
+// SetReplicationState updates the global replication state with the new mode and timestamp.
+// It returns the updated state.
 func SetReplicationState(newMode int, timestamp int64) momo_common.ReplicationData {
-	replicationStateMutex.Lock()
-	defer replicationStateMutex.Unlock()
+	replicationStateLock.Lock()
+	defer replicationStateLock.Unlock()
 
-	replicationState.Old = currentReplicationMode
+	replicationState.Old = replicationState.New
 	replicationState.New = newMode
 	replicationState.TimeStamp = timestamp
-	currentReplicationMode = newMode
 
 	return replicationState
+}
+
+// GetReplicationState returns the current global replication state.
+func GetReplicationState() momo_common.ReplicationData {
+	replicationStateLock.RLock()
+	defer replicationStateLock.RUnlock()
+
+	return replicationState
+}
+
+// GetCurrentReplicationMode returns the current replication mode.
+func GetCurrentReplicationMode() int {
+	replicationStateLock.RLock()
+	defer replicationStateLock.RUnlock()
+
+	return replicationState.New
 }
 
 // ChangeReplicationModeServer listens for connections on a dedicated port and updates the replication mode of the server.

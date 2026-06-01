@@ -147,6 +147,13 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 				replicationMode = momo_common.ReplicationNone
 			}
 
+			// 🛡️ Sentinel: Ensure the replicationMode is within valid bounds.
+			// If it's 0 (the uninitialized value of the enum) or otherwise invalid,
+			// default to ReplicationNone to ensure the server processes the file.
+			if replicationMode == 0 {
+				replicationMode = momo_common.ReplicationNone
+			}
+
 			log.Printf("Cluster object global timestamp: %d", timestamp)
 			log.Printf("Server Daemon replicationMode: %d", replicationMode)
 			// ⚡ Bolt: Avoid string allocations during formatting by using a stack-allocated buffer
