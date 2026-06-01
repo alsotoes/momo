@@ -3,6 +3,7 @@ package common
 import (
 	"io"
 	"log"
+	"strings"
 )
 
 // LogStdOut configures the logging output for the application.
@@ -14,4 +15,11 @@ func LogStdOut(logApp bool) {
 	} else {
 		log.SetOutput(io.Discard)
 	}
+}
+
+// SanitizeLog sanitizes untrusted input before logging to prevent CRLF injection.
+func SanitizeLog(input string) string {
+	input = strings.ReplaceAll(input, "\n", "")
+	input = strings.ReplaceAll(input, "\r", "")
+	return input
 }
