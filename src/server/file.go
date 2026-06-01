@@ -101,9 +101,10 @@ func getFile(connection net.Conn, path string, fileName string, expectedHash str
 	hashCalc := sha256.New()
 	reader := io.TeeReader(connection, hashCalc)
 
-	// Optimization: Use a single io.CopyN instead of manually chunking in a loop.
+	// ⚡ Bolt: Use a stack-allocated buffer for file transfer to reduce heap allocations.
+	var copyBuf [32 * 1024]byte
 	if fileSize > 0 {
-		if _, copyErr := io.CopyN(newFile, reader, fileSize); copyErr != nil {
+		if _, copyErr := io.CopyBuffer(newFile, io.LimitReader(reader, fileSize), copyBuf[:]); copyErr != nil {
 			err = copyErr
 			return err
 		}

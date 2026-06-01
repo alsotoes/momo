@@ -159,9 +159,9 @@ func sendFile(wg *sync.WaitGroup, connection net.Conn, fileName string, meta *Fi
 	connection.Write(metadataBuffer[:])
 
 	// Send file content
-	// Optimization: Use io.Copy to avoid manual buffer allocation and read/write loops.
-	// This can leverage kernel-level zero-copy optimizations (e.g., sendfile).
-	if _, err := io.Copy(connection, file); err != nil {
+	// ⚡ Bolt: Use a stack-allocated buffer for file transfer to reduce heap allocations and improve throughput.
+	var copyBuf [32 * 1024]byte
+	if _, err := io.CopyBuffer(connection, file, copyBuf[:]); err != nil {
 		log.Printf("Error sending file %s: %v", fileName, err)
 		return
 	}
