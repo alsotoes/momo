@@ -92,11 +92,6 @@ func GetMetrics(ctx context.Context, cfg momo_common.Configuration, serverId int
 		return
 	}
 
-	if !cfg.Global.PolymorphicSystem {
-		log.Printf("Replication will not change because polymorphic_system is set to false")
-		return
-	}
-
 	log.Printf("Daemon GetMetrics started...")
 
 	// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
@@ -109,6 +104,11 @@ func GetMetrics(ctx context.Context, cfg momo_common.Configuration, serverId int
 	replicationOrder := cfg.Global.ReplicationOrder
 	currentIndex := 0
 	pushNewReplicationMode(cfg, paddedAuthToken, replicationOrder[currentIndex])
+
+	if !cfg.Global.PolymorphicSystem {
+		log.Printf("Replication will not change because polymorphic_system is set to false")
+		return
+	}
 
 	sm := &RealSystemMetrics{}
 	start := time.Now()
