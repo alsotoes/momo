@@ -20,10 +20,7 @@ func HashFile(filePath string) (string, error) {
 	if _, err := io.Copy(hash, file); err != nil {
 		return returnHashString, err
 	}
-	// ⚡ Bolt: Pre-allocate a fixed-size array on the stack and pass a zero-length slice of it
-	// to hash.Sum() to eliminate the heap allocation and improve performance.
-	var sumBuf [sha256.Size]byte
-	hashInBytes := hash.Sum(sumBuf[:0])
+	hashInBytes := hash.Sum(nil)
 	returnHashString = hex.EncodeToString(hashInBytes)
 	return returnHashString, nil
 }
