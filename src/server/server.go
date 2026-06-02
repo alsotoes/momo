@@ -4,8 +4,6 @@ package server
 import (
 	"context"
 	"crypto/subtle"
-	"fmt"
-	"io"
 	"log"
 	"net"
 	"strconv"
@@ -14,6 +12,11 @@ import (
 	"time"
 
 	momo_common "github.com/alsotoes/momo/src/common"
+	"io"
+)
+
+var (
+	daemons []*momo_common.Daemon
 )
 
 // connectToPeer is an alias for the momo_common.Connect function, used to connect to other servers in the cluster for data replication.
@@ -25,20 +28,16 @@ var connectToPeer = momo_common.Connect
 //
 // The server can operate in one of the following replication modes:
 //
-//   - ReplicationNone: The server saves the file without replicating it to other nodes.
-//   - ReplicationSplay: The primary server replicates the file to all other servers in the cluster.
-//   - ReplicationChain: Servers are arranged in a chain. The primary server replicates to the next server in the chain, which then replicates to the next, and so on.
-//   - ReplicationPrimarySplay: This mode is currently handled as ReplicationNone, which means no replication is performed.
-//
-// The replication mode is determined by the client, and for secondary servers, it's influenced by the timestamp of the operation.
+//   - ReplicationNone: No replication is performed.
+//   - ReplicationChain: Replication is performed in a chain (1 -> 2 -> 0).
+//   - ReplicationSplay: Replication is performed in a splay (0 -> 1, 0 -> 2).
+//   - ReplicationPrimarySplay: Primary server handles replication.
 func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) error {
-	daemons := cfg.Daemons
-	var timestamp int64
+	daemons = cfg.Daemons
 	server, err := net.Listen("tcp", daemons[serverId].Host)
 	if err != nil {
-		return fmt.Errorf("Error listening: %v", err)
+		return err
 	}
-
 	defer server.Close()
 
 	// Handle graceful shutdown via context
@@ -50,11 +49,9 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 	log.Printf("Server primary Daemon started... at %s", daemons[serverId].Host)
 	log.Printf("...Waiting for connections...")
 
-	// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
 	expectedAuthToken := []byte(momo_common.PadString(cfg.Global.AuthToken, momo_common.AuthTokenLength))
 
 	// 🛡️ Sentinel: Enforce a limit on concurrent connections to prevent resource exhaustion (DoS).
-	// Without this limit, an attacker could open unbounded connections, crashing the server via OOM or FD exhaustion.
 	const maxConcurrentConnections = 1000
 	sem := make(chan struct{}, maxConcurrentConnections)
 
@@ -121,13 +118,9 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 			log.Printf("AUDIT: Successful authentication from %s", remoteAddr)
 
 			// ⚡ Bolt: Parse timestamp directly from byte slice to avoid allocation
-			timestamp, err = parsePaddedIntFast(bufferTimestamp)
+			timestamp, err := parsePaddedIntFast(bufferTimestamp)
 			if err != nil {
-<<<<<<< HEAD
 				log.Printf("AUDIT: Error parsing timestamp from %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
-=======
-				log.Printf("AUDIT: Error parsing timestamp from %s: %v", momo_common.SanitizeLog(remoteAddr), momo_common.SanitizeLog(err.Error()))
->>>>>>> master
 				return
 			}
 
@@ -151,26 +144,30 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 				replicationMode = momo_common.ReplicationNone
 			}
 
+			// 🛡️ Sentinel: Ensure the replicationMode is within valid bounds.
+			// If it's 0 (the uninitialized value of the enum) or otherwise invalid,
+			// default to ReplicationNone to ensure the server processes the file.
+			if replicationMode == 0 {
+				replicationMode = momo_common.ReplicationNone
+			}
+
 			log.Printf("Cluster object global timestamp: %d", timestamp)
 			log.Printf("Server Daemon replicationMode: %d", replicationMode)
 			// ⚡ Bolt: Avoid string allocations during formatting by using a stack-allocated buffer
 			var repModeBuf [16]byte
 			if _, err := idleConn.Write(strconv.AppendInt(repModeBuf[:0], int64(replicationMode), 10)); err != nil {
-<<<<<<< HEAD
 				log.Printf("AUDIT: Error sending replication mode to %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
-=======
-				log.Printf("AUDIT: Error sending replication mode to %s: %v", momo_common.SanitizeLog(remoteAddr), momo_common.SanitizeLog(err.Error()))
->>>>>>> master
 				return
 			}
 
+			// 🛡️ Sentinel: Extend the absolute deadline to allow the client time to establish
+			// splay connections and pre-compute file hashes before sending metadata.
+			// The connection remains protected by this 60-second absolute bound.
+			idleConn.SetAbsoluteDeadline(time.Now().Add(60 * time.Second))
+
 			metadata, err := getMetadata(idleConn)
 			if err != nil {
-<<<<<<< HEAD
 				log.Printf("AUDIT: Error getting metadata from %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
-=======
-				log.Printf("AUDIT: Error getting metadata from %s: %v", momo_common.SanitizeLog(remoteAddr), momo_common.SanitizeLog(err.Error()))
->>>>>>> master
 				return
 			}
 
@@ -185,22 +182,14 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 			switch replicationMode {
 			case momo_common.ReplicationNone, momo_common.ReplicationPrimarySplay:
 				if err := getFile(idleConn, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size); err != nil {
-<<<<<<< HEAD
 					log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
-=======
-					log.Printf("AUDIT: Error getting file from %s: %v", momo_common.SanitizeLog(remoteAddr), momo_common.SanitizeLog(err.Error()))
->>>>>>> master
 					return
 				}
 			case momo_common.ReplicationChain:
 				if serverId == 1 {
 					wg.Add(1)
 					if err := getFile(idleConn, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size); err != nil {
-<<<<<<< HEAD
 						log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
-=======
-						log.Printf("AUDIT: Error getting file from %s: %v", momo_common.SanitizeLog(remoteAddr), momo_common.SanitizeLog(err.Error()))
->>>>>>> master
 						wg.Done()
 						return
 					}
@@ -209,11 +198,7 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 				} else {
 					wg.Add(1)
 					if err := getFile(idleConn, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size); err != nil {
-<<<<<<< HEAD
 						log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
-=======
-						log.Printf("AUDIT: Error getting file from %s: %v", momo_common.SanitizeLog(remoteAddr), momo_common.SanitizeLog(err.Error()))
->>>>>>> master
 						wg.Done()
 						return
 					}
@@ -223,11 +208,7 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 			case momo_common.ReplicationSplay:
 				wg.Add(2)
 				if err := getFile(idleConn, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size); err != nil {
-<<<<<<< HEAD
 					log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
-=======
-					log.Printf("AUDIT: Error getting file from %s: %v", momo_common.SanitizeLog(remoteAddr), momo_common.SanitizeLog(err.Error()))
->>>>>>> master
 					wg.Done() // Need to handle waitgroup correctly if one fails
 					wg.Done()
 					return
@@ -236,7 +217,7 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 				go connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 2, timestamp)
 				wg.Wait()
 			default:
-				log.Printf("AUDIT: *** ERROR: Unknown replication type from %s", momo_common.SanitizeLog(remoteAddr))
+				log.Printf("AUDIT: *** ERROR: Unknown replication type from %s", remoteAddr)
 				return
 			}
 			success = true
