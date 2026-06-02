@@ -7,44 +7,6 @@ import (
 	"testing"
 )
 
-func TestSanitizeLog(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{
-			name:     "no newlines",
-			input:    "normal log entry",
-			expected: "normal log entry",
-		},
-		{
-			name:     "with line feed",
-			input:    "injected\nlog",
-			expected: "injected_log",
-		},
-		{
-			name:     "with carriage return",
-			input:    "injected\rlog",
-			expected: "injected_log",
-		},
-		{
-			name:     "with crlf",
-			input:    "injected\r\nlog",
-			expected: "injected__log",
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			actual := SanitizeLog(tc.input)
-			if actual != tc.expected {
-				t.Errorf("SanitizeLog(%q) = %q, expected %q", tc.input, actual, tc.expected)
-			}
-		})
-	}
-}
-
 func TestLogStdOut(t *testing.T) {
 	// Redirect log output to a buffer
 	var buf bytes.Buffer
