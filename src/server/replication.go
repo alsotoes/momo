@@ -140,7 +140,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 			newState := SetReplicationState(replicationJson.New, replicationJson.TimeStamp)
 			newReplicationJson, _ := json.Marshal(newState)
 			// 🛡️ Sentinel: Audit log the sensitive operation
-			log.Printf("AUDIT: Replication mode changed to %d by %s", replicationJson.New, connection.RemoteAddr())
+			log.Printf("AUDIT: Replication mode changed to %d by %s", replicationJson.New, momo_common.SanitizeLog(connection.RemoteAddr().String()))
 			log.Printf("ReplicationData new struct: %s", string(newReplicationJson))
 
 			// If this is the primary server, propagate the change to the other servers
