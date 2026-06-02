@@ -65,7 +65,7 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 			case <-ctx.Done():
 				return nil // Shutting down gracefully
 			default:
-				log.Printf("Error accepting connection: %v", momo_common.SanitizeLog(err.Error()))
+				log.Printf("Error accepting connection: %v", err)
 				// 🛡️ Sentinel: Sleep briefly to prevent tight loop on transient errors (like EMFILE)
 				// and avoid DoS via os.Exit(1).
 				time.Sleep(10 * time.Millisecond)
@@ -82,7 +82,7 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 			var success bool
 
 			// 🛡️ Sentinel: Capture remote address for audit logging and traceability
-			remoteAddr := momo_common.SanitizeLog(conn.RemoteAddr().String())
+			remoteAddr := conn.RemoteAddr().String()
 
 			// 🛡️ Sentinel: Use an idle timeout to prevent Slowloris attacks without breaking large file uploads
 			idleConn := momo_common.NewIdleTimeoutConn(conn, 30*time.Second)
