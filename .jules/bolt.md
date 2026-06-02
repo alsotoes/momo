@@ -109,6 +109,6 @@
 ## 2026-05-21 - Consolidate Network Writes and Reduce Allocations in Replication Metrics and Server
 **Learning:** In Go, repeatedly calling `conn.Write` or using `json.NewEncoder` for small payloads (like authentication tokens + JSON structs) causes unnecessary memory allocations and system call overhead.
 **Action:** Consolidate network writes by marshalling JSON first and appending it to a dynamically-sized buffer using `make` and `append`, then sending the unified byte slice via a single `conn.Write` call. This prevents string-to-byte allocation of JSON, the encoder's intermediate buffer allocation, and halves the number of write system calls while maintaining memory safety.
-## 2026-05-28 - [Remove redundant reading of configuration AuthToken]
-**Learning:** During the parsing of configurations via `loadGlobalConfig`, the `auth_token` string property was fetched and checked for being empty twice. The redundant read operation didn't provide additional functionality, but slightly increased the memory processing time in micro benchmarks.
-**Action:** Removed the redundant code that read the `auth_token` value from the `global` section of the configurations again, thereby improving code readability and minimizing configuration parsing overhead.
+## 2026-05-29 - [Eliminate Heap Allocations for Hash Sum Calculations]
+**Learning:** When computing cryptographic hashes (e.g., `sha256.New()`), avoiding `hash.Sum(nil)` and instead using a stack-allocated byte array (`var buf [sha256.Size]byte`) and passing its slice (`buf[:0]`) avoids escaping the bytes to the heap.
+**Action:** When computing cryptographic hashes (e.g., `sha256.New()`), always pre-allocate a fixed-size array on the stack (e.g., `var buf [sha256.Size]byte`) and pass a zero-length slice of it (`buf[:0]`) to `hash.Sum()` to eliminate the heap allocation.

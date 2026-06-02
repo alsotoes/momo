@@ -109,7 +109,8 @@ func getFile(connection net.Conn, path string, fileName string, expectedHash str
 		}
 	}
 
-	hash := hex.EncodeToString(hashCalc.Sum(nil))
+	var buf [sha256.Size]byte
+	hash := hex.EncodeToString(hashCalc.Sum(buf[:0]))
 
 	if hash != expectedHash {
 		// 🛡️ Sentinel: Reject files with mismatched hashes to prevent integrity check bypass

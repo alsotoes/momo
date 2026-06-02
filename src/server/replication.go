@@ -117,22 +117,22 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 			// ⚡ Bolt: Stack allocate buffer to avoid heap allocations
 			var bufferAuthToken [momo_common.AuthTokenLength]byte
 			if _, err := io.ReadFull(connection, bufferAuthToken[:]); err != nil {
-				log.Printf("AUDIT: Error reading AuthToken from %s: %v", connection.RemoteAddr(), err)
+				log.Printf("Error reading AuthToken from %s: %v", connection.RemoteAddr(), err)
 				return
 			}
 			// 🛡️ Sentinel: Use constant-time comparison to prevent timing attacks during authentication
 			if subtle.ConstantTimeCompare(bufferAuthToken[:], expectedAuthToken) != 1 {
-				log.Printf("AUDIT: Invalid AuthToken received from %s: %v", connection.RemoteAddr(), syscall.EACCES)
+				log.Printf("Invalid AuthToken received from %s: %v", connection.RemoteAddr(), syscall.EACCES)
 				return
 			}
 			// 🛡️ Sentinel: Add audit logging for successful authentication
-			log.Printf("AUDIT: Successful authentication for changeReplicationMode from %s", connection.RemoteAddr())
+			log.Printf("Successful authentication for changeReplicationMode from %s", connection.RemoteAddr())
 
 			// Decode the replication data directly from the connection
 			// 🛡️ Sentinel: Limit the JSON payload size to prevent DoS via memory exhaustion
 			replicationJson := momo_common.ReplicationData{}
 			if err := json.NewDecoder(io.LimitReader(connection, 1024)).Decode(&replicationJson); err != nil {
-				log.Printf("AUDIT: Failed to decode replication data from %s: %v", connection.RemoteAddr(), err)
+				log.Printf("Failed to decode replication data from %s: %v", connection.RemoteAddr(), err)
 				return
 			}
 
