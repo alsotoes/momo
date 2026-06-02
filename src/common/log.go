@@ -17,9 +17,9 @@ func LogStdOut(logApp bool) {
 	}
 }
 
-// SanitizeLog sanitizes untrusted input before logging to prevent CRLF injection.
+// SanitizeLog removes CRLF characters from a string to prevent log injection.
 func SanitizeLog(input string) string {
-	input = strings.ReplaceAll(input, "\n", "")
-	input = strings.ReplaceAll(input, "\r", "")
-	return input
+	s := strings.ReplaceAll(input, "\n", "_")
+	s = strings.ReplaceAll(s, "\r", "_")
+	return s
 }
