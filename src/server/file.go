@@ -109,7 +109,9 @@ func getFile(connection net.Conn, path string, fileName string, expectedHash str
 		}
 	}
 
-	hash := hex.EncodeToString(hashCalc.Sum(nil))
+	// ⚡ Bolt: Eliminate heap allocation by using a stack-allocated buffer for the hash sum.
+	var buf [sha256.Size]byte
+	hash := hex.EncodeToString(hashCalc.Sum(buf[:0]))
 
 	if hash != expectedHash {
 		// 🛡️ Sentinel: Reject files with mismatched hashes to prevent integrity check bypass
@@ -124,9 +126,9 @@ func getFile(connection net.Conn, path string, fileName string, expectedHash str
 		return err
 	}
 
-	log.Printf("=> Expected Hash: %s", momo_common.SanitizeLog(expectedHash))
-	log.Printf("=> Actual Hash:   %s", hash) // our own generated hash is safe
-	log.Printf("=> Name:          %s", momo_common.SanitizeLog(fullPath))
+	log.Printf("=> Expected Hash: %s", expectedHash)
+	log.Printf("=> Actual Hash:   %s", hash)
+	log.Printf("=> Name:          %s", fullPath)
 	log.Printf("Received file completely!")
 	log.Printf("Sending ACK to client connection")
 	return nil

@@ -16,38 +16,39 @@ import (
 	momo_common "github.com/alsotoes/momo/src/common"
 )
 
-var (
-	replicationState     momo_common.ReplicationData
-	replicationStateLock sync.RWMutex
-)
+var replicationStateMutex sync.RWMutex
 
-// SetReplicationState updates the global replication state with the new mode and timestamp.
-// It returns the updated state.
+// currentReplicationMode is the current replication mode of the server.
+var currentReplicationMode int = momo_common.ReplicationNone
+
+// replicationState stores the old and new replication modes, and the timestamp of the last change.
+var replicationState momo_common.ReplicationData
+
+// GetReplicationState safely returns the current replicationState
+func GetReplicationState() momo_common.ReplicationData {
+	replicationStateMutex.RLock()
+	defer replicationStateMutex.RUnlock()
+	return replicationState
+}
+
+// GetCurrentReplicationMode safely returns the current currentReplicationMode
+func GetCurrentReplicationMode() int {
+	replicationStateMutex.RLock()
+	defer replicationStateMutex.RUnlock()
+	return currentReplicationMode
+}
+
+// SetReplicationState safely updates currentReplicationMode and replicationState
 func SetReplicationState(newMode int, timestamp int64) momo_common.ReplicationData {
-	replicationStateLock.Lock()
-	defer replicationStateLock.Unlock()
+	replicationStateMutex.Lock()
+	defer replicationStateMutex.Unlock()
 
-	replicationState.Old = replicationState.New
+	replicationState.Old = currentReplicationMode
 	replicationState.New = newMode
 	replicationState.TimeStamp = timestamp
+	currentReplicationMode = newMode
 
 	return replicationState
-}
-
-// GetReplicationState returns the current global replication state.
-func GetReplicationState() momo_common.ReplicationData {
-	replicationStateLock.RLock()
-	defer replicationStateLock.RUnlock()
-
-	return replicationState
-}
-
-// GetCurrentReplicationMode returns the current replication mode.
-func GetCurrentReplicationMode() int {
-	replicationStateLock.RLock()
-	defer replicationStateLock.RUnlock()
-
-	return replicationState.New
 }
 
 // ChangeReplicationModeServer listens for connections on a dedicated port and updates the replication mode of the server.
@@ -112,28 +113,26 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 			// 🛡️ Sentinel: Enforce a read/write timeout to prevent slowloris DoS attacks
 			connection.SetDeadline(time.Now().Add(10 * time.Second))
 
-			remoteAddr := momo_common.SanitizeLog(connection.RemoteAddr().String())
-
 			// Read and validate the AuthToken
 			// ⚡ Bolt: Stack allocate buffer to avoid heap allocations
 			var bufferAuthToken [momo_common.AuthTokenLength]byte
 			if _, err := io.ReadFull(connection, bufferAuthToken[:]); err != nil {
-				log.Printf("AUDIT: Error reading AuthToken from %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
+				log.Printf("AUDIT: Error reading AuthToken from %s: %v", connection.RemoteAddr(), momo_common.SanitizeLog(err.Error()))
 				return
 			}
 			// 🛡️ Sentinel: Use constant-time comparison to prevent timing attacks during authentication
 			if subtle.ConstantTimeCompare(bufferAuthToken[:], expectedAuthToken) != 1 {
-				log.Printf("AUDIT: Invalid AuthToken received from %s: %v", remoteAddr, syscall.EACCES)
+				log.Printf("AUDIT: Invalid AuthToken received from %s: %v", connection.RemoteAddr(), syscall.EACCES)
 				return
 			}
 			// 🛡️ Sentinel: Add audit logging for successful authentication
-			log.Printf("AUDIT: Successful authentication for changeReplicationMode from %s", remoteAddr)
+			log.Printf("AUDIT: Successful authentication for changeReplicationMode from %s", connection.RemoteAddr())
 
 			// Decode the replication data directly from the connection
 			// 🛡️ Sentinel: Limit the JSON payload size to prevent DoS via memory exhaustion
 			replicationJson := momo_common.ReplicationData{}
 			if err := json.NewDecoder(io.LimitReader(connection, 1024)).Decode(&replicationJson); err != nil {
-				log.Printf("AUDIT: Failed to decode replication data from %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
+				log.Printf("AUDIT: Failed to decode replication data from %s: %v", connection.RemoteAddr(), momo_common.SanitizeLog(err.Error()))
 				return
 			}
 
@@ -141,7 +140,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 			newState := SetReplicationState(replicationJson.New, replicationJson.TimeStamp)
 			newReplicationJson, _ := json.Marshal(newState)
 			// 🛡️ Sentinel: Audit log the sensitive operation
-			log.Printf("AUDIT: Replication mode changed to %d by %s", replicationJson.New, remoteAddr)
+			log.Printf("AUDIT: Replication mode changed to %d by %s", replicationJson.New, connection.RemoteAddr())
 			log.Printf("ReplicationData new struct: %s", string(newReplicationJson))
 
 			// If this is the primary server, propagate the change to the other servers
