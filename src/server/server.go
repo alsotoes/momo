@@ -4,6 +4,8 @@ package server
 import (
 	"context"
 	"crypto/subtle"
+	"fmt"
+	"io"
 	"log"
 	"net"
 	"strconv"
@@ -12,11 +14,6 @@ import (
 	"time"
 
 	momo_common "github.com/alsotoes/momo/src/common"
-	"io"
-)
-
-var (
-	daemons []*momo_common.Daemon
 )
 
 // connectToPeer is an alias for the momo_common.Connect function, used to connect to other servers in the cluster for data replication.
@@ -28,16 +25,20 @@ var connectToPeer = momo_common.Connect
 //
 // The server can operate in one of the following replication modes:
 //
-//   - ReplicationNone: No replication is performed.
-//   - ReplicationChain: Replication is performed in a chain (1 -> 2 -> 0).
-//   - ReplicationSplay: Replication is performed in a splay (0 -> 1, 0 -> 2).
-//   - ReplicationPrimarySplay: Primary server handles replication.
+//   - ReplicationNone: The server saves the file without replicating it to other nodes.
+//   - ReplicationSplay: The primary server replicates the file to all other servers in the cluster.
+//   - ReplicationChain: Servers are arranged in a chain. The primary server replicates to the next server in the chain, which then replicates to the next, and so on.
+//   - ReplicationPrimarySplay: This mode is currently handled as ReplicationNone, which means no replication is performed.
+//
+// The replication mode is determined by the client, and for secondary servers, it's influenced by the timestamp of the operation.
 func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) error {
-	daemons = cfg.Daemons
+	daemons := cfg.Daemons
+	var timestamp int64
 	server, err := net.Listen("tcp", daemons[serverId].Host)
 	if err != nil {
-		return err
+		return fmt.Errorf("Error listening: %v", err)
 	}
+
 	defer server.Close()
 
 	// Handle graceful shutdown via context
@@ -49,9 +50,11 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 	log.Printf("Server primary Daemon started... at %s", daemons[serverId].Host)
 	log.Printf("...Waiting for connections...")
 
+	// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
 	expectedAuthToken := []byte(momo_common.PadString(cfg.Global.AuthToken, momo_common.AuthTokenLength))
 
 	// 🛡️ Sentinel: Enforce a limit on concurrent connections to prevent resource exhaustion (DoS).
+	// Without this limit, an attacker could open unbounded connections, crashing the server via OOM or FD exhaustion.
 	const maxConcurrentConnections = 1000
 	sem := make(chan struct{}, maxConcurrentConnections)
 
@@ -83,6 +86,10 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 
 			// 🛡️ Sentinel: Use an idle timeout to prevent Slowloris attacks without breaking large file uploads
 			idleConn := momo_common.NewIdleTimeoutConn(conn, 30*time.Second)
+
+			// 🛡️ Sentinel: Apply a strict absolute deadline for the handshake phase to prevent Slowloris trickle attacks
+			// before the dynamic file transfer deadline is calculated.
+			idleConn.SetAbsoluteDeadline(time.Now().Add(10 * time.Second))
 
 			// 🛡️ Sentinel: Apply a strict absolute deadline for the handshake phase to prevent Slowloris trickle attacks.
 			// This deadline is explicitly recalculated and extended before the actual file transfer begins.
@@ -118,7 +125,7 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 			log.Printf("AUDIT: Successful authentication from %s", remoteAddr)
 
 			// ⚡ Bolt: Parse timestamp directly from byte slice to avoid allocation
-			timestamp, err := parsePaddedIntFast(bufferTimestamp)
+			timestamp, err = parsePaddedIntFast(bufferTimestamp)
 			if err != nil {
 				log.Printf("AUDIT: Error parsing timestamp from %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
 				return
@@ -144,13 +151,6 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 				replicationMode = momo_common.ReplicationNone
 			}
 
-			// 🛡️ Sentinel: Ensure the replicationMode is within valid bounds.
-			// If it's 0 (the uninitialized value of the enum) or otherwise invalid,
-			// default to ReplicationNone to ensure the server processes the file.
-			if replicationMode == 0 {
-				replicationMode = momo_common.ReplicationNone
-			}
-
 			log.Printf("Cluster object global timestamp: %d", timestamp)
 			log.Printf("Server Daemon replicationMode: %d", replicationMode)
 			// ⚡ Bolt: Avoid string allocations during formatting by using a stack-allocated buffer
@@ -159,11 +159,6 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 				log.Printf("AUDIT: Error sending replication mode to %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
 				return
 			}
-
-			// 🛡️ Sentinel: Extend the absolute deadline to allow the client time to establish
-			// splay connections and pre-compute file hashes before sending metadata.
-			// The connection remains protected by this 60-second absolute bound.
-			idleConn.SetAbsoluteDeadline(time.Now().Add(60 * time.Second))
 
 			metadata, err := getMetadata(idleConn)
 			if err != nil {
