@@ -162,7 +162,9 @@ func TestGetFileTraversal(t *testing.T) {
 
 	hash := sha256.New()
 	io.WriteString(hash, fileContent)
-	fileHash := hex.EncodeToString(hash.Sum(nil))
+	// ⚡ Bolt: Eliminate heap allocation by using a stack-allocated array for the hash sum.
+	var hashBuf [sha256.Size]byte
+	fileHash := hex.EncodeToString(hash.Sum(hashBuf[:0]))
 	fileSize := int64(len(fileContent))
 
 	go func() {
