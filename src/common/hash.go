@@ -22,6 +22,11 @@ func HashFile(filePath string) (string, error) {
 	}
 	var buf [sha256.Size]byte
 	hashInBytes := hash.Sum(buf[:0])
-	returnHashString = hex.EncodeToString(hashInBytes)
+
+	// ⚡ Bolt: Eliminate heap allocation by using a stack-allocated byte array for hex encoding.
+	var hexBuf [sha256.Size * 2]byte
+	hex.Encode(hexBuf[:], hashInBytes)
+	returnHashString = string(hexBuf[:])
+
 	return returnHashString, nil
 }

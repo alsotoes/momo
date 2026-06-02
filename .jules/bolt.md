@@ -112,3 +112,6 @@
 ## 2026-05-29 - [Eliminate Heap Allocations for Hash Sum Calculations]
 **Learning:** When computing cryptographic hashes (e.g., `sha256.New()`), avoiding `hash.Sum(nil)` and instead using a stack-allocated byte array (`var buf [sha256.Size]byte`) and passing its slice (`buf[:0]`) avoids escaping the bytes to the heap.
 **Action:** When computing cryptographic hashes (e.g., `sha256.New()`), always pre-allocate a fixed-size array on the stack (e.g., `var buf [sha256.Size]byte`) and pass a zero-length slice of it (`buf[:0]`) to `hash.Sum()` to eliminate the heap allocation.
+## 2026-06-02 - Eliminate heap allocations in hex.EncodeToString
+**Learning:** Using `hex.EncodeToString(hash)` creates a dynamic allocation and copies the hash bytes, leading to unnecessary heap escapes.
+**Action:** Replace `hex.EncodeToString` with a stack-allocated byte array (`var hexBuf [sha256.Size * 2]byte`), encode into it with `hex.Encode(hexBuf[:], hash)`, and convert it to a string. This eliminates the intermediate slice allocation, saving memory and CPU cycles during hot path hash calculations.
