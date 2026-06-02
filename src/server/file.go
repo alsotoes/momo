@@ -109,9 +109,10 @@ func getFile(connection net.Conn, path string, fileName string, expectedHash str
 		}
 	}
 
-	// ⚡ Bolt: Eliminate heap allocation by using a stack-allocated array for the hash sum.
-	var hashBuf [sha256.Size]byte
-	hash := hex.EncodeToString(hashCalc.Sum(hashBuf[:0]))
+	// ⚡ Bolt: Pre-allocate a fixed-size array on the stack and pass a zero-length slice of it
+	// to hashCalc.Sum() to eliminate the heap allocation and improve performance.
+	var buf [sha256.Size]byte
+	hash := hex.EncodeToString(hashCalc.Sum(buf[:0]))
 
 	if hash != expectedHash {
 		// 🛡️ Sentinel: Reject files with mismatched hashes to prevent integrity check bypass
