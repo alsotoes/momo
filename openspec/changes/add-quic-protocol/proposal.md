@@ -1,30 +1,37 @@
-# Change: QUIC Protocol for Global Cluster Replication
-**Related Issue:** #132
+# Change: Robust Multi-Protocol Transport Layer
+**Related Issues:** #132, #133
 
 ## Why
-Momo currently relies on standard TCP for all file transfers. While efficient for local networks, TCP suffers from Head-of-Line (HoL) blocking and high latency under packet loss, especially in geographically distributed clusters or over unstable WAN links. Implementing the QUIC protocol (UDP-based multiplexing) across **all replication modes** (None, Chain, Splay, PrimarySplay) will drastically improve throughput, security, and stability for both edge clients and internal cluster communication.
+Momo currently supports a custom custom wire protocol over TCP. As the cluster grows and targets different environments (distributed WANs, cloud-native storage), the system must support multiple transport and protocol combinations (e.g., `momo-tcp`, `momo-quic`, `s3-tcp`, `s3-quic`). This allows Momo to be used as a standalone high-performance replicator or as an S3-compatible gateway over reliable or lossy links.
 
-### Architectural Rationale: QUIC as the Standard Transport
-Using QUIC (Quick UDP Internet Connections) globally provides a modern, secure-by-default foundation for Momo:
+### Architectural Rationale: Protocol/Transport Decoupling
+To support multiple stacks robustly, Momo will adopt a **Factory-based Plugin Architecture**:
 
-#### Advantages for All Replication Tiers
-- **Eliminates Head-of-Line (HOL) Blocking:** QUIC supports multiple independent streams. A lost packet in one replication path (e.g., node 0 to node 1) does not stall other concurrent transfers.
-- **Superior Performance on Unstable Networks:** QUIC's resilience to packet loss ensures high throughput even on suboptimal network links between data centers or edge nodes.
-- **Mandatory Encryption:** QUIC requires TLS 1.3, providing end-to-end encryption for all file data and metadata by default, removing the risk of plain-text TCP sniffing.
-- **Connection Migration:** Internal replication can recover seamlessly from transient network changes or IP rotations without breaking long-running file transfers.
-- **Faster Handshakes:** 0-RTT/1-RTT handshakes reduce the latency of initiating replication steps.
+#### 1. Transport-Protocol Matrix
+| Protocol Variant | Logic Implementation | Carrier Transport | Use Case |
+| :--- | :--- | :--- | :--- |
+| `momo-tcp` | Custom Momo Wire Format | Plain TCP | High-speed LAN / Legacy |
+| `momo-quic` | Custom Momo Wire Format | QUIC (UDP) | Unstable WAN / Secure-by-default |
+| `s3-tcp` | S3 API Compatibility | HTTP/TCP | Cloud Integration / Interop |
+| `s3-quic` | S3 API Compatibility | HTTP/3 (QUIC) | Geographically Distributed S3 |
 
-#### Coexistence and Transition
-- **Dual-Stack Support:** Daemons will listen on both TCP and UDP/QUIC ports to maintain backward compatibility and allow for a gradual transition.
-- **Protocol Configuration:** A new `protocol` field in the `[global]` section of `momo.conf` will explicitly control the preferred transport (`protocol=tcp` or `protocol=quic`). This ensures all replication modes behave identically from a logic perspective while utilizing the chosen network stack.
-- **Polymorphic Transport:** The system will dynamically choose the best transport based on this configuration, providing a fallback to TCP for high-speed local LANs where kernel-level optimization is required.
+#### 2. Robust Configuration
+Instead of fragmented settings, a single `protocol` field in the `[global]` section will act as a selector for the entire network stack:
+```ini
+[global]
+# Format: <logic>-<transport>
+protocol=momo-quic 
+```
+
+#### 3. Unified Abstraction
+A `Transport` interface will unify `net.Conn` and `quic.Stream`, while a `ProtocolHandler` interface will encapsulate the handshake and data framing logic for both `momo` and `s3` variants.
 
 ## What Changes
-- Integrate `github.com/quic-go/quic-go` into the Momo technology stack.
-- Implement a **Transport-Agnostic Layer** in `src/common` to unify `net.Conn` and `quic.Stream` operations.
-- Upgrade UDP/QUIC listeners to run globally on all server nodes, handling all replication mode logic.
-- Refactor `Connect`, `SendFile`, and `getFile` to support QUIC multiplexing across all modes.
-- Ensure dynamic hot-swapping remains fully functional: connections of either protocol must finish gracefully during configuration shifts.
+- Integrate `github.com/quic-go/quic-go` for QUIC/H3 support.
+- Implement a `ProtocolFactory` in `src/common` that instantiates the correct `Transport` and `ProtocolHandler` based on the `protocol` configuration.
+- Add an `S3ProtocolHandler` stub for future integration (Issue #133).
+- Ensure the `momo` logic is fully transport-agnostic.
+- Update `loadGlobalConfig` to parse and validate the composite `protocol` string, with a warning-level fallback to `momo-tcp`.
 
 ## Impact
 - Affected specs: `replication`, `security`

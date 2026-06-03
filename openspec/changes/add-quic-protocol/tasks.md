@@ -1,12 +1,21 @@
-## 1. Implementation
-- [ ] 1.1 Add the `github.com/quic-go/quic-go` dependency to the project workspace.
-- [ ] 1.2 Update `src/common/config.go` to parse the new `protocol` field from the `[global]` section, defaulting to `tcp`.
-    - [ ] 1.2.1 Log a warning if `protocol` is missing, explicitly stating fallback to `tcp`.
-- [ ] 1.3 Implement a **Transport-Agnostic Connection Interface** in `src/common` to unify `net.Conn` and `quic.Stream`.
-- [ ] 1.3 Implement a global QUIC listener in `src/server` that binds to a UDP port on all server nodes, capable of handling all replication modes.
-- [ ] 1.4 Refactor `Connect`, `SendFile`, and `getFile` to utilize the new transport abstraction, allowing any mode to run over QUIC.
-- [ ] 1.5 Update the client and internal peer dialers to support a "QUIC-Preferred" mode with transparent TCP fallback.
-- [ ] 1.6 Maintain Momo's strict 19/32/64-byte metadata padding standard on QUIC streams identically to the TCP implementation.
-- [ ] 1.7 Add table-driven unit tests validating the unified transport layer and dual-protocol handshake logic.
-- [ ] 1.8 Add E2E tests validating that `Chain` and `Splay` modes work correctly over QUIC between distributed server nodes.
-- [ ] 1.9 Assert concurrency safety and resource management across both TCP and UDP/QUIC handlers.
+## 1. Foundation
+- [ ] 1.1 Add the `github.com/quic-go/quic-go` dependency.
+- [ ] 1.2 Define the `Transport` interface in `src/common` to unify `net.Conn` and `quic.Stream`.
+- [ ] 1.3 Define the `ProtocolHandler` interface to encapsulate handshake and data framing logic.
+
+## 2. Configuration & Factory
+- [ ] 2.1 Update `src/common/config.go` to parse and validate the composite `protocol` field.
+    - [ ] 2.1.1 Implement the logic to log a warning and fallback to `momo-tcp` if missing.
+    - [ ] 2.1.2 Implement critical failure logic for unknown protocols.
+- [ ] 2.2 Implement the `ProtocolFactory` in `src/common` to instantiate requested stacks.
+
+## 3. Implementation
+- [ ] 3.1 Refactor current Momo TCP logic into a `MomoProtocolHandler` using the `TCPTransport`.
+- [ ] 3.2 Implement `MomoProtocolHandler` over `QUICTransport`.
+- [ ] 3.3 Create a stub for `S3ProtocolHandler` as per Issue #133.
+- [ ] 3.4 Upgrade the `Daemon` to start listeners for both TCP and QUIC concurrently if configured.
+
+## 4. Verification
+- [ ] 4.1 Unit tests for the `ProtocolFactory` selector.
+- [ ] 4.2 Integration tests for `momo-quic` file transfers.
+- [ ] 4.3 E2E benchmark comparing `momo-tcp` and `momo-quic` over high-latency links.

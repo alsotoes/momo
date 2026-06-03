@@ -1,37 +1,27 @@
 ## ADDED Requirements
-### Requirement: Universal QUIC Transport Support
-The system SHALL support the QUIC protocol (UDP) as a standard transport layer for ALL replication modes (None, Chain, Splay, PrimarySplay). This enables higher resilience and mandatory encryption for both external client uploads and internal cluster replication.
+### Requirement: Multi-Protocol Transport Abstraction
+The system SHALL support a modular transport architecture allowing for multiple protocol-transport combinations (`momo-tcp`, `momo-quic`, `s3-tcp`, `s3-quic`).
 
-#### Scenario: Global QUIC utilization
-- **WHEN** the cluster is configured to prefer QUIC
-- **THEN** all data transfers (External and Internal) must establish QUIC connections
-- **AND** the payload and metadata must be streamed utilizing QUIC multiplexing
-- **AND** all traffic must be encrypted via TLS 1.3 as mandated by the protocol
+#### Scenario: Instantiating the Protocol Stack
+- **WHEN** the `protocol` key is set to `s3-quic`
+- **THEN** the system must utilize the `S3API` logic over a `QUIC` transport
+- **AND** if set to `momo-tcp`, it must maintain backward compatibility with the existing wire protocol over plain TCP
 
-### Requirement: Transport-Agnostic Processing
-The daemons SHALL implement a transport-agnostic processing layer that handles metadata and file streams identically, regardless of whether the underlying transport is TCP or QUIC.
+### Requirement: Robust Stack Configuration
+The system SHALL utilize a single composite `protocol` string in the `[global]` section of `momo.conf` to configure the network stack.
 
-#### Scenario: Seamless Protocol Coexistence
-- **WHEN** a daemon receives concurrent file transfers on both its TCP and UDP/QUIC listeners
-- **THEN** it must process both streams using the same business logic, validation rules (SHA-256), and storage paths
-- **AND** it must maintain separate connection quotas for each transport to prevent resource exhaustion
+#### Scenario: Validating stack configuration
+- **GIVEN** a configuration with an unknown protocol string (e.g., `protocol=xyz-ftp`)
+- **WHEN** the system initializes
+- **THEN** it must log a CRITICAL error and fail to start
+- **GIVEN** a missing protocol field
+- **WHEN** the system initializes
+- **THEN** it must log a WARNING: "No protocol definition found, falling back to default (momo-tcp)"
+- **AND** proceed using the legacy TCP stack
 
-### Requirement: Protocol Configuration
-The system SHALL expose a `protocol` setting in the `[global]` section of the configuration file to allow explicit selection of the transport layer.
+### Requirement: Universal QUIC/TCP Coexistence
+The daemons SHALL support simultaneous listening for both TCP and QUIC packets on the same configured host address, allowing the cluster to handle heterogeneous clients.
 
-#### Scenario: Configuring the transport protocol
-- **GIVEN** a configuration file with `[global]` section containing `protocol=quic`
-- **WHEN** the daemon starts or a client initiates a transfer
-- **THEN** the system must utilize the QUIC transport for all replication modes
-- **AND** if `protocol=tcp` is set, the system must maintain its original TCP-only behavior
-- **AND** the default protocol SHALL be `tcp` if the field is missing
-- **AND** if the `protocol` field is missing, the system SHALL log a warning: "No protocol definition found, falling back to default (tcp)"
-
-### Requirement: Protocol Hot-Swapping
-The system SHALL support seamless transitioning between TCP and QUIC based on dynamic configuration or network conditions.
-
-#### Scenario: Switching preferred transport
-- **WHEN** the cluster-wide configuration shifts the preferred transport from TCP to QUIC
-- **THEN** new connections must attempt to dial via QUIC first, falling back to TCP only if specified
-- **AND** existing connections must complete their transfers using their original transport cleanly
-- **AND** the transition must not require manual daemon restarts or cause data corruption
+#### Scenario: Transport-Agnostic File Processing
+- **WHEN** a file is received via QUIC/S3 or TCP/Momo
+- **THEN** the core business logic (replication fan-out, storage, hash validation) must remain identical and unaffected by the transport choice
