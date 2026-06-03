@@ -43,7 +43,7 @@ func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, curren
 
 	v, err := sm.VirtualMemory()
 	if err != nil {
-		log.Printf("Error getting memory metrics: %v", err)
+		log.Printf("Error getting memory metrics: %v", momo_common.SanitizeLog(err.Error()))
 		return currentIndex, false
 	}
 
@@ -62,7 +62,7 @@ func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, curren
 
 	c, err := sm.CPUPercent()
 	if err != nil {
-		log.Printf("Error getting cpu metrics: %v", err)
+		log.Printf("Error getting cpu metrics: %v", momo_common.SanitizeLog(err.Error()))
 		return currentIndex, false
 	}
 	cpuUsed := c[0]
@@ -116,33 +116,33 @@ func GetMetrics(ctx context.Context, cfg momo_common.Configuration, serverId int
 	fallbackDuration := time.Duration(cfg.Metrics.FallbackInterval) * time.Millisecond
 	intervalDuration := time.Duration(cfg.Metrics.Interval) * time.Millisecond
 
+	ticker := time.NewTicker(intervalDuration)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		default:
-		}
-
-		newIndex, changed := checkMetricsAndSwap(cfg, sm, currentIndex, replicationOrder, maxThreshPercent, minThreshPercent)
-		if changed {
-			currentIndex = newIndex
-			pushNewReplicationMode(cfg, paddedAuthToken, replicationOrder[currentIndex])
-			start = time.Now()
-		}
-
-		// Change replication mode by timeout fallback
-		now := time.Now()
-		if now.Sub(start) > fallbackDuration {
-			if currentIndex > 0 {
-				log.Printf("Replication fallback because of timeout")
-				currentIndex--
+		case <-ticker.C:
+			newIndex, changed := checkMetricsAndSwap(cfg, sm, currentIndex, replicationOrder, maxThreshPercent, minThreshPercent)
+			if changed {
+				currentIndex = newIndex
 				pushNewReplicationMode(cfg, paddedAuthToken, replicationOrder[currentIndex])
 				start = time.Now()
-			} else {
-				log.Printf("Replication method has no fallback")
+			}
+
+			// Change replication mode by timeout fallback
+			now := time.Now()
+			if now.Sub(start) > fallbackDuration {
+				if currentIndex > 0 {
+					log.Printf("Replication fallback because of timeout")
+					currentIndex--
+					pushNewReplicationMode(cfg, paddedAuthToken, replicationOrder[currentIndex])
+					start = time.Now()
+				} else {
+					log.Printf("Replication method has no fallback")
+				}
 			}
 		}
-
-		time.Sleep(intervalDuration)
 	}
 }

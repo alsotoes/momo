@@ -38,7 +38,7 @@ func Run() {
 
 	cfg, err := common.GetConfig(*configPathPtr)
 	if err != nil {
-		log.Fatalf("Failed to get config: %v", err)
+		log.Fatalf("Failed to get config: %v", common.SanitizeLog(err.Error()))
 	}
 
 	common.LogStdOut(cfg.Global.Debug)
@@ -62,10 +62,10 @@ func Run() {
 		wg.Wait()
 	case "server":
 		if err := runServer(cfg, *serverIdPtr); err != nil {
-			log.Fatalf("Server error: %v", err)
+			log.Fatalf("Server error: %v", common.SanitizeLog(err.Error()))
 		}
 	default:
-		log.Fatalf("*** ERROR: Option unknown: %s", *impersonationPtr)
+		log.Fatalf("*** ERROR: Option unknown: %s", common.SanitizeLog(*impersonationPtr))
 	}
 }
 
@@ -83,14 +83,29 @@ func runServer(cfg common.Configuration, serverId int) error {
 	errChan := make(chan error, 3)
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("CRITICAL: Panic recovered in Metrics Loop: %v", r)
+			}
+		}()
 		metrics.GetMetrics(ctx, cfg, serverId)
 	}()
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("CRITICAL: Panic recovered in Replication Server: %v", r)
+			}
+		}()
 		errChan <- server.ChangeReplicationModeServer(ctx, cfg, serverId, timestamp)
 	}()
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("CRITICAL: Panic recovered in Main Daemon: %v", r)
+			}
+		}()
 		errChan <- server.Daemon(ctx, cfg, serverId)
 	}()
 
