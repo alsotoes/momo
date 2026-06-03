@@ -1,17 +1,26 @@
 ## ADDED Requirements
-### Requirement: Primary Splay QUIC Protocol
-The system SHALL utilize the QUIC protocol (UDP) exclusively when executing a `ReplicationPrimarySplay` replication mode (ID 3) to improve stability and throughput over Wide Area Networks (WAN).
+### Requirement: Universal QUIC Transport Support
+The system SHALL support the QUIC protocol (UDP) as a standard transport layer for ALL replication modes (None, Chain, Splay, PrimarySplay). This enables higher resilience and mandatory encryption for both external client uploads and internal cluster replication.
 
-#### Scenario: Client Primary Splay upload
-- **WHEN** the cluster is operating under `ReplicationPrimarySplay` mode
-- **THEN** the client must establish a QUIC connection with Daemon 0, Daemon 1, and Daemon 2 concurrently
-- **AND** the payload and metadata must be streamed utilizing QUIC multiplexing instead of TCP
+#### Scenario: Global QUIC utilization
+- **WHEN** the cluster is configured to prefer QUIC
+- **THEN** all data transfers (External and Internal) must establish QUIC connections
+- **AND** the payload and metadata must be streamed utilizing QUIC multiplexing
+- **AND** all traffic must be encrypted via TLS 1.3 as mandated by the protocol
+
+### Requirement: Transport-Agnostic Processing
+The daemons SHALL implement a transport-agnostic processing layer that handles metadata and file streams identically, regardless of whether the underlying transport is TCP or QUIC.
+
+#### Scenario: Seamless Protocol Coexistence
+- **WHEN** a daemon receives concurrent file transfers on both its TCP and UDP/QUIC listeners
+- **THEN** it must process both streams using the same business logic, validation rules (SHA-256), and storage paths
+- **AND** it must maintain separate connection quotas for each transport to prevent resource exhaustion
 
 ### Requirement: Protocol Hot-Swapping
-The daemons SHALL support seamless transitioning between TCP and QUIC listeners based on the dynamic replication mode broadcast.
+The system SHALL support seamless transitioning between TCP and QUIC based on dynamic configuration or network conditions.
 
-#### Scenario: Switching from TCP to QUIC
-- **WHEN** the polymorphic controller shifts the replication scheme from `ReplicationSplay` (TCP) to `ReplicationPrimarySplay` (QUIC)
-- **THEN** new client connections must be accepted and routed on the UDP/QUIC listener
-- **AND** existing TCP connections from the old configuration must complete their file chunk downloads cleanly
-- **AND** no daemons are restarted to apply the new configuration
+#### Scenario: Switching preferred transport
+- **WHEN** the cluster-wide configuration shifts the preferred transport from TCP to QUIC
+- **THEN** new connections must attempt to dial via QUIC first, falling back to TCP only if specified
+- **AND** existing connections must complete their transfers using their original transport cleanly
+- **AND** the transition must not require manual daemon restarts or cause data corruption
