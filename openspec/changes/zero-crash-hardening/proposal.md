@@ -1,4 +1,5 @@
 # Change: Zero-Crash Hardening
+**Related Issue:** #135
 
 ## Why
 Momo relies on custom wire protocols and manual byte-slice parsing to achieve its high-performance, zero-allocation goals. However, manual parsing of network data (e.g., extracting timestamps, filenames, and replication modes from raw byte streams) introduces significant risk. Malformed packets, intentional fuzzing, or unexpected null padding can trigger panics (e.g., out-of-bounds slice access), unhandled conversion errors (`strconv.Atoi`), or resource exhaustion (allocating massive slices based on malicious size headers). 

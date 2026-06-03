@@ -85,9 +85,14 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 	parts := strings.Split(replicationOrderStr, ",")
 	globalCfg.ReplicationOrder = make([]int, 0, len(parts))
 	for _, part := range parts {
-		order, err := strconv.Atoi(strings.TrimSpace(part))
+		trimmedPart := strings.TrimSpace(part)
+		if trimmedPart == "" {
+			continue
+		}
+		// 🛡️ Zero-Crash Hardening: strconv.Atoi is safe for validated config strings.
+		order, err := strconv.Atoi(trimmedPart)
 		if err != nil {
-			return ConfigurationGlobal{}, fmt.Errorf("failed to parse 'replication_order': %w", err)
+			return ConfigurationGlobal{}, fmt.Errorf("failed to parse 'replication_order' part %q: %w", trimmedPart, err)
 		}
 		globalCfg.ReplicationOrder = append(globalCfg.ReplicationOrder, order)
 	}

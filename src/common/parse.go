@@ -8,7 +8,7 @@ import (
 // SafeParseInt extracts an int64 from a byte slice that may be null-padded.
 // It performs strict character validation and overflow checks without heap allocations.
 func SafeParseInt(b []byte) (int64, error) {
-	// Trim null bytes to find the actual content
+	// Find the end of the numeric part (either a null byte or the end of the slice)
 	idx := bytes.IndexByte(b, 0)
 	if idx == -1 {
 		idx = len(b)
@@ -18,32 +18,28 @@ func SafeParseInt(b []byte) (int64, error) {
 		return 0, strconv.ErrSyntax
 	}
 
-	trimmed := b[:idx]
-
 	// Manual iteration to avoid string allocation and provide defensive character checking
 	var res uint64
 	var sign int64 = 1
 	start := 0
 
-	if trimmed[0] == '-' {
+	if b[0] == '-' {
 		sign = -1
 		start = 1
-		if len(trimmed) == 1 {
-			return 0, strconv.ErrSyntax
-		}
-	} else if trimmed[0] == '+' {
+	} else if b[0] == '+' {
 		start = 1
-		if len(trimmed) == 1 {
-			return 0, strconv.ErrSyntax
-		}
+	}
+
+	if start == idx {
+		return 0, strconv.ErrSyntax
 	}
 
 	// Constants for overflow checks
 	const cutoff = uint64(1<<63 - 1)
 	const maxVal = cutoff / 10
 
-	for i := start; i < len(trimmed); i++ {
-		c := trimmed[i]
+	for i := start; i < idx; i++ {
+		c := b[i]
 		if c < '0' || c > '9' {
 			return 0, strconv.ErrSyntax
 		}

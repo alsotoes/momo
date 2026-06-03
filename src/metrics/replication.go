@@ -17,7 +17,7 @@ func pushNewReplicationMode(cfg momo_common.Configuration, paddedAuthToken []byt
 
 	conn, err := momo_common.DialSocket(cfg.Daemons[0].ChangeReplication)
 	if err != nil {
-		log.Printf("Dial error: %v", err)
+		log.Printf("Dial error: %v", momo_common.SanitizeLog(err.Error()))
 		return
 	}
 	defer conn.Close()
@@ -29,7 +29,7 @@ func pushNewReplicationMode(cfg momo_common.Configuration, paddedAuthToken []byt
 
 	jsonData, err := json.Marshal(data)
 	if err != nil {
-		log.Printf("Encode error: %v", err)
+		log.Printf("Encode error: %v", momo_common.SanitizeLog(err.Error()))
 		return
 	}
 
@@ -41,7 +41,7 @@ func pushNewReplicationMode(cfg momo_common.Configuration, paddedAuthToken []byt
 	buf = append(buf, '\n') // Add trailing newline for `json.Decoder` compatibility on the server
 
 	if _, err := conn.Write(buf); err != nil {
-		log.Printf("Failed to send AuthToken and ReplicationData: %v", err)
+		log.Printf("Failed to send AuthToken and ReplicationData: %v", momo_common.SanitizeLog(err.Error()))
 		return
 	}
 }

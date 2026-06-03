@@ -44,7 +44,7 @@ func getMetadata(r io.Reader) (momo_common.FileMetadata, error) {
 		return string(b)
 	}
 
-	fileHash := trimNull(bufferFileHash)
+	fileHash := momo_common.SanitizeLog(trimNull(bufferFileHash))
 
 	// 🛡️ Sentinel: Sanitize fileName immediately to prevent path traversal in all downstream consumers.
 	rawFileName := trimNull(bufferFileName)
@@ -129,9 +129,9 @@ func getFile(connection net.Conn, path string, fileName string, expectedHash str
 		return err
 	}
 
-	log.Printf("=> Expected Hash: %s", expectedHash)
-	log.Printf("=> Actual Hash:   %s", hash)
-	log.Printf("=> Name:          %s", fullPath)
+	log.Printf("=> Expected Hash: %s", momo_common.SanitizeLog(expectedHash))
+	log.Printf("=> Actual Hash:   %s", momo_common.SanitizeLog(hash))
+	log.Printf("=> Name:          %s", momo_common.SanitizeLog(fullPath))
 	log.Printf("Received file completely!")
 	log.Printf("Sending ACK to client connection")
 	return nil

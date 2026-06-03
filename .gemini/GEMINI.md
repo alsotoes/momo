@@ -15,7 +15,11 @@ Momo is a minimalistic, high-performance TCP replication playground. Simplicity,
 1. **Concurrency First:** Every network handler and goroutine MUST be accompanied by a `defer goleak.VerifyNone(t)` check in its unit test.
 2. **Context Propagation:** All blocking network calls and loops must respect `context.Context`.
 3. **Strict Handshake:** The 19/32/64-byte protocol padding is sacred. Do not modify the handshake logic without an approved OpenSpec proposal.
-4. **Validation Pipeline:** Every PR must pass:
+4. **Zero-Crash Pattern:** (Mandatory) All code must adhere to defensive stability standards:
+    - **Defensive Parsing:** Never assume input data (network, file, or config) is well-formed. Use `SafeParseInt` or bounded standard library functions. Validate character sets and ranges before processing.
+    - **Panic Recovery:** Every background or dynamically spawned goroutine MUST include a `defer recover()` block to prevent a single failure from terminating the entire process.
+    - **Bounded Resources:** Always use `io.LimitReader` and fixed-size buffers when reading from untrusted sources to prevent resource exhaustion (DoS).
+5. **Validation Pipeline:** Every PR must pass:
    - `make build`
    - `make test` (with `-race` and `goleak`)
    - `make benchmark`

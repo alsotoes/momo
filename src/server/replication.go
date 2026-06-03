@@ -67,6 +67,11 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 
 	// Handle graceful shutdown via context
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("CRITICAL: Panic recovered in ChangeReplicationMode shutdown handler: %v", r)
+			}
+		}()
 		<-ctx.Done()
 		server.Close()
 	}()
@@ -94,7 +99,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 			case <-ctx.Done():
 				return nil // Shutting down gracefully
 			default:
-				log.Printf("Error accepting connection: %v", err)
+				log.Printf("Error accepting connection: %v", momo_common.SanitizeLog(err.Error()))
 				// 🛡️ Sentinel: Sleep briefly to prevent tight loop on transient errors (like EMFILE)
 				// and avoid DoS via os.Exit(1).
 				time.Sleep(10 * time.Millisecond)
@@ -119,26 +124,28 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 			// 🛡️ Sentinel: Enforce a read/write timeout to prevent slowloris DoS attacks
 			connection.SetDeadline(time.Now().Add(10 * time.Second))
 
+			remoteAddr := momo_common.SanitizeLog(connection.RemoteAddr().String())
+
 			// Read and validate the AuthToken
 			// ⚡ Bolt: Stack allocate buffer to avoid heap allocations
 			var bufferAuthToken [momo_common.AuthTokenLength]byte
 			if _, err := io.ReadFull(connection, bufferAuthToken[:]); err != nil {
-				log.Printf("Error reading AuthToken from %s: %v", connection.RemoteAddr(), err)
+				log.Printf("AUDIT: Error reading AuthToken from %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
 				return
 			}
 			// 🛡️ Sentinel: Use constant-time comparison to prevent timing attacks during authentication
 			if subtle.ConstantTimeCompare(bufferAuthToken[:], expectedAuthToken) != 1 {
-				log.Printf("Invalid AuthToken received from %s: %v", connection.RemoteAddr(), syscall.EACCES)
+				log.Printf("AUDIT: Invalid AuthToken received from %s: %v", remoteAddr, syscall.EACCES)
 				return
 			}
 			// 🛡️ Sentinel: Add audit logging for successful authentication
-			log.Printf("Successful authentication for changeReplicationMode from %s", connection.RemoteAddr())
+			log.Printf("AUDIT: Successful authentication for changeReplicationMode from %s", remoteAddr)
 
 			// Decode the replication data directly from the connection
 			// 🛡️ Sentinel: Limit the JSON payload size to prevent DoS via memory exhaustion
 			replicationJson := momo_common.ReplicationData{}
 			if err := json.NewDecoder(io.LimitReader(connection, 1024)).Decode(&replicationJson); err != nil {
-				log.Printf("Failed to decode replication data from %s: %v", connection.RemoteAddr(), err)
+				log.Printf("AUDIT: Failed to decode replication data from %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
 				return
 			}
 
@@ -146,13 +153,27 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 			newState := SetReplicationState(replicationJson.New, replicationJson.TimeStamp)
 			newReplicationJson, _ := json.Marshal(newState)
 			// 🛡️ Sentinel: Audit log the sensitive operation
-			log.Printf("AUDIT: Replication mode changed to %d by %s", replicationJson.New, connection.RemoteAddr())
+			log.Printf("AUDIT: Replication mode changed to %d by %s", replicationJson.New, remoteAddr)
 			log.Printf("ReplicationData new struct: %s", string(newReplicationJson))
 
 			// If this is the primary server, propagate the change to the other servers
 			if 0 == serverId {
-				go changeReplicationModeClient(expectedAuthToken, daemons, newReplicationJson, 1)
-				go changeReplicationModeClient(expectedAuthToken, daemons, newReplicationJson, 2)
+				go func() {
+					defer func() {
+						if r := recover(); r != nil {
+							log.Printf("CRITICAL: Panic recovered in propagation to node 1: %v", r)
+						}
+					}()
+					changeReplicationModeClient(expectedAuthToken, daemons, newReplicationJson, 1)
+				}()
+				go func() {
+					defer func() {
+						if r := recover(); r != nil {
+							log.Printf("CRITICAL: Panic recovered in propagation to node 2: %v", r)
+						}
+					}()
+					changeReplicationModeClient(expectedAuthToken, daemons, newReplicationJson, 2)
+				}()
 			}
 		}()
 	}
@@ -163,7 +184,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 func changeReplicationModeClient(paddedAuthToken []byte, daemons []*momo_common.Daemon, replicationJson []byte, serverId int) {
 	conn, err := momo_common.DialSocket(daemons[serverId].ChangeReplication)
 	if err != nil {
-		log.Printf("Dial error: %v", err)
+		log.Printf("Dial error: %v", momo_common.SanitizeLog(err.Error()))
 		return
 	}
 	defer conn.Close()
@@ -176,7 +197,7 @@ func changeReplicationModeClient(paddedAuthToken []byte, daemons []*momo_common.
 	buf = append(buf, '\n') // Add trailing newline for `json.Decoder` compatibility on the server
 
 	if _, err := conn.Write(buf); err != nil {
-		log.Printf("Failed to send AuthToken and ReplicationData: %v", err)
+		log.Printf("Failed to send AuthToken and ReplicationData: %v", momo_common.SanitizeLog(err.Error()))
 		return
 	}
 
