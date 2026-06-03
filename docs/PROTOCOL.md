@@ -4,36 +4,34 @@ This document provides a detailed description of the Momo wire protocol. It is i
 
 ## Overview
 
-The Momo protocol is a simple, TCP-based protocol for file replication. It consists of a handshake, metadata exchange, and a file transfer phase. The protocol is designed to be lightweight and efficient, with a focus on minimizing overhead.
+The Momo protocol is a simple, TCP-based protocol for file replication. It consists of a handshake, metadata exchange, and a file transfer phase. The protocol is designed to be lightweight and efficient, with a focus on minimizing overhead through zero-allocation techniques.
 
 ## Handshake
 
-The handshake is initiated by the client and is used to establish the replication mode for the current connection.
+The handshake is initiated by the client and is used to authenticate the connection and establish the replication mode.
 
 1.  The client opens a TCP connection to the primary server (usually server 0).
-2.  The client sends a 19-byte ASCII timestamp (e.g., `UnixNano`).
-3.  The server receives the timestamp and decides which replication mode to use for this connection. This decision is based on the server's current configuration and metrics.
-4.  The server responds with a single-digit ASCII code representing the chosen replication mode:
+2.  The client sends a combined authentication and timestamp packet:
+    -   **AuthToken:** 64-byte string, null-padded.
+    -   **Timestamp:** 19-byte ASCII string (e.g., `UnixNano`).
+3.  The server validates the AuthToken using constant-time comparison.
+4.  The server decides which replication mode to use for this connection based on its current configuration and metrics.
+5.  The server responds with an ASCII-encoded integer representing the chosen replication mode (e.g., `4` for Primary-Splay).
 
-    -   `1`: No Replication
-    -   `2`: Chain Replication
-    -   `3`: Splay Replication
-    -   `4`: Primary-Splay Replication
-
-**Diagram:**
+**Handshake Layout:**
 
 ```
-+--------+                           +----------+
-| Client |                           | Server 0 |
-+--------+                           +----------+
-    |                                      |
-    | --- (1) TCP Connection Open -------->|
-    |                                      |
-    | --- (2) Send 19-byte Timestamp ----> |
-    |                                      |
-    | <--- (4) Receive 1-byte Rep Mode ----|
-    |                                      |
+|-----------------|-----------------|
+|  AuthToken (64) | Timestamp (19)  |
+|-----------------|-----------------|
 ```
+
+**Replication Mode Codes:**
+
+-   `1`: Chain Replication
+-   `2`: Splay Replication
+-   `3`: Primary-Splay Replication
+-   `4`: No Replication (Fallback/Default)
 
 ## Message Framing
 
@@ -44,8 +42,8 @@ Once the handshake is complete, the client sends the file metadata, followed by 
 The metadata consists of three fixed-size fields:
 
 -   **SHA-256 Checksum:** 64-byte hexadecimal string.
--   **File Name:** 64-byte ASCII string, right-padded with colons (`:`).
--   **File Size:** 64-byte ASCII string representing the decimal file size, right-padded with colons (`:`).
+-   **File Name:** 64-byte ASCII string, null-padded (`\x00`).
+-   **File Size:** 64-byte ASCII string representing the decimal file size, null-padded (`\x00`).
 
 **Layout:**
 
@@ -57,7 +55,7 @@ The metadata consists of three fixed-size fields:
 
 ### Payload
 
-The file payload is streamed in chunks of 1024 bytes. The server reads exactly the number of bytes specified in the `fileSize` metadata field.
+The file payload is streamed until EOF. The server reads exactly the number of bytes specified in the `fileSize` metadata field.
 
 ## Replication Modes in Detail
 
@@ -72,8 +70,9 @@ The client sends the file to the primary server, and no further replication occu
 | Client |                           | Server 0 |
 +--------+                           +----------+
     | --- Handshake ----------------------> |
+    | <--- Replication Mode (4) ----------  |
     | --- Metadata & Payload ----------->   |
-    | <--- ACK ---------------------------  |
+    | <--- ACK0 --------------------------  |
 ```
 
 ### Chain Replication
@@ -115,6 +114,9 @@ The client sends the file to all servers in the cluster concurrently.
     | ----------------------------------------->  |
 ```
 
-## Error Handling
+## Security & Resilience
 
-The current implementation of the Momo protocol has minimal error handling. In most cases, if an error occurs during the transfer (e.g., a network error or a mismatched hash checksum), the connection is closed, and the program exits with an error code. There is no mechanism for resuming a failed transfer.
+-   **Authentication:** Every connection requires a valid 64-byte AuthToken.
+-   **Timeouts:** Connections are protected by rolling idle timeouts (30s) and phased absolute deadlines (10s for handshake, 60s for metadata) to prevent Slowloris attacks.
+-   **Sanitization:** All network inputs and error messages are sanitized before logging to prevent CRLF injection.
+-   **Error Handling:** If an error occurs (e.g., hash mismatch, disk full, or connection reset), the connection is closed. Hash mismatches return `EBADMSG`.
