@@ -109,7 +109,7 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 			// ⚡ Bolt: Combine reads into a single buffer to reduce system calls and improve performance.
 			var handshakeBuf [momo_common.AuthTokenLength + momo_common.TimestampLength]byte
 			if _, err := io.ReadFull(idleConn, handshakeBuf[:]); err != nil {
-				log.Printf("AUDIT: Error reading handshake from %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
+				log.Printf("AUDIT: Error reading handshake from %s: %v", remoteAddr, err)
 				return
 			}
 
@@ -127,7 +127,7 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 			// ⚡ Bolt: Parse timestamp directly from byte slice to avoid allocation
 			timestamp, err = parsePaddedIntFast(bufferTimestamp)
 			if err != nil {
-				log.Printf("AUDIT: Error parsing timestamp from %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
+				log.Printf("AUDIT: Error parsing timestamp from %s: %v", remoteAddr, err)
 				return
 			}
 
@@ -156,13 +156,13 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 			// ⚡ Bolt: Avoid string allocations during formatting by using a stack-allocated buffer
 			var repModeBuf [16]byte
 			if _, err := idleConn.Write(strconv.AppendInt(repModeBuf[:0], int64(replicationMode), 10)); err != nil {
-				log.Printf("AUDIT: Error sending replication mode to %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
+				log.Printf("AUDIT: Error sending replication mode to %s: %v", remoteAddr, err)
 				return
 			}
 
 			metadata, err := getMetadata(idleConn)
 			if err != nil {
-				log.Printf("AUDIT: Error getting metadata from %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
+				log.Printf("AUDIT: Error getting metadata from %s: %v", remoteAddr, err)
 				return
 			}
 
@@ -177,14 +177,14 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 			switch replicationMode {
 			case momo_common.ReplicationNone, momo_common.ReplicationPrimarySplay:
 				if err := getFile(idleConn, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size); err != nil {
-					log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
+					log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, err)
 					return
 				}
 			case momo_common.ReplicationChain:
 				if serverId == 1 {
 					wg.Add(1)
 					if err := getFile(idleConn, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size); err != nil {
-						log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
+						log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, err)
 						wg.Done()
 						return
 					}
@@ -193,7 +193,7 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 				} else {
 					wg.Add(1)
 					if err := getFile(idleConn, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size); err != nil {
-						log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
+						log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, err)
 						wg.Done()
 						return
 					}
@@ -203,7 +203,7 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 			case momo_common.ReplicationSplay:
 				wg.Add(2)
 				if err := getFile(idleConn, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size); err != nil {
-					log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
+					log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, err)
 					wg.Done() // Need to handle waitgroup correctly if one fails
 					wg.Done()
 					return

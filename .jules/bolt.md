@@ -109,6 +109,9 @@
 ## 2026-05-21 - Consolidate Network Writes and Reduce Allocations in Replication Metrics and Server
 **Learning:** In Go, repeatedly calling `conn.Write` or using `json.NewEncoder` for small payloads (like authentication tokens + JSON structs) causes unnecessary memory allocations and system call overhead.
 **Action:** Consolidate network writes by marshalling JSON first and appending it to a dynamically-sized buffer using `make` and `append`, then sending the unified byte slice via a single `conn.Write` call. This prevents string-to-byte allocation of JSON, the encoder's intermediate buffer allocation, and halves the number of write system calls while maintaining memory safety.
-## 2024-05-24 - Eliminate Heap Allocation in sha256 Sum
-**Learning:** Calling hash.Sum(nil) forces a heap allocation for the resulting byte slice.
-**Action:** Pre-allocate a fixed-size array on the stack (var buf [sha256.Size]byte) and pass a zero-length slice of it (buf[:0]) to hash.Sum() to eliminate the heap allocation.
+## 2026-05-29 - [Eliminate Heap Allocations for Hash Sum Calculations]
+**Learning:** When computing cryptographic hashes (e.g., `sha256.New()`), avoiding `hash.Sum(nil)` and instead using a stack-allocated byte array (`var buf [sha256.Size]byte`) and passing its slice (`buf[:0]`) avoids escaping the bytes to the heap.
+**Action:** When computing cryptographic hashes (e.g., `sha256.New()`), always pre-allocate a fixed-size array on the stack (e.g., `var buf [sha256.Size]byte`) and pass a zero-length slice of it (`buf[:0]`) to `hash.Sum()` to eliminate the heap allocation.
+## 2026-06-02 - Eliminate heap allocations in hex.EncodeToString
+**Learning:** Using `hex.EncodeToString(hash)` creates a dynamic allocation and copies the hash bytes, leading to unnecessary heap escapes.
+**Action:** Replace `hex.EncodeToString` with a stack-allocated byte array (`var hexBuf [sha256.Size * 2]byte`), encode into it with `hex.Encode(hexBuf[:], hash)`, and convert it to a string. This eliminates the intermediate slice allocation, saving memory and CPU cycles during hot path hash calculations.
