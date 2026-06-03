@@ -1,11 +1,21 @@
 ## ADDED Requirements
-### Requirement: Multi-Protocol Transport Abstraction
-The system SHALL support a modular transport architecture allowing for multiple protocol-transport combinations (`momo-tcp`, `momo-quic`, `s3-tcp`, `s3-quic`).
+### Requirement: Decoupled Communication Architecture (Issue #131)
+The system SHALL strictly separate the communication protocol (e.g., `momo-quic`, `s3-tcp`) from the core replication logic (`None`, `Chain`, `Splay`, `PrimarySplay`).
 
-#### Scenario: Instantiating the Protocol Stack
-- **WHEN** the `protocol` key is set to `s3-quic`
-- **THEN** the system must utilize the `S3API` logic over a `QUIC` transport
-- **AND** if set to `momo-tcp`, it must maintain backward compatibility with the existing wire protocol over plain TCP
+#### Scenario: Switching protocols without affecting replication
+- **GIVEN** a cluster operating in `Chain` replication mode
+- **WHEN** the `protocol` is changed from `momo-tcp` to `momo-quic`
+- **THEN** the path of data (Node 0 -> Node 1 -> Node 2) must remain identical
+- **AND** the sequence of handshake, metadata, and payload steps must be handled by the protocol layer, while the "forward to next node" logic is handled by the core.
+
+### Requirement: Unified 'Communicator' Abstraction
+The system SHALL implement a `Communicator` interface that encapsulates transport-specific connection management and protocol-specific handshaking, exposing a clean stream for the core logic.
+
+#### Scenario: Transport-Agnostic Replication Execution
+- **WHEN** the core replication logic needs to send a file to a peer
+- **THEN** it must request a `Communicator` from the `ProtocolFactory`
+- **AND** use the interface's `SendFile` method which handles the specific auth and mode-negotiation steps required by that protocol (e.g., S3 headers vs Momo 83-byte packet).
+- **AND** receive a success/failure status consistent across all protocol implementations.
 
 ### Requirement: Robust Stack Configuration
 The system SHALL utilize a single composite `protocol` string in the `[global]` section of `momo.conf` to configure the network stack.

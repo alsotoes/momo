@@ -1,37 +1,30 @@
 # Change: Robust Multi-Protocol Transport Layer
-**Related Issues:** #132, #133
+**Related Issues:** #131, #132, #133
 
 ## Why
-Momo currently supports a custom custom wire protocol over TCP. As the cluster grows and targets different environments (distributed WANs, cloud-native storage), the system must support multiple transport and protocol combinations (e.g., `momo-tcp`, `momo-quic`, `s3-tcp`, `s3-quic`). This allows Momo to be used as a standalone high-performance replicator or as an S3-compatible gateway over reliable or lossy links.
+Momo currently intertwines its communication protocol with its core replication logic. To support a pluggable architecture, we must separate **how** nodes communicate (the Protocol) from **what** they do with the data (the Replication Mode). This decoupling allows us to implement `momo-tcp`, `momo-quic`, `s3-tcp`, and `s3-quic` as interchangeable transport plugins while ensuring the `Chain`, `Splay`, and `PrimarySplay` strategies function identically across all of them.
 
-### Architectural Rationale: Protocol/Transport Decoupling
-To support multiple stacks robustly, Momo will adopt a **Factory-based Plugin Architecture**:
+### Architectural Rationale: Layered Protocol Design
+As per Issue #131, the system will move to a three-layer architecture:
 
-#### 1. Transport-Protocol Matrix
-| Protocol Variant | Logic Implementation | Carrier Transport | Use Case |
-| :--- | :--- | :--- | :--- |
-| `momo-tcp` | Custom Momo Wire Format | Plain TCP | High-speed LAN / Legacy |
-| `momo-quic` | Custom Momo Wire Format | QUIC (UDP) | Unstable WAN / Secure-by-default |
-| `s3-tcp` | S3 API Compatibility | HTTP/TCP | Cloud Integration / Interop |
-| `s3-quic` | S3 API Compatibility | HTTP/3 (QUIC) | Geographically Distributed S3 |
+#### 1. Communication Layer (Transport + App Protocol)
+This layer handles the physical movement of bytes. It includes the carrier transport (TCP/UDP) and the application-level framing (Momo's 83-byte handshake or S3's REST API).
+- **Momo-TCP**: Legacy transport.
+- **Momo-QUIC**: Modern, secure-by-default transport.
+- **S3 API**: Industry-standard interoperability.
 
-#### 2. Robust Configuration
-Instead of fragmented settings, a single `protocol` field in the `[global]` section will act as a selector for the entire network stack:
-```ini
-[global]
-# Format: <logic>-<transport>
-protocol=momo-quic 
-```
+#### 2. Core Replication Logic (Agnostic)
+The core logic defines the data distribution path (e.g., `Chain` replication where Node 1 forwards to Node 2). This logic is **completely agnostic** of the communication layer. It receives a file and instructions on where to send it next, calling the `ProtocolFactory` to get a connection without knowing if it's TCP, QUIC, or S3.
 
-#### 3. Unified Abstraction
-A `Transport` interface will unify `net.Conn` and `quic.Stream`, while a `ProtocolHandler` interface will encapsulate the handshake and data framing logic for both `momo` and `s3` variants.
+#### 3. State Management (Polymorphic System)
+Determines the current replication mode based on metrics, completely separated from the network stack.
 
 ## What Changes
 - Integrate `github.com/quic-go/quic-go` for QUIC/H3 support.
-- Implement a `ProtocolFactory` in `src/common` that instantiates the correct `Transport` and `ProtocolHandler` based on the `protocol` configuration.
-- Add an `S3ProtocolHandler` stub for future integration (Issue #133).
-- Ensure the `momo` logic is fully transport-agnostic.
-- Update `loadGlobalConfig` to parse and validate the composite `protocol` string, with a warning-level fallback to `momo-tcp`.
+- Implement a `ProtocolFactory` that provides a unified `Communicator` interface.
+- Refactor `src/server/server.go` and `src/common/replication.go` to use this `Communicator` instead of direct `net.Conn` calls.
+- Ensure the handshake for selecting replication modes (the "Mode Handshake") is a discrete step within the `Communicator` logic, allowing it to be reused or mapped to different protocol-specific handshakes (like S3 headers).
+- Update `loadGlobalConfig` to parse `protocol=momo-quic` etc., from the `[global]` section.
 
 ## Impact
 - Affected specs: `replication`, `security`

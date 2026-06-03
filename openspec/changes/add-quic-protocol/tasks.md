@@ -1,21 +1,20 @@
-## 1. Foundation
-- [ ] 1.1 Add the `github.com/quic-go/quic-go` dependency.
-- [ ] 1.2 Define the `Transport` interface in `src/common` to unify `net.Conn` and `quic.Stream`.
-- [ ] 1.3 Define the `ProtocolHandler` interface to encapsulate handshake and data framing logic.
+## 1. Core Architecture (Issue #131)
+- [ ] 1.1 Define the `Communicator` interface in `src/common` to unify `momo-tcp`, `momo-quic`, and `s3` communication logic.
+- [ ] 1.2 Implement the `ProtocolFactory` selector.
+- [ ] 1.3 Refactor `src/server/server.go` to be transport-agnostic, accepting a `Communicator` for incoming connections.
+- [ ] 1.4 Refactor `src/common/replication.go` to utilize `Communicator` for all outbound peer transmissions.
 
-## 2. Configuration & Factory
-- [ ] 2.1 Update `src/common/config.go` to parse and validate the composite `protocol` field.
-    - [ ] 2.1.1 Implement the logic to log a warning and fallback to `momo-tcp` if missing.
-    - [ ] 2.1.2 Implement critical failure logic for unknown protocols.
-- [ ] 2.2 Implement the `ProtocolFactory` in `src/common` to instantiate requested stacks.
+## 2. Protocol Implementations
+- [ ] 2.1 Implement `MomoTCPCommunicator` (preserving legacy behavior).
+- [ ] 2.2 Implement `MomoQUICCommunicator` (integrating `quic-go`).
+- [ ] 2.3 Implement `S3Communicator` stub (Issue #133).
 
-## 3. Implementation
-- [ ] 3.1 Refactor current Momo TCP logic into a `MomoProtocolHandler` using the `TCPTransport`.
-- [ ] 3.2 Implement `MomoProtocolHandler` over `QUICTransport`.
-- [ ] 3.3 Create a stub for `S3ProtocolHandler` as per Issue #133.
-- [ ] 3.4 Upgrade the `Daemon` to start listeners for both TCP and QUIC concurrently if configured.
+## 3. Configuration & Validation
+- [ ] 3.1 Update `src/common/config.go` for the composite `protocol` field.
+    - [ ] 3.1.1 Log fallback warning if field is missing.
+    - [ ] 3.1.2 implement fatal error on invalid protocol strings.
 
 ## 4. Verification
-- [ ] 4.1 Unit tests for the `ProtocolFactory` selector.
-- [ ] 4.2 Integration tests for `momo-quic` file transfers.
-- [ ] 4.3 E2E benchmark comparing `momo-tcp` and `momo-quic` over high-latency links.
+- [ ] 4.1 Unit tests for `Communicator` implementations.
+- [ ] 4.2 Integration tests for protocol-agnostic replication (`Chain` mode over QUIC).
+- [ ] 4.3 Benchmark comparison between `momo-tcp` and `momo-quic`.
