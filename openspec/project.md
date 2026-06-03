@@ -35,7 +35,8 @@ Momo is a minimal TCP-based file replication playground written in Go. It demons
 - **End-to-End (E2E):** Docker Compose scripts (`.github/scripts/test-e2e.sh`) boot up isolated networks to physically verify byte chunks successfully transfer to sibling volumes.
 
 ### Git Workflow
-- Direct commits to `master` allowed for minor changes, but PRs are preferred for robust testing.
+- **Branch-Based Development:** Each new specification implementation MUST be developed in a dedicated feature branch.
+- **Pull Requests:** Upon completion of a feature or fix, a Pull Request (PR) to the `master` branch must be created for review and validation. Direct commits to `master` are only permitted for trivial documentation fixes or small configuration adjustments.
 - `auto_reviewer.yml` auto-assigns the lead maintainer (`alsotoes`).
 - CI/CD verifies Unit, Race, Benchmark, E2E, and Code Coverage before merging.
 
@@ -55,7 +56,8 @@ Momo is a minimal TCP-based file replication playground written in Go. It demons
 When analyzing or suggesting code generation, agents must adhere to the following steering rules:
 1. **Preserve Simplicity:** Momo is a minimalistic playground. Avoid over-engineering or introducing heavy external frameworks (like gRPC or complex ORMs) unless explicitly requested.
 2. **Respect Affinities:** Honor the hardcoded cluster assumptions (Daemon 0 = primary/metrics authority, Daemons 1/2 = followers/fallback). Do not build complex dynamic service discovery.
-3. **Rigorous Validation:** ALL functional additions MUST include corresponding unit/integration tests. You must assert concurrency safety (`goleak.VerifyNone(t)`) and context cancellations when modifying network layers.
+3. **Branching Mandate:** (New Rule) All significant features or spec-driven changes MUST originate from a feature branch and be merged via a validated PR to the `master` branch.
+4. **Rigorous Validation:** ALL functional additions MUST include corresponding unit/integration tests. You must assert concurrency safety (`goleak.VerifyNone(t)`) and context cancellations when modifying network layers.
 4. **Dynamic Hot-Swapping:** A core feature of Momo is the ability to change replication schemes *on the fly* by communicating with the daemons. The daemons must never require a restart to adopt a new replication mode. This is achieved by timestamping configuration changes: existing goroutines/connections finish their work using the "Old" configuration, while new client connections or internal threads adopt the "New" configuration based on the latest global timestamp. Always preserve and test this dynamic behavioral shifting.
 5. **Protocol Stability:** The TCP handshaking metadata relies entirely on strict byte boundaries (`19`, `32`, `64` bytes padding). Do not alter or break these payload sizes without extensive refactoring and migration planning.
 6. **Go Version Consistency:** All configuration files defining the Go language version (e.g., `go.mod`, GitHub Actions `setup-go` steps, `Dockerfile`, `dev.nix`, etc.) MUST be strictly synchronized. Any spec or code change that bumps the Go version must validate and update every occurrence across the entire repository to prevent build fragmentation or drift.

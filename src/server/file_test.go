@@ -2,6 +2,7 @@
 package server
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
@@ -263,4 +264,38 @@ func TestParsePaddedIntFast(t *testing.T) {
 			}
 		})
 	}
+}
+
+func FuzzParsePaddedIntFast(f *testing.F) {
+	f.Add([]byte("12345"))
+	f.Add([]byte("12345\x00\x00"))
+	f.Add([]byte("-123"))
+	f.Add([]byte("+456"))
+	f.Add([]byte("9223372036854775807")) // MaxInt64
+	f.Add([]byte("-9223372036854775808")) // MinInt64
+	f.Add([]byte("9223372036854775808")) // Overflow
+	f.Add([]byte("abc"))
+	f.Add([]byte(""))
+	f.Add([]byte("\x00\x00"))
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		_, _ = parsePaddedIntFast(data)
+	})
+}
+
+func FuzzGetMetadata(f *testing.F) {
+	// Seed data: a valid 192-byte metadata packet
+	valid := make([]byte, 192)
+	copy(valid[:64], bytes.Repeat([]byte("a"), 64)) // Hash
+	copy(valid[64:128], "test.txt") // Name
+	copy(valid[128:], "12345") // Size
+	f.Add(valid)
+	
+	f.Add(make([]byte, 192)) // All zeros
+	f.Add(make([]byte, 10)) // Too short
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		reader := bytes.NewReader(data)
+		_, _ = getMetadata(reader)
+	})
 }

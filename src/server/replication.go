@@ -107,6 +107,12 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 
 		go func() {
 			defer func() { <-sem }() // Release semaphore slot when done
+			// 🛡️ Zero-Crash Hardening: Recover from any unexpected panics to keep the daemon running
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("CRITICAL: Panic recovered in ChangeReplicationMode handler for %s: %v", connection.RemoteAddr(), r)
+				}
+			}()
 			defer connection.Close()
 			log.Printf("Client connected to changeReplicationMode")
 

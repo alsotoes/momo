@@ -78,6 +78,14 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 		sem <- struct{}{}
 		go func(conn net.Conn) {
 			defer func() { <-sem }()
+			// 🛡️ Zero-Crash Hardening: Recover from any unexpected panics in the connection handler
+			// to ensure the daemon remains stable and available for other clients.
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("CRITICAL: Panic recovered in Daemon for %s: %v", conn.RemoteAddr(), r)
+				}
+			}()
+
 			var replicationMode int
 			var success bool
 
@@ -86,10 +94,6 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 
 			// 🛡️ Sentinel: Use an idle timeout to prevent Slowloris attacks without breaking large file uploads
 			idleConn := momo_common.NewIdleTimeoutConn(conn, 30*time.Second)
-
-			// 🛡️ Sentinel: Apply a strict absolute deadline for the handshake phase to prevent Slowloris trickle attacks
-			// before the dynamic file transfer deadline is calculated.
-			idleConn.SetAbsoluteDeadline(time.Now().Add(10 * time.Second))
 
 			// 🛡️ Sentinel: Apply a strict absolute deadline for the handshake phase to prevent Slowloris trickle attacks.
 			// This deadline is explicitly recalculated and extended before the actual file transfer begins.

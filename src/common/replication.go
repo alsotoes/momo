@@ -50,7 +50,8 @@ func Connect(wg *sync.WaitGroup, cfg Configuration, filePath string, serverId in
 	}
 	log.Printf("Client replicationMode: %s", string(bufferReplicationMode[:]))
 
-	replicationMode, err := strconv.Atoi(string(bufferReplicationMode[:]))
+	replicationModeInt64, err := SafeParseInt(bufferReplicationMode[:])
+	replicationMode := int(replicationModeInt64)
 	if err != nil {
 		log.Printf("Invalid replication mode received from %s: %v", daemons[serverId].Host, err)
 		initialConn.Close()

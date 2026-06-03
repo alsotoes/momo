@@ -11,7 +11,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 
@@ -22,13 +21,13 @@ import (
 // It reads the Hash string, file name, and file size from the connection, trims any null characters,
 // and returns a FileMetadata struct.
 // Null characters are trimmed because the buffers are fixed size, and the actual data may be smaller.
-func getMetadata(connection net.Conn) (momo_common.FileMetadata, error) {
+func getMetadata(r io.Reader) (momo_common.FileMetadata, error) {
 	var metadata momo_common.FileMetadata
 
 	// ⚡ Bolt: Use a single stack-allocated buffer and single io.ReadFull call to reduce system calls and eliminate heap allocations.
 	var buffer [64 + momo_common.FileInfoLength + momo_common.FileInfoLength]byte
 
-	if _, err := io.ReadFull(connection, buffer[:]); err != nil {
+	if _, err := io.ReadFull(r, buffer[:]); err != nil {
 		return metadata, err
 	}
 
@@ -141,61 +140,5 @@ func getFile(connection net.Conn, path string, fileName string, expectedHash str
 // parsePaddedIntFast parses a null-padded or null-terminated byte slice into an int64
 // without allocating an intermediate string.
 func parsePaddedIntFast(b []byte) (int64, error) {
-	idx := bytes.IndexByte(b, 0)
-	if idx == -1 {
-		idx = len(b)
-	}
-
-	if idx == 0 {
-		return 0, strconv.ErrSyntax
-	}
-
-	var res uint64
-	var sign int64 = 1
-	start := 0
-
-	if b[0] == '-' {
-		sign = -1
-		start = 1
-		if idx == 1 {
-			return 0, strconv.ErrSyntax
-		}
-	} else if b[0] == '+' {
-		start = 1
-		if idx == 1 {
-			return 0, strconv.ErrSyntax
-		}
-	}
-
-	var cutoff uint64 = (1<<63 - 1)
-	if sign == -1 {
-		cutoff = 1 << 63
-	}
-
-	maxVal := cutoff / 10
-
-	for i := start; i < idx; i++ {
-		c := b[i]
-		if c < '0' || c > '9' {
-			return 0, strconv.ErrSyntax
-		}
-
-		v := uint64(c - '0')
-
-		// overflow check for int64
-		if res > maxVal {
-			return 0, strconv.ErrRange
-		}
-		if res == maxVal && v > cutoff%10 {
-			return 0, strconv.ErrRange
-		}
-
-		res = res*10 + v
-	}
-
-	if sign == -1 {
-		return int64(^res + 1), nil
-	}
-
-	return int64(res), nil
+	return momo_common.SafeParseInt(b)
 }

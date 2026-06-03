@@ -9,6 +9,7 @@ Momo is a minimalistic, high-performance TCP replication playground. Simplicity,
 1. **Spec-Driven Development:** All significant changes must follow the OpenSpec workflow defined in `openspec/AGENTS.md`.
 2. **Context Sharing:** Use `openspec/project.md` as the source of truth for project architecture and steering rules.
 3. **Commit Responsibility:** Gemini CLI handles the technical execution (refactoring, testing, documentation) while Jules focuses on higher-level architectural specs.
+4. **Branching Strategy:** Each new specification implementation MUST be developed in a dedicated feature branch. Upon completion, a Pull Request (PR) to the `master` branch must be created for review and validation.
 
 ## Engineering Standards
 1. **Concurrency First:** Every network handler and goroutine MUST be accompanied by a `defer goleak.VerifyNone(t)` check in its unit test.
