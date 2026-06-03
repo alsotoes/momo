@@ -28,6 +28,17 @@ func NewIdleTimeoutConn(conn net.Conn, timeout time.Duration) *IdleTimeoutConn {
 // If the absolute deadline is reached, reads and writes will fail regardless of idle activity.
 func (c *IdleTimeoutConn) SetAbsoluteDeadline(t time.Time) {
 	c.absoluteDeadline = t
+
+	// 🛡️ Sentinel: Immediately apply the new deadline to the underlying connection.
+	// Since applyDeadlines amortizes updates (skipping 63 of 64 calls), failing to
+	// explicitly update here leaves the connection with a potentially stale, strict
+	// handshake deadline, causing valid large file transfers to drop prematurely (DoS).
+	now := time.Now()
+	deadline := now.Add(c.timeout)
+	if !c.absoluteDeadline.IsZero() && c.absoluteDeadline.Before(deadline) {
+		deadline = c.absoluteDeadline
+	}
+	c.Conn.SetDeadline(deadline)
 }
 
 func (c *IdleTimeoutConn) applyDeadlines(isRead bool) {
