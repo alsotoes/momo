@@ -1,4 +1,5 @@
 # Change: QUIC Protocol for Global Cluster Replication
+**Related Issue:** #132
 
 ## Why
 Momo currently relies on standard TCP for all file transfers. While efficient for local networks, TCP suffers from Head-of-Line (HoL) blocking and high latency under packet loss, especially in geographically distributed clusters or over unstable WAN links. Implementing the QUIC protocol (UDP-based multiplexing) across **all replication modes** (None, Chain, Splay, PrimarySplay) will drastically improve throughput, security, and stability for both edge clients and internal cluster communication.

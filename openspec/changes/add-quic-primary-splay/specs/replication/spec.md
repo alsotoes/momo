@@ -25,6 +25,7 @@ The system SHALL expose a `protocol` setting in the `[global]` section of the co
 - **THEN** the system must utilize the QUIC transport for all replication modes
 - **AND** if `protocol=tcp` is set, the system must maintain its original TCP-only behavior
 - **AND** the default protocol SHALL be `tcp` if the field is missing
+- **AND** if the `protocol` field is missing, the system SHALL log a warning: "No protocol definition found, falling back to default (tcp)"
 
 ### Requirement: Protocol Hot-Swapping
 The system SHALL support seamless transitioning between TCP and QUIC based on dynamic configuration or network conditions.
