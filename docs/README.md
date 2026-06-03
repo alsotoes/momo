@@ -240,39 +240,45 @@ This section is automatically updated by our GitHub Actions workflow.
 ### Comparison with previous commit
 
 ```
-                      │ old_bench_filtered.txt │       new_bench_filtered.txt        │
-                      │         sec/op         │    sec/op      vs base              │
-LoadGlobalConfig-4                408.3n ± ∞ ¹    425.8n ± ∞ ¹  +4.29% (p=0.024 n=5)
-PadString-4                       40.05n ± ∞ ¹    40.29n ± ∞ ¹       ~ (p=0.841 n=5)
-CheckMetricsAndSwap-4             7.107n ± ∞ ¹    7.108n ± ∞ ¹       ~ (p=0.548 n=5)
-IndexSearch-4                     1.914n ± ∞ ¹    1.945n ± ∞ ¹       ~ (p=0.667 n=5)
-IndexDirectTracking-4            0.2736n ± ∞ ¹   0.2736n ± ∞ ¹       ~ (p=0.984 n=5)
-geomean                           9.055n          9.171n        +1.29%
+                      │ old_bench_filtered.txt │        new_bench_filtered.txt         │
+                      │         sec/op         │    sec/op      vs base                │
+LoadGlobalConfig-4                543.3n ± ∞ ¹    543.5n ± ∞ ¹       ~ (p=0.841 n=5)
+HashFile-4                        11.94µ ± ∞ ¹
+PadString-4                       50.75n ± ∞ ¹    49.92n ± ∞ ¹       ~ (p=0.151 n=5)
+CheckMetricsAndSwap-4             9.169n ± ∞ ¹    9.166n ± ∞ ¹       ~ (p=0.794 n=5)
+IndexSearch-4                     2.811n ± ∞ ¹    2.766n ± ∞ ¹       ~ (p=0.690 n=5)
+IndexDirectTracking-4            0.3523n ± ∞ ¹   0.3526n ± ∞ ¹       ~ (p=0.357 n=5)
+geomean                           37.96n          11.94n        -0.63%               ²
 ¹ need >= 6 samples for confidence interval at level 0.95
+² benchmark set differs from baseline; geomeans may not be comparable
 
-                      │ old_bench_filtered.txt │       new_bench_filtered.txt        │
-                      │          B/op          │    B/op      vs base                │
+                      │ old_bench_filtered.txt │        new_bench_filtered.txt         │
+                      │          B/op          │    B/op      vs base                  │
 LoadGlobalConfig-4                 480.0 ± ∞ ¹   480.0 ± ∞ ¹       ~ (p=1.000 n=5) ²
+HashFile-4                       32.41Ki ± ∞ ¹
 PadString-4                        128.0 ± ∞ ¹   128.0 ± ∞ ¹       ~ (p=1.000 n=5) ²
 CheckMetricsAndSwap-4              0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
 IndexSearch-4                      0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
 IndexDirectTracking-4              0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
-geomean                                      ³                +0.00%               ³
+geomean                                      ³                +0.00%               ⁴ ³
 ¹ need >= 6 samples for confidence interval at level 0.95
 ² all samples are equal
 ³ summaries must be >0 to compute geomean
+⁴ benchmark set differs from baseline; geomeans may not be comparable
 
-                      │ old_bench_filtered.txt │       new_bench_filtered.txt        │
-                      │       allocs/op        │  allocs/op   vs base                │
+                      │ old_bench_filtered.txt │        new_bench_filtered.txt         │
+                      │       allocs/op        │  allocs/op   vs base                  │
 LoadGlobalConfig-4                 2.000 ± ∞ ¹   2.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
+HashFile-4                         11.00 ± ∞ ¹
 PadString-4                        2.000 ± ∞ ¹   2.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
 CheckMetricsAndSwap-4              0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
 IndexSearch-4                      0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
 IndexDirectTracking-4              0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
-geomean                                      ³                +0.00%               ³
+geomean                                      ³                +0.00%               ⁴ ³
 ¹ need >= 6 samples for confidence interval at level 0.95
 ² all samples are equal
 ³ summaries must be >0 to compute geomean
+⁴ benchmark set differs from baseline; geomeans may not be comparable
 ```
 
 ### Latest Benchmark Results
@@ -280,11 +286,11 @@ geomean                                      ³                +0.00%           
 
 | Benchmark | Avg. Time/Op | Avg. Bytes/Op | Avg. Allocs/Op |
 |-----------|--------------|---------------|----------------|
-| BenchmarkCheckMetricsAndSwap-4 | 7.11 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkIndexDirectTracking-4 | 0.27 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkIndexSearch-4 | 1.95 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkLoadGlobalConfig-4 | 426.56 ns/op | 480.00 B/op | 2.00 allocs/op |
-| BenchmarkPadString-4 | 39.83 ns/op | 128.00 B/op | 2.00 allocs/op |
+| BenchmarkCheckMetricsAndSwap-4 | 9.17 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkIndexDirectTracking-4 | 0.35 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkIndexSearch-4 | 2.69 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkLoadGlobalConfig-4 | 545.84 ns/op | 480.00 B/op | 2.00 allocs/op |
+| BenchmarkPadString-4 | 50.29 ns/op | 128.00 B/op | 2.00 allocs/op |
 
 
 ### Performance History
@@ -305,12 +311,12 @@ xychart-beta
     title "Performance Trend (Avg. Time, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Time (ns/op)"
-    x-axis [3601,8c97,9623,6797,3b5e,d8d2,a73a,4212]
-    line "CheckMetricsAndSwap" [7,9,9,9,9,9,9,9,9,7]
+    x-axis [8c97,9623,6797,3b5e,d8d2,a73a,4212,b2b0]
+    line "CheckMetricsAndSwap" [9,9,9,9,9,9,9,9,7,9]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
-    line "IndexSearch" [4,3,4,4,3,3,2,3,3,2]
-    line "LoadGlobalConfig" [588,596,608,550,592,587,587,522,529,427]
-    line "PadString" [50,53,53,50,53,53,53,50,50,40]
+    line "IndexSearch" [3,4,4,3,3,2,3,3,2,3]
+    line "LoadGlobalConfig" [596,608,550,592,587,587,522,529,427,546]
+    line "PadString" [53,53,50,53,53,53,50,50,40,50]
     line "ParseReplicationOrder_NoPrealloc" [350,349,357,354,345,225,229,165,232,234]
     line "ParseReplicationOrder_Prealloc" [229,231,237,234,229,108,107,80,110,109]
 ```
@@ -320,7 +326,7 @@ xychart-beta
     title "Memory Trend (Avg. Bytes/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Bytes/Op"
-    x-axis [3601,8c97,9623,6797,3b5e,d8d2,a73a,4212]
+    x-axis [8c97,9623,6797,3b5e,d8d2,a73a,4212,b2b0]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [0,0,0,0,0,0,0,0,0,0]
@@ -335,7 +341,7 @@ xychart-beta
     title "Allocation Trend (Avg. Allocs/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Allocs/Op"
-    x-axis [3601,8c97,9623,6797,3b5e,d8d2,a73a,4212]
+    x-axis [8c97,9623,6797,3b5e,d8d2,a73a,4212,b2b0]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [0,0,0,0,0,0,0,0,0,0]
