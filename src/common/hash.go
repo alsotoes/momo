@@ -20,8 +20,6 @@ func HashFile(filePath string) (string, error) {
 	if _, err := io.Copy(hash, file); err != nil {
 		return returnHashString, err
 	}
-	// ⚡ Bolt: Eliminate heap allocation by providing a stack-allocated buffer
-	// to hash.Sum(), rather than letting it allocate a new slice with Sum(nil).
 	var buf [sha256.Size]byte
 	hashInBytes := hash.Sum(buf[:0])
 

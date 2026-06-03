@@ -109,7 +109,6 @@ func getFile(connection net.Conn, path string, fileName string, expectedHash str
 		}
 	}
 
-	// ⚡ Bolt: Eliminate heap allocation by using a stack-allocated buffer for the hash sum.
 	var buf [sha256.Size]byte
 	hashBytes := hashCalc.Sum(buf[:0])
 
