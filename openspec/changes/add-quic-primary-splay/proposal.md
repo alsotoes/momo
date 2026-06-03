@@ -15,7 +15,8 @@ Using QUIC (Quick UDP Internet Connections) globally provides a modern, secure-b
 
 #### Coexistence and Transition
 - **Dual-Stack Support:** Daemons will listen on both TCP and UDP/QUIC ports to maintain backward compatibility and allow for a gradual transition.
-- **Polymorphic Transport:** The system can dynamically choose the best transport based on configuration, providing a fallback to TCP for high-speed local LANs where kernel-level optimization is required.
+- **Protocol Configuration:** A new `protocol` field in the `[global]` section of `momo.conf` will explicitly control the preferred transport (`protocol=tcp` or `protocol=quic`). This ensures all replication modes behave identically from a logic perspective while utilizing the chosen network stack.
+- **Polymorphic Transport:** The system will dynamically choose the best transport based on this configuration, providing a fallback to TCP for high-speed local LANs where kernel-level optimization is required.
 
 ## What Changes
 - Integrate `github.com/quic-go/quic-go` into the Momo technology stack.

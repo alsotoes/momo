@@ -16,6 +16,16 @@ The daemons SHALL implement a transport-agnostic processing layer that handles m
 - **THEN** it must process both streams using the same business logic, validation rules (SHA-256), and storage paths
 - **AND** it must maintain separate connection quotas for each transport to prevent resource exhaustion
 
+### Requirement: Protocol Configuration
+The system SHALL expose a `protocol` setting in the `[global]` section of the configuration file to allow explicit selection of the transport layer.
+
+#### Scenario: Configuring the transport protocol
+- **GIVEN** a configuration file with `[global]` section containing `protocol=quic`
+- **WHEN** the daemon starts or a client initiates a transfer
+- **THEN** the system must utilize the QUIC transport for all replication modes
+- **AND** if `protocol=tcp` is set, the system must maintain its original TCP-only behavior
+- **AND** the default protocol SHALL be `tcp` if the field is missing
+
 ### Requirement: Protocol Hot-Swapping
 The system SHALL support seamless transitioning between TCP and QUIC based on dynamic configuration or network conditions.
 

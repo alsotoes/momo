@@ -1,6 +1,7 @@
 ## 1. Implementation
 - [ ] 1.1 Add the `github.com/quic-go/quic-go` dependency to the project workspace.
-- [ ] 1.2 Implement a **Transport-Agnostic Connection Interface** in `src/common` to unify `net.Conn` and `quic.Stream`.
+- [ ] 1.2 Update `src/common/config.go` to parse the new `protocol` field from the `[global]` section, defaulting to `tcp`.
+- [ ] 1.3 Implement a **Transport-Agnostic Connection Interface** in `src/common` to unify `net.Conn` and `quic.Stream`.
 - [ ] 1.3 Implement a global QUIC listener in `src/server` that binds to a UDP port on all server nodes, capable of handling all replication modes.
 - [ ] 1.4 Refactor `Connect`, `SendFile`, and `getFile` to utilize the new transport abstraction, allowing any mode to run over QUIC.
 - [ ] 1.5 Update the client and internal peer dialers to support a "QUIC-Preferred" mode with transparent TCP fallback.
