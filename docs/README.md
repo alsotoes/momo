@@ -6,7 +6,7 @@ This document explains the architecture, configuration, wire protocol, replicati
 
 ## Key Performance & Security Features (⚡ Bolt & 🛡️ Sentinel)
 
-- **Pluggable Transport Layer**: Communicate seamlessly over raw TCP or encrypted QUIC streams via the modular `ProtocolFactory`.
+- **Pluggable Transport Layer**: Communicate seamlessly over raw TCP, encrypted QUIC streams, or upcoming **S3 compatibility** layers (tracking in [#131](https://github.com/alsotoes/momo/issues/131) and [#133](https://github.com/alsotoes/momo/issues/133)) via the modular `ProtocolFactory`.
 
 - **Zero-Allocation Hashing & Encoding**: SHA-256 sums and hex encoding use stack-allocated buffers to eliminate heap escapes.
 - **Phased Absolute Deadlines**: Continuous protection against Slowloris attacks with strict bounds for handshake (10s), metadata (60s), and dynamic transfer phases.
