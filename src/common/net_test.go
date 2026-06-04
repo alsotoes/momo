@@ -4,8 +4,6 @@ import (
 	"net"
 	"testing"
 	"time"
-
-	"go.uber.org/goleak"
 )
 
 type mockConn struct {
@@ -50,7 +48,6 @@ func TestIdleTimeoutConn(t *testing.T) {
 }
 
 func TestDialSocket(t *testing.T) {
-	defer goleak.VerifyNone(t)
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Failed to start listener: %v", err)

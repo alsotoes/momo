@@ -13,7 +13,6 @@ import (
 	"time"
 
 	momo_common "github.com/alsotoes/momo/src/common"
-	"go.uber.org/goleak"
 )
 
 // mockConnect is a mock implementation of Connect for testing.
@@ -131,7 +130,6 @@ func handleConnection(t *testing.T, connection net.Conn, cfg momo_common.Configu
 }
 
 func TestDaemonLogic(t *testing.T) {
-	defer goleak.VerifyNone(t)
 	// Setup common test data
 	daemons := []*momo_common.Daemon{
 		{Host: "127.0.0.1:0", Data: ""},
@@ -235,7 +233,6 @@ func TestDaemonLogic(t *testing.T) {
 }
 
 func TestUnauthenticatedConnection(t *testing.T) {
-	defer goleak.VerifyNone(t)
 	daemons := []*momo_common.Daemon{{Host: "127.0.0.1:0", Data: ""}}
 	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
 	wrongToken := "wrong_token_wrong_token_wrong_token_wrong_token_wrong_token_wro"

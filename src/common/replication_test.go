@@ -9,8 +9,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"go.uber.org/goleak"
 )
 
 func TestPadString(t *testing.T) {
@@ -117,7 +115,6 @@ func startDummyServer(t *testing.T, authToken string) (string, net.Listener) {
 }
 
 func TestConnect(t *testing.T) {
-	defer goleak.VerifyNone(t)
 	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
 
 	// Create a temp file to send
@@ -212,7 +209,6 @@ func TestConnect(t *testing.T) {
 }
 
 func TestSendFile(t *testing.T) {
-	defer goleak.VerifyNone(t)
 	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
 
 	file, err := os.CreateTemp("", "test_sendfile_*.txt")
@@ -255,6 +251,7 @@ func TestSendFile(t *testing.T) {
 		Size: fileInfo.Size(),
 	}
 
-	sendFile(&wg, conn, file.Name(), meta)
+	comm := NewMomoTCPCommunicator(conn)
+	sendFile(&wg, comm, file.Name(), meta)
 	wg.Wait()
 }

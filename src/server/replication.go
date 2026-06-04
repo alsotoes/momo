@@ -3,14 +3,11 @@ package server
 
 import (
 	"context"
-	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"sync"
-	"syscall"
 	"time"
 
 	momo_common "github.com/alsotoes/momo/src/common"
@@ -58,7 +55,8 @@ func SetReplicationState(newMode int, timestamp int64) momo_common.ReplicationDa
 // it propagates the change to the other servers in the cluster.
 func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configuration, serverId int, timestamp int64) error {
 	daemons := cfg.Daemons
-	server, err := net.Listen("tcp", daemons[serverId].ChangeReplication)
+	factory := momo_common.NewProtocolFactory(cfg)
+	server, err := factory.Listen(daemons[serverId].ChangeReplication)
 	if err != nil {
 		return fmt.Errorf("Error listening: %v", err)
 	}
@@ -118,43 +116,54 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 					log.Printf("CRITICAL: Panic recovered in ChangeReplicationMode handler for %s: %v", connection.RemoteAddr(), r)
 				}
 			}()
-			defer connection.Close()
+
+			comm := connection
+			defer comm.Close()
+
 			log.Printf("Client connected to changeReplicationMode")
 
 			// 🛡️ Sentinel: Enforce a read/write timeout to prevent slowloris DoS attacks
-			connection.SetDeadline(time.Now().Add(10 * time.Second))
+			comm.SetAbsoluteDeadline(time.Now().Add(10 * time.Second))
 
 			remoteAddr := momo_common.SanitizeLog(connection.RemoteAddr().String())
 
-			// Read and validate the AuthToken
-			// ⚡ Bolt: Stack allocate buffer to avoid heap allocations
-			var bufferAuthToken [momo_common.AuthTokenLength]byte
-			if _, err := io.ReadFull(connection, bufferAuthToken[:]); err != nil {
-				log.Printf("AUDIT: Error reading AuthToken from %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
+			// HandshakeServer performs the server-side handshake: receives AuthToken + Timestamp,
+			// validates the token, and returns the timestamp.
+			_, ts, err := comm.HandshakeServer(expectedAuthToken)
+			if err != nil {
+				log.Printf("AUDIT: Handshake failed from %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
 				return
 			}
-			// 🛡️ Sentinel: Use constant-time comparison to prevent timing attacks during authentication
-			if subtle.ConstantTimeCompare(bufferAuthToken[:], expectedAuthToken) != 1 {
-				log.Printf("AUDIT: Invalid AuthToken received from %s: %v", remoteAddr, syscall.EACCES)
-				return
-			}
+
 			// 🛡️ Sentinel: Add audit logging for successful authentication
 			log.Printf("AUDIT: Successful authentication for changeReplicationMode from %s", remoteAddr)
+
+			// Send a dummy replication mode back to complete the handshake
+			if err := comm.SendReplicationMode(0); err != nil {
+				log.Printf("AUDIT: Error sending handshake ACK to %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
+				return
+			}
 
 			// Decode the replication data directly from the connection
 			// 🛡️ Sentinel: Limit the JSON payload size to prevent DoS via memory exhaustion
 			replicationJson := momo_common.ReplicationData{}
-			if err := json.NewDecoder(io.LimitReader(connection, 1024)).Decode(&replicationJson); err != nil {
+			decoder := json.NewDecoder(io.LimitReader(comm, 1024))
+			if err := decoder.Decode(&replicationJson); err != nil {
 				log.Printf("AUDIT: Failed to decode replication data from %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
 				return
 			}
 
 			// Update the replication state
-			newState := SetReplicationState(replicationJson.New, replicationJson.TimeStamp)
+			newState := SetReplicationState(replicationJson.New, ts)
 			newReplicationJson, _ := json.Marshal(newState)
 			// 🛡️ Sentinel: Audit log the sensitive operation
 			log.Printf("AUDIT: Replication mode changed to %d by %s", replicationJson.New, remoteAddr)
 			log.Printf("ReplicationData new struct: %s", string(newReplicationJson))
+
+			// Send ACK back to client to confirm receipt and prevent premature connection termination
+			if _, err := comm.Write([]byte("OK")); err != nil {
+				log.Printf("AUDIT: Failed to send ACK to %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
+			}
 
 			// If this is the primary server, propagate the change to the other servers
 			if 0 == serverId {
@@ -164,7 +173,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 							log.Printf("CRITICAL: Panic recovered in propagation to node 1: %v", r)
 						}
 					}()
-					changeReplicationModeClient(expectedAuthToken, daemons, newReplicationJson, 1)
+					ChangeReplicationModeClient(factory, newReplicationJson, 1)
 				}()
 				go func() {
 					defer func() {
@@ -172,32 +181,45 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 							log.Printf("CRITICAL: Panic recovered in propagation to node 2: %v", r)
 						}
 					}()
-					changeReplicationModeClient(expectedAuthToken, daemons, newReplicationJson, 2)
+					ChangeReplicationModeClient(factory, newReplicationJson, 2)
 				}()
 			}
 		}()
 	}
 }
 
-// changeReplicationModeClient connects to another server in the cluster and sends the new replication mode.
+// ChangeReplicationModeClient connects to another server in the cluster and sends the new replication mode.
 // It is used by the primary server to propagate replication mode changes to the other servers.
-func changeReplicationModeClient(paddedAuthToken []byte, daemons []*momo_common.Daemon, replicationJson []byte, serverId int) {
-	conn, err := momo_common.DialSocket(daemons[serverId].ChangeReplication)
+func ChangeReplicationModeClient(factory *momo_common.ProtocolFactory, replicationJson []byte, serverId int) {
+	daemons := factory.GetDaemons()
+	comm, err := factory.Dial(daemons[serverId].ChangeReplication)
 	if err != nil {
 		log.Printf("Dial error: %v", momo_common.SanitizeLog(err.Error()))
 		return
 	}
-	defer conn.Close()
+	defer comm.Close()
 
 	// ⚡ Bolt: Consolidate AuthToken and JSON payload into a single optimally-sized buffer
 	// to avoid multiple `conn.Write` calls and `string` allocation overhead.
-	buf := make([]byte, 0, len(paddedAuthToken)+len(replicationJson)+1)
-	buf = append(buf, paddedAuthToken...)
-	buf = append(buf, replicationJson...)
-	buf = append(buf, '\n') // Add trailing newline for `json.Decoder` compatibility on the server
+	// For now, we still need to perform the handshake.
+	// This will need more refactoring if we want to truly consolidate the writes across protocols.
+	authToken := factory.GetAuthToken()
+	timestamp := time.Now().UnixNano()
+	
+	if _, err := comm.HandshakeClient(authToken, timestamp); err != nil {
+		log.Printf("Handshake failed with peer %d: %v", serverId, momo_common.SanitizeLog(err.Error()))
+		return
+	}
 
-	if _, err := conn.Write(buf); err != nil {
-		log.Printf("Failed to send AuthToken and ReplicationData: %v", momo_common.SanitizeLog(err.Error()))
+	if _, err := comm.Write(append(replicationJson, '\n')); err != nil {
+		log.Printf("Failed to send ReplicationData to %d: %v", serverId, momo_common.SanitizeLog(err.Error()))
+		return
+	}
+
+	// Wait for ACK to prevent premature connection termination, especially over QUIC
+	ackBuf := make([]byte, 2) // We expect "OK"
+	if _, err := io.ReadFull(comm, ackBuf); err != nil {
+		log.Printf("Failed to read ACK from %d: %v", serverId, momo_common.SanitizeLog(err.Error()))
 		return
 	}
 

@@ -8,11 +8,19 @@ Momo is a TCP-based file replication system that consists of a client and a clus
 
 ### Components
 
-The system is composed of three main components:
+The system is organized into a three-layer architecture to ensure clean separation of concerns and a pluggable transport mechanism:
 
-- **Client**: The client is responsible for sending files to the server cluster.
-- **Server**: The servers are responsible for receiving files from the client, storing them, and replicating them to other servers in the cluster.
-- **Metrics**: The metrics component runs on a designated server (server 0) and is responsible for monitoring system metrics (CPU and memory usage) and changing the replication strategy based on predefined thresholds.
+#### 1. Communication Layer (Transport & App Protocol)
+This layer handles the physical movement of bytes. It includes the carrier transport (e.g., TCP or UDP) and application-level framing.
+- **Momo-TCP**: The legacy standard transport.
+- **Momo-QUIC**: The modern, secure-by-default transport using `quic-go`.
+- All communication is abstracted through a `Communicator` interface provided by the `ProtocolFactory`.
+
+#### 2. Core Replication Logic (Agnostic)
+The core logic defines the data distribution path (e.g., `Chain`, `Splay`). This logic is **completely agnostic** of the communication layer. It executes replication by requesting a connection (`Communicator`) from the factory and doesn't care whether bytes move via TCP or QUIC streams.
+
+#### 3. State Management (Polymorphic System)
+The metrics component runs on a designated server (server 0) and is responsible for monitoring system metrics (CPU and memory usage) and changing the replication strategy based on predefined thresholds. It operates independently of the network stack.
 
 ## High-Level Architecture
 

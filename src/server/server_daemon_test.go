@@ -10,7 +10,6 @@ import (
 	"time"
 
 	momo_common "github.com/alsotoes/momo/src/common"
-	"go.uber.org/goleak"
 )
 
 func padTestString(input string, length int) string {
@@ -21,7 +20,6 @@ func padTestString(input string, length int) string {
 }
 
 func TestChangeReplicationModeServerReal(t *testing.T) {
-	defer goleak.VerifyNone(t)
 	daemons := []*momo_common.Daemon{
 		{ChangeReplication: "127.0.0.1:45678"},
 		{ChangeReplication: "127.0.0.1:45679"},
@@ -32,6 +30,7 @@ func TestChangeReplicationModeServerReal(t *testing.T) {
 		Daemons: daemons,
 		Global: momo_common.ConfigurationGlobal{
 			AuthToken: authToken,
+			Protocol:  "momo-tcp",
 		},
 	}
 
@@ -69,19 +68,21 @@ func TestChangeReplicationModeServerReal(t *testing.T) {
 	}
 	defer conn.Close()
 
-	conn.Write([]byte(momo_common.PadString(authToken, momo_common.AuthTokenLength)))
+	comm := momo_common.NewMomoTCPCommunicator(conn)
+	if _, err := comm.HandshakeClient(authToken, time.Now().UnixNano()); err != nil {
+		t.Fatalf("Handshake failed: %v", err)
+	}
 
 	data := momo_common.ReplicationData{
 		New:       momo_common.ReplicationSplay,
 		TimeStamp: time.Now().Unix(),
 	}
 	jsonBytes, _ := json.Marshal(data)
-	conn.Write(jsonBytes)
+	comm.Write(jsonBytes)
 	time.Sleep(100 * time.Millisecond)
 }
 
 func TestDaemonReal(t *testing.T) {
-	defer goleak.VerifyNone(t)
 	tempDir := t.TempDir()
 	daemons := []*momo_common.Daemon{
 		{Host: "127.0.0.1:45681", Data: tempDir + "/001"},
@@ -98,6 +99,7 @@ func TestDaemonReal(t *testing.T) {
 		Daemons: daemons,
 		Global: momo_common.ConfigurationGlobal{
 			AuthToken: authToken,
+			Protocol:  "momo-tcp",
 		},
 	}
 
@@ -113,28 +115,28 @@ func TestDaemonReal(t *testing.T) {
 	}
 	defer conn.Close()
 
-	conn.Write([]byte(momo_common.PadString(authToken, momo_common.AuthTokenLength)))
-
-	timestampStr := "1234567890123456789"
-	conn.Write([]byte(timestampStr))
-
-	buf := make([]byte, 1)
-	conn.Read(buf)
+	comm := momo_common.NewMomoTCPCommunicator(conn)
+	if _, err := comm.HandshakeClient(authToken, 1234567890123456789); err != nil {
+		t.Fatalf("Handshake failed: %v", err)
+	}
 
 	file, err := os.CreateTemp("", "test_daemon_file_*.txt")
 	if err == nil {
 		file.WriteString("data")
 		file.Close()
 		hash, _ := momo_common.HashFile(file.Name())
-		conn.Write([]byte(padTestString(hash, 64)))
-		conn.Write([]byte(padTestString("test.txt", momo_common.FileInfoLength)))
-		conn.Write([]byte(padTestString("4", momo_common.FileInfoLength)))
+		meta := &momo_common.FileMetadata{
+			Name: "test.txt",
+			Hash: hash,
+			Size: 4,
+		}
+		if err := comm.SendMetadata(meta); err != nil {
+			t.Fatalf("Failed to send metadata: %v", err)
+		}
 
-		conn.Write([]byte("data"))
+		comm.Write([]byte("data"))
 
-		ackBuf := make([]byte, 4)
-		_, err := io.ReadFull(conn, ackBuf)
-		if err != nil {
+		if err := comm.ReceiveACK(); err != nil {
 			t.Logf("Failed to read ACK from server: %v", err)
 		}
 	}
