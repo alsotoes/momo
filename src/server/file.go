@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -78,7 +77,7 @@ func getMetadata(r io.Reader) (momo_common.FileMetadata, error) {
 // It creates a new file at the given path and copies the file content from the connection in chunks.
 // After the transfer is complete, it calculates the SHA-256 hash of the received file and compares it with the expected hash.
 // It logs the progress and the result of the hash check.
-func getFile(connection net.Conn, path string, fileName string, expectedHash string, fileSize int64) (err error) {
+func getFile(r io.Reader, path string, fileName string, expectedHash string, fileSize int64) (err error) {
 	fullPath := filepath.Join(path, fileName)
 	// 🛡️ Sentinel: Use os.CreateTemp for secure, unpredictable temporary file creation.
 	newFile, err := os.CreateTemp(path, fileName+"-*.tmp")
@@ -98,7 +97,7 @@ func getFile(connection net.Conn, path string, fileName string, expectedHash str
 
 	// ⚡ Bolt: Compute SHA-256 hash simultaneously while writing to disk using an io.TeeReader.
 	hashCalc := sha256.New()
-	reader := io.TeeReader(connection, hashCalc)
+	reader := io.TeeReader(r, hashCalc)
 
 	// Optimization: Use a single io.CopyN instead of manually chunking in a loop.
 	if fileSize > 0 {

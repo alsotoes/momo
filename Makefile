@@ -9,7 +9,7 @@ BIN := $(BIN_DIR)/momo
 MAIN := src/momo.go
 MODULES := ./src/common ./src/metrics ./src/server
 
-.PHONY: all build clean tidy vendor test vet coverage doc doc-live benchmark test-e2e
+.PHONY: all build clean tidy vendor test vet coverage doc doc-live benchmark test-e2e smoke-tcp smoke-quic
 
 all: build
 
@@ -55,3 +55,9 @@ benchmark:
 
 test-e2e:
 	./.github/scripts/test-e2e.sh
+
+smoke-tcp:
+	./.github/scripts/test-e2e.sh momo-tcp
+
+smoke-quic:
+	./.github/scripts/test-e2e.sh momo-quic
