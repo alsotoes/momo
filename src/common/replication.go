@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"sync"
+	"unsafe"
 )
 
 // Connect establishes connections with daemon(s) and sends a file.
@@ -141,5 +142,6 @@ func PadString(input string, length int) string {
 	}
 	b := make([]byte, length)
 	copy(b, input)
-	return string(b)
+	// ⚡ Bolt: Eliminate string allocation overhead by using unsafe.String.
+	return unsafe.String(unsafe.SliceData(b), length)
 }

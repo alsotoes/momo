@@ -115,3 +115,6 @@
 ## 2026-06-02 - Eliminate heap allocations in hex.EncodeToString
 **Learning:** Using `hex.EncodeToString(hash)` creates a dynamic allocation and copies the hash bytes, leading to unnecessary heap escapes.
 **Action:** Replace `hex.EncodeToString` with a stack-allocated byte array (`var hexBuf [sha256.Size * 2]byte`), encode into it with `hex.Encode(hexBuf[:], hash)`, and convert it to a string. This eliminates the intermediate slice allocation, saving memory and CPU cycles during hot path hash calculations.
+## 2024-05-13 - Eliminate string allocation overhead with unsafe.String
+**Learning:** In Go, converting a newly created byte slice to a string (e.g., `string(make([]byte, n))`) forces an allocation and copies the bytes because strings are immutable. For fixed-size padding buffers that will never be modified again after initial copying, `unsafe.String(unsafe.SliceData(b), length)` can be used to convert the byte slice to a string without incurring an additional memory allocation and copy.
+**Action:** When a locally scoped byte slice is populated and returned immediately as a string, use `unsafe.String(unsafe.SliceData(b), length)` instead of `string(b)` to eliminate the final string allocation and copy overhead.
