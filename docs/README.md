@@ -1,10 +1,12 @@
 # Momo
 
-Momo is a high-performance, TCP-based file replication playground written in Go. It demonstrates several replication strategies and a simple, metrics‑driven controller that can switch strategies at runtime (a “polymorphic” system), optimized with zero-allocation techniques.
+Momo is a high-performance, transport-agnostic file replication playground written in Go. It demonstrates several replication strategies and a simple, metrics‑driven controller that can switch strategies at runtime (a “polymorphic” system), optimized with zero-allocation techniques. It fully supports both legacy TCP (`momo-tcp`) and modern QUIC (`momo-quic`) transports.
 
 This document explains the architecture, configuration, wire protocol, replication modes, and how to run the client and servers.
 
 ## Key Performance & Security Features (⚡ Bolt & 🛡️ Sentinel)
+
+- **Pluggable Transport Layer**: Communicate seamlessly over raw TCP or encrypted QUIC streams via the modular `ProtocolFactory`.
 
 - **Zero-Allocation Hashing & Encoding**: SHA-256 sums and hex encoding use stack-allocated buffers to eliminate heap escapes.
 - **Phased Absolute Deadlines**: Continuous protection against Slowloris attacks with strict bounds for handshake (10s), metadata (60s), and dynamic transfer phases.

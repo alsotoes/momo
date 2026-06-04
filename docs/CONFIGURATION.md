@@ -36,6 +36,14 @@ This section contains cluster-wide settings that affect all daemons.
     -   **Type:** Boolean (`true` or `false`)
     -   **Default:** `true`
 
+-   **`protocol`**
+    -   **Description:** Defines the transport layer used for all intra-cluster and client-server communication.
+    -   **Type:** String
+    -   **Possible Values:**
+        -   `momo-tcp`: High-performance raw TCP transport.
+        -   `momo-quic`: Modern encrypted transport running over UDP utilizing TLS 1.3 and QUIC streams.
+    -   **Default:** `momo-tcp` (if omitted, falls back to `momo-tcp` with a warning log)
+
 ### [metrics]
 
 This section controls the behavior of the polymorphic replication system. It is only active if `polymorphic_system = true` in the `[global]` section.
