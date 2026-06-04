@@ -36,6 +36,8 @@ type Daemon struct {
 type ConfigurationGlobal struct {
 	// Debug enables or disables debug mode.
 	Debug bool
+	// Protocol defines the network stack to use (e.g., momo-tcp, momo-quic, s3-tcp).
+	Protocol string
 	// AuthToken is the authentication token used for node-to-node and client-to-node communication.
 	AuthToken string
 	// ReplicationOrder is the order of replication modes to use.

@@ -3,9 +3,7 @@ package common
 import (
 	"io"
 	"log"
-	"net"
 	"os"
-	"strconv"
 	"sync"
 )
 
@@ -17,46 +15,23 @@ func Connect(wg *sync.WaitGroup, cfg Configuration, filePath string, serverId in
 	defer wg.Done()
 	daemons := cfg.Daemons
 	authToken := cfg.Global.AuthToken
-	var connections []net.Conn
+	factory := NewProtocolFactory(cfg)
+	var communicators []Communicator
 	var wgSendFile sync.WaitGroup
 
 	// Connect to the initial daemon to check replication mode
-	initialConn, err := DialSocket(daemons[serverId].Host)
+	comm, err := factory.Dial(daemons[serverId].Host)
 	if err != nil {
 		log.Printf("Failed to connect to initial daemon %s: %v", daemons[serverId].Host, SanitizeLog(err.Error()))
 		return
 	}
-	connections = append(connections, initialConn)
+	communicators = append(communicators, comm)
 
 	// Perform handshake to get replication mode
-	// ⚡ Bolt: Send AuthToken and timestamp in a single write operation to reduce system calls.
-	// Stack-allocate array to eliminate heap escapes.
-	var handshakeBuf [AuthTokenLength + TimestampLength]byte
-	copy(handshakeBuf[0:AuthTokenLength], PadString(authToken, AuthTokenLength))
-
-	// Directly format timestamp into the buffer starting after AuthToken
-	// ⚡ Bolt: Use a temporary slice of the remaining buffer to append the timestamp
-	strconv.AppendInt(handshakeBuf[AuthTokenLength:AuthTokenLength], timestamp, 10)
-	// If the timestamp is shorter than TimestampLength, it remains null-padded as handshakeBuf was zero-initialized.
-
-	if _, err := initialConn.Write(handshakeBuf[:]); err != nil {
-		log.Printf("Failed to send handshake to %s: %v", daemons[serverId].Host, SanitizeLog(err.Error()))
-		initialConn.Close()
-		return
-	}
-	var bufferReplicationMode [1]byte
-	if _, err := io.ReadFull(initialConn, bufferReplicationMode[:]); err != nil {
-		log.Printf("Failed to read replication mode from %s: %v", daemons[serverId].Host, SanitizeLog(err.Error()))
-		initialConn.Close()
-		return
-	}
-	log.Printf("Client replicationMode: %s", SanitizeLog(string(bufferReplicationMode[:])))
-
-	replicationModeInt64, err := SafeParseInt(bufferReplicationMode[:])
-	replicationMode := int(replicationModeInt64)
+	replicationMode, err := comm.HandshakeClient(authToken, timestamp)
 	if err != nil {
-		log.Printf("Invalid replication mode received from %s: %v", daemons[serverId].Host, SanitizeLog(err.Error()))
-		initialConn.Close()
+		log.Printf("Handshake failed with %s: %v", daemons[serverId].Host, SanitizeLog(err.Error()))
+		comm.Close()
 		return
 	}
 
@@ -67,33 +42,27 @@ func Connect(wg *sync.WaitGroup, cfg Configuration, filePath string, serverId in
 				continue // Already connected
 			}
 
-			conn, err := DialSocket(daemon.Host)
+			peerComm, err := factory.Dial(daemon.Host)
 			if err != nil {
 				log.Printf("Failed to connect to daemon %s: %v", daemon.Host, SanitizeLog(err.Error()))
 				continue
 			}
 
 			// Perform handshake with the other daemons
-			if _, err := conn.Write(handshakeBuf[:]); err != nil {
-				log.Printf("Failed to send handshake to %s: %v", daemon.Host, SanitizeLog(err.Error()))
-				conn.Close()
-				continue
-			}
-			var dummyBuffer [1]byte
-			if _, err := io.ReadFull(conn, dummyBuffer[:]); err != nil {
-				log.Printf("Failed to complete handshake with %s: %v", daemon.Host, SanitizeLog(err.Error()))
-				conn.Close()
+			if _, err := peerComm.HandshakeClient(authToken, timestamp); err != nil {
+				log.Printf("Handshake failed with peer %s: %v", daemon.Host, SanitizeLog(err.Error()))
+				peerComm.Close()
 				continue
 			}
 
-			connections = append(connections, conn)
+			communicators = append(communicators, peerComm)
 		}
 	}
 
-	// Close all connections at the end
+	// Close all communicators at the end
 	defer func() {
-		for _, conn := range connections {
-			conn.Close()
+		for _, c := range communicators {
+			c.Close()
 		}
 	}()
 
@@ -122,20 +91,17 @@ func Connect(wg *sync.WaitGroup, cfg Configuration, filePath string, serverId in
 	log.Printf("=> Size:    %d", meta.Size)
 
 	// Send the file to all established connections concurrently
-	wgSendFile.Add(len(connections))
-	for _, conn := range connections {
-		go sendFile(&wgSendFile, conn, filePath, meta)
+	wgSendFile.Add(len(communicators))
+	for _, c := range communicators {
+		go sendFile(&wgSendFile, c, filePath, meta)
 	}
 	wgSendFile.Wait()
 }
 
-// hashLength is the expected length of a SHA-256 hash string.
-const hashLength = 64
-
 // sendFile sends a file over a network connection.
 // It first sends the file's metadata (SHA-256 hash, name, and size) and then the file's content.
 // It waits for an acknowledgment ("ACK") from the server upon successful reception.
-func sendFile(wg *sync.WaitGroup, connection net.Conn, filePath string, meta *FileMetadata) {
+func sendFile(wg *sync.WaitGroup, comm Communicator, filePath string, meta *FileMetadata) {
 	defer wg.Done()
 
 	file, err := os.Open(filePath)
@@ -147,38 +113,20 @@ func sendFile(wg *sync.WaitGroup, connection net.Conn, filePath string, meta *Fi
 	defer file.Close()
 
 	// Send metadata
-	// Optimization: Pre-allocate a single buffer for the exact packet size.
-	// This avoids multiple string formatting allocations and multiple system calls.
-	// ⚡ Bolt: Stack allocate array to eliminate heap escape.
-	var metadataBuffer [hashLength + FileInfoLength + FileInfoLength]byte
-
-	copy(metadataBuffer[0:hashLength], meta.Hash)
-	copy(metadataBuffer[hashLength:hashLength+FileInfoLength], PadString(meta.Name, FileInfoLength))
-
-	// Format size directly into the buffer avoiding fmt.Sprintf
-	var sizeBuf [FileInfoLength]byte
-	sizeBytes := strconv.AppendInt(sizeBuf[:0], meta.Size, 10)
-	copy(metadataBuffer[hashLength+FileInfoLength:], sizeBytes)
-
-	connection.Write(metadataBuffer[:])
+	if err := comm.SendMetadata(meta); err != nil {
+		log.Printf("Failed to send metadata for %s: %v", SanitizeLog(meta.Name), SanitizeLog(err.Error()))
+		return
+	}
 
 	// Send file content
-	// Optimization: Use io.Copy to avoid manual buffer allocation and read/write loops.
-	// This can leverage kernel-level zero-copy optimizations (e.g., sendfile).
-	if _, err := io.Copy(connection, file); err != nil {
+	if _, err := io.Copy(comm, file); err != nil {
 		log.Printf("Error sending file %s: %v", SanitizeLog(meta.Name), SanitizeLog(err.Error()))
 		return
 	}
 
 	// Wait for ACK
-	var ackBuffer [3]byte
-	if _, err := io.ReadFull(connection, ackBuffer[:]); err != nil {
+	if err := comm.ReceiveACK(); err != nil {
 		log.Printf("Failed to read ACK from server: %v", SanitizeLog(err.Error()))
-		return
-	}
-
-	if string(ackBuffer[:]) != "ACK" {
-		log.Printf("Received unexpected response from server: %s", SanitizeLog(string(ackBuffer[:])))
 		return
 	}
 

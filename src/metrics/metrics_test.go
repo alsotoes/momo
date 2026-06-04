@@ -96,7 +96,7 @@ func TestCheckMetricsAndSwap(t *testing.T) {
 
 			maxThreshPercent := cfg.Metrics.MaxThreshold * 100
 			minThreshPercent := cfg.Metrics.MinThreshold * 100
-			newIndex, changed := checkMetricsAndSwap(cfg, sm, tt.currentIndex, replicationOrder, maxThreshPercent, minThreshPercent)
+			newIndex, changed := checkMetricsAndSwap(sm, tt.currentIndex, replicationOrder, maxThreshPercent, minThreshPercent)
 
 			if newIndex != tt.expectedIndex {
 				t.Errorf("Expected index %d, got %d", tt.expectedIndex, newIndex)

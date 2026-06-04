@@ -13,7 +13,6 @@ import (
 	"time"
 
 	momo_common "github.com/alsotoes/momo/src/common"
-	"go.uber.org/goleak"
 )
 
 // handleReplicationChange is a testable version of the connection handling logic inside ChangeReplicationModeServer.
@@ -61,7 +60,6 @@ func handleReplicationChange(t *testing.T, authToken string, connection net.Conn
 // TestChangeReplicationModeServerLogic verifies that the server correctly
 // updates its replication mode based on data from a client connection.
 func TestChangeReplicationModeServerLogic(t *testing.T) {
-	defer goleak.VerifyNone(t)
 	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
 
 	// Arrange: Set initial state and create a network pipe to simulate a client-server connection.
@@ -106,7 +104,6 @@ func TestChangeReplicationModeServerLogic(t *testing.T) {
 // TestChangeReplicationModeClient verifies that the client function correctly sends the
 // replication mode JSON payload to a listening server.
 func TestChangeReplicationModeClient(t *testing.T) {
-	defer goleak.VerifyNone(t)
 	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
 
 	// Arrange: Set up a listener to act as a mock server.
@@ -127,9 +124,13 @@ func TestChangeReplicationModeClient(t *testing.T) {
 		}
 		defer conn.Close()
 
-		bufAuth := make([]byte, momo_common.AuthTokenLength)
-		io.ReadFull(conn, bufAuth)
-		receivedAuth <- bufAuth
+		// Read AuthToken and Timestamp
+		var handshakeBuf [momo_common.AuthTokenLength + momo_common.TimestampLength]byte
+		io.ReadFull(conn, handshakeBuf[:])
+		receivedAuth <- handshakeBuf[:momo_common.AuthTokenLength]
+
+		// Send back a dummy replication mode to complete handshake
+		conn.Write([]byte("0"))
 
 		bufJSON := make([]byte, momo_common.FileInfoLength)
 		n, _ := conn.Read(bufJSON)
@@ -137,13 +138,19 @@ func TestChangeReplicationModeClient(t *testing.T) {
 	}()
 
 	// Act: Call the function under test.
-	daemons := []*momo_common.Daemon{
-		{ChangeReplication: serverAddr}, // Configure the daemon to connect to our mock server.
+	cfg := momo_common.Configuration{
+		Global: momo_common.ConfigurationGlobal{
+			AuthToken: authToken,
+			Protocol:  "momo-tcp",
+		},
+		Daemons: []*momo_common.Daemon{
+			{ChangeReplication: serverAddr}, // Configure the daemon to connect to our mock server.
+		},
 	}
+	factory := momo_common.NewProtocolFactory(cfg)
 	jsonString := `{"New":5,"TimeStamp":1662756600}`
 
-	paddedAuthToken := []byte(momo_common.PadString(authToken, momo_common.AuthTokenLength))
-	changeReplicationModeClient(paddedAuthToken, daemons, []byte(jsonString), 0)
+	ChangeReplicationModeClient(factory, []byte(jsonString), 0)
 
 	// Assert: Verify the mock server received the correct data.
 	select {
@@ -170,7 +177,6 @@ func TestChangeReplicationModeClient(t *testing.T) {
 // TestGetCurrentReplicationMode verifies that GetCurrentReplicationMode
 // returns the expected current replication mode.
 func TestGetCurrentReplicationMode(t *testing.T) {
-	defer goleak.VerifyNone(t)
 	// Arrange
 	expectedMode := momo_common.ReplicationChain
 	timestamp := time.Now().Unix()

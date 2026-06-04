@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"log"
 	"sync"
@@ -29,11 +30,13 @@ func main() {
 //	-id: Server daemon id (default: -1).
 //	-file: File path to upload (default: "/tmp/momo").
 //	-config: Path to the configuration file (default: "conf/momo.conf").
+//	-mode: Replication mode code for "repl" impersonation.
 func Run() {
-	impersonationPtr := flag.String("imp", "client", "Server, client or metric server impersonation")
+	impersonationPtr := flag.String("imp", "client", "Server, client, metric server or replication changer (repl) impersonation")
 	serverIdPtr := flag.Int("id", -1, "Server daemon id")
 	filePathPtr := flag.String("file", "/tmp/momo", "File path to upload")
 	configPathPtr := flag.String("config", "conf/momo.conf", "Path to the configuration file")
+	modePtr := flag.Int("mode", -1, "Replication mode to set (used with -imp repl)")
 	flag.Parse()
 
 	cfg, err := common.GetConfig(*configPathPtr)
@@ -43,8 +46,13 @@ func Run() {
 
 	common.LogStdOut(cfg.Global.Debug)
 
-	if *impersonationPtr == "server" && (*serverIdPtr >= len(cfg.Daemons) || *serverIdPtr < 0) {
-		log.Fatalf("index out of range")
+	if (*impersonationPtr == "server" || *impersonationPtr == "repl") && (*serverIdPtr >= len(cfg.Daemons) || *serverIdPtr < 0) {
+		// Default to 0 for repl if not specified
+		if *impersonationPtr == "repl" && *serverIdPtr == -1 {
+			*serverIdPtr = 0
+		} else {
+			log.Fatalf("index out of range")
+		}
 	}
 
 	switch *impersonationPtr {
@@ -64,6 +72,20 @@ func Run() {
 		if err := runServer(cfg, *serverIdPtr); err != nil {
 			log.Fatalf("Server error: %v", common.SanitizeLog(err.Error()))
 		}
+	case "repl":
+		if *modePtr == -1 {
+			log.Fatalf("Replication mode (-mode) must be specified for 'repl' impersonation")
+		}
+		data := common.ReplicationData{
+			New:       *modePtr,
+			TimeStamp: time.Now().UnixNano(),
+		}
+		jsonBytes, err := json.Marshal(data)
+		if err != nil {
+			log.Fatalf("Failed to marshal replication data: %v", err)
+		}
+		factory := common.NewProtocolFactory(cfg)
+		server.ChangeReplicationModeClient(factory, jsonBytes, *serverIdPtr)
 	default:
 		log.Fatalf("*** ERROR: Option unknown: %s", common.SanitizeLog(*impersonationPtr))
 	}

@@ -35,7 +35,7 @@ func (rsm *RealSystemMetrics) CPUPercent() ([]float64, error) {
 //
 // It compares the memory and CPU usage against the configured thresholds and returns the new
 // replication index and a boolean indicating whether the mode was changed.
-func checkMetricsAndSwap(cfg momo_common.Configuration, sm SystemMetrics, currentIndex int, replicationOrder []int, maxThreshPercent, minThreshPercent float64) (int, bool) {
+func checkMetricsAndSwap(sm SystemMetrics, currentIndex int, replicationOrder []int, maxThreshPercent, minThreshPercent float64) (int, bool) {
 	// ⚡ Bolt: Hoist currentIndex == -1 check to avoid unnecessary work.
 	if currentIndex == -1 {
 		return currentIndex, false
@@ -124,7 +124,7 @@ func GetMetrics(ctx context.Context, cfg momo_common.Configuration, serverId int
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			newIndex, changed := checkMetricsAndSwap(cfg, sm, currentIndex, replicationOrder, maxThreshPercent, minThreshPercent)
+			newIndex, changed := checkMetricsAndSwap(sm, currentIndex, replicationOrder, maxThreshPercent, minThreshPercent)
 			if changed {
 				currentIndex = newIndex
 				pushNewReplicationMode(cfg, paddedAuthToken, replicationOrder[currentIndex])
