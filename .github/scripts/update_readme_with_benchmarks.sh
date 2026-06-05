@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+set -x # Enable debugging for CI logs
 
 # This script updates the README.md with benchmark results.
 # It expects two arguments: the path to the old benchmark results
@@ -17,11 +18,11 @@ if [ ! -f "$OLD_BENCH" ] || [ ! -f "$NEW_BENCH" ]; then
 fi
 
 # Filter benchmark results to only include benchmark lines
-grep "^Benchmark" "$OLD_BENCH" > old_bench_filtered.txt
-grep "^Benchmark" "$NEW_BENCH" > new_bench_filtered.txt
+grep "^Benchmark" "$OLD_BENCH" > old_bench_filtered.txt || true
+grep "^Benchmark" "$NEW_BENCH" > new_bench_filtered.txt || true
 
 # Generate comparison table with benchstat
-COMPARISON=$(benchstat old_bench_filtered.txt new_bench_filtered.txt)
+COMPARISON=$(benchstat old_bench_filtered.txt new_bench_filtered.txt || true)
 
 # Average the results for the table and chart
 AVG_RESULTS=$(awk '
@@ -126,7 +127,7 @@ EOF
 
 for bench_name in $BENCHMARK_NAMES; do
     # Get the data for this benchmark for the last 10 commits
-    bench_data=$(grep "$bench_name" "$HISTORY_FILE" | tail -n 10 | awk -F, '{printf "%.0f,", $3}' | sed 's/,$//')
+    bench_data=$(grep "$bench_name" "$HISTORY_FILE" | tail -n 10 | awk -F, '{printf "%.0f,", $3}' | sed 's/,$//' || true)
     short_name=$(echo "$bench_name" | sed -e 's/Benchmark//' -e 's/-[0-9]\+$//')
     echo "    line \"$short_name\" [${bench_data}]" >> "$CONTENT_FILE"
 done
@@ -144,7 +145,7 @@ EOF
 
 for bench_name in $BENCHMARK_NAMES; do
     # Get the data for this benchmark for the last 10 commits
-    bench_data=$(grep "$bench_name" "$HISTORY_FILE" | tail -n 10 | awk -F, '{printf "%.0f,", $4}' | sed 's/,$//')
+    bench_data=$(grep "$bench_name" "$HISTORY_FILE" | tail -n 10 | awk -F, '{printf "%.0f,", $4}' | sed 's/,$//' || true)
     short_name=$(echo "$bench_name" | sed -e 's/Benchmark//' -e 's/-[0-9]\+$//')
     echo "    line \"$short_name\" [${bench_data}]" >> "$CONTENT_FILE"
 done
@@ -162,7 +163,7 @@ EOF
 
 for bench_name in $BENCHMARK_NAMES; do
     # Get the data for this benchmark for the last 10 commits
-    bench_data=$(grep "$bench_name" "$HISTORY_FILE" | tail -n 10 | awk -F, '{printf "%.0f,", $5}' | sed 's/,$//')
+    bench_data=$(grep "$bench_name" "$HISTORY_FILE" | tail -n 10 | awk -F, '{printf "%.0f,", $5}' | sed 's/,$//' || true)
     short_name=$(echo "$bench_name" | sed -e 's/Benchmark//' -e 's/-[0-9]\+$//')
     echo "    line \"$short_name\" [${bench_data}]" >> "$CONTENT_FILE"
 done
