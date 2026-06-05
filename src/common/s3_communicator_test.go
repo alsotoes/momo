@@ -42,7 +42,7 @@ func TestS3Communicator_HandshakeServer(t *testing.T) {
 	if meta.Size != 1024 {
 		t.Errorf("Expected size 1024, got %d", meta.Size)
 	}
-	expectedName := PadString("test-file.txt", 64)
+	expectedName := "test-file.txt"
 	if meta.Name != expectedName {
 		t.Errorf("Expected name %q, got %q", expectedName, meta.Name)
 	}

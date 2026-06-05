@@ -79,7 +79,12 @@ func (m *S3Communicator) HandshakeClient(authToken string, timestamp int64) (int
 	if modeStr == "" {
 		return 4, nil // Default to ReplicationNone
 	}
-	mode, _ := strconv.Atoi(modeStr)
+	
+	// 🛡️ Zero-Crash: Defensive parsing of external headers
+	mode, err := strconv.Atoi(modeStr)
+	if err != nil {
+		return 0, fmt.Errorf("invalid replication mode header: %w", err)
+	}
 	return mode, nil
 }
 
@@ -214,7 +219,8 @@ func (m *S3Communicator) ReceiveACK() error {
 		return err
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	// 🛡️ Zero-Crash: Use LimitReader to prevent unbounded memory allocation
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 	if !strings.HasPrefix(string(body), "ACK") {
 		return fmt.Errorf("unexpected ACK: %s", string(body))
 	}
