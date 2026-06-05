@@ -80,5 +80,8 @@ func (l *QUICListener) Accept() (Communicator, error) {
 	if err != nil {
 		return nil, err
 	}
+	if l.factory.cfg.Global.Protocol == "s3-quic" {
+		return NewS3Communicator(NewQUICNetConn(stream, conn)), nil
+	}
 	return NewMomoQUICCommunicator(stream, conn), nil
 }

@@ -61,3 +61,9 @@ smoke-tcp:
 
 smoke-quic:
 	./.github/scripts/test-e2e.sh momo-quic
+
+smoke-s3-tcp:
+	./.github/scripts/test-e2e.sh s3-tcp
+
+smoke-s3-quic:
+	./.github/scripts/test-e2e.sh s3-quic
