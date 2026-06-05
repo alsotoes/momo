@@ -42,6 +42,8 @@ This section contains cluster-wide settings that affect all daemons.
     -   **Possible Values:**
         -   `momo-tcp`: High-performance raw TCP transport.
         -   `momo-quic`: Modern encrypted transport running over UDP utilizing TLS 1.3 and QUIC streams.
+        -   `s3-tcp`: AWS S3-compatible REST API mapping over standard TCP.
+        -   `s3-quic`: AWS S3-compatible REST API mapping over secure QUIC streams.
     -   **Default:** `momo-tcp` (if omitted, falls back to `momo-tcp` with a warning log)
 
 ### [metrics]
@@ -92,12 +94,14 @@ The configuration must contain a section for each daemon in the cluster, numbere
     -   **Type:** String (host:port)
     -   **Example:** `localhost:9090`
 
-## Example Configuration
+## Example Configurations
+
+### Standard TCP Deployment (Default)
 
 ```ini
-# Momo Server Configuration Example
 [global]
 debug = true
+protocol = momo-tcp
 replication_order = 1,2,3,4
 polymorphic_system = true
 
@@ -107,24 +111,32 @@ min_threshold = 0.1
 max_threshold = 0.9
 fallback_interval = 30
 
-# Daemon 0 - The Primary Server
 [daemon.0]
 host = localhost:8080
 change_replication = localhost:9090
 data = /data/0
 drive = /dev/sda1
+```
 
-# Daemon 1 - A Secondary Server
-[daemon.1]
-host = localhost:8081
-change_replication = localhost:9091
-data = /data/1
-drive = /dev/sdb1
+### Encrypted QUIC Deployment
 
-# Daemon 2 - Another Secondary Server
-[daemon.2]
-host = localhost:8082
-change_replication = localhost:9092
-data = /data/2
-drive = /dev/sdc1
+To run the cluster securely over UDP using auto-generated TLS 1.3 certificates, simply change the `protocol` field.
+
+```ini
+[global]
+protocol = momo-quic
+auth_token = YOUR_SECURE_64_BYTE_TOKEN_HERE
+polymorphic_system = true
+# ... (metrics and daemon blocks remain the same)
+```
+
+### S3 Compatibility Layer (TCP or QUIC)
+
+To allow standard AWS SDKs (like `aws-cli` or `boto3`) to upload files directly into the Momo replication ring, use the `s3-*` protocols.
+
+```ini
+[global]
+protocol = s3-tcp # Or use s3-quic for secure deployments
+polymorphic_system = true
+# ... (metrics and daemon blocks remain the same)
 ```
