@@ -31,6 +31,20 @@ jobs:
     - name: Run TCP Smoke Test
       run: make smoke-tcp
 
+  smoke-test-quic:
+    name: Smoke Test (QUIC)
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24.x'
+    - name: Build momo
+      run: make build
+    - name: Run QUIC Smoke Test
+      run: make smoke-quic
+
   smoke-test-s3-tcp:
     name: Smoke Test (S3-TCP)
     runs-on: ubuntu-latest
