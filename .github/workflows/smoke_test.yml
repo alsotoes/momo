@@ -44,3 +44,32 @@ jobs:
       run: make build
     - name: Run QUIC Smoke Test
       run: make smoke-quic
+
+  smoke-test-s3-tcp:
+    name: Smoke Test (S3-TCP)
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24.x'
+    - name: Build momo
+      run: make build
+    - name: Run S3-TCP Smoke Test
+      run: make smoke-s3-tcp
+
+  smoke-test-s3-quic:
+    name: Smoke Test (S3-QUIC)
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24.x'
+    - name: Build momo
+      run: make build
+    - name: Run S3-QUIC Smoke Test
+      run: make smoke-s3-quic
+

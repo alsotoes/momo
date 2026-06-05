@@ -22,8 +22,10 @@ func NewProtocolFactory(cfg Configuration) *ProtocolFactory {
 // NewCommunicator creates a new Communicator for the given connection based on the global protocol setting.
 func (f *ProtocolFactory) NewCommunicator(conn net.Conn) (Communicator, error) {
 	switch f.cfg.Global.Protocol {
-	case "momo-tcp", "s3-tcp":
+	case "momo-tcp":
 		return NewMomoTCPCommunicator(conn), nil
+	case "s3-tcp":
+		return NewS3Communicator(conn), nil
 	default:
 		return nil, fmt.Errorf("unsupported protocol for raw connection: %q", f.cfg.Global.Protocol)
 	}
@@ -42,6 +44,9 @@ func (f *ProtocolFactory) Dial(address string) (Communicator, error) {
 		conn, stream, err := DialQUIC(context.Background(), address)
 		if err != nil {
 			return nil, err
+		}
+		if f.cfg.Global.Protocol == "s3-quic" {
+			return NewS3Communicator(NewQUICNetConn(stream, conn)), nil
 		}
 		return NewMomoQUICCommunicator(stream, conn), nil
 	default:

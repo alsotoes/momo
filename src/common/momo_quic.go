@@ -21,12 +21,12 @@ import (
 
 // MomoQUICCommunicator implements the Communicator interface for the Momo protocol over QUIC.
 type MomoQUICCommunicator struct {
-	quic.Stream
-	conn quic.Connection
+	*quic.Stream
+	conn *quic.Conn
 }
 
 // NewMomoQUICCommunicator creates a new MomoQUICCommunicator.
-func NewMomoQUICCommunicator(stream quic.Stream, conn quic.Connection) *MomoQUICCommunicator {
+func NewMomoQUICCommunicator(stream *quic.Stream, conn *quic.Conn) *MomoQUICCommunicator {
 	return &MomoQUICCommunicator{
 		Stream: stream,
 		conn:   conn,
@@ -187,7 +187,7 @@ func GenerateSelfSignedCert() (tls.Certificate, error) {
 }
 
 // DialQUIC connects to a peer using QUIC.
-func DialQUIC(ctx context.Context, address string) (quic.Connection, quic.Stream, error) {
+func DialQUIC(ctx context.Context, address string) (*quic.Conn, *quic.Stream, error) {
 	tlsConf := &tls.Config{
 		InsecureSkipVerify: true,
 		NextProtos:         []string{"momo-quic"},
