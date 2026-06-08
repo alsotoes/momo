@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -161,6 +163,25 @@ go func(comm momo_common.Communicator) {
 			metadata, err := comm.ReceiveMetadata()
 			if err != nil {
 				log.Printf("AUDIT: Error getting metadata from %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
+				return
+			}
+
+			// 🛡️ Sentinel: Sanitize fileName immediately to prevent path traversal in all downstream consumers.
+			rawFileName := metadata.Name
+			if rawFileName == "." || rawFileName == ".." || strings.Contains(rawFileName, "/") || strings.Contains(rawFileName, "\\") {
+				log.Printf("AUDIT: Invalid filename received from %s: %v", remoteAddr, momo_common.SanitizeLog(rawFileName))
+				return
+			}
+			fileName := filepath.Base(rawFileName)
+			if fileName == "." || fileName == ".." || fileName == "/" || fileName == "\\" {
+				log.Printf("AUDIT: Invalid base filename received from %s: %v", remoteAddr, momo_common.SanitizeLog(fileName))
+				return
+			}
+			metadata.Name = fileName
+
+			// 🛡️ Sentinel: Enforce maximum file size to prevent Denial of Service via resource exhaustion
+			if metadata.Size < 0 || metadata.Size > momo_common.MaxFileSize {
+				log.Printf("AUDIT: Invalid file size received from %s: %d (max: %d)", remoteAddr, metadata.Size, momo_common.MaxFileSize)
 				return
 			}
 
