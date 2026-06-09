@@ -1,0 +1,44 @@
+go test -run=^$ -bench=. -benchmem -count=5 ./src/common ./src/transport ./src/client ./src/metrics ./src/server
+goos: linux
+goarch: amd64
+pkg: github.com/alsotoes/momo/src/common
+cpu: Intel(R) Core(TM) i7-7700HQ CPU @ 2.80GHz
+BenchmarkLoadGlobalConfig-8   	 1876452	       666.2 ns/op	     240 B/op	       2 allocs/op
+BenchmarkLoadGlobalConfig-8   	 2114737	       574.1 ns/op	     240 B/op	       2 allocs/op
+BenchmarkLoadGlobalConfig-8   	 2052408	       641.2 ns/op	     240 B/op	       2 allocs/op
+BenchmarkLoadGlobalConfig-8   	 2019506	       580.5 ns/op	     240 B/op	       2 allocs/op
+BenchmarkLoadGlobalConfig-8   	 1989727	       566.7 ns/op	     240 B/op	       2 allocs/op
+BenchmarkPadString-8          	692343541	         1.727 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPadString-8          	691819788	         1.743 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPadString-8          	685319772	         1.868 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPadString-8          	621767452	         1.896 ns/op	       0 B/op	       0 allocs/op
+BenchmarkPadString-8          	605601138	         1.789 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/alsotoes/momo/src/common	15.938s
+PASS
+ok  	github.com/alsotoes/momo/src/transport	0.003s
+PASS
+ok  	github.com/alsotoes/momo/src/client	0.003s
+goos: linux
+goarch: amd64
+pkg: github.com/alsotoes/momo/src/metrics
+cpu: Intel(R) Core(TM) i7-7700HQ CPU @ 2.80GHz
+BenchmarkCheckMetricsAndSwap-8   	177566344	         7.220 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCheckMetricsAndSwap-8   	190812603	         6.361 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCheckMetricsAndSwap-8   	190462993	         7.403 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCheckMetricsAndSwap-8   	183460276	         7.614 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCheckMetricsAndSwap-8   	130612335	         8.487 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIndexSearch-8           	273398750	         4.673 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIndexSearch-8           	257599245	         4.795 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIndexSearch-8           	260077554	         4.699 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIndexSearch-8           	266247603	         4.497 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIndexSearch-8           	268939162	         4.483 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIndexDirectTracking-8   	1000000000	         0.3883 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIndexDirectTracking-8   	1000000000	         0.4614 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIndexDirectTracking-8   	1000000000	         0.3861 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIndexDirectTracking-8   	1000000000	         0.3440 ns/op	       0 B/op	       0 allocs/op
+BenchmarkIndexDirectTracking-8   	1000000000	         0.2912 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/alsotoes/momo/src/metrics	21.671s
+PASS
+ok  	github.com/alsotoes/momo/src/server	0.004s
