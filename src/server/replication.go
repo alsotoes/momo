@@ -11,6 +11,7 @@ import (
 	"time"
 
 	momo_common "github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/transport"
 )
 
 var replicationStateMutex sync.RWMutex
@@ -55,7 +56,7 @@ func SetReplicationState(newMode int, timestamp int64) momo_common.ReplicationDa
 // it propagates the change to the other servers in the cluster.
 func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configuration, serverId int, timestamp int64) error {
 	daemons := cfg.Daemons
-	factory := momo_common.NewProtocolFactory(cfg)
+	factory := transport.NewProtocolFactory(cfg)
 	server, err := factory.Listen(daemons[serverId].ChangeReplication)
 	if err != nil {
 		return fmt.Errorf("Error listening: %v", err)
@@ -190,7 +191,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg momo_common.Configurat
 
 // ChangeReplicationModeClient connects to another server in the cluster and sends the new replication mode.
 // It is used by the primary server to propagate replication mode changes to the other servers.
-func ChangeReplicationModeClient(factory *momo_common.ProtocolFactory, replicationJson []byte, serverId int) {
+func ChangeReplicationModeClient(factory *transport.ProtocolFactory, replicationJson []byte, serverId int) {
 	daemons := factory.GetDaemons()
 	comm, err := factory.Dial(daemons[serverId].ChangeReplication)
 	if err != nil {

@@ -1,4 +1,4 @@
-package common
+package transport
 
 import (
 	"bufio"
@@ -12,6 +12,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/alsotoes/momo/src/common"
 )
 
 type S3Communicator struct {
@@ -24,7 +26,7 @@ type S3Communicator struct {
 	clientTimestamp int64
 
 	// Server state
-	meta FileMetadata
+	meta common.FileMetadata
 }
 
 func NewS3Communicator(conn net.Conn) *S3Communicator {
@@ -79,7 +81,7 @@ func (m *S3Communicator) HandshakeClient(authToken string, timestamp int64) (int
 	if modeStr == "" {
 		return 4, nil // Default to ReplicationNone
 	}
-	
+
 	// 🛡️ Zero-Crash: Defensive parsing of external headers
 	mode, err := strconv.Atoi(modeStr)
 	if err != nil {
@@ -93,7 +95,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (int, int64, 
 	if err != nil {
 		return 0, 0, err
 	}
-	
+
 	authHeader := req.Header.Get("Authorization")
 	var token string
 	if strings.HasPrefix(authHeader, "Bearer ") {
@@ -107,7 +109,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (int, int64, 
 		}
 	}
 
-	tokenBuf := []byte(PadString(token, AuthTokenLength))
+	tokenBuf := []byte(common.PadString(token, common.AuthTokenLength))
 	if subtle.ConstantTimeCompare(tokenBuf, expectedAuthToken) != 1 {
 		return 0, 0, syscall.EACCES
 	}
@@ -116,7 +118,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (int, int64, 
 	if timestampStr == "" {
 		timestampStr = req.Header.Get("X-Amz-Date")
 	}
-	
+
 	var timestamp int64
 	if timestampStr != "" {
 		// Handle Momo timestamp (int64) or Amz-Date (ISO8601)
@@ -133,12 +135,12 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (int, int64, 
 
 	// Parse Metadata if it's a PUT request
 	if req.Method == "PUT" {
-	m.meta.Name = strings.TrimPrefix(req.URL.Path, "/")
-	m.meta.Size = req.ContentLength
-	m.meta.Hash = req.Header.Get("X-Amz-Content-Sha256")
-	if m.meta.Hash == "" {
-		m.meta.Hash = req.Header.Get("Content-SHA256") // Fallback
-	}
+		m.meta.Name = strings.TrimPrefix(req.URL.Path, "/")
+		m.meta.Size = req.ContentLength
+		m.meta.Hash = req.Header.Get("X-Amz-Content-Sha256")
+		if m.meta.Hash == "" {
+			m.meta.Hash = req.Header.Get("Content-SHA256") // Fallback
+		}
 	}
 
 	// Wait, we need to handle OPTIONS / for handshake.
@@ -165,7 +167,7 @@ func (m *S3Communicator) SendReplicationMode(mode int) error {
 	return resp.Write(m.conn)
 }
 
-func (m *S3Communicator) SendMetadata(meta *FileMetadata) error {
+func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) error {
 	host := "127.0.0.1"
 	if m.remoteAddr != nil {
 		host = m.remoteAddr.String()
@@ -178,7 +180,7 @@ func (m *S3Communicator) SendMetadata(meta *FileMetadata) error {
 	return err
 }
 
-func (m *S3Communicator) ReceiveMetadata() (FileMetadata, error) {
+func (m *S3Communicator) ReceiveMetadata() (common.FileMetadata, error) {
 	// If HandshakeServer already parsed the PUT request (e.g., from AWS CLI),
 	// we just return it.
 	// But wait! If the client used OPTIONS for handshake, then the PUT request
@@ -187,7 +189,7 @@ func (m *S3Communicator) ReceiveMetadata() (FileMetadata, error) {
 	if m.meta.Name == "" {
 		req, err := http.ReadRequest(m.reader)
 		if err != nil {
-			return FileMetadata{}, fmt.Errorf("ReceiveMetadata ReadRequest failed: %w", err)
+			return common.FileMetadata{}, fmt.Errorf("ReceiveMetadata ReadRequest failed: %w", err)
 		}
 		m.meta.Name = strings.TrimPrefix(req.URL.Path, "/")
 		m.meta.Size = req.ContentLength
@@ -203,11 +205,11 @@ func (m *S3Communicator) ReceiveMetadata() (FileMetadata, error) {
 func (m *S3Communicator) SendACK(serverId int) error {
 	// If the server is sending an ACK after receiving the payload.
 	resp := http.Response{
-		StatusCode: 200,
-		ProtoMajor: 1,
-		ProtoMinor: 1,
-		Header:     make(http.Header),
-		Body:       io.NopCloser(bytes.NewBufferString(fmt.Sprintf("ACK%d", serverId))),
+		StatusCode:    200,
+		ProtoMajor:    1,
+		ProtoMinor:    1,
+		Header:        make(http.Header),
+		Body:          io.NopCloser(bytes.NewBufferString(fmt.Sprintf("ACK%d", serverId))),
 		ContentLength: int64(3 + len(strconv.Itoa(serverId))),
 	}
 	return resp.Write(m.conn)

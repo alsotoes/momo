@@ -1,10 +1,11 @@
-package common
+package transport
 
 import (
 	"context"
 	"io"
 	"net"
 
+	"github.com/alsotoes/momo/src/common"
 	"github.com/quic-go/quic-go"
 )
 
@@ -12,7 +13,7 @@ import (
 // It encapsulates the handshake, metadata exchange, and file transfer logic.
 type Communicator interface {
 	io.ReadWriteCloser
-	
+
 	// SetAbsoluteDeadline sets a hard deadline for all subsequent operations.
 	SetAbsoluteDeadline(t interface{}) error
 
@@ -29,10 +30,10 @@ type Communicator interface {
 
 	// SendMetadata sends file metadata (Hash, Name, Size) to the peer.
 
-	SendMetadata(meta *FileMetadata) error
+	SendMetadata(meta *common.FileMetadata) error
 
 	// ReceiveMetadata receives file metadata from the peer.
-	ReceiveMetadata() (FileMetadata, error)
+	ReceiveMetadata() (common.FileMetadata, error)
 
 	// SendACK sends a server acknowledgment to the client.
 	SendACK(serverId int) error

@@ -1,4 +1,4 @@
-package common
+package transport
 
 import (
 	"context"
@@ -6,16 +6,17 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/alsotoes/momo/src/common"
 	"github.com/quic-go/quic-go"
 )
 
 // ProtocolFactory is responsible for creating Communicator instances based on configuration.
 type ProtocolFactory struct {
-	cfg Configuration
+	cfg common.Configuration
 }
 
 // NewProtocolFactory creates a new ProtocolFactory.
-func NewProtocolFactory(cfg Configuration) *ProtocolFactory {
+func NewProtocolFactory(cfg common.Configuration) *ProtocolFactory {
 	return &ProtocolFactory{cfg: cfg}
 }
 
@@ -35,7 +36,7 @@ func (f *ProtocolFactory) NewCommunicator(conn net.Conn) (Communicator, error) {
 func (f *ProtocolFactory) Dial(address string) (Communicator, error) {
 	switch f.cfg.Global.Protocol {
 	case "momo-tcp", "s3-tcp":
-		conn, err := DialSocket(address)
+		conn, err := common.DialSocket(address)
 		if err != nil {
 			return nil, err
 		}
@@ -83,7 +84,7 @@ func (f *ProtocolFactory) Listen(address string) (MomoListener, error) {
 }
 
 // GetDaemons returns the list of daemons from the configuration.
-func (f *ProtocolFactory) GetDaemons() []*Daemon {
+func (f *ProtocolFactory) GetDaemons() []*common.Daemon {
 	return f.cfg.Daemons
 }
 

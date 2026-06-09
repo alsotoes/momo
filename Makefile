@@ -7,7 +7,7 @@ HTML_DOCS := $(DOCS_DIR)/html
 SRC := $(shell find src -name '*.go')
 BIN := $(BIN_DIR)/momo
 MAIN := src/momo.go
-MODULES := ./src/common ./src/metrics ./src/server
+MODULES := ./src/common ./src/transport ./src/client ./src/metrics ./src/server
 
 .PHONY: all build clean tidy vendor test vet coverage doc doc-live benchmark test-e2e smoke-tcp smoke-quic
 

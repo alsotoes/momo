@@ -13,6 +13,7 @@ import (
 	"time"
 
 	momo_common "github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/transport"
 )
 
 // handleReplicationChange is a testable version of the connection handling logic inside ChangeReplicationModeServer.
@@ -147,7 +148,7 @@ func TestChangeReplicationModeClient(t *testing.T) {
 			{ChangeReplication: serverAddr}, // Configure the daemon to connect to our mock server.
 		},
 	}
-	factory := momo_common.NewProtocolFactory(cfg)
+	factory := transport.NewProtocolFactory(cfg)
 	jsonString := `{"New":5,"TimeStamp":1662756600}`
 
 	ChangeReplicationModeClient(factory, []byte(jsonString), 0)
