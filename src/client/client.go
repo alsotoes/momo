@@ -106,6 +106,12 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, serv
 // It waits for an acknowledgment ("ACK") from the server upon successful reception.
 func sendFile(wg *sync.WaitGroup, comm transport.Communicator, filePath string, meta *common.FileMetadata) {
 	defer wg.Done()
+	// 🛡️ Zero-Crash: Ensure background transmission tasks don't crash the client on unexpected panics
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in sendFile for %s: %v", common.SanitizeLog(filePath), r)
+		}
+	}()
 
 	file, err := os.Open(filePath)
 	if err != nil {
