@@ -29,7 +29,7 @@ These platforms are not officially supported. While Momo might compile or run, f
 
 ## Build Dependencies
 
--   **Go Compiler:** A recent version of the Go compiler (1.18 or newer) is required.
+-   **Go Compiler:** A recent version of the Go compiler (1.25 or newer) is required.
 -   **Standard C Compiler:** A C compiler like GCC or Clang is needed for certain dependencies that use cgo.
 
 ## Known Issues and Considerations

@@ -14,7 +14,7 @@ The system is organized into a three-layer architecture to ensure clean separati
 This layer handles the physical movement of bytes. It includes the carrier transport (e.g., TCP or UDP) and application-level framing.
 - **Momo-TCP**: The legacy standard transport.
 - **Momo-QUIC**: The modern, secure-by-default transport using `quic-go`.
-- **S3 Compatibility (Upcoming)**: An S3-compatible application layer (over TCP or QUIC) acting as a distributed gateway for cloud-native tools. This leverages the decoupled architecture from [Issue #131](https://github.com/alsotoes/momo/issues/131) and is tracked in [Issue #133](https://github.com/alsotoes/momo/issues/133).
+- **S3 Compatibility**: An S3-compatible application layer (over TCP or QUIC) acting as a distributed gateway for cloud-native tools. This leverages the decoupled architecture from [Issue #131](https://github.com/alsotoes/momo/issues/131) and is tracked in [Issue #133](https://github.com/alsotoes/momo/issues/133).
 - All communication is abstracted through a `Communicator` interface provided by the `ProtocolFactory`.
 
 #### 2. Core Replication Logic (Agnostic)
