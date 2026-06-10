@@ -1,7 +1,7 @@
 # Project Context
 
 ## Purpose
-Momo is a minimal TCP-based file replication playground written in Go. It demonstrates several replication strategies (None, Chain, Splay, Primary-Splay) and a simple, metrics‑driven controller that can dynamically switch strategies at runtime (a "polymorphic" system).
+Momo is a high-performance, distributed **Object Storage system** written in Go. It demonstrates several replication strategies (None, Chain, Splay, Primary-Splay) and a simple, metrics‑driven controller that can dynamically switch strategies at runtime (a "polymorphic" system).
 
 ## Tech Stack
 - Go (1.20+)
@@ -65,3 +65,4 @@ When analyzing or suggesting code generation, agents must adhere to the followin
 9. **No Silent Failures:** Return explicit errors for network failures. Do not swallow errors in goroutines; use `log.Printf` to emit failures for traceability.
 10. **POSIX Error Mapping:** All application-level errors (e.g., authentication failures, hash mismatches) MUST be mapped to standard `syscall` POSIX constants (e.g., `syscall.EACCES`, `syscall.EBADMSG`) to ensure consistent, standard error propagation across the cluster. This follows the standardized pattern established in [PR #97](https://github.com/alsotoes/momo/pull/97).
 11. **Issue-Spec Traceability:** (Mandatory) ALL project specifications (`openspec/`) MUST be mirrored as GitHub Issues. Every spec file must explicitly link to its corresponding GitHub Issue URL, and the GitHub Issue must link back to the spec file in the repository. This ensures synchronization parity and end-to-end traceability for all feature designs and architectural shifts.
+12. **Object Storage Paradigm:** Momo is a distributed Object Storage system. All storage operations MUST be content-addressable and use algorithmic placement (CRUSH) to ensure perfect load balancing and infinite scalability without central registry bottlenecks.

@@ -23,7 +23,14 @@ The core logic defines the data distribution path (e.g., `Chain`, `Splay`). This
 #### 3. State Management (Polymorphic System)
 The metrics component runs on a designated server (server 0) and is responsible for monitoring system metrics (CPU and memory usage) and changing the replication strategy based on predefined thresholds. It operates independently of the network stack.
 
-### 4. Automated Governance & AI Reviewer
+### 4. Distributed Object Engine (CAS 2.0)
+Momo utilizes a **Shared-Nothing Partitioned Architecture** for its object storage layer:
+
+- **Data Placement (CRUSH)**: We use a simplified CRUSH algorithm to calculate data locations. This eliminates the need for a central metadata server or coordinator. Given a file hash and the cluster map, both the client and all nodes can deterministically calculate exactly which nodes should store the data.
+- **Metadata Management (Bbolt)**: High-speed, transactional metadata is stored in local Bbolt databases on each node. Metadata is partitioned across the cluster using the same algorithmic placement as the data itself.
+- **Automatic Deduplication**: By using content-addressing (SHA-256), Momo ensures that any specific piece of data is only stored once per node, regardless of the filenames associated with it.
+
+### 5. Automated Governance & AI Reviewer
 To maintain high integrity in a single-contributor environment, Momo employs an automated governance layer:
 - **Gemini AI Reviewer**: A GitHub Action that uses the Gemini API to analyze PR diffs. It specifically enforces the **⚡ Bolt** (performance) and **🛡️ Sentinel** (security) patterns.
 - **Project Steering Rules**: Mandatory mandates (Zero-Crash, POSIX Error Mapping) are codified in `openspec/project.md` and automatically validated by the AI Reviewer.
