@@ -59,7 +59,9 @@ def main():
         print("GEMINI_API_KEY not set", file=sys.stderr)
         sys.exit(1)
         
-    model = os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
+    model = os.environ.get("GEMINI_MODEL")
+    if not model:
+        model = "gemini-1.5-flash"
     
     diff = get_filtered_diff()
     if not diff:
