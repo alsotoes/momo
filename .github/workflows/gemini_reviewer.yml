@@ -33,12 +33,10 @@ jobs:
           # Run the reviewer script and capture output
           REVIEW_OUTPUT=$(python3 .github/scripts/ai_reviewer.py)
 
-          # If output is not empty and not just "No relevant changes...", post it
+          # If output is not empty and not just "No relevant changes...", post it as a formal review
           if [[ -n "$REVIEW_OUTPUT" && "$REVIEW_OUTPUT" != "No relevant changes to review." ]]; then
-            echo "### 🤖 Gemini AI Reviewer" > review_comment.txt
-            echo "" >> review_comment.txt
-            echo "$REVIEW_OUTPUT" >> review_comment.txt
-
-            gh pr comment ${{ github.event.pull_request.number }} --body-file review_comment.txt
+            echo "$REVIEW_OUTPUT" > review_comment.txt
+            
+            gh pr review ${{ github.event.pull_request.number }} --comment --body-file review_comment.txt
           fi
 
