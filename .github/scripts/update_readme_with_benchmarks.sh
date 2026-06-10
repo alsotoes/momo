@@ -18,11 +18,11 @@ if [ ! -f "$OLD_BENCH" ] || [ ! -f "$NEW_BENCH" ]; then
 fi
 
 # Filter benchmark results to only include benchmark lines
-grep "^Benchmark" "$OLD_BENCH" > old_bench_filtered.txt || true
-grep "^Benchmark" "$NEW_BENCH" > new_bench_filtered.txt || true
+grep "^Benchmark" "$OLD_BENCH" > /tmp/old_bench_filtered.txt || true
+grep "^Benchmark" "$NEW_BENCH" > /tmp/new_bench_filtered.txt || true
 
 # Generate comparison table with benchstat
-COMPARISON=$(benchstat old_bench_filtered.txt new_bench_filtered.txt || true)
+COMPARISON=$(benchstat /tmp/old_bench_filtered.txt /tmp/new_bench_filtered.txt || true)
 
 # Average the results for the table and chart
 AVG_RESULTS=$(awk '
@@ -36,7 +36,7 @@ END {
     for (bench in sum_ns) {
         print bench, sum_ns[bench]/count[bench], sum_B[bench]/count[bench], sum_allocs[bench]/count[bench]
     }
-}' new_bench_filtered.txt | sort)
+}' /tmp/new_bench_filtered.txt | sort)
 
 # Generate markdown table from the new benchmarks
 MARKDOWN_TABLE="
