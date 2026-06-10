@@ -12,6 +12,7 @@ This document outlines the high-level roadmap for the Momo project, tracking maj
 | **Zero-Crash Hardening** | [#134](https://github.com/alsotoes/momo/issues/134) | ✅ Merged | 100% panic protection, safe parsing, and bounded resources. |
 | **Codebase Refactoring** | [#149](https://github.com/alsotoes/momo/issues/149) | ✅ Merged | Organized code into `transport`, `client`, `server`, and `common` packages. |
 | **POSIX Error Mapping** | [PR #97](https://github.com/alsotoes/momo/pull/97) | ✅ Merged | Aligned application errors (Auth, Hash Mismatch) with standard `syscall` constants. |
+| **Gemini AI Reviewer** | [#156](https://github.com/alsotoes/momo/issues/156) | ✅ Merged | Automated PR reviews using Gemini API to enforce steering rules. |
 
 ## 🟡 In Progress / Upcoming
 
