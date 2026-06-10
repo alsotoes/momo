@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	momo_common "github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/common"
 	"github.com/alsotoes/momo/src/transport"
 )
 
@@ -22,12 +22,12 @@ func handleReplicationChange(t *testing.T, authToken string, connection net.Conn
 	defer wg.Done()
 	defer connection.Close()
 
-	bufferAuthToken := make([]byte, momo_common.AuthTokenLength)
+	bufferAuthToken := make([]byte, common.AuthTokenLength)
 	if _, err := io.ReadFull(connection, bufferAuthToken); err != nil {
 		t.Logf("Error reading AuthToken: %v", err)
 		return
 	}
-	expectedAuthToken := []byte(momo_common.PadString(authToken, momo_common.AuthTokenLength))
+	expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
 	if subtle.ConstantTimeCompare(bufferAuthToken, expectedAuthToken) != 1 {
 		t.Logf("Invalid AuthToken received")
 		return
@@ -40,7 +40,7 @@ func handleReplicationChange(t *testing.T, authToken string, connection net.Conn
 		return
 	}
 
-	replicationJSON := momo_common.ReplicationData{}
+	replicationJSON := common.ReplicationData{}
 	// Trim null bytes before decoding
 	idx := bytes.IndexByte(bufferReplicationMode, 0)
 	var trimmedBytes []byte
@@ -64,7 +64,7 @@ func TestChangeReplicationModeServerLogic(t *testing.T) {
 	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
 
 	// Arrange: Set initial state and create a network pipe to simulate a client-server connection.
-	SetReplicationState(momo_common.ReplicationNone, 0) // Initial mode
+	SetReplicationState(common.ReplicationNone, 0) // Initial mode
 	client, server := net.Pipe()
 
 	var wg sync.WaitGroup
@@ -73,8 +73,8 @@ func TestChangeReplicationModeServerLogic(t *testing.T) {
 
 	// Act: Marshal and send the new replication data from the client side of the pipe.
 	client.Write([]byte(authToken))
-	expectedMode := momo_common.ReplicationSplay
-	data := momo_common.ReplicationData{
+	expectedMode := common.ReplicationSplay
+	data := common.ReplicationData{
 		New:       expectedMode,
 		TimeStamp: time.Now().Unix(),
 	}
@@ -84,7 +84,7 @@ func TestChangeReplicationModeServerLogic(t *testing.T) {
 	}
 
 	// Copy to a fixed-size buffer to simulate the network read.
-	buffer := make([]byte, momo_common.FileInfoLength)
+	buffer := make([]byte, common.FileInfoLength)
 	copy(buffer, jsonBytes)
 
 	_, err = client.Write(buffer)
@@ -126,25 +126,25 @@ func TestChangeReplicationModeClient(t *testing.T) {
 		defer conn.Close()
 
 		// Read AuthToken and Timestamp
-		var handshakeBuf [momo_common.AuthTokenLength + momo_common.TimestampLength]byte
+		var handshakeBuf [common.AuthTokenLength + common.TimestampLength]byte
 		io.ReadFull(conn, handshakeBuf[:])
-		receivedAuth <- handshakeBuf[:momo_common.AuthTokenLength]
+		receivedAuth <- handshakeBuf[:common.AuthTokenLength]
 
 		// Send back a dummy replication mode to complete handshake
 		conn.Write([]byte("0"))
 
-		bufJSON := make([]byte, momo_common.FileInfoLength)
+		bufJSON := make([]byte, common.FileInfoLength)
 		n, _ := conn.Read(bufJSON)
 		receivedJSON <- bufJSON[:n] // Send received data to the channel.
 	}()
 
 	// Act: Call the function under test.
-	cfg := momo_common.Configuration{
-		Global: momo_common.ConfigurationGlobal{
+	cfg := common.Configuration{
+		Global: common.ConfigurationGlobal{
 			AuthToken: authToken,
 			Protocol:  "momo-tcp",
 		},
-		Daemons: []*momo_common.Daemon{
+		Daemons: []*common.Daemon{
 			{ChangeReplication: serverAddr}, // Configure the daemon to connect to our mock server.
 		},
 	}
@@ -156,7 +156,7 @@ func TestChangeReplicationModeClient(t *testing.T) {
 	// Assert: Verify the mock server received the correct data.
 	select {
 	case auth := <-receivedAuth:
-		expectedAuthToken := []byte(momo_common.PadString(authToken, momo_common.AuthTokenLength))
+		expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
 		if subtle.ConstantTimeCompare(auth, expectedAuthToken) != 1 {
 			t.Errorf("Expected AuthToken '%s' (padded), but got '%s'", authToken, string(auth))
 		}
@@ -179,7 +179,7 @@ func TestChangeReplicationModeClient(t *testing.T) {
 // returns the expected current replication mode.
 func TestGetCurrentReplicationMode(t *testing.T) {
 	// Arrange
-	expectedMode := momo_common.ReplicationChain
+	expectedMode := common.ReplicationChain
 	timestamp := time.Now().Unix()
 
 	// Set the replication state to a known value

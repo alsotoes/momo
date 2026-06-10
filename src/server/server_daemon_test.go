@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	momo_common "github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/common"
 	"github.com/alsotoes/momo/src/transport"
 )
 
@@ -21,15 +21,15 @@ func padTestString(input string, length int) string {
 }
 
 func TestChangeReplicationModeServerReal(t *testing.T) {
-	daemons := []*momo_common.Daemon{
+	daemons := []*common.Daemon{
 		{ChangeReplication: "127.0.0.1:45678"},
 		{ChangeReplication: "127.0.0.1:45679"},
 		{ChangeReplication: "127.0.0.1:45680"},
 	}
 	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
-	cfg := momo_common.Configuration{
+	cfg := common.Configuration{
 		Daemons: daemons,
-		Global: momo_common.ConfigurationGlobal{
+		Global: common.ConfigurationGlobal{
 			AuthToken: authToken,
 			Protocol:  "momo-tcp",
 		},
@@ -44,7 +44,7 @@ func TestChangeReplicationModeServerReal(t *testing.T) {
 		conn, err := l1.Accept()
 		if err == nil {
 			defer conn.Close()
-			authBuf := make([]byte, momo_common.AuthTokenLength)
+			authBuf := make([]byte, common.AuthTokenLength)
 			io.ReadFull(conn, authBuf)
 		}
 	}()
@@ -55,7 +55,7 @@ func TestChangeReplicationModeServerReal(t *testing.T) {
 		conn, err := l2.Accept()
 		if err == nil {
 			defer conn.Close()
-			authBuf := make([]byte, momo_common.AuthTokenLength)
+			authBuf := make([]byte, common.AuthTokenLength)
 			io.ReadFull(conn, authBuf)
 		}
 	}()
@@ -74,8 +74,8 @@ func TestChangeReplicationModeServerReal(t *testing.T) {
 		t.Fatalf("Handshake failed: %v", err)
 	}
 
-	data := momo_common.ReplicationData{
-		New:       momo_common.ReplicationSplay,
+	data := common.ReplicationData{
+		New:       common.ReplicationSplay,
 		TimeStamp: time.Now().Unix(),
 	}
 	jsonBytes, _ := json.Marshal(data)
@@ -85,7 +85,7 @@ func TestChangeReplicationModeServerReal(t *testing.T) {
 
 func TestDaemonReal(t *testing.T) {
 	tempDir := t.TempDir()
-	daemons := []*momo_common.Daemon{
+	daemons := []*common.Daemon{
 		{Host: "127.0.0.1:45681", Data: tempDir + "/001"},
 		{Host: "127.0.0.1:45682", Data: tempDir + "/002"},
 		{Host: "127.0.0.1:45683", Data: tempDir + "/003"},
@@ -96,9 +96,9 @@ func TestDaemonReal(t *testing.T) {
 	}
 
 	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
-	cfg := momo_common.Configuration{
+	cfg := common.Configuration{
 		Daemons: daemons,
-		Global: momo_common.ConfigurationGlobal{
+		Global: common.ConfigurationGlobal{
 			AuthToken: authToken,
 			Protocol:  "momo-tcp",
 		},
@@ -125,8 +125,8 @@ func TestDaemonReal(t *testing.T) {
 	if err == nil {
 		file.WriteString("data")
 		file.Close()
-		hash, _ := momo_common.HashFile(file.Name())
-		meta := &momo_common.FileMetadata{
+		hash, _ := common.HashFile(file.Name())
+		meta := &common.FileMetadata{
 			Name: "test.txt",
 			Hash: hash,
 			Size: 4,

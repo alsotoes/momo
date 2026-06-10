@@ -12,18 +12,18 @@ import (
 	"strings"
 	"syscall"
 
-	momo_common "github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/common"
 )
 
 // getMetadata reads file metadata (Hash, name, size) from a network connection.
 // It reads the Hash string, file name, and file size from the connection, trims any null characters,
 // and returns a FileMetadata struct.
 // Null characters are trimmed because the buffers are fixed size, and the actual data may be smaller.
-func getMetadata(r io.Reader) (momo_common.FileMetadata, error) {
-	var metadata momo_common.FileMetadata
+func getMetadata(r io.Reader) (common.FileMetadata, error) {
+	var metadata common.FileMetadata
 
 	// ⚡ Bolt: Use a single stack-allocated buffer and single io.ReadFull call to reduce system calls and eliminate heap allocations.
-	var buffer [64 + momo_common.FileInfoLength + momo_common.FileInfoLength]byte
+	var buffer [64 + common.FileInfoLength + common.FileInfoLength]byte
 
 	if _, err := io.ReadFull(r, buffer[:]); err != nil {
 		return metadata, err
@@ -31,8 +31,8 @@ func getMetadata(r io.Reader) (momo_common.FileMetadata, error) {
 
 	// Extract the sub-slices from the main buffer
 	bufferFileHash := buffer[:64]
-	bufferFileName := buffer[64 : 64+momo_common.FileInfoLength]
-	bufferFileSize := buffer[64+momo_common.FileInfoLength:]
+	bufferFileName := buffer[64 : 64+common.FileInfoLength]
+	bufferFileSize := buffer[64+common.FileInfoLength:]
 
 	// ⚡ Bolt: Use a manual iteration loop to find the first null character for faster trimming.
 	// Benchmarks show this is ~2x faster than bytes.IndexByte for small, stack-allocated fixed-size buffers.
@@ -45,7 +45,7 @@ func getMetadata(r io.Reader) (momo_common.FileMetadata, error) {
 		return string(b)
 	}
 
-	fileHash := momo_common.SanitizeLog(trimNull(bufferFileHash))
+	fileHash := common.SanitizeLog(trimNull(bufferFileHash))
 
 	// 🛡️ Sentinel: Sanitize fileName immediately to prevent path traversal in all downstream consumers.
 	rawFileName := trimNull(bufferFileName)
@@ -64,8 +64,8 @@ func getMetadata(r io.Reader) (momo_common.FileMetadata, error) {
 	}
 
 	// 🛡️ Sentinel: Enforce maximum file size to prevent Denial of Service via resource exhaustion
-	if fileSize < 0 || fileSize > momo_common.MaxFileSize {
-		return metadata, fmt.Errorf("invalid file size: %d (max: %d)", fileSize, momo_common.MaxFileSize)
+	if fileSize < 0 || fileSize > common.MaxFileSize {
+		return metadata, fmt.Errorf("invalid file size: %d (max: %d)", fileSize, common.MaxFileSize)
 	}
 
 	metadata.Name = fileName
@@ -130,9 +130,9 @@ func getFile(r io.Reader, path string, fileName string, expectedHash string, fil
 		return err
 	}
 
-	log.Printf("=> Expected Hash: %s", momo_common.SanitizeLog(expectedHash))
-	log.Printf("=> Actual Hash:   %s", momo_common.SanitizeLog(hash))
-	log.Printf("=> Name:          %s", momo_common.SanitizeLog(fullPath))
+	log.Printf("=> Expected Hash: %s", common.SanitizeLog(expectedHash))
+	log.Printf("=> Actual Hash:   %s", common.SanitizeLog(hash))
+	log.Printf("=> Name:          %s", common.SanitizeLog(fullPath))
 	log.Printf("Received file completely!")
 	log.Printf("Sending ACK to client connection")
 	return nil
@@ -141,5 +141,5 @@ func getFile(r io.Reader, path string, fileName string, expectedHash string, fil
 // parsePaddedIntFast parses a null-padded or null-terminated byte slice into an int64
 // without allocating an intermediate string.
 func parsePaddedIntFast(b []byte) (int64, error) {
-	return momo_common.SafeParseInt(b)
+	return common.SafeParseInt(b)
 }

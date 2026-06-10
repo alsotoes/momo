@@ -4,16 +4,16 @@ import (
 	"slices"
 	"testing"
 
-	momo_common "github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/common"
 	"github.com/shirou/gopsutil/v3/mem"
 )
 
 func BenchmarkCheckMetricsAndSwap(b *testing.B) {
-	cfg := momo_common.Configuration{
-		Global: momo_common.ConfigurationGlobal{
+	cfg := common.Configuration{
+		Global: common.ConfigurationGlobal{
 			PolymorphicSystem: true,
 		},
-		Metrics: momo_common.ConfigurationMetrics{
+		Metrics: common.ConfigurationMetrics{
 			MinThreshold: 0.2,
 			MaxThreshold: 0.8,
 		},

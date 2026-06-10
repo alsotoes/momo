@@ -13,7 +13,7 @@ import (
 	"strconv"
 	"testing"
 
-	momo_common "github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/common"
 )
 
 // TestGetMetadata verifies that the getMetadata function correctly reads
@@ -34,7 +34,7 @@ func TestGetMetadata(t *testing.T) {
 	tempFile.Write([]byte(fileContent))
 	tempFile.Close()
 
-	fileHash, _ := momo_common.HashFile(tempFile.Name())
+	fileHash, _ := common.HashFile(tempFile.Name())
 	fileSize := len(fileContent)
 
 	// Act: Start a goroutine to simulate the client sending metadata over the pipe.
@@ -45,12 +45,12 @@ func TestGetMetadata(t *testing.T) {
 		client.Write([]byte(fileHash))
 
 		// Send file name, padded to the fixed buffer size
-		fileNameBytes := make([]byte, momo_common.FileInfoLength)
+		fileNameBytes := make([]byte, common.FileInfoLength)
 		copy(fileNameBytes, fileName)
 		client.Write(fileNameBytes)
 
 		// Send file size, padded to the fixed buffer size
-		fileSizeBytes := make([]byte, momo_common.FileInfoLength)
+		fileSizeBytes := make([]byte, common.FileInfoLength)
 		copy(fileSizeBytes, strconv.Itoa(fileSize))
 		client.Write(fileSizeBytes)
 	}()
@@ -90,12 +90,12 @@ func TestGetMetadataDotDot(t *testing.T) {
 		client.Write([]byte(fileHash))
 
 		// Send file name, padded to the fixed buffer size
-		fileNameBytes := make([]byte, momo_common.FileInfoLength)
+		fileNameBytes := make([]byte, common.FileInfoLength)
 		copy(fileNameBytes, fileName)
 		client.Write(fileNameBytes)
 
 		// Send file size, padded to the fixed buffer size
-		fileSizeBytes := make([]byte, momo_common.FileInfoLength)
+		fileSizeBytes := make([]byte, common.FileInfoLength)
 		copy(fileSizeBytes, strconv.Itoa(fileSize))
 		client.Write(fileSizeBytes)
 	}()
@@ -125,11 +125,11 @@ func TestGetMetadataInvalidNames(t *testing.T) {
 
 				client.Write([]byte(fileHash))
 
-				fileNameBytes := make([]byte, momo_common.FileInfoLength)
+				fileNameBytes := make([]byte, common.FileInfoLength)
 				copy(fileNameBytes, fileName)
 				client.Write(fileNameBytes)
 
-				fileSizeBytes := make([]byte, momo_common.FileInfoLength)
+				fileSizeBytes := make([]byte, common.FileInfoLength)
 				copy(fileSizeBytes, strconv.Itoa(fileSize))
 				client.Write(fileSizeBytes)
 			}()
