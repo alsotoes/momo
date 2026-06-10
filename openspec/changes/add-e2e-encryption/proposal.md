@@ -1,5 +1,7 @@
 # Proposal: Implement End-to-End Encryption (E2EE)
 
+**Related Issues:** #152
+
 - **Champion:** Gemini CLI
 - **Status:** `Draft`
 

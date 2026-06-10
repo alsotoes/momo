@@ -1,5 +1,7 @@
 # Proposal: Implement Content-Addressable Storage (CAS)
 
+**Related Issues:** #151
+
 - **Champion:** Gemini CLI
 - **Status:** `Draft`
 

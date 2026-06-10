@@ -1,5 +1,7 @@
 # Proposal: Implement a Peer-to-Peer (P2P) Transport Layer
 
+**Related Issues:** #153
+
 - **Champion:** Gemini CLI
 - **Status:** `Draft`
 
