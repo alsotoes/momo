@@ -13,8 +13,7 @@ import (
 )
 
 const (
-	geminiModel = "gemini-1.5-flash" // Use flash for cost efficiency
-	maxDiffLines = 1000             // Safety cap to avoid massive token spend
+	maxDiffLines = 1000 // Safety cap to avoid massive token spend
 )
 
 type GeminiRequest struct {
@@ -39,6 +38,11 @@ func main() {
 	apiKey := os.Getenv("GEMINI_API_KEY")
 	if apiKey == "" {
 		log.Fatal("GEMINI_API_KEY environment variable is not set")
+	}
+
+	model := os.Getenv("GEMINI_MODEL")
+	if model == "" {
+		model = "gemini-1.5-flash"
 	}
 
 	// 1. Get the PR diff
@@ -78,7 +82,7 @@ INSTRUCTIONS:
 - Format your response as a GitHub comment.`, string(rules), diff)
 
 	// 4. Call Gemini API
-	review, err := callGemini(apiKey, prompt)
+	review, err := callGemini(apiKey, model, prompt)
 	if err != nil {
 		log.Fatalf("Gemini API call failed: %v", err)
 	}
@@ -104,8 +108,8 @@ func getFilteredDiff() (string, error) {
 	return out.String(), nil
 }
 
-func callGemini(apiKey, prompt string) (string, error) {
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", geminiModel, apiKey)
+func callGemini(apiKey, model, prompt string) (string, error) {
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, apiKey)
 
 	reqBody := GeminiRequest{
 		Contents: []Content{
