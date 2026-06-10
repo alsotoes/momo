@@ -6,30 +6,30 @@ import (
 	"log"
 	"time"
 
-	momo_common "github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/common"
 )
 
 // pushNewReplicationMode notifies the primary daemon of a replication mode change.
 // It connects to the ChangeReplication endpoint of the first daemon listed in the configuration
 // and sends the AuthToken followed by a JSON payload containing the new replication mode and the current timestamp.
-func pushNewReplicationMode(cfg momo_common.Configuration, paddedAuthToken []byte, newReplicationMode int) {
+func pushNewReplicationMode(cfg common.Configuration, paddedAuthToken []byte, newReplicationMode int) {
 	log.Printf("Notifying primary daemon of new replication mode: %d", newReplicationMode)
 
-	conn, err := momo_common.DialSocket(cfg.Daemons[0].ChangeReplication)
+	conn, err := common.DialSocket(cfg.Daemons[0].ChangeReplication)
 	if err != nil {
-		log.Printf("Dial error: %v", momo_common.SanitizeLog(err.Error()))
+		log.Printf("Dial error: %v", common.SanitizeLog(err.Error()))
 		return
 	}
 	defer conn.Close()
 
-	data := momo_common.ReplicationData{
+	data := common.ReplicationData{
 		New:       newReplicationMode,
 		TimeStamp: time.Now().UnixNano(),
 	}
 
 	jsonData, err := json.Marshal(data)
 	if err != nil {
-		log.Printf("Encode error: %v", momo_common.SanitizeLog(err.Error()))
+		log.Printf("Encode error: %v", common.SanitizeLog(err.Error()))
 		return
 	}
 
@@ -41,7 +41,7 @@ func pushNewReplicationMode(cfg momo_common.Configuration, paddedAuthToken []byt
 	buf = append(buf, '\n') // Add trailing newline for `json.Decoder` compatibility on the server
 
 	if _, err := conn.Write(buf); err != nil {
-		log.Printf("Failed to send AuthToken and ReplicationData: %v", momo_common.SanitizeLog(err.Error()))
+		log.Printf("Failed to send AuthToken and ReplicationData: %v", common.SanitizeLog(err.Error()))
 		return
 	}
 }

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	momo_common "github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/common"
 	"github.com/shirou/gopsutil/v3/mem"
 )
 
@@ -23,11 +23,11 @@ func (msm *MockSystemMetrics) CPUPercent() ([]float64, error) {
 }
 
 func TestCheckMetricsAndSwap(t *testing.T) {
-	cfg := momo_common.Configuration{
-		Global: momo_common.ConfigurationGlobal{
+	cfg := common.Configuration{
+		Global: common.ConfigurationGlobal{
 			PolymorphicSystem: true,
 		},
-		Metrics: momo_common.ConfigurationMetrics{
+		Metrics: common.ConfigurationMetrics{
 			MinThreshold: 0.2,
 			MaxThreshold: 0.8,
 		},
@@ -122,6 +122,6 @@ func TestRealSystemMetrics(t *testing.T) {
 
 func TestGetMetricsNonPrimaryServer(t *testing.T) {
 	// serverId != 0, should return immediately
-	cfg := momo_common.Configuration{}
+	cfg := common.Configuration{}
 	GetMetrics(context.Background(), cfg, 1)
 }
