@@ -24,6 +24,7 @@ Momo is a minimalistic, high-performance TCP replication playground. Simplicity,
    - `make test` (with `-race` and `goleak`)
    - `make benchmark`
    - `make test-e2e` (Docker Compose)
+6. **POSIX Error Mapping:** All application-level errors (e.g., authentication failures, hash mismatches) MUST be mapped to standard `syscall` POSIX constants (e.g., `syscall.EACCES`, `syscall.EBADMSG`) to ensure consistent, standard error propagation across the cluster. This follows the standardized pattern established in [PR #97](https://github.com/alsotoes/momo/pull/97).
 5. **Clean Repository:** Do not commit `.dat` files or logs. Use `.gitignore` strictly.
 
 ## Technical Integrity

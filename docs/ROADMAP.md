@@ -11,6 +11,7 @@ This document outlines the high-level roadmap for the Momo project, tracking maj
 | **S3 Compatibility** | [#133](https://github.com/alsotoes/momo/issues/133) | ✅ Merged | Implemented S3 REST API mapping for standard tool integration. |
 | **Zero-Crash Hardening** | [#134](https://github.com/alsotoes/momo/issues/134) | ✅ Merged | 100% panic protection, safe parsing, and bounded resources. |
 | **Codebase Refactoring** | [#149](https://github.com/alsotoes/momo/issues/149) | ✅ Merged | Organized code into `transport`, `client`, `server`, and `common` packages. |
+| **POSIX Error Mapping** | [PR #97](https://github.com/alsotoes/momo/pull/97) | ✅ Merged | Aligned application errors (Auth, Hash Mismatch) with standard `syscall` constants. |
 
 ## 🟡 In Progress / Upcoming
 
