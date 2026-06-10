@@ -11,6 +11,7 @@ This document outlines the high-level roadmap for the Momo project, tracking maj
 | **S3 Compatibility** | [#133](https://github.com/alsotoes/momo/issues/133) | ✅ Merged | Implemented S3 REST API mapping for standard tool integration. |
 | **Zero-Crash Hardening** | [#134](https://github.com/alsotoes/momo/issues/134) | ✅ Merged | 100% panic protection, safe parsing, and bounded resources. |
 | **Codebase Refactoring** | [#149](https://github.com/alsotoes/momo/issues/149) | ✅ Merged | Organized code into `transport`, `client`, `server`, and `common` packages. |
+| **POSIX Error Mapping** | [PR #97](https://github.com/alsotoes/momo/pull/97) | ✅ Merged | Aligned application errors (Auth, Hash Mismatch) with standard `syscall` constants. |
 
 ## 🟡 In Progress / Upcoming
 
@@ -19,6 +20,7 @@ This document outlines the high-level roadmap for the Momo project, tracking maj
 | **CAS Storage** | [#151](https://github.com/alsotoes/momo/issues/151) | [CAS Spec](../openspec/changes/add-cas-storage/proposal.md) | High | Implement Content-Addressable Storage for deduplication. |
 | **E2E Encryption** | [#152](https://github.com/alsotoes/momo/issues/152) | [E2EE Spec](../openspec/changes/add-e2e-encryption/proposal.md) | High | Application-layer AES-GCM encryption for all file data. |
 | **P2P Transport** | [#153](https://github.com/alsotoes/momo/issues/153) | [P2P Spec](../openspec/changes/add-p2p-transport/proposal.md) | Medium | Decentralized gossip-based discovery and elastic membership. |
+| **Comprehensive Testing** | [#155](https://github.com/alsotoes/momo/issues/155) | [Testing Spec](../openspec/changes/add-comprehensive-testing/proposal.md) | Low | Chaos testing, distributed load generation, and observability. |
 
 ## 🔴 Future Explorations
 

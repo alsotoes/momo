@@ -1,5 +1,7 @@
 # Change: Comprehensive Distributed Systems Testing
 
+**Related Issue:** https://github.com/alsotoes/momo/issues/155
+
 ## Why
 While Momo has robust unit, E2E, load, and concurrency tests (via `goleak` and `-race`), it lacks advanced distributed systems testing paradigms such as failure injection, distributed load generation (e.g., k6), strict contract testing, and centralized observability (Grafana/Prometheus). This proposal outlines the steps to fill these remaining gaps to conform to production-grade distributed testing standards.
 

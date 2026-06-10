@@ -1,5 +1,8 @@
 # Change: Robust Multi-Protocol Transport Layer
-**Related Issues:** #131, #132, #133
+**Related Issues:** 
+- https://github.com/alsotoes/momo/issues/131
+- https://github.com/alsotoes/momo/issues/132
+- https://github.com/alsotoes/momo/issues/133
 
 ## Why
 Momo currently intertwines its communication protocol with its core replication logic. To support a pluggable architecture (Issue #131), we must separate **how** nodes communicate from **what** they do with the data. This spec focuses on implementing the **Momo-QUIC** variant and the underlying **Protocol Factory**, while the **S3** variant is tracked separately in `openspec/changes/add-s3-protocol/`.

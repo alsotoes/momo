@@ -1,6 +1,6 @@
 # Proposal: Implement Content-Addressable Storage (CAS)
 
-**Related Issues:** #151
+**Related Issue:** https://github.com/alsotoes/momo/issues/151
 
 - **Champion:** Gemini CLI
 - **Status:** `Draft`
