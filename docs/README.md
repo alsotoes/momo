@@ -17,6 +17,10 @@ This document explains the architecture, configuration, wire protocol, replicati
 
 ## Repository Layout
 
+- `.github/scripts/`: Automation and governance scripts.
+  - `ai_reviewer.py`: Python-based Gemini AI code review engine.
+  - `test-e2e.sh`: End-to-end integration test runner.
+  - `update_readme_with_benchmarks.sh`: Automated documentation updater.
 - `src/momo.go`: Entry point (client/server runner and metrics bootstrap).
 - `src/transport/`: Pluggable communication layers and protocol implementations.
   - `communicator.go`: Central `Communicator` and `MomoListener` interfaces.
