@@ -30,17 +30,17 @@ jobs:
 
     - name: Run Benchmark on Current Commit
       run: |
-        make benchmark COUNT=5 | tee current_bench.txt
+        make benchmark COUNT=5 > /tmp/current_bench.txt
 
     - name: Run Benchmark on Previous Commit
       run: |
         git checkout HEAD^1
-        make benchmark COUNT=5 | tee base_bench.txt
+        make benchmark COUNT=5 > /tmp/base_bench.txt
         git checkout -
 
     - name: Update README
       run: |
-        ./.github/scripts/update_readme_with_benchmarks.sh base_bench.txt current_bench.txt $(git rev-parse HEAD)
+        ./.github/scripts/update_readme_with_benchmarks.sh /tmp/base_bench.txt /tmp/current_bench.txt $(git rev-parse HEAD)
 
     - name: Commit and push if changed
       run: |
