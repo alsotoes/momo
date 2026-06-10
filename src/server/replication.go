@@ -218,8 +218,9 @@ func ChangeReplicationModeClient(factory *transport.ProtocolFactory, replication
 	}
 
 	// Wait for ACK to prevent premature connection termination, especially over QUIC
-	ackBuf := make([]byte, 2) // We expect "OK"
-	if _, err := io.ReadFull(comm, ackBuf); err != nil {
+	// ⚡ Bolt: Eliminate heap allocation by using a stack-allocated byte array for io.ReadFull.
+	var ackBuf [2]byte // We expect "OK"
+	if _, err := io.ReadFull(comm, ackBuf[:]); err != nil {
 		log.Printf("Failed to read ACK from %d: %v", serverId, common.SanitizeLog(err.Error()))
 		return
 	}
