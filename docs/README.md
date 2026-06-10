@@ -7,6 +7,7 @@ This document explains the architecture, configuration, wire protocol, replicati
 ## Key Performance & Security Features (⚡ Bolt & 🛡️ Sentinel)
 
 - **Pluggable Transport Layer**: Communicate seamlessly over raw TCP, encrypted QUIC streams, or upcoming **S3 compatibility** layers (tracking in [#131](https://github.com/alsotoes/momo/issues/131) and [#133](https://github.com/alsotoes/momo/issues/133)) via the modular `ProtocolFactory`.
+- **Automated AI Governance**: Integrated **Gemini AI Reviewer** to automatically enforce architectural patterns (⚡ Bolt, 🛡️ Sentinel) and project steering rules on every Pull Request.
 
 - **Zero-Allocation Hashing & Encoding**: SHA-256 sums and hex encoding use stack-allocated buffers to eliminate heap escapes.
 - **Phased Absolute Deadlines**: Continuous protection against Slowloris attacks with strict bounds for handshake (10s), metadata (60s), and dynamic transfer phases.
@@ -16,6 +17,10 @@ This document explains the architecture, configuration, wire protocol, replicati
 
 ## Repository Layout
 
+- `.github/scripts/`: Automation and governance scripts.
+  - `ai_reviewer.py`: Python-based Gemini AI code review engine.
+  - `test-e2e.sh`: End-to-end integration test runner.
+  - `update_readme_with_benchmarks.sh`: Automated documentation updater.
 - `src/momo.go`: Entry point (client/server runner and metrics bootstrap).
 - `src/transport/`: Pluggable communication layers and protocol implementations.
   - `communicator.go`: Central `Communicator` and `MomoListener` interfaces.

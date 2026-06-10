@@ -1,0 +1,44 @@
+name: Gemini AI Reviewer
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - 'src/**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Needed for git diff
+
+      - name: Run AI Reviewer
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: "gemini-1.5-flash"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Fetch origin/master for comparison
+          git fetch origin master
+
+          # Run the reviewer script and capture output
+          REVIEW_OUTPUT=$(python3 .github/scripts/ai_reviewer.py)
+
+          # If output is not empty and not just "No relevant changes...", post it
+          if [[ -n "$REVIEW_OUTPUT" && "$REVIEW_OUTPUT" != "No relevant changes to review." ]]; then
+            echo "### 🤖 Gemini AI Reviewer" > review_comment.txt
+            echo "" >> review_comment.txt
+            echo "$REVIEW_OUTPUT" >> review_comment.txt
+
+            gh pr comment ${{ github.event.pull_request.number }} --body-file review_comment.txt
+          fi
+
