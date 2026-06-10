@@ -20,6 +20,7 @@ This document outlines the high-level roadmap for the Momo project, tracking maj
 | **CAS Storage** | [#151](https://github.com/alsotoes/momo/issues/151) | [CAS Spec](../openspec/changes/add-cas-storage/proposal.md) | High | Implement Content-Addressable Storage for deduplication. |
 | **E2E Encryption** | [#152](https://github.com/alsotoes/momo/issues/152) | [E2EE Spec](../openspec/changes/add-e2e-encryption/proposal.md) | High | Application-layer AES-GCM encryption for all file data. |
 | **P2P Transport** | [#153](https://github.com/alsotoes/momo/issues/153) | [P2P Spec](../openspec/changes/add-p2p-transport/proposal.md) | Medium | Decentralized gossip-based discovery and elastic membership. |
+| **Comprehensive Testing** | [#155](https://github.com/alsotoes/momo/issues/155) | [Testing Spec](../openspec/changes/add-comprehensive-testing/proposal.md) | Low | Chaos testing, distributed load generation, and observability. |
 
 ## 🔴 Future Explorations
 
