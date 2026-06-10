@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/alsotoes/momo/src/client"
-	momo_common "github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/common"
 	"github.com/alsotoes/momo/src/transport"
 )
 
@@ -30,7 +30,7 @@ var connectToPeer = client.Connect
 //   - ReplicationPrimarySplay: This mode is currently handled as ReplicationNone, which means no replication is performed.
 //
 // The replication mode is determined by the client, and for secondary servers, it's influenced by the timestamp of the operation.
-func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) error {
+func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 	daemons := cfg.Daemons
 	factory := transport.NewProtocolFactory(cfg)
 
@@ -56,7 +56,7 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 	log.Printf("...Waiting for connections...")
 
 	// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
-	expectedAuthToken := []byte(momo_common.PadString(cfg.Global.AuthToken, momo_common.AuthTokenLength))
+	expectedAuthToken := []byte(common.PadString(cfg.Global.AuthToken, common.AuthTokenLength))
 
 	// 🛡️ Sentinel: Enforce a limit on concurrent connections to prevent resource exhaustion (DoS).
 	const maxConcurrentConnections = 1000
@@ -93,7 +93,7 @@ go func(comm transport.Communicator) {
 	var success bool
 
 	// 🛡️ Sentinel: Capture remote address for audit logging and traceability
-	remoteAddr := momo_common.SanitizeLog(comm.RemoteAddr().String())
+	remoteAddr := common.SanitizeLog(comm.RemoteAddr().String())
 
 
 			// 🛡️ Sentinel: Apply a strict absolute deadline for the handshake phase to prevent Slowloris trickle attacks.
@@ -111,7 +111,7 @@ go func(comm transport.Communicator) {
 			// validates the token, and returns the timestamp.
 			_, ts, err := comm.HandshakeServer(expectedAuthToken)
 			if err != nil {
-				log.Printf("AUDIT: Handshake failed from %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
+				log.Printf("AUDIT: Handshake failed from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
 				return
 			}
 
@@ -134,19 +134,19 @@ go func(comm transport.Communicator) {
 					replicationMode = repState.Old
 				}
 
-				if replicationMode != momo_common.ReplicationChain {
-					replicationMode = momo_common.ReplicationNone
+				if replicationMode != common.ReplicationChain {
+					replicationMode = common.ReplicationNone
 				}
 			} else {
 				finalTs = ts
-				replicationMode = momo_common.ReplicationNone
+				replicationMode = common.ReplicationNone
 			}
 
 			// 🛡️ Sentinel: Ensure the replicationMode is within valid bounds.
 			// If it's 0 (the uninitialized value of the enum) or otherwise invalid,
 			// default to ReplicationNone to ensure the server processes the file.
 			if replicationMode == 0 {
-				replicationMode = momo_common.ReplicationNone
+				replicationMode = common.ReplicationNone
 			}
 
 			log.Printf("Cluster object global timestamp: %d", finalTs)
@@ -154,7 +154,7 @@ go func(comm transport.Communicator) {
 
 			// Send the selected replication mode back to the client
 			if err := comm.SendReplicationMode(replicationMode); err != nil {
-				log.Printf("AUDIT: Error sending replication mode to %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
+				log.Printf("AUDIT: Error sending replication mode to %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
 				return
 			}
 
@@ -164,26 +164,26 @@ go func(comm transport.Communicator) {
 
 			metadata, err := comm.ReceiveMetadata()
 			if err != nil {
-				log.Printf("AUDIT: Error getting metadata from %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
+				log.Printf("AUDIT: Error getting metadata from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
 				return
 			}
 
 			// 🛡️ Sentinel: Sanitize fileName immediately to prevent path traversal in all downstream consumers.
 			rawFileName := metadata.Name
 			if rawFileName == "." || rawFileName == ".." || strings.Contains(rawFileName, "/") || strings.Contains(rawFileName, "\\") {
-				log.Printf("AUDIT: Invalid filename received from %s: %v", remoteAddr, momo_common.SanitizeLog(rawFileName))
+				log.Printf("AUDIT: Invalid filename received from %s: %v", remoteAddr, common.SanitizeLog(rawFileName))
 				return
 			}
 			fileName := filepath.Base(rawFileName)
 			if fileName == "." || fileName == ".." || fileName == "/" || fileName == "\\" {
-				log.Printf("AUDIT: Invalid base filename received from %s: %v", remoteAddr, momo_common.SanitizeLog(fileName))
+				log.Printf("AUDIT: Invalid base filename received from %s: %v", remoteAddr, common.SanitizeLog(fileName))
 				return
 			}
 			metadata.Name = fileName
 
 			// 🛡️ Sentinel: Enforce maximum file size to prevent Denial of Service via resource exhaustion
-			if metadata.Size < 0 || metadata.Size > momo_common.MaxFileSize {
-				log.Printf("AUDIT: Invalid file size received from %s: %d (max: %d)", remoteAddr, metadata.Size, momo_common.MaxFileSize)
+			if metadata.Size < 0 || metadata.Size > common.MaxFileSize {
+				log.Printf("AUDIT: Invalid file size received from %s: %d (max: %d)", remoteAddr, metadata.Size, common.MaxFileSize)
 				return
 			}
 
@@ -195,16 +195,16 @@ go func(comm transport.Communicator) {
 
 			// Handle the file based on the replication mode
 			switch replicationMode {
-			case momo_common.ReplicationNone, momo_common.ReplicationPrimarySplay:
+			case common.ReplicationNone, common.ReplicationPrimarySplay:
 				if err := getFile(comm, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size); err != nil {
-					log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
+					log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
 					return
 				}
-			case momo_common.ReplicationChain:
+			case common.ReplicationChain:
 				if serverId == 1 {
 					wg.Add(1)
 					if err := getFile(comm, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size); err != nil {
-						log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
+						log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
 						wg.Done()
 						return
 					}
@@ -213,17 +213,17 @@ go func(comm transport.Communicator) {
 				} else {
 					wg.Add(1)
 					if err := getFile(comm, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size); err != nil {
-						log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
+						log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
 						wg.Done()
 						return
 					}
 					connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 1, finalTs)
 					wg.Wait()
 				}
-			case momo_common.ReplicationSplay:
+			case common.ReplicationSplay:
 				wg.Add(2)
 				if err := getFile(comm, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size); err != nil {
-					log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, momo_common.SanitizeLog(err.Error()))
+					log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
 					wg.Done()
 					wg.Done()
 					return

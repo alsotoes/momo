@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	momo_common "github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/common"
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/mem"
 )
@@ -43,7 +43,7 @@ func checkMetricsAndSwap(sm SystemMetrics, currentIndex int, replicationOrder []
 
 	v, err := sm.VirtualMemory()
 	if err != nil {
-		log.Printf("Error getting memory metrics: %v", momo_common.SanitizeLog(err.Error()))
+		log.Printf("Error getting memory metrics: %v", common.SanitizeLog(err.Error()))
 		return currentIndex, false
 	}
 
@@ -62,7 +62,7 @@ func checkMetricsAndSwap(sm SystemMetrics, currentIndex int, replicationOrder []
 
 	c, err := sm.CPUPercent()
 	if err != nil {
-		log.Printf("Error getting cpu metrics: %v", momo_common.SanitizeLog(err.Error()))
+		log.Printf("Error getting cpu metrics: %v", common.SanitizeLog(err.Error()))
 		return currentIndex, false
 	}
 	cpuUsed := c[0]
@@ -87,7 +87,7 @@ func checkMetricsAndSwap(sm SystemMetrics, currentIndex int, replicationOrder []
 // It periodically checks the system metrics and, if the polymorphic system is enabled,
 // adjusts the replication mode based on the configured thresholds and fallback interval.
 // This function is intended to be run as a goroutine and will run indefinitely.
-func GetMetrics(ctx context.Context, cfg momo_common.Configuration, serverId int) {
+func GetMetrics(ctx context.Context, cfg common.Configuration, serverId int) {
 	if serverId != 0 {
 		return
 	}
@@ -100,7 +100,7 @@ func GetMetrics(ctx context.Context, cfg momo_common.Configuration, serverId int
 	log.Printf("Daemon GetMetrics started...")
 
 	// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
-	paddedAuthToken := []byte(momo_common.PadString(cfg.Global.AuthToken, momo_common.AuthTokenLength))
+	paddedAuthToken := []byte(common.PadString(cfg.Global.AuthToken, common.AuthTokenLength))
 
 	// ⚡ Bolt: Pre-calculate thresholds as percentages to avoid multiplication/division in the loop.
 	maxThreshPercent := cfg.Metrics.MaxThreshold * 100

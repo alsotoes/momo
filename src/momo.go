@@ -10,8 +10,8 @@ import (
 
 	"github.com/alsotoes/momo/src/client"
 	"github.com/alsotoes/momo/src/common"
-	metrics "github.com/alsotoes/momo/src/metrics"
-	server "github.com/alsotoes/momo/src/server"
+	"github.com/alsotoes/momo/src/metrics"
+	"github.com/alsotoes/momo/src/server"
 	"github.com/alsotoes/momo/src/transport"
 )
 
