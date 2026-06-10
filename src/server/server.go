@@ -10,11 +10,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/alsotoes/momo/src/client"
 	momo_common "github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/transport"
 )
 
-// connectToPeer is an alias for the momo_common.Connect function, used to connect to other servers in the cluster for data replication.
-var connectToPeer = momo_common.Connect
+// connectToPeer is an alias for the client.Connect function, used to connect to other servers in the cluster for data replication.
+var connectToPeer = client.Connect
 
 // Daemon is the core of the momo server.
 // It listens for incoming connections and handles file uploads and replication.
@@ -30,7 +32,7 @@ var connectToPeer = momo_common.Connect
 // The replication mode is determined by the client, and for secondary servers, it's influenced by the timestamp of the operation.
 func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) error {
 	daemons := cfg.Daemons
-	factory := momo_common.NewProtocolFactory(cfg)
+	factory := transport.NewProtocolFactory(cfg)
 
 	server, err := factory.Listen(daemons[serverId].Host)
 	if err != nil {
@@ -77,7 +79,7 @@ func Daemon(ctx context.Context, cfg momo_common.Configuration, serverId int) er
 		log.Printf("Client connected to primary Daemon")
 // Acquire semaphore slot before spinning up a new goroutine
 sem <- struct{}{}
-go func(comm momo_common.Communicator) {
+go func(comm transport.Communicator) {
 	defer func() { <-sem }()
 	// 🛡️ Zero-Crash Hardening: Recover from any unexpected panics in the connection handler
 	// to ensure the daemon remains stable and available for other clients.

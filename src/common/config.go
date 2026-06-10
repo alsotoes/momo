@@ -83,10 +83,12 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 		return ConfigurationGlobal{}, fmt.Errorf("'replication_order' is missing or empty")
 	}
 
-	// ⚡ Bolt: Use a zero-allocation loop instead of strings.Split to parse replication_order
-	// This saves ~150ns/op and 1 allocation in the hot path.
-	globalCfg.ReplicationOrder = make([]int, 0, 10) // pre-allocate capacity
+	// ⚡ Bolt: Use a zero-allocation loop instead of strings.Split to parse replication_order.
+	// We pre-calculate the capacity using strings.Count to avoid re-allocations.
+	count := strings.Count(replicationOrderStr, ",") + 1
+	globalCfg.ReplicationOrder = make([]int, 0, count)
 	for len(replicationOrderStr) > 0 {
+
 		idx := strings.IndexByte(replicationOrderStr, ',')
 		var part string
 		if idx == -1 {

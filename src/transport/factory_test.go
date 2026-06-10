@@ -1,20 +1,22 @@
-package common
+package transport
 
 import (
 	"fmt"
 	"io"
 	"testing"
 	"time"
+
+	"github.com/alsotoes/momo/src/common"
 )
 
 func TestProtocolFactory_Listen_TCP(t *testing.T) {
-	cfg := Configuration{
-		Global: ConfigurationGlobal{
+	cfg := common.Configuration{
+		Global: common.ConfigurationGlobal{
 			Protocol: "momo-tcp",
 		},
 	}
 	factory := NewProtocolFactory(cfg)
-	
+
 	l, err := factory.Listen("127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Failed to listen: %v", err)
@@ -27,13 +29,13 @@ func TestProtocolFactory_Listen_TCP(t *testing.T) {
 }
 
 func TestProtocolFactory_Listen_QUIC(t *testing.T) {
-	cfg := Configuration{
-		Global: ConfigurationGlobal{
+	cfg := common.Configuration{
+		Global: common.ConfigurationGlobal{
 			Protocol: "momo-quic",
 		},
 	}
 	factory := NewProtocolFactory(cfg)
-	
+
 	l, err := factory.Listen("127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Failed to listen: %v", err)
@@ -46,13 +48,13 @@ func TestProtocolFactory_Listen_QUIC(t *testing.T) {
 }
 
 func TestProtocolFactory_Dial_TCP_Error(t *testing.T) {
-	cfg := Configuration{
-		Global: ConfigurationGlobal{
+	cfg := common.Configuration{
+		Global: common.ConfigurationGlobal{
 			Protocol: "momo-tcp",
 		},
 	}
 	factory := NewProtocolFactory(cfg)
-	
+
 	_, err := factory.Dial("127.0.0.1:1") // Should fail to connect
 	if err == nil {
 		t.Error("Expected error when dialing invalid address, got nil")
@@ -64,8 +66,8 @@ func TestMomoQUICCommunicator_Handshake(t *testing.T) {
 	timestamp := time.Now().UnixNano()
 	addr := "127.0.0.1:45684"
 
-	cfg := Configuration{
-		Global: ConfigurationGlobal{
+	cfg := common.Configuration{
+		Global: common.ConfigurationGlobal{
 			AuthToken: authToken,
 			Protocol:  "momo-quic",
 		},
@@ -87,12 +89,12 @@ func TestMomoQUICCommunicator_Handshake(t *testing.T) {
 		}
 		defer comm.Close()
 
-		_, _, err = comm.HandshakeServer([]byte(PadString(authToken, AuthTokenLength)))
+		_, _, err = comm.HandshakeServer([]byte(common.PadString(authToken, common.AuthTokenLength)))
 		if err != nil {
 			errChan <- err
 			return
 		}
-		
+
 		if tc, ok := comm.(*MomoQUICCommunicator); ok {
 			if err := tc.SendReplicationMode(1); err != nil {
 				errChan <- err
@@ -125,15 +127,15 @@ func TestMomoQUICCommunicator_Handshake(t *testing.T) {
 func TestMomoQUICCommunicator_Metadata_And_Payload(t *testing.T) {
 	authToken := "test-token"
 	addr := "127.0.0.1:45685"
-	testMeta := &FileMetadata{
+	testMeta := &common.FileMetadata{
 		Name: "quic-test.txt",
 		Hash: "abc123hash",
 		Size: 10,
 	}
 	testPayload := []byte("quicdata12")
 
-	cfg := Configuration{
-		Global: ConfigurationGlobal{
+	cfg := common.Configuration{
+		Global: common.ConfigurationGlobal{
 			AuthToken: authToken,
 			Protocol:  "momo-quic",
 		},
@@ -155,7 +157,7 @@ func TestMomoQUICCommunicator_Metadata_And_Payload(t *testing.T) {
 		}
 		defer comm.Close()
 
-		_, _, err = comm.HandshakeServer([]byte(PadString(authToken, AuthTokenLength)))
+		_, _, err = comm.HandshakeServer([]byte(common.PadString(authToken, common.AuthTokenLength)))
 		if err != nil {
 			errChan <- err
 			return

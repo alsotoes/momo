@@ -10,6 +10,7 @@ import (
 	"time"
 
 	momo_common "github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/transport"
 )
 
 func padTestString(input string, length int) string {
@@ -68,7 +69,7 @@ func TestChangeReplicationModeServerReal(t *testing.T) {
 	}
 	defer conn.Close()
 
-	comm := momo_common.NewMomoTCPCommunicator(conn)
+	comm := transport.NewMomoTCPCommunicator(conn)
 	if _, err := comm.HandshakeClient(authToken, time.Now().UnixNano()); err != nil {
 		t.Fatalf("Handshake failed: %v", err)
 	}
@@ -115,7 +116,7 @@ func TestDaemonReal(t *testing.T) {
 	}
 	defer conn.Close()
 
-	comm := momo_common.NewMomoTCPCommunicator(conn)
+	comm := transport.NewMomoTCPCommunicator(conn)
 	if _, err := comm.HandshakeClient(authToken, 1234567890123456789); err != nil {
 		t.Fatalf("Handshake failed: %v", err)
 	}

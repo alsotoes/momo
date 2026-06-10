@@ -1,4 +1,4 @@
-package common
+package transport
 
 import (
 	"context"
@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/alsotoes/momo/src/common"
 	"github.com/quic-go/quic-go"
 )
 
@@ -43,11 +44,11 @@ func (m *MomoQUICCommunicator) SetAbsoluteDeadline(t interface{}) error {
 }
 
 func (m *MomoQUICCommunicator) HandshakeClient(authToken string, timestamp int64) (int, error) {
-	var handshakeBuf [AuthTokenLength + TimestampLength]byte
-	copy(handshakeBuf[0:AuthTokenLength], PadString(authToken, AuthTokenLength))
-	
+	var handshakeBuf [common.AuthTokenLength + common.TimestampLength]byte
+	copy(handshakeBuf[0:common.AuthTokenLength], common.PadString(authToken, common.AuthTokenLength))
+
 	// Write the timestamp immediately after the AuthToken
-	strconv.AppendInt(handshakeBuf[AuthTokenLength:AuthTokenLength], timestamp, 10)
+	strconv.AppendInt(handshakeBuf[common.AuthTokenLength:common.AuthTokenLength], timestamp, 10)
 
 	if _, err := m.Write(handshakeBuf[:]); err != nil {
 		return 0, fmt.Errorf("failed to send handshake: %w", err)
@@ -58,7 +59,7 @@ func (m *MomoQUICCommunicator) HandshakeClient(authToken string, timestamp int64
 		return 0, fmt.Errorf("failed to read replication mode: %w", err)
 	}
 
-	replicationModeInt64, err := SafeParseInt(bufferReplicationMode[:])
+	replicationModeInt64, err := common.SafeParseInt(bufferReplicationMode[:])
 	if err != nil {
 		return 0, fmt.Errorf("invalid replication mode: %w", err)
 	}
@@ -67,19 +68,19 @@ func (m *MomoQUICCommunicator) HandshakeClient(authToken string, timestamp int64
 }
 
 func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (int, int64, error) {
-	var handshakeBuf [AuthTokenLength + TimestampLength]byte
+	var handshakeBuf [common.AuthTokenLength + common.TimestampLength]byte
 	if _, err := io.ReadFull(m, handshakeBuf[:]); err != nil {
 		return 0, 0, fmt.Errorf("failed to read handshake: %w", err)
 	}
 
-	bufferAuthToken := handshakeBuf[:AuthTokenLength]
-	bufferTimestamp := handshakeBuf[AuthTokenLength:]
+	bufferAuthToken := handshakeBuf[:common.AuthTokenLength]
+	bufferTimestamp := handshakeBuf[common.AuthTokenLength:]
 
 	if subtle.ConstantTimeCompare(bufferAuthToken, expectedAuthToken) != 1 {
 		return 0, 0, syscall.EACCES
 	}
 
-	timestamp, err := SafeParseInt(bufferTimestamp)
+	timestamp, err := common.SafeParseInt(bufferTimestamp)
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to parse timestamp: %w", err)
 	}
@@ -95,14 +96,14 @@ func (m *MomoQUICCommunicator) SendReplicationMode(mode int) error {
 	return nil
 }
 
-func (m *MomoQUICCommunicator) SendMetadata(meta *FileMetadata) error {
-	var metadataBuffer [hashLength + FileInfoLength + FileInfoLength]byte
+func (m *MomoQUICCommunicator) SendMetadata(meta *common.FileMetadata) error {
+	var metadataBuffer [hashLength + common.FileInfoLength + common.FileInfoLength]byte
 	copy(metadataBuffer[0:hashLength], meta.Hash)
-	copy(metadataBuffer[hashLength:hashLength+FileInfoLength], PadString(meta.Name, FileInfoLength))
-	
-	var sizeBuf [FileInfoLength]byte
+	copy(metadataBuffer[hashLength:hashLength+common.FileInfoLength], common.PadString(meta.Name, common.FileInfoLength))
+
+	var sizeBuf [common.FileInfoLength]byte
 	sizeBytes := strconv.AppendInt(sizeBuf[:0], meta.Size, 10)
-	copy(metadataBuffer[hashLength+FileInfoLength:], sizeBytes)
+	copy(metadataBuffer[hashLength+common.FileInfoLength:], sizeBytes)
 
 	if _, err := m.Write(metadataBuffer[:]); err != nil {
 		return fmt.Errorf("failed to send metadata: %w", err)
@@ -110,18 +111,18 @@ func (m *MomoQUICCommunicator) SendMetadata(meta *FileMetadata) error {
 	return nil
 }
 
-func (m *MomoQUICCommunicator) ReceiveMetadata() (FileMetadata, error) {
-	var metadata FileMetadata
-	var buffer [64 + FileInfoLength + FileInfoLength]byte
+func (m *MomoQUICCommunicator) ReceiveMetadata() (common.FileMetadata, error) {
+	var metadata common.FileMetadata
+	var buffer [64 + common.FileInfoLength + common.FileInfoLength]byte
 
 	if _, err := io.ReadFull(m, buffer[:]); err != nil {
 		return metadata, err
 	}
 
-	metadata.Hash = SanitizeLog(string(bytesTrimNull(buffer[:64])))
-	metadata.Name = string(bytesTrimNull(buffer[64 : 64+FileInfoLength]))
-	
-	size, err := SafeParseInt(buffer[64+FileInfoLength:])
+	metadata.Hash = common.SanitizeLog(string(bytesTrimNull(buffer[:64])))
+	metadata.Name = string(bytesTrimNull(buffer[64 : 64+common.FileInfoLength]))
+
+	size, err := common.SafeParseInt(buffer[64+common.FileInfoLength:])
 	if err != nil {
 		return metadata, err
 	}

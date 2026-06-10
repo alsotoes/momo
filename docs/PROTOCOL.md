@@ -16,7 +16,7 @@ Whether running over raw TCP sockets or encrypted UDP QUIC streams, the byte-lev
 
 The handshake is initiated by the client and is used to authenticate the connection and establish the replication mode.
 
-1.  The client opens a TCP connection to the primary server (usually server 0).
+1.  The client opens a network connection (TCP socket or QUIC stream) to the primary server (usually server 0).
 2.  The client sends a combined authentication and timestamp packet:
     -   **AuthToken:** 64-byte string, null-padded.
     -   **Timestamp:** 19-byte ASCII string (e.g., `UnixNano`).

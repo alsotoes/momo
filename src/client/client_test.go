@@ -1,4 +1,4 @@
-package common
+package client
 
 import (
 	"crypto/subtle"
@@ -9,6 +9,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/transport"
 )
 
 func TestPadString(t *testing.T) {
@@ -23,7 +26,7 @@ func TestPadString(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		result := PadString(tc.input, tc.length)
+		result := common.PadString(tc.input, tc.length)
 		if result != tc.expected {
 			t.Errorf("Expected '%s', got '%s'", tc.expected, result)
 		}
@@ -42,28 +45,28 @@ func startMockServer(t *testing.T, authToken string, expectedMode int, delay tim
 		}
 		defer conn.Close()
 
-		bufAuth := make([]byte, AuthTokenLength)
+		bufAuth := make([]byte, common.AuthTokenLength)
 		io.ReadFull(conn, bufAuth)
-		expectedAuthToken := []byte(PadString(authToken, AuthTokenLength))
+		expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
 		if subtle.ConstantTimeCompare(bufAuth, expectedAuthToken) != 1 {
 			t.Logf("Server: Invalid AuthToken received: %s", string(bufAuth))
 			return
 		}
 
-		buf := make([]byte, TimestampLength)
+		buf := make([]byte, common.TimestampLength)
 		io.ReadFull(conn, buf)
 		conn.Write([]byte(strconv.Itoa(expectedMode)))
 
-		if expectedMode == ReplicationPrimarySplay {
+		if expectedMode == common.ReplicationPrimarySplay {
 			// Splay read dummy handshake for extra nodes
 		}
 
 		// Read file metadata
-		bufHash := make([]byte, hashLength)
+		bufHash := make([]byte, 64)
 		io.ReadFull(conn, bufHash)
-		bufName := make([]byte, FileInfoLength)
+		bufName := make([]byte, common.FileInfoLength)
 		io.ReadFull(conn, bufName)
-		bufSize := make([]byte, FileInfoLength)
+		bufSize := make([]byte, common.FileInfoLength)
 		io.ReadFull(conn, bufSize)
 
 		// Send ACK after a small delay
@@ -87,24 +90,24 @@ func startDummyServer(t *testing.T, authToken string) (string, net.Listener) {
 			go func(c net.Conn) {
 				defer c.Close()
 				// Just read and respond basic handshake then ACK
-				bufAuth := make([]byte, AuthTokenLength)
+				bufAuth := make([]byte, common.AuthTokenLength)
 				io.ReadFull(c, bufAuth)
-				expectedAuthToken := []byte(PadString(authToken, AuthTokenLength))
+				expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
 				if subtle.ConstantTimeCompare(bufAuth, expectedAuthToken) != 1 {
 					t.Logf("Dummy Server: Invalid AuthToken received: %s", string(bufAuth))
 					return
 				}
 
-				buf := make([]byte, TimestampLength)
+				buf := make([]byte, common.TimestampLength)
 				io.ReadFull(c, buf)
 				c.Write([]byte("4")) // Not Splay
 
 				// Wait for metadata
-				bufHash := make([]byte, hashLength)
+				bufHash := make([]byte, 64)
 				io.ReadFull(c, bufHash)
-				bufName := make([]byte, FileInfoLength)
+				bufName := make([]byte, common.FileInfoLength)
 				io.ReadFull(c, bufName)
-				bufSize := make([]byte, FileInfoLength)
+				bufSize := make([]byte, common.FileInfoLength)
 				io.ReadFull(c, bufSize)
 
 				c.Write([]byte("ACK"))
@@ -127,15 +130,15 @@ func TestConnect(t *testing.T) {
 	file.Close()
 
 	// Normal Connect non-splay
-	addr1, ln1 := startMockServer(t, authToken, ReplicationNone, 10*time.Millisecond)
+	addr1, ln1 := startMockServer(t, authToken, common.ReplicationNone, 10*time.Millisecond)
 	defer ln1.Close()
 
-	daemons := []*Daemon{
+	daemons := []*common.Daemon{
 		{Host: addr1, ChangeReplication: addr1, Data: "/tmp", Drive: "/dev/sda1"},
 	}
-	cfg := Configuration{
+	cfg := common.Configuration{
 		Daemons: daemons,
-		Global: ConfigurationGlobal{
+		Global: common.ConfigurationGlobal{
 			AuthToken: authToken,
 		},
 	}
@@ -151,13 +154,13 @@ func TestConnect(t *testing.T) {
 	addr3, ln3 := startDummyServer(t, authToken)
 	defer ln3.Close()
 
-	daemonsSplay := []*Daemon{
+	daemonsSplay := []*common.Daemon{
 		{Host: addr1, ChangeReplication: addr1, Data: "/tmp", Drive: "/dev/sda1"},
 		{Host: addr2, ChangeReplication: addr2, Data: "/tmp", Drive: "/dev/sda1"},
 		{Host: addr3, ChangeReplication: addr3, Data: "/tmp", Drive: "/dev/sda1"},
 	}
 
-	// For Splay, initial server needs to return ReplicationPrimarySplay (3)
+	// For Splay, initial server needs to return common.ReplicationPrimarySplay (3)
 	// We'll create a special listener
 	lnSplay, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -173,32 +176,32 @@ func TestConnect(t *testing.T) {
 		}
 		defer conn.Close()
 
-		bufAuth := make([]byte, AuthTokenLength)
+		bufAuth := make([]byte, common.AuthTokenLength)
 		io.ReadFull(conn, bufAuth)
-		expectedAuthToken := []byte(PadString(authToken, AuthTokenLength))
+		expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
 		if subtle.ConstantTimeCompare(bufAuth, expectedAuthToken) != 1 {
 			t.Logf("Splay Server: Invalid AuthToken received: %s", string(bufAuth))
 			return
 		}
 
-		buf := make([]byte, TimestampLength)
+		buf := make([]byte, common.TimestampLength)
 		io.ReadFull(conn, buf)
-		conn.Write([]byte(strconv.Itoa(ReplicationPrimarySplay))) // Send 3
+		conn.Write([]byte(strconv.Itoa(common.ReplicationPrimarySplay))) // Send 3
 
 		// Read file metadata
-		bufHash := make([]byte, hashLength)
+		bufHash := make([]byte, 64)
 		io.ReadFull(conn, bufHash)
-		bufName := make([]byte, FileInfoLength)
+		bufName := make([]byte, common.FileInfoLength)
 		io.ReadFull(conn, bufName)
-		bufSize := make([]byte, FileInfoLength)
+		bufSize := make([]byte, common.FileInfoLength)
 		io.ReadFull(conn, bufSize)
 		conn.Write([]byte("ACK"))
 	}()
 
 	daemonsSplay[0].Host = addrSplay
-	cfgSplay := Configuration{
+	cfgSplay := common.Configuration{
 		Daemons: daemonsSplay,
-		Global: ConfigurationGlobal{
+		Global: common.ConfigurationGlobal{
 			AuthToken: authToken,
 		},
 	}
@@ -222,7 +225,7 @@ func TestSendFile(t *testing.T) {
 	addr, ln := startMockServer(t, authToken, 0, 10*time.Millisecond)
 	defer ln.Close()
 
-	conn, err := DialSocket(addr)
+	conn, err := common.DialSocket(addr)
 	if err != nil {
 		t.Fatalf("Failed to dial: %v", err)
 	}
@@ -231,7 +234,7 @@ func TestSendFile(t *testing.T) {
 	conn.Write([]byte(authToken))
 
 	// Skip the initial timestamp read/write
-	conn.Write([]byte(PadString("123", TimestampLength)))
+	conn.Write([]byte(common.PadString("123", common.TimestampLength)))
 	io.ReadFull(conn, make([]byte, 1))
 
 	var wg sync.WaitGroup
@@ -241,17 +244,17 @@ func TestSendFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to stat file: %v", err)
 	}
-	fileHash, err := HashFile(file.Name())
+	fileHash, err := common.HashFile(file.Name())
 	if err != nil {
 		t.Fatalf("Failed to hash file: %v", err)
 	}
-	meta := &FileMetadata{
+	meta := &common.FileMetadata{
 		Name: fileInfo.Name(),
 		Hash: fileHash,
 		Size: fileInfo.Size(),
 	}
 
-	comm := NewMomoTCPCommunicator(conn)
+	comm := transport.NewMomoTCPCommunicator(conn)
 	sendFile(&wg, comm, file.Name(), meta)
 	wg.Wait()
 }

@@ -59,13 +59,13 @@ The following diagram illustrates the decision-making process of the metrics com
 
 ## Example Scenario
 
-Consider a `replication_order` of `1,2,3,4` which maps to `primary-splay, splay, chain, none`.
+Consider a `replication_order` of `3,2,1,4` which maps to `primary-splay, splay, chain, none`.
 
-1.  The system starts in **primary-splay** mode (mode `1`).
+1.  The system starts in **primary-splay** mode (mode `3`).
 2.  A large number of files are uploaded, causing CPU usage to exceed the `max_threshold`.
 3.  The metrics component detects this and switches the strategy to **splay** (mode `2`), which is less demanding.
-4.  If the load continues to increase and breaches the threshold again, the system will step right again to **chain** (mode `3`).
-5.  Once the file uploads are complete and the system load remains low (below `min_threshold`) for the duration of the `fallback_interval`, the metrics component will switch the strategy back to **splay** (mode `2`) and, if conditions remain calm, eventually back to **primary-splay** (mode `1`).
+4.  If the load continues to increase and breaches the threshold again, the system will step right again to **chain** (mode `1`).
+5.  Once the file uploads are complete and the system load remains low (below `min_threshold`) for the duration of the `fallback_interval`, the metrics component will switch the strategy back to **splay** (mode `2`) and, if conditions remain calm, eventually back to **primary-splay** (mode `3`).
 
 ## Benefits of a Polymorphic System
 

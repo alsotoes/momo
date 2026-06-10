@@ -1,29 +1,31 @@
-package common
+package client
 
 import (
 	"io"
 	"log"
 	"os"
 	"sync"
-	"unsafe"
+
+	"github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/transport"
 )
 
 // Connect establishes connections with daemon(s) and sends a file.
 // It first connects to a specified daemon to determine the replication mode.
 // If splay replication is active, it connects to all other daemons.
 // Finally, it sends the file to all established connections concurrently.
-func Connect(wg *sync.WaitGroup, cfg Configuration, filePath string, serverId int, timestamp int64) {
+func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, serverId int, timestamp int64) {
 	defer wg.Done()
 	daemons := cfg.Daemons
 	authToken := cfg.Global.AuthToken
-	factory := NewProtocolFactory(cfg)
-	var communicators []Communicator
+	factory := transport.NewProtocolFactory(cfg)
+	var communicators []transport.Communicator
 	var wgSendFile sync.WaitGroup
 
 	// Connect to the initial daemon to check replication mode
 	comm, err := factory.Dial(daemons[serverId].Host)
 	if err != nil {
-		log.Printf("Failed to connect to initial daemon %s: %v", daemons[serverId].Host, SanitizeLog(err.Error()))
+		log.Printf("Failed to connect to initial daemon %s: %v", daemons[serverId].Host, common.SanitizeLog(err.Error()))
 		return
 	}
 	communicators = append(communicators, comm)
@@ -31,12 +33,12 @@ func Connect(wg *sync.WaitGroup, cfg Configuration, filePath string, serverId in
 	// Perform handshake to get replication mode
 	replicationMode, err := comm.HandshakeClient(authToken, timestamp)
 	if err != nil {
-		log.Printf("Handshake failed with %s: %v", daemons[serverId].Host, SanitizeLog(err.Error()))
+		log.Printf("Handshake failed with %s: %v", daemons[serverId].Host, common.SanitizeLog(err.Error()))
 		comm.Close()
 		return
 	}
 
-	if replicationMode == ReplicationPrimarySplay {
+	if replicationMode == common.ReplicationPrimarySplay {
 		// In splay replication, connect to all other daemons as well
 		for i, daemon := range daemons {
 			if i == serverId {
@@ -45,13 +47,13 @@ func Connect(wg *sync.WaitGroup, cfg Configuration, filePath string, serverId in
 
 			peerComm, err := factory.Dial(daemon.Host)
 			if err != nil {
-				log.Printf("Failed to connect to daemon %s: %v", daemon.Host, SanitizeLog(err.Error()))
+				log.Printf("Failed to connect to daemon %s: %v", daemon.Host, common.SanitizeLog(err.Error()))
 				continue
 			}
 
 			// Perform handshake with the other daemons
 			if _, err := peerComm.HandshakeClient(authToken, timestamp); err != nil {
-				log.Printf("Handshake failed with peer %s: %v", daemon.Host, SanitizeLog(err.Error()))
+				log.Printf("Handshake failed with peer %s: %v", daemon.Host, common.SanitizeLog(err.Error()))
 				peerComm.Close()
 				continue
 			}
@@ -71,24 +73,24 @@ func Connect(wg *sync.WaitGroup, cfg Configuration, filePath string, serverId in
 	// This avoids redundant disk reads and hashing for each connection in splay replication.
 	fileInfo, err := os.Stat(filePath)
 	if err != nil {
-		log.Printf("Failed to get file info for %s: %v", SanitizeLog(filePath), SanitizeLog(err.Error()))
+		log.Printf("Failed to get file info for %s: %v", common.SanitizeLog(filePath), common.SanitizeLog(err.Error()))
 		return
 	}
 
-	fileHash, err := HashFile(filePath)
+	fileHash, err := common.HashFile(filePath)
 	if err != nil {
-		log.Printf("Failed to hash file %s: %v", SanitizeLog(filePath), SanitizeLog(err.Error()))
+		log.Printf("Failed to hash file %s: %v", common.SanitizeLog(filePath), common.SanitizeLog(err.Error()))
 		return
 	}
 
-	meta := &FileMetadata{
+	meta := &common.FileMetadata{
 		Name: fileInfo.Name(),
 		Hash: fileHash,
 		Size: fileInfo.Size(),
 	}
 
-	log.Printf("=> Hash:    %s", SanitizeLog(meta.Hash))
-	log.Printf("=> Name:    %s", SanitizeLog(meta.Name))
+	log.Printf("=> Hash:    %s", common.SanitizeLog(meta.Hash))
+	log.Printf("=> Name:    %s", common.SanitizeLog(meta.Name))
 	log.Printf("=> Size:    %d", meta.Size)
 
 	// Send the file to all established connections concurrently
@@ -102,12 +104,18 @@ func Connect(wg *sync.WaitGroup, cfg Configuration, filePath string, serverId in
 // sendFile sends a file over a network connection.
 // It first sends the file's metadata (SHA-256 hash, name, and size) and then the file's content.
 // It waits for an acknowledgment ("ACK") from the server upon successful reception.
-func sendFile(wg *sync.WaitGroup, comm Communicator, filePath string, meta *FileMetadata) {
+func sendFile(wg *sync.WaitGroup, comm transport.Communicator, filePath string, meta *common.FileMetadata) {
 	defer wg.Done()
+	// 🛡️ Zero-Crash: Ensure background transmission tasks don't crash the client on unexpected panics
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in sendFile for %s: %v", common.SanitizeLog(filePath), r)
+		}
+	}()
 
 	file, err := os.Open(filePath)
 	if err != nil {
-		log.Printf("Failed to open file %s: %v", SanitizeLog(filePath), SanitizeLog(err.Error()))
+		log.Printf("Failed to open file %s: %v", common.SanitizeLog(filePath), common.SanitizeLog(err.Error()))
 		return
 	}
 
@@ -115,33 +123,21 @@ func sendFile(wg *sync.WaitGroup, comm Communicator, filePath string, meta *File
 
 	// Send metadata
 	if err := comm.SendMetadata(meta); err != nil {
-		log.Printf("Failed to send metadata for %s: %v", SanitizeLog(meta.Name), SanitizeLog(err.Error()))
+		log.Printf("Failed to send metadata for %s: %v", common.SanitizeLog(meta.Name), common.SanitizeLog(err.Error()))
 		return
 	}
 
 	// Send file content
 	if _, err := io.Copy(comm, file); err != nil {
-		log.Printf("Error sending file %s: %v", SanitizeLog(meta.Name), SanitizeLog(err.Error()))
+		log.Printf("Error sending file %s: %v", common.SanitizeLog(meta.Name), common.SanitizeLog(err.Error()))
 		return
 	}
 
 	// Wait for ACK
 	if err := comm.ReceiveACK(); err != nil {
-		log.Printf("Failed to read ACK from server: %v", SanitizeLog(err.Error()))
+		log.Printf("Failed to read ACK from server: %v", common.SanitizeLog(err.Error()))
 		return
 	}
 
-	log.Printf("File %s sent successfully.", SanitizeLog(meta.Name))
-}
-
-// PadString pads a string with null characters to a specified length.
-// If the string is longer than the specified length, it is truncated.
-func PadString(input string, length int) string {
-	if len(input) >= length {
-		return input[:length]
-	}
-	b := make([]byte, length)
-	copy(b, input)
-	// ⚡ Bolt: Eliminate string allocation overhead by using unsafe.String.
-	return unsafe.String(unsafe.SliceData(b), length)
+	log.Printf("File %s sent successfully.", common.SanitizeLog(meta.Name))
 }

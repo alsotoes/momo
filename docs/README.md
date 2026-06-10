@@ -17,19 +17,25 @@ This document explains the architecture, configuration, wire protocol, replicati
 ## Repository Layout
 
 - `src/momo.go`: Entry point (client/server runner and metrics bootstrap).
-- `src/common/`: Shared types, config loader, logging, helpers, constants.
-  - `constants.go`: Wire/field lengths and replication constants.
-  - `config.go`: INI configuration loader (`conf/momo.conf`).
-  - `struct.go`: Config and metadata structs.
+- `src/transport/`: Pluggable communication layers and protocol implementations.
+  - `communicator.go`: Central `Communicator` and `MomoListener` interfaces.
+  - `factory.go`: `ProtocolFactory` for instantiating transports.
+  - `momo_tcp.go`: Legacy TCP implementation.
+  - `momo_quic.go`: Modern QUIC implementation using `quic-go`.
+  - `s3_communicator.go`: S3-compatible REST API mapping.
+- `src/client/`: Client-side logic for cluster replication and file forwarding.
+  - `client.go`: Main cluster connection and parallel file transmission logic.
+- `src/common/`: Agnostic, shared utilities.
+  - `config.go`: Optimized INI configuration loader.
   - `hash.go`: Optimized file SHA-256 hashing.
   - `log.go`: Secure logging with CRLF sanitization.
-  - `net.go`: High-performance `IdleTimeoutConn` with bitwise amortization.
-- `src/server/`: Server daemon, file receive, and replication control server.
-  - `server.go`: Optimized TCP server with phased deadlines and audit logging.
-  - `file.go`: High-performance metadata parsing and secure file reception.
-  - `replication.go`: Replication control server with secure authentication.
-- `src/metrics/`: Metrics loop and push of replication changes.
-  - `metrics.go`: Optimized CPU/mem sampling and mode switching.
+  - `string.go`: Performance-tuned string padding.
+  - `constants.go`: Shared system-wide protocol constants.
+- `src/server/`: Server daemon and file reception logic.
+  - `server.go`: Core Daemon loop utilizing pluggable transports.
+  - `file.go`: Secure metadata parsing and file writing.
+  - `replication.go`: Dynamic replication mode control server.
+- `src/metrics/`: Performance monitoring and polymorphic control loop.
 - `conf/momo.conf`: Secure configuration example.
 
 ## Replication Modes
@@ -45,7 +51,7 @@ Constants (see `src/common/constants.go`):
 
 Handshake and transfer overview:
 
-1. **Secure Handshake**: Client opens a TCP connection and sends a combined 83-byte packet (64-byte AuthToken + 19-byte Timestamp).
+1. **Secure Handshake**: Client opens a network connection (TCP or QUIC) and sends a combined 83-byte packet (64-byte AuthToken + 19-byte Timestamp).
 2. **Replication Negotiation**: Server validates token, decides the mode, and responds with a single ASCII mode code.
 3. **Metadata Exchange**: Client sends metadata: 64-byte hex SHA-256, 64-byte name, and 64-byte size (null-padded).
 4. **Streamed Payload**: Client streams file bytes until EOF.
@@ -57,7 +63,7 @@ File: `conf/momo.conf`. Ensure the `auth_token` matches on all nodes and is exac
 
 ## Building and Running
 
-Ensure Go 1.20+ is installed.
+Ensure Go 1.25+ is installed.
 
 ```bash
 # Build binary

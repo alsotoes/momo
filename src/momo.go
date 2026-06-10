@@ -8,9 +8,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/alsotoes/momo/src/client"
 	"github.com/alsotoes/momo/src/common"
 	metrics "github.com/alsotoes/momo/src/metrics"
 	server "github.com/alsotoes/momo/src/server"
+	"github.com/alsotoes/momo/src/transport"
 )
 
 func main() {
@@ -66,7 +68,7 @@ func Run() {
 		}
 		var wg sync.WaitGroup
 		wg.Add(1)
-		common.Connect(&wg, cfg, *filePathPtr, serverId, common.DummyEpoch)
+		client.Connect(&wg, cfg, *filePathPtr, serverId, common.DummyEpoch)
 		wg.Wait()
 	case "server":
 		if err := runServer(cfg, *serverIdPtr); err != nil {
@@ -84,7 +86,7 @@ func Run() {
 		if err != nil {
 			log.Fatalf("Failed to marshal replication data: %v", err)
 		}
-		factory := common.NewProtocolFactory(cfg)
+		factory := transport.NewProtocolFactory(cfg)
 		server.ChangeReplicationModeClient(factory, jsonBytes, *serverIdPtr)
 	default:
 		log.Fatalf("*** ERROR: Option unknown: %s", common.SanitizeLog(*impersonationPtr))
