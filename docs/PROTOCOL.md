@@ -16,34 +16,30 @@ Whether running over raw TCP sockets or encrypted UDP QUIC streams, the byte-lev
 
 The handshake is initiated by the client and is used to authenticate the connection and establish the replication mode.
 
-1.  The client opens a network connection (TCP socket or QUIC stream) to the primary server (usually server 0).
-2.  The client sends a combined authentication and timestamp packet:
+1.  **Transport Connection**: The client opens a network connection (TCP socket, QUIC stream, or S3 HTTP session).
+2.  **Handshake Packet**: The client sends a combined authentication, timestamp, and mode packet (84 bytes):
     -   **AuthToken:** 64-byte string, null-padded.
     -   **Timestamp:** 19-byte ASCII string (e.g., `UnixNano`).
-3.  The server validates the AuthToken using constant-time comparison.
-4.  The server decides which replication mode to use for this connection based on its current configuration and metrics.
-5.  The server responds with an ASCII-encoded integer representing the chosen replication mode (e.g., `4` for Primary-Splay).
+    -   **RequestedMode:** 1-byte ASCII integer (e.g. `0` for auto-select, `1` for Chain).
+3.  **Validation**: The server validates the AuthToken using constant-time comparison.
+4.  **Negotiation**: 
+    - If it's a new client connection, the server selects the mode based on polymorphic metrics.
+    - If it's a forwarded connection between nodes, the server respects the requested mode to ensure cluster consistency.
+5.  **Confirmation**: The server responds with a 1-byte ASCII-encoded integer representing the final replication mode.
 
-**Handshake Layout:**
+**Handshake Layout (84 bytes):**
 
 ```
-|-----------------|-----------------|
-|  AuthToken (64) | Timestamp (19)  |
-|-----------------|-----------------|
+|-----------------|-----------------|------|
+|  AuthToken (64) | Timestamp (19)  | M (1)|
+|-----------------|-----------------|------|
 ```
-
-**Replication Mode Codes:**
-
--   `1`: Chain Replication
--   `2`: Splay Replication
--   `3`: Primary-Splay Replication
--   `4`: No Replication (Fallback/Default)
 
 ## Message Framing
 
-Once the handshake is complete, the client sends the file metadata, followed by the file payload.
+Once the handshake is complete, the client sends the file metadata and waits for a status code before sending the payload.
 
-### Metadata
+### Metadata & Deduplication Check
 
 The metadata consists of three fixed-size fields:
 
@@ -58,6 +54,12 @@ The metadata consists of three fixed-size fields:
 |   Hash (64)     | File Name (64)   | File Size (64)  |
 |-----------------|------------------|-----------------|
 ```
+
+**Deduplication Flow:**
+
+1.  After sending the metadata, the client waits for a **1-byte Status Code**.
+2.  **`1` (MetadataStatusSendPayload)**: Server does not have the content. Client must stream the payload.
+3.  **`2` (MetadataStatusSkipPayload)**: Server already has the content (**CAS Hit**). Client skips the payload phase and waits for the final ACK.
 
 ### Payload
 

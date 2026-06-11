@@ -2,7 +2,6 @@
 package server
 
 import (
-	"crypto/subtle"
 	"io"
 	"net"
 	"os"
@@ -42,64 +41,38 @@ func handleConnection(t *testing.T, connection net.Conn, cfg common.Configuratio
 	comm := transport.NewMomoTCPCommunicator(connection)
 	defer func() {
 		if success {
-			// In a real scenario, this might block if the client isn't reading.
-			// net.Pipe is unbuffered, so writes block until a read happens.
-			// The client *is* waiting for this ACK, so it should be fine.
-			comm.Write([]byte("ACK" + strconv.Itoa(serverId)))
+			comm.SendACK(serverId)
 		}
 		comm.Close()
 	}()
 
-	bufferAuthToken := make([]byte, common.AuthTokenLength)
-	if _, err := io.ReadFull(comm, bufferAuthToken); err != nil {
-		t.Logf("Error reading AuthToken: %v", err)
-		return
-	}
 	expectedAuthToken := []byte(common.PadString(cfg.Global.AuthToken, common.AuthTokenLength))
-	if subtle.ConstantTimeCompare(bufferAuthToken, expectedAuthToken) != 1 {
-		t.Logf("Invalid AuthToken received")
-		return
-	}
-
-	bufferTimestamp := make([]byte, common.TimestampLength)
-	if _, err := comm.Read(bufferTimestamp); err != nil {
-		t.Logf("Error reading timestamp: %v", err)
-		return
-	}
-	timestamp, err := strconv.ParseInt(string(bufferTimestamp), 10, 64)
+	
+	// HandshakeServer performs the server-side handshake: receives AuthToken + Timestamp + RequestedMode
+	replicationMode, timestamp, err := comm.HandshakeServer(expectedAuthToken)
 	if err != nil {
-		t.Errorf("Error parsing timestamp: %v", err)
+		t.Logf("Handshake failed: %v", err)
 		return
 	}
 
-	// The rest of the logic from the original Daemon function's go func() { ... }
+	// The rest of the logic from the original Daemon function
 	repState := GetReplicationState()
-	switch serverId {
-	case 0:
+	// If it's a direct client connection (timestamp == 0 in this simplified test), use local state.
+	// In the real Daemon, we use common.DummyEpoch.
+	if timestamp == 0 || timestamp == common.DummyEpoch {
 		replicationMode = repState.New
-	case 1:
-		if timestamp > repState.TimeStamp {
-			replicationMode = repState.New
-		} else {
-			replicationMode = repState.Old
-		}
-		if replicationMode != common.ReplicationChain {
-			replicationMode = common.ReplicationNone
-		}
-	default:
-		replicationMode = common.ReplicationNone
 	}
 
-	comm.Write([]byte(strconv.Itoa(replicationMode)))
+	comm.SendReplicationMode(replicationMode)
 
-	metadata, err := getMetadata(comm)
+	metadata, err := comm.ReceiveMetadata()
 	if err != nil {
 		t.Logf("Error getting metadata: %v", err)
 		return
 	}
 
 	// Send metadata status
-	comm.Write([]byte{transport.MetadataStatusSendPayload})
+	comm.SendMetadataStatus(transport.MetadataStatusSendPayload)
 
 	var wg sync.WaitGroup
 
@@ -200,8 +173,11 @@ func TestDaemonLogic(t *testing.T) {
 
 			// Test Execution
 			client.Write([]byte(common.PadString(authToken, common.AuthTokenLength)))
-			timestamp := strconv.FormatInt(time.Now().UnixNano(), 10)
+			// ⚡ Bolt: Use DummyEpoch to signal that we are the primary in this test
+			timestamp := strconv.FormatInt(common.DummyEpoch, 10)
 			client.Write([]byte(timestamp))
+			// ⚡ Bolt: Send the 84th byte (RequestedMode = 0)
+			client.Write([]byte("0"))
 
 			replicationModeBuf := make([]byte, 1)
 			client.Read(replicationModeBuf)
@@ -220,7 +196,7 @@ func TestDaemonLogic(t *testing.T) {
 			copy(fileSizeBytes, strconv.Itoa(len(fileContent)))
 			client.Write(fileSizeBytes)
 
-			// Read metadata status
+			// ⚡ Bolt: Read the Metadata Status byte
 			statusBuf := make([]byte, 1)
 			client.Read(statusBuf)
 			if statusBuf[0] != transport.MetadataStatusSendPayload {

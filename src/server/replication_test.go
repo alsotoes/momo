@@ -136,6 +136,9 @@ func TestChangeReplicationModeClient(t *testing.T) {
 		bufJSON := make([]byte, common.FileInfoLength)
 		n, _ := conn.Read(bufJSON)
 		receivedJSON <- bufJSON[:n] // Send received data to the channel.
+
+		// ⚡ Bolt: Send "OK" ACK as required by ChangeReplicationModeClient
+		conn.Write([]byte("OK"))
 	}()
 
 	// Act: Call the function under test.

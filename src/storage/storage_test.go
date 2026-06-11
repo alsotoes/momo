@@ -5,9 +5,12 @@ import (
 	"io"
 	"os"
 	"testing"
+
+	"go.uber.org/goleak"
 )
 
 func TestCASStore(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	tmpDir, err := os.MkdirTemp("", "momo-storage-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
@@ -60,7 +63,17 @@ func TestCASStore(t *testing.T) {
 	r2, _, _ := store.Get("copy.txt")
 	r2.Close()
 
-	// 5. Delete
+	// 5. Deduplication Hit (nil reader)
+	if err := store.Put("third.txt", hash, int64(len(content)), nil); err != nil {
+		t.Fatalf("Put with nil reader failed: %v", err)
+	}
+	r3, m3, _ := store.Get("third.txt")
+	if m3.Hash != hash {
+		t.Errorf("Metadata hash mismatch for nil reader put")
+	}
+	r3.Close()
+
+	// 6. Delete
 	if err := store.Delete(name); err != nil {
 		t.Errorf("Delete failed: %v", err)
 	}

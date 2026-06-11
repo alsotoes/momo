@@ -24,6 +24,15 @@ func TestS3Communicator_HandshakeServer(t *testing.T) {
 
 	go func() {
 		clientConn.Write([]byte(reqBody))
+		// ⚡ Bolt: Read in a loop to avoid deadlock on net.Pipe. 
+		// http.Response.Write performs multiple writes which will block if not fully consumed.
+		buf := make([]byte, 1024)
+		for {
+			_, err := clientConn.Read(buf)
+			if err != nil {
+				break
+			}
+		}
 	}()
 
 	comm := NewS3Communicator(serverConn)
@@ -74,6 +83,15 @@ func TestS3Communicator_AWSV4Auth(t *testing.T) {
 
 	go func() {
 		clientConn.Write([]byte(reqBody))
+		// ⚡ Bolt: Read in a loop to avoid deadlock on net.Pipe. 
+		// http.Response.Write performs multiple writes which will block if not fully consumed.
+		buf := make([]byte, 1024)
+		for {
+			_, err := clientConn.Read(buf)
+			if err != nil {
+				break
+			}
+		}
 	}()
 
 	comm := NewS3Communicator(serverConn)

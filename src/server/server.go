@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/alsotoes/momo/src/client"
@@ -64,6 +65,13 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 
 	// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
 	expectedAuthToken := []byte(common.PadString(cfg.Global.AuthToken, common.AuthTokenLength))
+
+	// ⚡ Bolt: Pre-build the ClusterMap during boot to avoid per-request allocations.
+	nodes := make([]*common.Node, len(cfg.Daemons))
+	for i, d := range cfg.Daemons {
+		nodes[i] = &common.Node{ID: i, Weight: 1, Addr: d.Host}
+	}
+	cmap := &common.ClusterMap{Nodes: nodes}
 
 	// 🛡️ Sentinel: Enforce a limit on concurrent connections to prevent resource exhaustion (DoS).
 	const maxConcurrentConnections = 1000
@@ -172,6 +180,12 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 				return
 			}
 
+			// 🛡️ Zero-Crash: Defensive check for storage initialization.
+			if store == nil {
+				log.Printf("AUDIT: Storage error for %s: store not initialized: %v", remoteAddr, syscall.EIO)
+				return
+			}
+
 			// ⚡ Bolt: Content-Addressable Deduplication Check.
 			exists, err := store.Has(metadata.Hash)
 			if err != nil {
@@ -194,11 +208,15 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 
 			// 🛡️ Sentinel: Sanitize fileName immediately to prevent path traversal in all downstream consumers.
 			rawFileName := metadata.Name
-			if rawFileName == "." || rawFileName == ".." || strings.Contains(rawFileName, "/") || strings.Contains(rawFileName, "\\") {
+			if rawFileName == "" || rawFileName == "." || rawFileName == ".." || strings.Contains(rawFileName, "/") || strings.Contains(rawFileName, "\\") {
 				log.Printf("AUDIT: Invalid filename received from %s: %v", remoteAddr, common.SanitizeLog(rawFileName))
 				return
 			}
 			fileName := filepath.Base(rawFileName)
+			if fileName == "" || fileName == "." || fileName == ".." || fileName == "/" || fileName == "\\" {
+				log.Printf("AUDIT: Invalid filename received from %s: %v", remoteAddr, common.SanitizeLog(fileName))
+				return
+			}
 
 			// 🛡️ Sentinel: Enforce maximum file size to prevent Denial of Service via resource exhaustion
 			if metadata.Size < 0 || metadata.Size > common.MaxFileSize {
@@ -206,13 +224,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 				return
 			}
 
-			// Calculate Placement using CRUSH
-			nodes := make([]*common.Node, len(cfg.Daemons))
-			for i, d := range cfg.Daemons {
-				nodes[i] = &common.Node{ID: i, Weight: 1, Addr: d.Host}
-			}
-			cmap := &common.ClusterMap{Nodes: nodes}
-			// Get all nodes in the preferred order for this hash
+			// ⚡ Bolt: Get all nodes in the preferred order for this hash using the pre-built cmap.
 			placement, err := cmap.Placement(metadata.Hash, len(cfg.Daemons))
 			if err != nil {
 				log.Printf("AUDIT: Placement failed for %s: %v", metadata.Hash, err)
@@ -228,9 +240,16 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 			// Handle the file based on the replication mode
 			switch replicationMode {
 			case common.ReplicationNone, common.ReplicationPrimarySplay:
-				if err := getFile(comm, store, fileName, metadata.Hash, metadata.Size); err != nil {
-					log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
-					return
+				if exists {
+					// ⚡ Bolt: Deduplication hit. Just update metadata mapping without reading payload.
+					if err := store.Put(fileName, metadata.Hash, metadata.Size, nil); err != nil {
+						log.Printf("AUDIT: Error updating metadata for %s from %s: %v", fileName, remoteAddr, common.SanitizeLog(err.Error()))
+					}
+				} else {
+					if err := getFile(comm, store, fileName, metadata.Hash, metadata.Size); err != nil {
+						log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
+						return
+					}
 				}
 			case common.ReplicationChain:
 				// In Chain mode, we find our position in the placement list and forward to the next node.
@@ -243,17 +262,34 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 				}
 
 				wg.Add(1)
-				if err := getFile(comm, store, fileName, metadata.Hash, metadata.Size); err != nil {
-					log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
-					wg.Done()
-					return
+				if exists {
+					// ⚡ Bolt: Deduplication hit. Just update metadata mapping without reading payload.
+					if err := store.Put(fileName, metadata.Hash, metadata.Size, nil); err != nil {
+						log.Printf("AUDIT: Error updating metadata for %s from %s: %v", fileName, remoteAddr, common.SanitizeLog(err.Error()))
+					}
+				} else {
+					if err := getFile(comm, store, fileName, metadata.Hash, metadata.Size); err != nil {
+						log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
+						wg.Done()
+						return
+					}
 				}
 
 				if myPos != -1 && myPos < len(placement)-1 {
 					nextHop := placement[myPos+1]
 					blobPath, _ := store.GetBlobPath(fileName)
 					log.Printf("AUDIT: Chain forwarding from Node %d to Node %d", serverId, nextHop.ID)
-					connectToPeer(&wg, cfg, blobPath, nextHop.ID, finalTs, replicationMode)
+					
+					// 🛡️ Zero-Crash: Wrap Chain forwarding in a goroutine with recovery for consistency and safety.
+					go func(id int, path string) {
+						defer func() {
+							if r := recover(); r != nil {
+								log.Printf("CRITICAL: Panic recovered in Chain forwarder to node %d: %v", id, r)
+							}
+						}()
+						// ⚡ Bolt: connectToPeer (client.Connect) handles wg.Done() internally via defer.
+						connectToPeer(&wg, cfg, path, id, finalTs, replicationMode)
+					}(nextHop.ID, blobPath)
 				} else {
 					wg.Done()
 				}
@@ -263,32 +299,47 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 				// In Splay mode, the primary (first node in placement) forwards to all others.
 				if placement[0].ID == serverId {
 					wg.Add(len(placement) - 1)
-					if err := getFile(comm, store, fileName, metadata.Hash, metadata.Size); err != nil {
-						log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
-						for i := 0; i < len(placement)-1; i++ {
-							wg.Done()
+					if exists {
+						// ⚡ Bolt: Deduplication hit. Just update metadata mapping.
+						if err := store.Put(fileName, metadata.Hash, metadata.Size, nil); err != nil {
+							log.Printf("AUDIT: Error updating metadata for %s from %s: %v", fileName, remoteAddr, common.SanitizeLog(err.Error()))
 						}
-						return
+					} else {
+						if err := getFile(comm, store, fileName, metadata.Hash, metadata.Size); err != nil {
+							log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
+							for i := 0; i < len(placement)-1; i++ {
+								wg.Done()
+							}
+							return
+						}
 					}
 					blobPath, _ := store.GetBlobPath(fileName)
 					for i := 1; i < len(placement); i++ {
 						targetId := placement[i].ID
 						go func(id int) {
+							// ⚡ Bolt: connectToPeer (client.Connect) handles wg.Done() internally via defer.
+							// Wait, if connectToPeer handles wg.Done(), we MUST NOT call it here.
+							// client.Connect DOES call wg.Done().
 							defer func() {
 								if r := recover(); r != nil {
 									log.Printf("CRITICAL: Panic recovered in Splay forwarder to node %d: %v", id, r)
 								}
 							}()
-							// ⚡ Bolt: connectToPeer (client.Connect) handles wg.Done() internally via defer.
 							connectToPeer(&wg, cfg, blobPath, id, finalTs, replicationMode)
 						}(targetId)
 					}
 					wg.Wait()
 				} else {
-					// We are a secondary in a splay, just receive the file.
-					if err := getFile(comm, store, fileName, metadata.Hash, metadata.Size); err != nil {
-						log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
-						return
+					// We are a secondary in a splay, just receive the file if needed.
+					if exists {
+						if err := store.Put(fileName, metadata.Hash, metadata.Size, nil); err != nil {
+							log.Printf("AUDIT: Error updating metadata for %s from %s: %v", fileName, remoteAddr, common.SanitizeLog(err.Error()))
+						}
+					} else {
+						if err := getFile(comm, store, fileName, metadata.Hash, metadata.Size); err != nil {
+							log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
+							return
+						}
 					}
 				}
 			default:

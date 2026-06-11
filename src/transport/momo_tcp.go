@@ -39,11 +39,11 @@ func (m *MomoTCPCommunicator) HandshakeClient(authToken string, timestamp int64,
 	var handshakeBuf [common.AuthTokenLength + common.TimestampLength + 1]byte
 	copy(handshakeBuf[0:common.AuthTokenLength], common.PadString(authToken, common.AuthTokenLength))
 
-	// Write the timestamp
-	strconv.AppendInt(handshakeBuf[common.AuthTokenLength:common.AuthTokenLength], timestamp, 10)
+	// ⚡ Bolt: Use PadString to ensure the timestamp is exactly 19 bytes and correctly placed.
+	copy(handshakeBuf[common.AuthTokenLength:], common.PadString(strconv.FormatInt(timestamp, 10), common.TimestampLength))
 	
 	// Write the requested mode (1 byte) at the end
-	handshakeBuf[common.AuthTokenLength+common.TimestampLength] = byte(strconv.Itoa(requestedMode)[0])
+	handshakeBuf[common.AuthTokenLength+common.TimestampLength] = byte(requestedMode + '0')
 
 	if _, err := m.Write(handshakeBuf[:]); err != nil {
 		return 0, fmt.Errorf("failed to send handshake: %w", err)
@@ -81,12 +81,12 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (int, in
 		return 0, 0, fmt.Errorf("failed to parse timestamp: %w", err)
 	}
 
-	requestedMode, err := common.SafeParseInt([]byte{requestedModeByte})
-	if err != nil {
-		return 0, 0, fmt.Errorf("failed to parse requested mode: %w", err)
+	requestedMode := int(requestedModeByte - '0')
+	if requestedMode < 0 || requestedMode > 9 {
+		return 0, 0, fmt.Errorf("invalid requested mode: %d", requestedMode)
 	}
 
-	return int(requestedMode), timestamp, nil
+	return requestedMode, timestamp, nil
 }
 
 // SendReplicationMode is a helper for HandshakeServer to send the selected mode back.

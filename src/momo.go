@@ -116,6 +116,11 @@ func Run() {
 				wg.Add(1)
 				go func(id int) {
 					defer wg.Done()
+					defer func() {
+						if r := recover(); r != nil {
+							log.Printf("CRITICAL: Panic recovered in Replication Broadcast to node %d: %v", id, r)
+						}
+					}()
 					server.ChangeReplicationModeClient(factory, jsonBytes, id)
 				}(i)
 			}

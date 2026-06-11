@@ -1,11 +1,13 @@
 package storage
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"sync"
+	"syscall"
 
 	"github.com/alsotoes/momo/src/common"
 	"go.etcd.io/bbolt"
@@ -37,13 +39,13 @@ type CASStore struct {
 // NewCASStore initializes a new CAS storage backend.
 func NewCASStore(dataDir string) (*CASStore, error) {
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create data dir: %w", syscall.EIO)
 	}
 
 	dbPath := filepath.Join(dataDir, "momo.db")
 	db, err := bbolt.Open(dbPath, 0600, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open bbolt: %w", err)
+		return nil, fmt.Errorf("failed to open bbolt: %w", syscall.EIO)
 	}
 
 	// Initialize buckets
@@ -76,30 +78,38 @@ func (s *CASStore) Put(name string, hash string, size int64, content io.Reader) 
 	defer s.mu.Unlock()
 
 	// 1. Check if we already have the blob
-	exists, _ := s.Has(hash)
-	if !exists {
+	exists, _ := s.hasInternal(hash)
+	if !exists && content != nil {
 		// 🛡️ Zero-Crash: Use atomic rename to ensure data integrity.
 		blobPath := s.getBlobPath(hash)
 		if err := os.MkdirAll(filepath.Dir(blobPath), 0755); err != nil {
-			return err
+			return fmt.Errorf("storage error: failed to create tiered dir: %w", syscall.EIO)
 		}
 
 		tmpFile, err := os.CreateTemp(s.base, "blob-*.tmp")
 		if err != nil {
-			return err
+			return fmt.Errorf("storage error: failed to create temp file: %w", syscall.EIO)
 		}
 		tmpPath := tmpFile.Name()
 
-		if _, err := io.Copy(tmpFile, content); err != nil {
+		// ⚡ Bolt: Use a buffered writer to optimize disk I/O and minimize syscalls.
+		writer := bufio.NewWriterSize(tmpFile, 64*1024) // 64KB buffer
+		if _, err := io.Copy(writer, content); err != nil {
 			tmpFile.Close()
 			os.Remove(tmpPath)
-			return err
+			return fmt.Errorf("storage error: failed to write blob: %w", syscall.ENOSPC)
+		}
+		
+		if err := writer.Flush(); err != nil {
+			tmpFile.Close()
+			os.Remove(tmpPath)
+			return fmt.Errorf("storage error: failed to flush blob: %w", syscall.EIO)
 		}
 		tmpFile.Close()
 
 		if err := os.Rename(tmpPath, blobPath); err != nil {
 			os.Remove(tmpPath)
-			return err
+			return fmt.Errorf("storage error: failed to commit blob: %w", syscall.EIO)
 		}
 	}
 
@@ -107,13 +117,16 @@ func (s *CASStore) Put(name string, hash string, size int64, content io.Reader) 
 	return s.db.Update(func(tx *bbolt.Tx) error {
 		ns := tx.Bucket(bucketNamespace)
 		if err := ns.Put([]byte(name), []byte(hash)); err != nil {
-			return err
+			return fmt.Errorf("metadata error: %w", syscall.EIO)
 		}
 
 		obj := tx.Bucket(bucketObjects)
 		// ⚡ Bolt: Store size as a simple 8-byte binary value for speed.
 		// In a full implementation, we would store a JSON struct with RefCount.
-		return obj.Put([]byte(hash), []byte(fmt.Sprintf("%d", size)))
+		if err := obj.Put([]byte(hash), []byte(fmt.Sprintf("%d", size))); err != nil {
+			return fmt.Errorf("metadata error: %w", syscall.EIO)
+		}
+		return nil
 	})
 }
 
@@ -154,6 +167,12 @@ func (s *CASStore) Get(name string) (io.ReadCloser, common.FileMetadata, error) 
 
 // Has checks if a content hash exists in the store.
 func (s *CASStore) Has(hash string) (bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.hasInternal(hash)
+}
+
+func (s *CASStore) hasInternal(hash string) (bool, error) {
 	var exists bool
 	err := s.db.View(func(tx *bbolt.Tx) error {
 		val := tx.Bucket(bucketObjects).Get([]byte(hash))

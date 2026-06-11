@@ -47,18 +47,18 @@ This document explains the architecture, configuration, wire protocol, replicati
 
 Constants (see `src/common/constants.go`):
 
-- `1`: Chain Replication (0 -> 1 -> 2)
-- `2`: Splay Replication (0 -> 1, 0 -> 2)
-- `3`: Primary-Splay Replication (Client -> 0, 1, 2)
-- `4`: No Replication (Standalone)
+- `1`: **Chain Replication**: Data follows an ordered path (A -> B -> C) determined by the CRUSH placement list.
+- `2`: **Splay Replication**: The primary forwards data to all other nodes in the CRUSH list concurrently.
+- `3`: **Primary-Splay Replication**: The client uploads to all nodes in the CRUSH list simultaneously.
+- `4`: **No Replication**: Standalone storage on the selected primary node.
 
 ## Data Flow
 
 Handshake and transfer overview:
 
-1. **Secure Handshake**: Client opens a network connection (TCP or QUIC) and sends a combined 83-byte packet (64-byte AuthToken + 19-byte Timestamp).
-2. **Replication Negotiation**: Server validates token, decides the mode, and responds with a single ASCII mode code.
-3. **Metadata Exchange**: Client sends metadata: 64-byte hex SHA-256, 64-byte name, and 64-byte size (null-padded).
+1. **Secure Handshake**: Client opens a network connection (TCP, QUIC, or S3) and sends a combined **84-byte packet** (64-byte AuthToken + 19-byte Timestamp + 1-byte RequestedMode).
+2. **Replication Negotiation**: Server validates token and acknowledges the mode. If the client is external, the server selects the mode based on its polymorphic metrics.
+3. **Metadata & Deduplication**: Client sends metadata (Hash, Name, Size). Server queries its local **Bbolt** index and responds with a status code. If the hash exists, the payload phase is skipped (**CAS Deduplication**).
 4. **Streamed Payload**: Client streams file bytes until EOF.
 5. **Validation & ACK**: Server writes to disk via `io.TeeReader` (simultaneous hashing), validates integrity, and replies with `ACK{serverId}`.
 
