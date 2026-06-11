@@ -41,6 +41,10 @@ func TestS3Communicator_HandshakeServer(t *testing.T) {
 		t.Fatalf("ReceiveMetadata failed: %v", err)
 	}
 
+	if err := comm.SendMetadataStatus(MetadataStatusSendPayload); err != nil {
+		t.Fatalf("SendMetadataStatus failed: %v", err)
+	}
+
 	if meta.Size != 1024 {
 		t.Errorf("Expected size 1024, got %d", meta.Size)
 	}

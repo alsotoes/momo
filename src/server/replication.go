@@ -206,11 +206,12 @@ func ChangeReplicationModeClient(factory *transport.ProtocolFactory, replication
 	// This will need more refactoring if we want to truly consolidate the writes across protocols.
 	authToken := factory.GetAuthToken()
 	timestamp := time.Now().UnixNano()
-	
-	if _, err := comm.HandshakeClient(authToken, timestamp); err != nil {
+	// Perform handshake
+	if _, err := comm.HandshakeClient(authToken, timestamp, 0); err != nil {
 		log.Printf("Handshake failed with peer %d: %v", serverId, common.SanitizeLog(err.Error()))
 		return
 	}
+
 
 	if _, err := comm.Write(append(replicationJson, '\n')); err != nil {
 		log.Printf("Failed to send ReplicationData to %d: %v", serverId, common.SanitizeLog(err.Error()))

@@ -110,7 +110,7 @@ func TestMomoQUICCommunicator_Handshake(t *testing.T) {
 	}
 	defer clientComm.Close()
 
-	mode, err := clientComm.HandshakeClient(authToken, timestamp)
+	mode, err := clientComm.HandshakeClient(authToken, timestamp, 0)
 	if err != nil {
 		t.Fatalf("Client handshake failed: %v", err)
 	}
@@ -173,6 +173,11 @@ func TestMomoQUICCommunicator_Metadata_And_Payload(t *testing.T) {
 			return
 		}
 
+		if err := comm.SendMetadataStatus(MetadataStatusSendPayload); err != nil {
+			errChan <- err
+			return
+		}
+
 		if receivedMeta.Name != testMeta.Name || receivedMeta.Hash != testMeta.Hash || receivedMeta.Size != testMeta.Size {
 			errChan <- fmt.Errorf("metadata mismatch")
 			return
@@ -203,12 +208,16 @@ func TestMomoQUICCommunicator_Metadata_And_Payload(t *testing.T) {
 	}
 	defer clientComm.Close()
 
-	if _, err := clientComm.HandshakeClient(authToken, 0); err != nil {
+	if _, err := clientComm.HandshakeClient(authToken, 0, 0); err != nil {
 		t.Fatalf("Client handshake failed: %v", err)
 	}
 
-	if err := clientComm.SendMetadata(testMeta); err != nil {
+	status, err := clientComm.SendMetadata(testMeta)
+	if err != nil {
 		t.Fatalf("Client failed to send metadata: %v", err)
+	}
+	if status != MetadataStatusSendPayload {
+		t.Fatalf("Expected status %d, got %d", MetadataStatusSendPayload, status)
 	}
 
 	if _, err := clientComm.Write(testPayload); err != nil {

@@ -70,7 +70,7 @@ func TestChangeReplicationModeServerReal(t *testing.T) {
 	defer conn.Close()
 
 	comm := transport.NewMomoTCPCommunicator(conn)
-	if _, err := comm.HandshakeClient(authToken, time.Now().UnixNano()); err != nil {
+	if _, err := comm.HandshakeClient(authToken, time.Now().UnixNano(), 0); err != nil {
 		t.Fatalf("Handshake failed: %v", err)
 	}
 
@@ -117,7 +117,7 @@ func TestDaemonReal(t *testing.T) {
 	defer conn.Close()
 
 	comm := transport.NewMomoTCPCommunicator(conn)
-	if _, err := comm.HandshakeClient(authToken, 1234567890123456789); err != nil {
+	if _, err := comm.HandshakeClient(authToken, 1234567890123456789, 0); err != nil {
 		t.Fatalf("Handshake failed: %v", err)
 	}
 
@@ -131,8 +131,12 @@ func TestDaemonReal(t *testing.T) {
 			Hash: hash,
 			Size: 4,
 		}
-		if err := comm.SendMetadata(meta); err != nil {
+		status, err := comm.SendMetadata(meta)
+		if err != nil {
 			t.Fatalf("Failed to send metadata: %v", err)
+		}
+		if status != transport.MetadataStatusSendPayload {
+			t.Fatalf("Expected status %d, got %d", transport.MetadataStatusSendPayload, status)
 		}
 
 		comm.Write([]byte("data"))

@@ -11,7 +11,7 @@ The current storage model is name-based and relies on a fixed primary node (Node
 ## Technical Architecture
 
 ### 1. Algorithmic Placement (CRUSH-lite)
-Instead of a central directory, Momo will use a simplified CRUSH (Controlled Replication Under Scalable Hashing) algorithm.
+Instead of a central directory, Momo will use a simplified Go implementation of the **CRUSH** (Controlled Replication Under Scalable Hashing) algorithm, originally conceived by **Sage Weil**.
 - **Cluster Map**: Every node and client shares a small map of the cluster topology and node weights.
 - **Deterministic Routing**: For any given object hash $H$, the placement function $P(H, Map, ReplicationFactor)$ returns an ordered list of nodes.
 - **Balanced Primaries**: This ensures that every node in the cluster acts as a "Primary" for a random subset of the data, perfectly balancing the write load.

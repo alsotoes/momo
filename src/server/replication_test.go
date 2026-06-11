@@ -125,8 +125,8 @@ func TestChangeReplicationModeClient(t *testing.T) {
 		}
 		defer conn.Close()
 
-		// Read AuthToken and Timestamp
-		var handshakeBuf [common.AuthTokenLength + common.TimestampLength]byte
+		// Read AuthToken, Timestamp, and RequestedMode (64 + 19 + 1 = 84 bytes)
+		var handshakeBuf [common.AuthTokenLength + common.TimestampLength + 1]byte
 		io.ReadFull(conn, handshakeBuf[:])
 		receivedAuth <- handshakeBuf[:common.AuthTokenLength]
 

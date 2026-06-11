@@ -13,18 +13,20 @@ import (
 	"time"
 
 	"github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/storage"
+	"github.com/alsotoes/momo/src/transport"
 )
 
 // mockConnect is a mock implementation of Connect for testing.
-func mockConnect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, serverId int, timestamp int64) {
+func mockConnect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, serverId int, timestamp int64, requestedMode int) {
 	defer wg.Done()
 	// In a real test, you might add more logic here to simulate the client's behavior
 }
 
 // mockGetFile is a mock implementation of getFile for testing.
-func mockGetFile(connection net.Conn, path string, fileName string, expectedHash string, fileSize int64) error {
+func mockGetFile(comm transport.Communicator, store storage.Store, fileName string, expectedHash string, fileSize int64) error {
 	// This mock function will consume exactly fileSize bytes from the connection.
-	_, err := io.CopyN(io.Discard, connection, fileSize)
+	_, err := io.CopyN(io.Discard, comm, fileSize)
 	if err != nil {
 		// This can happen if the client closes the connection prematurely.
 		// For this test's purpose, we can ignore the error.
@@ -37,18 +39,19 @@ func handleConnection(t *testing.T, connection net.Conn, cfg common.Configuratio
 	daemons := cfg.Daemons
 	var replicationMode int
 	var success bool
+	comm := transport.NewMomoTCPCommunicator(connection)
 	defer func() {
 		if success {
 			// In a real scenario, this might block if the client isn't reading.
 			// net.Pipe is unbuffered, so writes block until a read happens.
 			// The client *is* waiting for this ACK, so it should be fine.
-			connection.Write([]byte("ACK" + strconv.Itoa(serverId)))
+			comm.Write([]byte("ACK" + strconv.Itoa(serverId)))
 		}
-		connection.Close()
+		comm.Close()
 	}()
 
 	bufferAuthToken := make([]byte, common.AuthTokenLength)
-	if _, err := io.ReadFull(connection, bufferAuthToken); err != nil {
+	if _, err := io.ReadFull(comm, bufferAuthToken); err != nil {
 		t.Logf("Error reading AuthToken: %v", err)
 		return
 	}
@@ -59,7 +62,7 @@ func handleConnection(t *testing.T, connection net.Conn, cfg common.Configuratio
 	}
 
 	bufferTimestamp := make([]byte, common.TimestampLength)
-	if _, err := connection.Read(bufferTimestamp); err != nil {
+	if _, err := comm.Read(bufferTimestamp); err != nil {
 		t.Logf("Error reading timestamp: %v", err)
 		return
 	}
@@ -87,18 +90,27 @@ func handleConnection(t *testing.T, connection net.Conn, cfg common.Configuratio
 		replicationMode = common.ReplicationNone
 	}
 
-	connection.Write([]byte(strconv.Itoa(replicationMode)))
+	comm.Write([]byte(strconv.Itoa(replicationMode)))
 
-	metadata, err := getMetadata(connection)
+	metadata, err := getMetadata(comm)
 	if err != nil {
 		t.Logf("Error getting metadata: %v", err)
 		return
 	}
+
+	// Send metadata status
+	comm.Write([]byte{transport.MetadataStatusSendPayload})
+
 	var wg sync.WaitGroup
 
 	// Create a temporary directory for the test
 	tempDir := t.TempDir()
 	daemons[serverId].Data = tempDir
+	store, err := storage.NewCASStore(tempDir)
+	if err != nil {
+		t.Fatalf("Failed to create CAS store: %v", err)
+	}
+	defer store.Close()
 
 	originalConnect := connectToPeer
 	connectToPeer = mockConnect
@@ -106,24 +118,24 @@ func handleConnection(t *testing.T, connection net.Conn, cfg common.Configuratio
 
 	switch replicationMode {
 	case common.ReplicationNone:
-		mockGetFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size)
+		mockGetFile(comm, store, metadata.Name, metadata.Hash, metadata.Size)
 	case common.ReplicationChain:
 		if serverId == 1 {
 			wg.Add(1)
-			mockGetFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size)
-			connectToPeer(&wg, cfg, daemons[1].Data+"/"+metadata.Name, 2, timestamp)
+			mockGetFile(comm, store, metadata.Name, metadata.Hash, metadata.Size)
+			connectToPeer(&wg, cfg, daemons[1].Data+"/"+metadata.Name, 2, timestamp, 0)
 			wg.Wait()
 		} else {
 			wg.Add(1)
-			mockGetFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size)
-			connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 1, timestamp)
+			mockGetFile(comm, store, metadata.Name, metadata.Hash, metadata.Size)
+			connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 1, timestamp, 0)
 			wg.Wait()
 		}
 	case common.ReplicationSplay:
 		wg.Add(2)
-		mockGetFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size)
-		go connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 1, timestamp)
-		go connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 2, timestamp)
+		mockGetFile(comm, store, metadata.Name, metadata.Hash, metadata.Size)
+		go connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 1, timestamp, 0)
+		go connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 2, timestamp, 0)
 		wg.Wait()
 	}
 	success = true
@@ -207,6 +219,13 @@ func TestDaemonLogic(t *testing.T) {
 			fileSizeBytes := make([]byte, common.FileInfoLength)
 			copy(fileSizeBytes, strconv.Itoa(len(fileContent)))
 			client.Write(fileSizeBytes)
+
+			// Read metadata status
+			statusBuf := make([]byte, 1)
+			client.Read(statusBuf)
+			if statusBuf[0] != transport.MetadataStatusSendPayload {
+				t.Errorf("Expected status %d, got %d", transport.MetadataStatusSendPayload, statusBuf[0])
+			}
 
 			// Send file content
 			file, _ := os.Open(tempFile.Name())

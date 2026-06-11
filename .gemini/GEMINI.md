@@ -26,7 +26,7 @@ Momo is a high-performance, distributed Object Storage system written in Go. Sim
    - `make test-e2e` (Docker Compose)
 6. **POSIX Error Mapping:** All application-level errors (e.g., authentication failures, hash mismatches) MUST be mapped to standard `syscall` POSIX constants (e.g., `syscall.EACCES`, `syscall.EBADMSG`) to ensure consistent, standard error propagation across the cluster. This follows the standardized pattern established in [PR #97](https://github.com/alsotoes/momo/pull/97).
 7. **Issue-Spec Traceability:** (Mandatory) ALL project specifications (`openspec/`) MUST be mirrored as GitHub Issues. Every spec file must explicitly link to its corresponding GitHub Issue URL, and the GitHub Issue must link back to the spec file in the repository. This ensures synchronization parity and end-to-end traceability for all feature designs and architectural shifts.
-8. **Object Storage Paradigm:** Momo is a distributed Object Storage system. All storage operations MUST be content-addressable and use algorithmic placement (CRUSH) to ensure perfect load balancing and infinite scalability without central registry bottlenecks.
+8. **Object Storage Paradigm:** Momo is a distributed Object Storage system. All storage operations MUST be content-addressable and use algorithmic placement (specifically a Go implementation of **Sage Weil's CRUSH algorithm**) to ensure perfect load balancing and infinite scalability without central registry bottlenecks.
 5. **Clean Repository:** Do not commit `.dat` files or logs. Use `.gitignore` strictly.
 
 ## Technical Integrity

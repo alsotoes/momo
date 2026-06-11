@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/transport"
 )
 
 func TestConnect_PrimarySplay(t *testing.T) {
@@ -42,7 +43,7 @@ func TestConnect_PrimarySplay(t *testing.T) {
 
 	var wg sync.WaitGroup
 	wg.Add(1)
-	Connect(&wg, cfg, file.Name(), 0, time.Now().UnixNano())
+	Connect(&wg, cfg, file.Name(), 0, time.Now().UnixNano(), 0)
 	wg.Wait()
 }
 
@@ -78,6 +79,9 @@ func handleMockConn(conn net.Conn, authToken string, mode int) {
 	if _, err := io.ReadFull(conn, metaBuf); err != nil {
 		return
 	}
+
+	// Send metadata status
+	conn.Write([]byte{transport.MetadataStatusSendPayload})
 
 	// Payload (we don't know the exact size here, but we can read until EOF or just ACK)
 	// For simplicity, just ACK after metadata

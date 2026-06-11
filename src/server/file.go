@@ -13,6 +13,8 @@ import (
 	"syscall"
 
 	"github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/storage"
+	"github.com/alsotoes/momo/src/transport"
 )
 
 // getMetadata reads file metadata (Hash, name, size) from a network connection.
@@ -75,66 +77,31 @@ func getMetadata(r io.Reader) (common.FileMetadata, error) {
 	return metadata, nil
 }
 
-// getFile reads a file from a network connection and saves it to a specified path.
-// It creates a new file at the given path and copies the file content from the connection in chunks.
-// After the transfer is complete, it calculates the SHA-256 hash of the received file and compares it with the expected hash.
-// It logs the progress and the result of the hash check.
-func getFile(r io.Reader, path string, fileName string, expectedHash string, fileSize int64) (err error) {
-	fullPath := filepath.Join(path, fileName)
-	// 🛡️ Sentinel: Use os.CreateTemp for secure, unpredictable temporary file creation.
-	newFile, err := os.CreateTemp(path, fileName+"-*.tmp")
-
-	if err != nil {
-		return err
-	}
-	tempPath := newFile.Name()
-
-	defer func() {
-		newFile.Close()
-		// 🛡️ Sentinel: Clean up the temporary file on any error.
-		if err != nil {
-			os.Remove(tempPath)
-		}
-	}()
-
-	// ⚡ Bolt: Compute SHA-256 hash simultaneously while writing to disk using an io.TeeReader.
+// getFile reads a file from a network connection and saves it to the storage store.
+func getFile(comm transport.Communicator, store storage.Store, fileName string, expectedHash string, fileSize int64) (err error) {
+	// Create a TeeReader to compute SHA-256 while streaming to store.
 	hashCalc := sha256.New()
-	reader := io.TeeReader(r, hashCalc)
+	reader := io.TeeReader(comm, hashCalc)
 
-	// Optimization: Use a single io.CopyN instead of manually chunking in a loop.
-	if fileSize > 0 {
-		if _, copyErr := io.CopyN(newFile, reader, fileSize); copyErr != nil {
-			err = copyErr
-			return err
-		}
+	// Use store.Put which handles deduplication and atomicity.
+	if err := store.Put(fileName, expectedHash, fileSize, io.LimitReader(reader, fileSize)); err != nil {
+		return fmt.Errorf("storage error: failed to put object %s: %w", fileName, err)
 	}
 
 	var buf [sha256.Size]byte
 	hashBytes := hashCalc.Sum(buf[:0])
-
-	// ⚡ Bolt: Eliminate heap allocation by using a stack-allocated byte array for hex encoding.
 	var hexBuf [sha256.Size * 2]byte
 	hex.Encode(hexBuf[:], hashBytes)
 	hash := string(hexBuf[:])
 
 	if hash != expectedHash {
-		// 🛡️ Sentinel: Reject files with mismatched hashes to prevent integrity check bypass
-		// ⚡ Bolt: Return syscall.EBADMSG to indicate data corruption, as requested in issue #27.
 		err = fmt.Errorf("file hash mismatch: expected %s, got %s: %w", expectedHash, hash, syscall.EBADMSG)
-		return err
-	}
-
-	// 🛡️ Sentinel: Atomically rename the temporary file to the final destination after all checks pass.
-	newFile.Close()
-	if err = os.Rename(tempPath, fullPath); err != nil {
 		return err
 	}
 
 	log.Printf("=> Expected Hash: %s", common.SanitizeLog(expectedHash))
 	log.Printf("=> Actual Hash:   %s", common.SanitizeLog(hash))
-	log.Printf("=> Name:          %s", common.SanitizeLog(fullPath))
 	log.Printf("Received file completely!")
-	log.Printf("Sending ACK to client connection")
 	return nil
 }
 
