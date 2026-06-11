@@ -35,12 +35,15 @@ func (m *MomoTCPCommunicator) SetAbsoluteDeadline(t interface{}) error {
 	return nil
 }
 
-func (m *MomoTCPCommunicator) HandshakeClient(authToken string, timestamp int64) (int, error) {
-	var handshakeBuf [common.AuthTokenLength + common.TimestampLength]byte
+func (m *MomoTCPCommunicator) HandshakeClient(authToken string, timestamp int64, requestedMode int) (int, error) {
+	var handshakeBuf [common.AuthTokenLength + common.TimestampLength + 1]byte
 	copy(handshakeBuf[0:common.AuthTokenLength], common.PadString(authToken, common.AuthTokenLength))
 
-	// Write the timestamp immediately after the AuthToken
-	strconv.AppendInt(handshakeBuf[common.AuthTokenLength:common.AuthTokenLength], timestamp, 10)
+	// ⚡ Bolt: Use PadString to ensure the timestamp is exactly 19 bytes and correctly placed.
+	copy(handshakeBuf[common.AuthTokenLength:], common.PadString(strconv.FormatInt(timestamp, 10), common.TimestampLength))
+	
+	// Write the requested mode (1 byte) at the end
+	handshakeBuf[common.AuthTokenLength+common.TimestampLength] = byte(requestedMode + '0')
 
 	if _, err := m.Write(handshakeBuf[:]); err != nil {
 		return 0, fmt.Errorf("failed to send handshake: %w", err)
@@ -48,25 +51,26 @@ func (m *MomoTCPCommunicator) HandshakeClient(authToken string, timestamp int64)
 
 	var bufferReplicationMode [1]byte
 	if _, err := io.ReadFull(m, bufferReplicationMode[:]); err != nil {
-		return 0, fmt.Errorf("failed to read replication mode: %w", err)
+		return 0, fmt.Errorf("failed to read replication mode response: %w", err)
 	}
 
 	replicationModeInt64, err := common.SafeParseInt(bufferReplicationMode[:])
 	if err != nil {
-		return 0, fmt.Errorf("invalid replication mode: %w", err)
+		return 0, fmt.Errorf("invalid replication mode response: %w", err)
 	}
 
 	return int(replicationModeInt64), nil
 }
 
 func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (int, int64, error) {
-	var handshakeBuf [common.AuthTokenLength + common.TimestampLength]byte
+	var handshakeBuf [common.AuthTokenLength + common.TimestampLength + 1]byte
 	if _, err := io.ReadFull(m, handshakeBuf[:]); err != nil {
 		return 0, 0, fmt.Errorf("failed to read handshake: %w", err)
 	}
 
 	bufferAuthToken := handshakeBuf[:common.AuthTokenLength]
-	bufferTimestamp := handshakeBuf[common.AuthTokenLength:]
+	bufferTimestamp := handshakeBuf[common.AuthTokenLength : common.AuthTokenLength+common.TimestampLength]
+	requestedModeByte := handshakeBuf[common.AuthTokenLength+common.TimestampLength]
 
 	if subtle.ConstantTimeCompare(bufferAuthToken, expectedAuthToken) != 1 {
 		return 0, 0, syscall.EACCES
@@ -77,11 +81,12 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (int, in
 		return 0, 0, fmt.Errorf("failed to parse timestamp: %w", err)
 	}
 
-	// The actual replication mode logic is handled in server.go,
-	// but the communicator needs to receive the choice and send it back.
-	// This design might need refinement to allow the server to inject the choice.
-	// For now, we return the timestamp and let the server decide.
-	return 0, timestamp, nil
+	requestedMode := int(requestedModeByte - '0')
+	if requestedMode < 0 || requestedMode > 9 {
+		return 0, 0, fmt.Errorf("invalid requested mode: %d", requestedMode)
+	}
+
+	return requestedMode, timestamp, nil
 }
 
 // SendReplicationMode is a helper for HandshakeServer to send the selected mode back.
@@ -93,7 +98,7 @@ func (m *MomoTCPCommunicator) SendReplicationMode(mode int) error {
 	return nil
 }
 
-func (m *MomoTCPCommunicator) SendMetadata(meta *common.FileMetadata) error {
+func (m *MomoTCPCommunicator) SendMetadata(meta *common.FileMetadata) (int, error) {
 	var metadataBuffer [hashLength + common.FileInfoLength + common.FileInfoLength]byte
 	copy(metadataBuffer[0:hashLength], meta.Hash)
 	copy(metadataBuffer[hashLength:hashLength+common.FileInfoLength], common.PadString(meta.Name, common.FileInfoLength))
@@ -103,9 +108,15 @@ func (m *MomoTCPCommunicator) SendMetadata(meta *common.FileMetadata) error {
 	copy(metadataBuffer[hashLength+common.FileInfoLength:], sizeBytes)
 
 	if _, err := m.Write(metadataBuffer[:]); err != nil {
-		return fmt.Errorf("failed to send metadata: %w", err)
+		return 0, fmt.Errorf("failed to send metadata: %w", err)
 	}
-	return nil
+
+	// ⚡ Bolt: Read the metadata status code (1 byte) to determine if we should send the payload.
+	var status [1]byte
+	if _, err := io.ReadFull(m, status[:]); err != nil {
+		return 0, fmt.Errorf("failed to read metadata status: %w", err)
+	}
+	return int(status[0]), nil
 }
 
 func (m *MomoTCPCommunicator) ReceiveMetadata() (common.FileMetadata, error) {
@@ -126,6 +137,14 @@ func (m *MomoTCPCommunicator) ReceiveMetadata() (common.FileMetadata, error) {
 	metadata.Size = size
 
 	return metadata, nil
+}
+
+// SendMetadataStatus is called by the server after receiving metadata.
+func (m *MomoTCPCommunicator) SendMetadataStatus(status int) error {
+	if _, err := m.Write([]byte{byte(status)}); err != nil {
+		return fmt.Errorf("failed to send metadata status: %w", err)
+	}
+	return nil
 }
 
 // bytesTrimNull is a helper to trim null bytes from a byte slice.

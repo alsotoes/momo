@@ -14,7 +14,7 @@ import (
 // It first connects to a specified daemon to determine the replication mode.
 // If splay replication is active, it connects to all other daemons.
 // Finally, it sends the file to all established connections concurrently.
-func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, serverId int, timestamp int64) {
+func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, serverId int, timestamp int64, requestedMode int) {
 	defer wg.Done()
 	daemons := cfg.Daemons
 	authToken := cfg.Global.AuthToken
@@ -31,7 +31,7 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, serv
 	communicators = append(communicators, comm)
 
 	// Perform handshake to get replication mode
-	replicationMode, err := comm.HandshakeClient(authToken, timestamp)
+	replicationMode, err := comm.HandshakeClient(authToken, timestamp, requestedMode)
 	if err != nil {
 		log.Printf("Handshake failed with %s: %v", daemons[serverId].Host, common.SanitizeLog(err.Error()))
 		comm.Close()
@@ -52,7 +52,7 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, serv
 			}
 
 			// Perform handshake with the other daemons
-			if _, err := peerComm.HandshakeClient(authToken, timestamp); err != nil {
+			if _, err := peerComm.HandshakeClient(authToken, timestamp, replicationMode); err != nil {
 				log.Printf("Handshake failed with peer %s: %v", daemon.Host, common.SanitizeLog(err.Error()))
 				peerComm.Close()
 				continue
@@ -121,16 +121,22 @@ func sendFile(wg *sync.WaitGroup, comm transport.Communicator, filePath string, 
 
 	defer file.Close()
 
-	// Send metadata
-	if err := comm.SendMetadata(meta); err != nil {
+	// Send metadata and receive status
+	status, err := comm.SendMetadata(meta)
+	if err != nil {
 		log.Printf("Failed to send metadata for %s: %v", common.SanitizeLog(meta.Name), common.SanitizeLog(err.Error()))
 		return
 	}
 
-	// Send file content
-	if _, err := io.Copy(comm, file); err != nil {
-		log.Printf("Error sending file %s: %v", common.SanitizeLog(meta.Name), common.SanitizeLog(err.Error()))
-		return
+	// ⚡ Bolt: Handle deduplication shortcut.
+	if status == transport.MetadataStatusSkipPayload {
+		log.Printf("Server already has content for %s, skipping upload.", common.SanitizeLog(meta.Name))
+	} else {
+		// Send file content
+		if _, err := io.Copy(comm, file); err != nil {
+			log.Printf("Error sending file %s: %v", common.SanitizeLog(meta.Name), common.SanitizeLog(err.Error()))
+			return
+		}
 	}
 
 	// Wait for ACK

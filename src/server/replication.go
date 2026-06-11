@@ -14,6 +14,13 @@ import (
 	"github.com/alsotoes/momo/src/transport"
 )
 
+// payloadPool provides reusable byte slices for replication broadcasts to reduce allocations.
+var payloadPool = sync.Pool{
+	New: func() interface{} {
+		return make([]byte, 1024)
+	},
+}
+
 var replicationStateMutex sync.RWMutex
 
 // currentReplicationMode is the current replication mode of the server.
@@ -195,7 +202,7 @@ func ChangeReplicationModeClient(factory *transport.ProtocolFactory, replication
 	daemons := factory.GetDaemons()
 	comm, err := factory.Dial(daemons[serverId].ChangeReplication)
 	if err != nil {
-		log.Printf("Dial error: %v", common.SanitizeLog(err.Error()))
+		log.Printf("Dial error for server %d (%s): %v", serverId, daemons[serverId].ChangeReplication, common.SanitizeLog(err.Error()))
 		return
 	}
 	defer comm.Close()
@@ -206,13 +213,21 @@ func ChangeReplicationModeClient(factory *transport.ProtocolFactory, replication
 	// This will need more refactoring if we want to truly consolidate the writes across protocols.
 	authToken := factory.GetAuthToken()
 	timestamp := time.Now().UnixNano()
-	
-	if _, err := comm.HandshakeClient(authToken, timestamp); err != nil {
+	// Perform handshake
+	if _, err := comm.HandshakeClient(authToken, timestamp, 0); err != nil {
 		log.Printf("Handshake failed with peer %d: %v", serverId, common.SanitizeLog(err.Error()))
 		return
 	}
 
-	if _, err := comm.Write(append(replicationJson, '\n')); err != nil {
+
+	// ⚡ Bolt: Use sync.Pool to minimize allocations during cluster-wide broadcasts.
+	payload := payloadPool.Get().([]byte)
+	payload = payload[:0]
+	payload = append(payload, replicationJson...)
+	payload = append(payload, '\n')
+	defer payloadPool.Put(payload[:cap(payload)])
+
+	if _, err := comm.Write(payload); err != nil {
 		log.Printf("Failed to send ReplicationData to %d: %v", serverId, common.SanitizeLog(err.Error()))
 		return
 	}

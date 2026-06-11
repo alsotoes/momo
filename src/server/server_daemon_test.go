@@ -44,8 +44,16 @@ func TestChangeReplicationModeServerReal(t *testing.T) {
 		conn, err := l1.Accept()
 		if err == nil {
 			defer conn.Close()
-			authBuf := make([]byte, common.AuthTokenLength)
+			// ⚡ Bolt: Read the full 84-byte handshake
+			authBuf := make([]byte, common.AuthTokenLength+common.TimestampLength+1)
 			io.ReadFull(conn, authBuf)
+			// Send back a replication mode to complete handshake
+			conn.Write([]byte("0"))
+			
+			// ⚡ Bolt: Consume the JSON payload and send OK
+			buf := make([]byte, 1024)
+			conn.Read(buf)
+			conn.Write([]byte("OK"))
 		}
 	}()
 
@@ -55,22 +63,39 @@ func TestChangeReplicationModeServerReal(t *testing.T) {
 		conn, err := l2.Accept()
 		if err == nil {
 			defer conn.Close()
-			authBuf := make([]byte, common.AuthTokenLength)
+			// ⚡ Bolt: Read the full 84-byte handshake
+			authBuf := make([]byte, common.AuthTokenLength+common.TimestampLength+1)
 			io.ReadFull(conn, authBuf)
+			// Send back a replication mode to complete handshake
+			conn.Write([]byte("0"))
+
+			// ⚡ Bolt: Consume the JSON payload and send OK
+			buf := make([]byte, 1024)
+			conn.Read(buf)
+			conn.Write([]byte("OK"))
 		}
 	}()
 
 	go ChangeReplicationModeServer(ctx, cfg, 0, time.Now().UnixNano())
-	time.Sleep(100 * time.Millisecond)
+	
+	// 🛡️ Zero-Crash: Use a retry loop to wait for the replication server to bind.
+	var conn net.Conn
+	var err error
+	for i := 0; i < 10; i++ {
+		conn, err = net.Dial("tcp", "127.0.0.1:45678")
+		if err == nil {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 
-	conn, err := net.Dial("tcp", "127.0.0.1:45678")
 	if err != nil {
-		t.Fatalf("Failed to dial test server: %v", err)
+		t.Fatalf("Failed to dial test server after retries: %v", err)
 	}
 	defer conn.Close()
 
 	comm := transport.NewMomoTCPCommunicator(conn)
-	if _, err := comm.HandshakeClient(authToken, time.Now().UnixNano()); err != nil {
+	if _, err := comm.HandshakeClient(authToken, time.Now().UnixNano(), 0); err != nil {
 		t.Fatalf("Handshake failed: %v", err)
 	}
 
@@ -108,16 +133,25 @@ func TestDaemonReal(t *testing.T) {
 	defer cancel()
 
 	go Daemon(ctx, cfg, 0)
-	time.Sleep(100 * time.Millisecond)
+	
+	// 🛡️ Zero-Crash: Use a robust retry loop instead of a fixed sleep to wait for the daemon to bind.
+	var conn net.Conn
+	var err error
+	for i := 0; i < 10; i++ {
+		conn, err = net.Dial("tcp", "127.0.0.1:45681")
+		if err == nil {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 
-	conn, err := net.Dial("tcp", "127.0.0.1:45681")
 	if err != nil {
-		t.Fatalf("Failed to dial Daemon test server: %v", err)
+		t.Fatalf("Failed to dial Daemon test server after retries: %v", err)
 	}
 	defer conn.Close()
 
 	comm := transport.NewMomoTCPCommunicator(conn)
-	if _, err := comm.HandshakeClient(authToken, 1234567890123456789); err != nil {
+	if _, err := comm.HandshakeClient(authToken, 1234567890123456789, 0); err != nil {
 		t.Fatalf("Handshake failed: %v", err)
 	}
 
@@ -131,8 +165,12 @@ func TestDaemonReal(t *testing.T) {
 			Hash: hash,
 			Size: 4,
 		}
-		if err := comm.SendMetadata(meta); err != nil {
+		status, err := comm.SendMetadata(meta)
+		if err != nil {
 			t.Fatalf("Failed to send metadata: %v", err)
+		}
+		if status != transport.MetadataStatusSendPayload {
+			t.Fatalf("Expected status %d, got %d", transport.MetadataStatusSendPayload, status)
 		}
 
 		comm.Write([]byte("data"))

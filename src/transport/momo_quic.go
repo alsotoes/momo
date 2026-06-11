@@ -43,12 +43,15 @@ func (m *MomoQUICCommunicator) SetAbsoluteDeadline(t interface{}) error {
 	return nil
 }
 
-func (m *MomoQUICCommunicator) HandshakeClient(authToken string, timestamp int64) (int, error) {
-	var handshakeBuf [common.AuthTokenLength + common.TimestampLength]byte
+func (m *MomoQUICCommunicator) HandshakeClient(authToken string, timestamp int64, requestedMode int) (int, error) {
+	var handshakeBuf [common.AuthTokenLength + common.TimestampLength + 1]byte
 	copy(handshakeBuf[0:common.AuthTokenLength], common.PadString(authToken, common.AuthTokenLength))
 
-	// Write the timestamp immediately after the AuthToken
-	strconv.AppendInt(handshakeBuf[common.AuthTokenLength:common.AuthTokenLength], timestamp, 10)
+	// ⚡ Bolt: Use PadString to ensure the timestamp is exactly 19 bytes and correctly placed.
+	copy(handshakeBuf[common.AuthTokenLength:], common.PadString(strconv.FormatInt(timestamp, 10), common.TimestampLength))
+
+	// Write the requested mode (1 byte) at the end
+	handshakeBuf[common.AuthTokenLength+common.TimestampLength] = byte(requestedMode + '0')
 
 	if _, err := m.Write(handshakeBuf[:]); err != nil {
 		return 0, fmt.Errorf("failed to send handshake: %w", err)
@@ -56,25 +59,26 @@ func (m *MomoQUICCommunicator) HandshakeClient(authToken string, timestamp int64
 
 	var bufferReplicationMode [1]byte
 	if _, err := io.ReadFull(m, bufferReplicationMode[:]); err != nil {
-		return 0, fmt.Errorf("failed to read replication mode: %w", err)
+		return 0, fmt.Errorf("failed to read replication mode response: %w", err)
 	}
 
 	replicationModeInt64, err := common.SafeParseInt(bufferReplicationMode[:])
 	if err != nil {
-		return 0, fmt.Errorf("invalid replication mode: %w", err)
+		return 0, fmt.Errorf("invalid replication mode response: %w", err)
 	}
 
 	return int(replicationModeInt64), nil
 }
 
 func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (int, int64, error) {
-	var handshakeBuf [common.AuthTokenLength + common.TimestampLength]byte
+	var handshakeBuf [common.AuthTokenLength + common.TimestampLength + 1]byte
 	if _, err := io.ReadFull(m, handshakeBuf[:]); err != nil {
 		return 0, 0, fmt.Errorf("failed to read handshake: %w", err)
 	}
 
 	bufferAuthToken := handshakeBuf[:common.AuthTokenLength]
-	bufferTimestamp := handshakeBuf[common.AuthTokenLength:]
+	bufferTimestamp := handshakeBuf[common.AuthTokenLength : common.AuthTokenLength+common.TimestampLength]
+	requestedModeByte := handshakeBuf[common.AuthTokenLength+common.TimestampLength]
 
 	if subtle.ConstantTimeCompare(bufferAuthToken, expectedAuthToken) != 1 {
 		return 0, 0, syscall.EACCES
@@ -85,7 +89,12 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (int, i
 		return 0, 0, fmt.Errorf("failed to parse timestamp: %w", err)
 	}
 
-	return 0, timestamp, nil
+	requestedMode := int(requestedModeByte - '0')
+	if requestedMode < 0 || requestedMode > 9 {
+		return 0, 0, fmt.Errorf("invalid requested mode: %d", requestedMode)
+	}
+
+	return requestedMode, timestamp, nil
 }
 
 func (m *MomoQUICCommunicator) SendReplicationMode(mode int) error {
@@ -96,19 +105,25 @@ func (m *MomoQUICCommunicator) SendReplicationMode(mode int) error {
 	return nil
 }
 
-func (m *MomoQUICCommunicator) SendMetadata(meta *common.FileMetadata) error {
-	var metadataBuffer [hashLength + common.FileInfoLength + common.FileInfoLength]byte
-	copy(metadataBuffer[0:hashLength], meta.Hash)
-	copy(metadataBuffer[hashLength:hashLength+common.FileInfoLength], common.PadString(meta.Name, common.FileInfoLength))
+func (m *MomoQUICCommunicator) SendMetadata(meta *common.FileMetadata) (int, error) {
+	var metadataBuffer [64 + common.FileInfoLength + common.FileInfoLength]byte
+	copy(metadataBuffer[0:64], meta.Hash)
+	copy(metadataBuffer[64:64+common.FileInfoLength], common.PadString(meta.Name, common.FileInfoLength))
 
 	var sizeBuf [common.FileInfoLength]byte
 	sizeBytes := strconv.AppendInt(sizeBuf[:0], meta.Size, 10)
-	copy(metadataBuffer[hashLength+common.FileInfoLength:], sizeBytes)
+	copy(metadataBuffer[64+common.FileInfoLength:], sizeBytes)
 
 	if _, err := m.Write(metadataBuffer[:]); err != nil {
-		return fmt.Errorf("failed to send metadata: %w", err)
+		return 0, fmt.Errorf("failed to send metadata: %w", err)
 	}
-	return nil
+
+	// ⚡ Bolt: Read the metadata status code (1 byte) to determine if we should send the payload.
+	var status [1]byte
+	if _, err := io.ReadFull(m, status[:]); err != nil {
+		return 0, fmt.Errorf("failed to read metadata status: %w", err)
+	}
+	return int(status[0]), nil
 }
 
 func (m *MomoQUICCommunicator) ReceiveMetadata() (common.FileMetadata, error) {
@@ -129,6 +144,14 @@ func (m *MomoQUICCommunicator) ReceiveMetadata() (common.FileMetadata, error) {
 	metadata.Size = size
 
 	return metadata, nil
+}
+
+// SendMetadataStatus is called by the server after receiving metadata.
+func (m *MomoQUICCommunicator) SendMetadataStatus(status int) error {
+	if _, err := m.Write([]byte{byte(status)}); err != nil {
+		return fmt.Errorf("failed to send metadata status: %w", err)
+	}
+	return nil
 }
 
 func (m *MomoQUICCommunicator) SendACK(serverId int) error {

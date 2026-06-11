@@ -26,7 +26,7 @@ The metrics component runs on a designated server (server 0) and is responsible 
 ### 4. Distributed Object Engine (CAS 2.0)
 Momo utilizes a **Shared-Nothing Partitioned Architecture** for its object storage layer:
 
-- **Data Placement (CRUSH)**: We use a simplified CRUSH algorithm to calculate data locations. This eliminates the need for a central metadata server or coordinator. Given a file hash and the cluster map, both the client and all nodes can deterministically calculate exactly which nodes should store the data.
+- **Data Placement (CRUSH)**: We use a simplified Go implementation of the **CRUSH** (Controlled Replication Under Scalable Hashing) algorithm, originally designed by **Sage Weil** (the creator of Ceph). CRUSH allows us to calculate data locations deterministically, eliminating the need for a central metadata server or coordinator. Given a file hash and the cluster map, both the client and all nodes can calculate exactly which nodes should store the data.
 - **Metadata Management (Bbolt)**: High-speed, transactional metadata is stored in local Bbolt databases on each node. Metadata is partitioned across the cluster using the same algorithmic placement as the data itself.
 - **Automatic Deduplication**: By using content-addressing (SHA-256), Momo ensures that any specific piece of data is only stored once per node, regardless of the filenames associated with it.
 
@@ -37,28 +37,35 @@ To maintain high integrity in a single-contributor environment, Momo employs an 
 
 ## High-Level Architecture
 
-The following diagram illustrates the high-level architecture of the system:
+The system uses Sage Weil's **CRUSH algorithm** (simplified Go implementation) to distribute load across all available nodes. There is no single "entry point" or central coordinator; instead, the client deterministically selects the optimal primary node for each object based on its content hash.
 
 ```
-+----------------+      +----------------+      +----------------+
-|                |      |                |      |                |
-|     Client     +------>    Server 0    +------>     Server 1   |
-|                |      |      (Metrics) |      |                |
-+----------------+      +----------------+      +----------------+
-                                |                     |
-                                v                     v
-                         +----------------+      +----------------+
-                         |                |      |                |
-                         |    Server 2    |      |      ...       |
-                         |                |      |                |
-                         +----------------+      +----------------+
+                         +--------------------------+
+                         |          Client          |
+                         | (Calculates CRUSH Map)   |
+                         +------------+-------------+
+                                      |
+                +---------------------+---------------------+
+                |                     |                     |
+                v                     v                     v
+         +------+------+       +------+------+       +------+------+
+         |   Server A  |       |   Server B  |       |   Server C  |
+         | (Local Bbolt)|       | (Local Bbolt)|       | (Local Bbolt)|
+         +------+------+       +------+------+       +------+------+
+                |                     |                     |
+                +----------+----------+----------+----------+
+                           |                     |
+                           v                     v
+                    Replication (Agnostic of Transport)
 ```
 
 **Data Flow:**
 
-1.  The client sends a file to Server 0.
-2.  Server 0 receives the file and, depending on the current replication strategy, replicates it to other servers in the cluster.
-3.  The metrics component on Server 0 monitors the system and can trigger a change in the replication strategy.
+1.  **Placement Calculation**: The client hashes the file content (SHA-256) and runs the CRUSH-lite algorithm against its local Cluster Map.
+2.  **Primary Selection**: The algorithm returns an ordered list of nodes. The first node is the **Primary** for this specific object.
+3.  **Negotiated Transfer**: The client performs an 84-byte handshake with the Primary, providing the Content Hash and Timestamp.
+4.  **Deduplication Check**: The Primary queries its local **Bbolt** instance. If the hash exists, it signals the client to skip the payload.
+5.  **Algorithmic Replication**: If needed, the Primary forwards the data to the next nodes in the CRUSH list (the **Secondaries**), using the negotiated replication strategy (Chain or Splay).
 
 ## Replication Strategies
 

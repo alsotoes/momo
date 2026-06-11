@@ -2,7 +2,6 @@
 package server
 
 import (
-	"crypto/subtle"
 	"io"
 	"net"
 	"os"
@@ -13,18 +12,20 @@ import (
 	"time"
 
 	"github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/storage"
+	"github.com/alsotoes/momo/src/transport"
 )
 
 // mockConnect is a mock implementation of Connect for testing.
-func mockConnect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, serverId int, timestamp int64) {
+func mockConnect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, serverId int, timestamp int64, requestedMode int) {
 	defer wg.Done()
 	// In a real test, you might add more logic here to simulate the client's behavior
 }
 
 // mockGetFile is a mock implementation of getFile for testing.
-func mockGetFile(connection net.Conn, path string, fileName string, expectedHash string, fileSize int64) error {
+func mockGetFile(comm transport.Communicator, store storage.Store, fileName string, expectedHash string, fileSize int64) error {
 	// This mock function will consume exactly fileSize bytes from the connection.
-	_, err := io.CopyN(io.Discard, connection, fileSize)
+	_, err := io.CopyN(io.Discard, comm, fileSize)
 	if err != nil {
 		// This can happen if the client closes the connection prematurely.
 		// For this test's purpose, we can ignore the error.
@@ -37,68 +38,52 @@ func handleConnection(t *testing.T, connection net.Conn, cfg common.Configuratio
 	daemons := cfg.Daemons
 	var replicationMode int
 	var success bool
+	comm := transport.NewMomoTCPCommunicator(connection)
 	defer func() {
 		if success {
-			// In a real scenario, this might block if the client isn't reading.
-			// net.Pipe is unbuffered, so writes block until a read happens.
-			// The client *is* waiting for this ACK, so it should be fine.
-			connection.Write([]byte("ACK" + strconv.Itoa(serverId)))
+			comm.SendACK(serverId)
 		}
-		connection.Close()
+		comm.Close()
 	}()
 
-	bufferAuthToken := make([]byte, common.AuthTokenLength)
-	if _, err := io.ReadFull(connection, bufferAuthToken); err != nil {
-		t.Logf("Error reading AuthToken: %v", err)
-		return
-	}
 	expectedAuthToken := []byte(common.PadString(cfg.Global.AuthToken, common.AuthTokenLength))
-	if subtle.ConstantTimeCompare(bufferAuthToken, expectedAuthToken) != 1 {
-		t.Logf("Invalid AuthToken received")
-		return
-	}
-
-	bufferTimestamp := make([]byte, common.TimestampLength)
-	if _, err := connection.Read(bufferTimestamp); err != nil {
-		t.Logf("Error reading timestamp: %v", err)
-		return
-	}
-	timestamp, err := strconv.ParseInt(string(bufferTimestamp), 10, 64)
+	
+	// HandshakeServer performs the server-side handshake: receives AuthToken + Timestamp + RequestedMode
+	replicationMode, timestamp, err := comm.HandshakeServer(expectedAuthToken)
 	if err != nil {
-		t.Errorf("Error parsing timestamp: %v", err)
+		t.Logf("Handshake failed: %v", err)
 		return
 	}
 
-	// The rest of the logic from the original Daemon function's go func() { ... }
+	// The rest of the logic from the original Daemon function
 	repState := GetReplicationState()
-	switch serverId {
-	case 0:
+	// If it's a direct client connection (timestamp == 0 in this simplified test), use local state.
+	// In the real Daemon, we use common.DummyEpoch.
+	if timestamp == 0 || timestamp == common.DummyEpoch {
 		replicationMode = repState.New
-	case 1:
-		if timestamp > repState.TimeStamp {
-			replicationMode = repState.New
-		} else {
-			replicationMode = repState.Old
-		}
-		if replicationMode != common.ReplicationChain {
-			replicationMode = common.ReplicationNone
-		}
-	default:
-		replicationMode = common.ReplicationNone
 	}
 
-	connection.Write([]byte(strconv.Itoa(replicationMode)))
+	comm.SendReplicationMode(replicationMode)
 
-	metadata, err := getMetadata(connection)
+	metadata, err := comm.ReceiveMetadata()
 	if err != nil {
 		t.Logf("Error getting metadata: %v", err)
 		return
 	}
+
+	// Send metadata status
+	comm.SendMetadataStatus(transport.MetadataStatusSendPayload)
+
 	var wg sync.WaitGroup
 
 	// Create a temporary directory for the test
 	tempDir := t.TempDir()
 	daemons[serverId].Data = tempDir
+	store, err := storage.NewCASStore(tempDir)
+	if err != nil {
+		t.Fatalf("Failed to create CAS store: %v", err)
+	}
+	defer store.Close()
 
 	originalConnect := connectToPeer
 	connectToPeer = mockConnect
@@ -106,24 +91,24 @@ func handleConnection(t *testing.T, connection net.Conn, cfg common.Configuratio
 
 	switch replicationMode {
 	case common.ReplicationNone:
-		mockGetFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size)
+		mockGetFile(comm, store, metadata.Name, metadata.Hash, metadata.Size)
 	case common.ReplicationChain:
 		if serverId == 1 {
 			wg.Add(1)
-			mockGetFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size)
-			connectToPeer(&wg, cfg, daemons[1].Data+"/"+metadata.Name, 2, timestamp)
+			mockGetFile(comm, store, metadata.Name, metadata.Hash, metadata.Size)
+			connectToPeer(&wg, cfg, daemons[1].Data+"/"+metadata.Name, 2, timestamp, 0)
 			wg.Wait()
 		} else {
 			wg.Add(1)
-			mockGetFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size)
-			connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 1, timestamp)
+			mockGetFile(comm, store, metadata.Name, metadata.Hash, metadata.Size)
+			connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 1, timestamp, 0)
 			wg.Wait()
 		}
 	case common.ReplicationSplay:
 		wg.Add(2)
-		mockGetFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size)
-		go connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 1, timestamp)
-		go connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 2, timestamp)
+		mockGetFile(comm, store, metadata.Name, metadata.Hash, metadata.Size)
+		go connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 1, timestamp, 0)
+		go connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 2, timestamp, 0)
 		wg.Wait()
 	}
 	success = true
@@ -188,8 +173,11 @@ func TestDaemonLogic(t *testing.T) {
 
 			// Test Execution
 			client.Write([]byte(common.PadString(authToken, common.AuthTokenLength)))
-			timestamp := strconv.FormatInt(time.Now().UnixNano(), 10)
+			// ⚡ Bolt: Use DummyEpoch to signal that we are the primary in this test
+			timestamp := strconv.FormatInt(common.DummyEpoch, 10)
 			client.Write([]byte(timestamp))
+			// ⚡ Bolt: Send the 84th byte (RequestedMode = 0)
+			client.Write([]byte("0"))
 
 			replicationModeBuf := make([]byte, 1)
 			client.Read(replicationModeBuf)
@@ -207,6 +195,13 @@ func TestDaemonLogic(t *testing.T) {
 			fileSizeBytes := make([]byte, common.FileInfoLength)
 			copy(fileSizeBytes, strconv.Itoa(len(fileContent)))
 			client.Write(fileSizeBytes)
+
+			// ⚡ Bolt: Read the Metadata Status byte
+			statusBuf := make([]byte, 1)
+			client.Read(statusBuf)
+			if statusBuf[0] != transport.MetadataStatusSendPayload {
+				t.Errorf("Expected status %d, got %d", transport.MetadataStatusSendPayload, statusBuf[0])
+			}
 
 			// Send file content
 			file, _ := os.Open(tempFile.Name())

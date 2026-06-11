@@ -57,7 +57,7 @@ func (m *S3Communicator) SetAbsoluteDeadline(t interface{}) error {
 	return m.conn.SetDeadline(deadline)
 }
 
-func (m *S3Communicator) HandshakeClient(authToken string, timestamp int64) (int, error) {
+func (m *S3Communicator) HandshakeClient(authToken string, timestamp int64, requestedMode int) (int, error) {
 	m.clientAuthToken = authToken
 	m.clientTimestamp = timestamp
 
@@ -66,7 +66,7 @@ func (m *S3Communicator) HandshakeClient(authToken string, timestamp int64) (int
 		host = m.remoteAddr.String()
 	}
 
-	reqStr := fmt.Sprintf("OPTIONS / HTTP/1.1\r\nHost: %s\r\nAuthorization: Bearer %s\r\nX-Momo-Timestamp: %d\r\n\r\n", host, authToken, timestamp)
+	reqStr := fmt.Sprintf("OPTIONS / HTTP/1.1\r\nHost: %s\r\nAuthorization: Bearer %s\r\nX-Momo-Timestamp: %d\r\nX-Momo-Requested-Mode: %d\r\n\r\n", host, authToken, timestamp, requestedMode)
 	if _, err := m.conn.Write([]byte(reqStr)); err != nil {
 		return 0, err
 	}
@@ -133,6 +133,12 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (int, int64, 
 		}
 	}
 
+	requestedModeStr := req.Header.Get("X-Momo-Requested-Mode")
+	requestedMode := 0
+	if requestedModeStr != "" {
+		requestedMode, _ = strconv.Atoi(requestedModeStr)
+	}
+
 	// Parse Metadata if it's a PUT request
 	if req.Method == "PUT" {
 		m.meta.Name = strings.TrimPrefix(req.URL.Path, "/")
@@ -143,13 +149,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (int, int64, 
 		}
 	}
 
-	// Wait, we need to handle OPTIONS / for handshake.
-	if req.Method == "OPTIONS" {
-		// We shouldn't process metadata.
-		// HandshakeServer returns timestamp. The caller will then call SendReplicationMode.
-	}
-
-	return 0, timestamp, nil
+	return requestedMode, timestamp, nil
 }
 
 func (m *S3Communicator) SendReplicationMode(mode int) error {
@@ -167,7 +167,7 @@ func (m *S3Communicator) SendReplicationMode(mode int) error {
 	return resp.Write(m.conn)
 }
 
-func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) error {
+func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (int, error) {
 	host := "127.0.0.1"
 	if m.remoteAddr != nil {
 		host = m.remoteAddr.String()
@@ -176,8 +176,23 @@ func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) error {
 	reqStr := fmt.Sprintf("PUT /%s HTTP/1.1\r\nHost: %s\r\nAuthorization: Bearer %s\r\nX-Momo-Timestamp: %d\r\nX-Amz-Content-Sha256: %s\r\nContent-Length: %d\r\n\r\n",
 		strings.TrimRight(meta.Name, "\x00"), host, m.clientAuthToken, m.clientTimestamp, strings.TrimRight(meta.Hash, "\x00"), meta.Size)
 
-	_, err := m.conn.Write([]byte(reqStr))
-	return err
+	if _, err := m.conn.Write([]byte(reqStr)); err != nil {
+		return 0, err
+	}
+
+	// ⚡ Bolt: Read the response immediately to get the metadata status.
+	resp, err := http.ReadResponse(m.reader, nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read metadata status response: %w", err)
+	}
+	defer resp.Body.Close()
+
+	statusStr := resp.Header.Get("X-Momo-Metadata-Status")
+	if statusStr == "" {
+		return MetadataStatusSendPayload, nil
+	}
+	status, _ := strconv.Atoi(statusStr)
+	return status, nil
 }
 
 func (m *S3Communicator) ReceiveMetadata() (common.FileMetadata, error) {
@@ -200,6 +215,19 @@ func (m *S3Communicator) ReceiveMetadata() (common.FileMetadata, error) {
 		m.meta.Hash = hash
 	}
 	return m.meta, nil
+}
+
+func (m *S3Communicator) SendMetadataStatus(status int) error {
+	resp := http.Response{
+		StatusCode: 200,
+		ProtoMajor: 1,
+		ProtoMinor: 1,
+		Header:     make(http.Header),
+	}
+	resp.Header.Set("X-Momo-Metadata-Status", strconv.Itoa(status))
+	resp.Header.Set("Content-Length", "0")
+	resp.Header.Set("Connection", "keep-alive")
+	return resp.Write(m.conn)
 }
 
 func (m *S3Communicator) SendACK(serverId int) error {

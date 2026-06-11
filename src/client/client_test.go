@@ -53,7 +53,7 @@ func startMockServer(t *testing.T, authToken string, expectedMode int, delay tim
 			return
 		}
 
-		buf := make([]byte, common.TimestampLength)
+		buf := make([]byte, common.TimestampLength+1) // Read Timestamp (19) + RequestedMode (1)
 		io.ReadFull(conn, buf)
 		conn.Write([]byte(strconv.Itoa(expectedMode)))
 
@@ -68,6 +68,9 @@ func startMockServer(t *testing.T, authToken string, expectedMode int, delay tim
 		io.ReadFull(conn, bufName)
 		bufSize := make([]byte, common.FileInfoLength)
 		io.ReadFull(conn, bufSize)
+
+		// Send metadata status
+		conn.Write([]byte{transport.MetadataStatusSendPayload})
 
 		// Send ACK after a small delay
 		time.Sleep(delay)
@@ -98,7 +101,7 @@ func startDummyServer(t *testing.T, authToken string) (string, net.Listener) {
 					return
 				}
 
-				buf := make([]byte, common.TimestampLength)
+				buf := make([]byte, common.TimestampLength+1) // Read Timestamp (19) + RequestedMode (1)
 				io.ReadFull(c, buf)
 				c.Write([]byte("4")) // Not Splay
 
@@ -109,6 +112,9 @@ func startDummyServer(t *testing.T, authToken string) (string, net.Listener) {
 				io.ReadFull(c, bufName)
 				bufSize := make([]byte, common.FileInfoLength)
 				io.ReadFull(c, bufSize)
+
+				// Send metadata status
+				c.Write([]byte{transport.MetadataStatusSendPayload})
 
 				c.Write([]byte("ACK"))
 			}(conn)
@@ -145,7 +151,7 @@ func TestConnect(t *testing.T) {
 
 	var wg sync.WaitGroup
 	wg.Add(1)
-	Connect(&wg, cfg, file.Name(), 0, time.Now().UnixNano())
+	Connect(&wg, cfg, file.Name(), 0, time.Now().UnixNano(), 0)
 	wg.Wait()
 
 	// Splay Connect
@@ -184,7 +190,7 @@ func TestConnect(t *testing.T) {
 			return
 		}
 
-		buf := make([]byte, common.TimestampLength)
+		buf := make([]byte, common.TimestampLength+1) // Read Timestamp (19) + RequestedMode (1)
 		io.ReadFull(conn, buf)
 		conn.Write([]byte(strconv.Itoa(common.ReplicationPrimarySplay))) // Send 3
 
@@ -195,6 +201,10 @@ func TestConnect(t *testing.T) {
 		io.ReadFull(conn, bufName)
 		bufSize := make([]byte, common.FileInfoLength)
 		io.ReadFull(conn, bufSize)
+
+		// Send metadata status
+		conn.Write([]byte{transport.MetadataStatusSendPayload})
+
 		conn.Write([]byte("ACK"))
 	}()
 
@@ -207,7 +217,7 @@ func TestConnect(t *testing.T) {
 	}
 
 	wg.Add(1)
-	Connect(&wg, cfgSplay, file.Name(), 0, time.Now().UnixNano())
+	Connect(&wg, cfgSplay, file.Name(), 0, time.Now().UnixNano(), 0)
 	wg.Wait()
 }
 
@@ -233,8 +243,9 @@ func TestSendFile(t *testing.T) {
 	// First, send the AuthToken
 	conn.Write([]byte(authToken))
 
-	// Skip the initial timestamp read/write
+	// Skip the initial timestamp and requestedMode read/write
 	conn.Write([]byte(common.PadString("123", common.TimestampLength)))
+	conn.Write([]byte{0}) // RequestedMode
 	io.ReadFull(conn, make([]byte, 1))
 
 	var wg sync.WaitGroup

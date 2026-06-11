@@ -56,6 +56,9 @@ func TestS3Communicator_FullFlow(t *testing.T) {
 		if err != nil {
 			t.Errorf("ReceiveMetadata failed: %v", err)
 		}
+		if err := comm.SendMetadataStatus(MetadataStatusSendPayload); err != nil {
+			t.Errorf("SendMetadataStatus failed: %v", err)
+		}
 		if meta.Name != "test-s3.txt" {
 			t.Errorf("Metadata name mismatch: got %q", meta.Name)
 		}
@@ -82,7 +85,7 @@ func TestS3Communicator_FullFlow(t *testing.T) {
 	comm := NewS3Communicator(conn)
 	defer comm.Close()
 
-	mode, err := comm.HandshakeClient(authToken, timestamp)
+	mode, err := comm.HandshakeClient(authToken, timestamp, 0)
 	if err != nil {
 		t.Fatalf("HandshakeClient failed: %v", err)
 	}
@@ -95,8 +98,12 @@ func TestS3Communicator_FullFlow(t *testing.T) {
 		Hash: "s3hash",
 		Size: int64(len(testPayload)),
 	}
-	if err := comm.SendMetadata(testMeta); err != nil {
+	status, err := comm.SendMetadata(testMeta)
+	if err != nil {
 		t.Fatalf("SendMetadata failed: %v", err)
+	}
+	if status != MetadataStatusSendPayload {
+		t.Errorf("Expected status %d, got %d", MetadataStatusSendPayload, status)
 	}
 
 	if _, err := comm.Write(testPayload); err != nil {

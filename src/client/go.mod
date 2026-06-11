@@ -1,6 +1,6 @@
 module github.com/alsotoes/momo/src/client
 
-go 1.25.0
+go 1.25.10
 
 replace github.com/alsotoes/momo/src/common => ../common
 

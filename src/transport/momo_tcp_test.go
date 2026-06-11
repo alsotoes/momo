@@ -54,6 +54,9 @@ func TestMomoTCPCommunicator_Handshake_And_Metadata(t *testing.T) {
 		if err != nil {
 			t.Errorf("ReceiveMetadata failed: %v", err)
 		}
+		if err := comm.SendMetadataStatus(MetadataStatusSendPayload); err != nil {
+			t.Errorf("SendMetadataStatus failed: %v", err)
+		}
 		if meta.Name != "test.txt" {
 			t.Errorf("Metadata name mismatch: got %q, want %q", meta.Name, "test.txt")
 		}
@@ -71,7 +74,7 @@ func TestMomoTCPCommunicator_Handshake_And_Metadata(t *testing.T) {
 	comm := NewMomoTCPCommunicator(conn)
 	defer comm.Close()
 
-	mode, err := comm.HandshakeClient(authToken, timestamp)
+	mode, err := comm.HandshakeClient(authToken, timestamp, 0)
 	if err != nil {
 		t.Fatalf("HandshakeClient failed: %v", err)
 	}
@@ -84,7 +87,7 @@ func TestMomoTCPCommunicator_Handshake_And_Metadata(t *testing.T) {
 		Hash: "hash123",
 		Size: 100,
 	}
-	if err := comm.SendMetadata(testMeta); err != nil {
+	if _, err := comm.SendMetadata(testMeta); err != nil {
 		t.Fatalf("SendMetadata failed: %v", err)
 	}
 

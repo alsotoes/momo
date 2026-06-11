@@ -1,6 +1,6 @@
 module github.com/alsotoes/momo/src/transport
 
-go 1.25.0
+go 1.25.10
 
 require github.com/quic-go/quic-go v0.60.0
 

@@ -9,6 +9,13 @@ import (
 	"github.com/quic-go/quic-go"
 )
 
+const (
+	// MetadataStatusSendPayload indicates the client should proceed with file transfer.
+	MetadataStatusSendPayload = 1
+	// MetadataStatusSkipPayload indicates the server already has the content (deduplication).
+	MetadataStatusSkipPayload = 2
+)
+
 // Communicator defines a transport-agnostic interface for Momo protocol operations.
 // It encapsulates the handshake, metadata exchange, and file transfer logic.
 type Communicator interface {
@@ -17,23 +24,27 @@ type Communicator interface {
 	// SetAbsoluteDeadline sets a hard deadline for all subsequent operations.
 	SetAbsoluteDeadline(t interface{}) error
 
-	// HandshakeClient performs the client-side handshake: sends AuthToken + Timestamp,
-	// and receives the negotiated replication mode.
-	HandshakeClient(authToken string, timestamp int64) (int, error)
+	// HandshakeClient performs the client-side handshake: sends AuthToken + Timestamp + RequestedMode,
+	// and receives the confirmed replication mode from the server.
+	HandshakeClient(authToken string, timestamp int64, requestedMode int) (replicationMode int, err error)
 
-	// HandshakeServer performs the server-side handshake: receives AuthToken + Timestamp,
-	// validates the token, and returns the timestamp.
+	// HandshakeServer performs the server-side handshake: receives AuthToken + Timestamp + RequestedMode,
+	// validates the token, and returns the timestamp and requested mode.
 	HandshakeServer(expectedAuthToken []byte) (replicationMode int, timestamp int64, err error)
+
 
 	// SendReplicationMode sends the chosen replication mode back to the client.
 	SendReplicationMode(mode int) error
 
-	// SendMetadata sends file metadata (Hash, Name, Size) to the peer.
-
-	SendMetadata(meta *common.FileMetadata) error
+	// SendMetadata sends file metadata (Hash, Name, Size) to the peer
+	// and returns a status code (MetadataStatusSendPayload or MetadataStatusSkipPayload).
+	SendMetadata(meta *common.FileMetadata) (int, error)
 
 	// ReceiveMetadata receives file metadata from the peer.
 	ReceiveMetadata() (common.FileMetadata, error)
+
+	// SendMetadataStatus sends the status code back to the client after receiving metadata.
+	SendMetadataStatus(status int) error
 
 	// SendACK sends a server acknowledgment to the client.
 	SendACK(serverId int) error
