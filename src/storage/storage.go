@@ -6,8 +6,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"syscall"
+	"unsafe"
 
 	"github.com/alsotoes/momo/src/common"
 	"go.etcd.io/bbolt"
@@ -123,7 +125,9 @@ func (s *CASStore) Put(name string, hash string, size int64, content io.Reader) 
 		obj := tx.Bucket(bucketObjects)
 		// ⚡ Bolt: Store size as a simple 8-byte binary value for speed.
 		// In a full implementation, we would store a JSON struct with RefCount.
-		if err := obj.Put([]byte(hash), []byte(fmt.Sprintf("%d", size))); err != nil {
+		// ⚡ Bolt: Eliminate heap allocation and GC overhead for number to byte slice conversion
+		var sizeBuf [32]byte
+		if err := obj.Put([]byte(hash), strconv.AppendInt(sizeBuf[:0], size, 10)); err != nil {
 			return fmt.Errorf("metadata error: %w", syscall.EIO)
 		}
 		return nil
@@ -158,7 +162,10 @@ func (s *CASStore) Get(name string) (io.ReadCloser, common.FileMetadata, error) 
 	var size int64
 	s.db.View(func(tx *bbolt.Tx) error {
 		val := tx.Bucket(bucketObjects).Get([]byte(hash))
-		fmt.Sscanf(string(val), "%d", &size)
+		// ⚡ Bolt: Eliminate allocs and overhead of fmt.Sscanf by using strconv.ParseInt with unsafe.String.
+		if len(val) > 0 {
+			size, _ = strconv.ParseInt(unsafe.String(unsafe.SliceData(val), len(val)), 10, 64)
+		}
 		return nil
 	})
 
