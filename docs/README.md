@@ -40,6 +40,8 @@ This document explains the architecture, configuration, wire protocol, replicati
   - `server.go`: Core Daemon loop utilizing pluggable transports.
   - `file.go`: Secure metadata parsing and file writing.
   - `replication.go`: Dynamic replication mode control server.
+- `src/storage/`: Content-Addressable Storage (CAS) engine.
+  - `storage.go`: Bbolt-backed object store with tiered directory layout.
 - `src/metrics/`: Performance monitoring and polymorphic control loop.
 - `conf/momo.conf`: Secure configuration example.
 
@@ -64,7 +66,17 @@ Handshake and transfer overview:
 
 ## Configuration
 
-File: `conf/momo.conf`. Ensure the `auth_token` matches on all nodes and is exactly 64 bytes for maximum entropy.
+File: `conf/momo.conf`. 
+
+```ini
+[global]
+auth_token = YOUR_SECURE_64_BYTE_TOKEN_HERE
+replication_factor = 3
+protocol = momo-quic
+polymorphic_system = true
+```
+
+Ensure the `auth_token` matches on all nodes and is exactly 64 bytes for maximum entropy.
 
 ## Building and Running
 

@@ -63,6 +63,11 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 	log.Printf("Server primary Daemon started... at %s using %s", daemons[serverId].Host, cfg.Global.Protocol)
 	log.Printf("...Waiting for connections...")
 
+	// 🛡️ Zero-Crash: Log a warning if the cluster cannot meet the desired durability goal.
+	if cfg.Global.ReplicationFactor > len(daemons) {
+		log.Printf("⚠️ WARNING: Desired replication factor (%d) exceeds available node count (%d). Data will be stored in DEGRADED mode.", cfg.Global.ReplicationFactor, len(daemons))
+	}
+
 	// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
 	expectedAuthToken := []byte(common.PadString(cfg.Global.AuthToken, common.AuthTokenLength))
 
@@ -224,8 +229,14 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 				return
 			}
 
-			// ⚡ Bolt: Get all nodes in the preferred order for this hash using the pre-built cmap.
-			placement, err := cmap.Placement(metadata.Hash, len(cfg.Daemons))
+			// Calculate Placement using CRUSH
+			factor := cfg.Global.ReplicationFactor
+			if replicationMode == common.ReplicationNone {
+				factor = 1
+			}
+
+			// Get all nodes in the preferred order for this hash using the pre-built cmap.
+			placement, err := cmap.Placement(metadata.Hash, factor)
 			if err != nil {
 				log.Printf("AUDIT: Placement failed for %s: %v", metadata.Hash, err)
 				return
@@ -288,7 +299,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 							}
 						}()
 						// ⚡ Bolt: connectToPeer (client.Connect) handles wg.Done() internally via defer.
-						connectToPeer(&wg, cfg, path, id, finalTs, replicationMode)
+						connectToPeer(&wg, cfg, path, id, finalTs, replicationMode, factor)
 					}(nextHop.ID, blobPath)
 				} else {
 					wg.Done()
@@ -325,7 +336,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 									log.Printf("CRITICAL: Panic recovered in Splay forwarder to node %d: %v", id, r)
 								}
 							}()
-							connectToPeer(&wg, cfg, blobPath, id, finalTs, replicationMode)
+							connectToPeer(&wg, cfg, blobPath, id, finalTs, replicationMode, factor)
 						}(targetId)
 					}
 					wg.Wait()

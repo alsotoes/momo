@@ -85,11 +85,11 @@ The client sends the file to the primary server, and no further replication occu
 
 ### Chain Replication
 
-The client sends the file to Server 0, which then replicates it to Server 1, which in turn replicates it to Server 2.
+The data follows an ordered path determined by the CRUSH placement list.
 
 ```
 +--------+     +----------+     +----------+     +----------+
-| Client |     | Server 0 |     | Server 1 |     | Server 2 |
+| Client |     | Primary  |     | Second 1 |     | Second 2 |
 +--------+     +----------+     +----------+     +----------+
     | ------------> |                |                |
     |               | -------------> |                |
@@ -98,11 +98,11 @@ The client sends the file to Server 0, which then replicates it to Server 1, whi
 
 ### Splay Replication
 
-The primary server replicates the file to all other servers in the cluster concurrently.
+The primary server replicates the file to all other servers in the placement list concurrently.
 
 ```
 +--------+     +----------+     +----------+     +----------+
-| Client |     | Server 0 |     | Server 1 |     | Server 2 |
+| Client |     | Primary  |     | Second 1 |     | Second 2 |
 +--------+     +----------+     +----------+     +----------+
     | ------------> |                |               |
     |               | -------------> |               |
@@ -111,11 +111,11 @@ The primary server replicates the file to all other servers in the cluster concu
 
 ### Primary-Splay Replication
 
-The client sends the file to all servers in the cluster concurrently.
+The client sends the file to all servers in the placement list concurrently.
 
 ```
 +--------+     +----------+     +----------+     +----------+
-| Client |     | Server 0 |     | Server 1 |     | Server 2 |
+| Client |     | Primary  |     | Second 1 |     | Second 2 |
 +--------+     +----------+     +----------+     +----------+
     | ------------> |              |              |
     | ---------------------------> |              |

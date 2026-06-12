@@ -151,7 +151,7 @@ func TestConnect(t *testing.T) {
 
 	var wg sync.WaitGroup
 	wg.Add(1)
-	Connect(&wg, cfg, file.Name(), 0, time.Now().UnixNano(), 0)
+	Connect(&wg, cfg, file.Name(), 0, time.Now().UnixNano(), 0, 3)
 	wg.Wait()
 
 	// Splay Connect
@@ -217,7 +217,7 @@ func TestConnect(t *testing.T) {
 	}
 
 	wg.Add(1)
-	Connect(&wg, cfgSplay, file.Name(), 0, time.Now().UnixNano(), 0)
+	Connect(&wg, cfgSplay, file.Name(), 0, time.Now().UnixNano(), 0, 3)
 	wg.Wait()
 }
 

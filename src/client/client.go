@@ -14,7 +14,7 @@ import (
 // It first connects to a specified daemon to determine the replication mode.
 // If splay replication is active, it connects to all other daemons.
 // Finally, it sends the file to all established connections concurrently.
-func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, serverId int, timestamp int64, requestedMode int) {
+func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, serverId int, timestamp int64, requestedMode int, replicationFactor int) {
 	defer wg.Done()
 	daemons := cfg.Daemons
 	authToken := cfg.Global.AuthToken
@@ -39,21 +39,29 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, serv
 	}
 
 	if replicationMode == common.ReplicationPrimarySplay {
-		// In splay replication, connect to all other daemons as well
-		for i, daemon := range daemons {
-			if i == serverId {
+		// ⚡ Bolt: Use CRUSH to find the specific replicas for PrimarySplay.
+		fileHash, _ := common.HashFile(filePath)
+		nodes := make([]*common.Node, len(daemons))
+		for i, d := range daemons {
+			nodes[i] = &common.Node{ID: i, Weight: 1, Addr: d.Host}
+		}
+		cmap := &common.ClusterMap{Nodes: nodes}
+		placement, _ := cmap.Placement(fileHash, replicationFactor)
+
+		for _, node := range placement {
+			if node.ID == serverId {
 				continue // Already connected
 			}
 
-			peerComm, err := factory.Dial(daemon.Host)
+			peerComm, err := factory.Dial(node.Addr)
 			if err != nil {
-				log.Printf("Failed to connect to daemon %s: %v", daemon.Host, common.SanitizeLog(err.Error()))
+				log.Printf("Failed to connect to daemon %s: %v", node.Addr, common.SanitizeLog(err.Error()))
 				continue
 			}
 
 			// Perform handshake with the other daemons
 			if _, err := peerComm.HandshakeClient(authToken, timestamp, replicationMode); err != nil {
-				log.Printf("Handshake failed with peer %s: %v", daemon.Host, common.SanitizeLog(err.Error()))
+				log.Printf("Handshake failed with peer %s: %v", node.Addr, common.SanitizeLog(err.Error()))
 				peerComm.Close()
 				continue
 			}

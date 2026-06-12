@@ -42,6 +42,8 @@ type ConfigurationGlobal struct {
 	AuthToken string
 	// ReplicationOrder is the order of replication modes to use.
 	ReplicationOrder []int
+	// ReplicationFactor is the number of replicas to maintain for each object.
+	ReplicationFactor int
 	// PolymorphicSystem enables or disables the polymorphic system.
 	PolymorphicSystem bool
 }
