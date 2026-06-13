@@ -93,3 +93,8 @@
 **Vulnerability:** Path traversal (`../../../file`) and DoS (unbounded `metadata.Size`) vulnerabilities existed because the sanitization logic was implemented in an unused/dead utility function (`getMetadata` in `file.go`), while the active network data path (`comm.ReceiveMetadata()`) returned unsanitized metadata directly to the core `Daemon` handler.
 **Learning:** Security checks that are not structurally enforced on the active data paths are ineffective. It's a common pattern for "hardened" functions to be bypassed during refactoring if the architecture allows extracting raw data directly from the connection via alternative methods.
 **Prevention:** Enforce input sanitization at the lowest possible layer (e.g., directly inside `ReceiveMetadata` for each protocol) or immediately at the first use site in the handler before *any* logic (like deadline calculations or logging) consumes the untrusted data.
+
+## 2026-06-13 - Path Traversal via Unsanitized Content Hash
+**Vulnerability:** The application used `metadata.Hash` directly in the `store.Has(metadata.Hash)` deduplication check before sanitizing it, potentially allowing path traversal if the backend storage mechanism uses the hash as part of a file path.
+**Learning:** Security validations and sanitizations must be performed immediately after receiving untrusted data and strictly *before* that data interacts with internal systems or storage components.
+**Prevention:** Sanitize the file hash against path traversal characters (`.`, `/`, `\`) explicitly, and ensure all untrusted network inputs (Hash, Name, Size) are validated immediately upon receipt, rather than waiting until just before final write operations.
