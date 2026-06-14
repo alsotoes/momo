@@ -24,7 +24,7 @@ Since this project leverages AI collaboration, every Pull Request is automatical
 Every Pull Request must pass the full suite of validations before merging:
 - **Unit & Fuzz Tests**: All tests in `src/` must pass with `-race` enabled.
 - **Benchmark Gate**: Geomean performance must not degrade by more than 5%.
-- **Smoke Tests**: Physical file replication verified across 4 suites (TCP, QUIC, S3-TCP, S3-QUIC).
+- **Smoke Tests**: Physical file replication verified across 5 suites (**TCP, QUIC, S3-TCP, S3-QUIC, and Scale/CAS**).
 - **Version Consistency**: Go versions must be synchronized across all config files.
 
 ---
