@@ -5,6 +5,7 @@ import http.client
 import sys
 
 def get_filtered_diff():
+    # 🛡️ Rule 15: Strictly limit diff size to prevent token exhaustion.
     max_diff_lines = 1000
     try:
         # Only compare against origin/master
@@ -17,7 +18,7 @@ def get_filtered_diff():
 
         lines = diff.splitlines()
         if len(lines) > max_diff_lines:
-            return "\n".join(lines[:max_diff_lines]) + "\n\n[DIFF TRUNCATED FOR TOKEN EFFICIENCY]"
+            return "\n".join(lines[:max_diff_lines]) + f"\n\n🛑 DIFF TRUNCATED AT {max_diff_lines} LINES FOR TOKEN EFFICIENCY (RULE 15)"
         return diff
     except subprocess.CalledProcessError as e:
         print(f"Error getting git diff: {e}", file=sys.stderr)
@@ -102,6 +103,12 @@ def main():
     pr_number = os.environ.get("PR_NUMBER", "")
     is_jules_pr = "jules" in pr_author.lower() or "jules" in pr_body.lower()
     
+    # 🛡️ Rule 11: Check for Issue-Spec Traceability
+    has_issue_link = "github.com/alsotoes/momo/issues/" in pr_body
+    traceability_instruction = ""
+    if not has_issue_link:
+        traceability_instruction = "\n- 🚨 VIOLATION (Rule 11): This PR is missing a link to a GitHub Issue. Remind the author that ALL PRs must be mirrored as issues for traceability."
+
     # ⚡ Bolt: Automated PR Management
     if pr_number:
         # 1. Labeling for Jules PRs
@@ -149,7 +156,7 @@ TASK:
 - Identify violations of the Zero-Crash Pattern (missing recover, unbounded readers).
 - Ensure error mappings use syscall constants (POSIX Error Mapping).
 - Look for performance bottlenecks (unnecessary allocations in hot paths).
-- Check for security issues (path traversal, sanitization).{jules_instruction}
+- Check for security issues (path traversal, sanitization).{jules_instruction}{traceability_instruction}
 
 INSTRUCTIONS:
 - Be concise.
