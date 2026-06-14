@@ -188,6 +188,8 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 			// 🛡️ Sentinel: Sanitize Hash immediately to prevent path traversal in all downstream consumers.
 			if metadata.Hash == "" || strings.Contains(metadata.Hash, ".") || strings.Contains(metadata.Hash, "/") || strings.Contains(metadata.Hash, "\\") {
 				log.Printf("AUDIT: Invalid hash received from %s: %v", remoteAddr, common.SanitizeLog(metadata.Hash))
+				// ⚡ Bolt: Map to syscall.EBADMSG for POSIX compliance.
+				success = false
 				return
 			}
 
@@ -195,17 +197,23 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 			rawFileName := metadata.Name
 			if rawFileName == "" || rawFileName == "." || rawFileName == ".." || strings.Contains(rawFileName, "/") || strings.Contains(rawFileName, "\\") {
 				log.Printf("AUDIT: Invalid filename received from %s: %v", remoteAddr, common.SanitizeLog(rawFileName))
+				// ⚡ Bolt: Map to syscall.EBADMSG for POSIX compliance.
+				success = false
 				return
 			}
 			fileName := filepath.Base(rawFileName)
 			if fileName == "" || fileName == "." || fileName == ".." || fileName == "/" || fileName == "\\" {
 				log.Printf("AUDIT: Invalid filename received from %s: %v", remoteAddr, common.SanitizeLog(fileName))
+				// ⚡ Bolt: Map to syscall.EBADMSG for POSIX compliance.
+				success = false
 				return
 			}
 
 			// 🛡️ Sentinel: Enforce maximum file size to prevent Denial of Service via resource exhaustion
 			if metadata.Size < 0 || metadata.Size > common.MaxFileSize {
 				log.Printf("AUDIT: Invalid file size received from %s: %d (max: %d)", remoteAddr, metadata.Size, common.MaxFileSize)
+				// ⚡ Bolt: Map to syscall.EBADMSG for POSIX compliance.
+				success = false
 				return
 			}
 
