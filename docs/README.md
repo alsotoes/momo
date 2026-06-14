@@ -90,7 +90,32 @@ make build
 ./bin/momo -imp server -id 0
 ```
 
-## Performance & Monitoring
+## Automated Testing & Verification
+
+Momo employs a rigorous multi-layered testing strategy to ensure 100% architectural integrity across its distributed components.
+
+### 🔬 E2E Smoke Test Suites
+
+Every PR and commit is validated against 5 distinct end-to-end scenarios:
+
+1.  **TCP Standard (`smoke-tcp`)**: Verifies legacy TCP transport with Chain replication across 3 nodes.
+2.  **QUIC Secure (`smoke-quic`)**: Validates modern UDP-based encrypted transport using TLS 1.3.
+3.  **S3 Gateway TCP (`smoke-s3-tcp`)**: Ensures AWS S3 compatibility over standard TCP.
+4.  **S3 Gateway QUIC (`smoke-s3-quic`)**: Verifies cloud-native tool integration over secure QUIC streams.
+5.  **Scale & CAS Engine (`smoke-scale-cas`)**: A high-integrity stress test simulating a **5-node cluster** with a **replication factor of 3**. It explicitly verifies:
+    *   **CRUSH-lite Placement**: Deterministic data distribution across heterogeneous nodes.
+    *   **Content-Aware Deduplication**: Server-side "Deduplication hits" that skip redundant uploads.
+    *   **Bbolt Persistence**: Transactional metadata integrity across multiple virtual daemons.
+
+### Running Tests Locally
+
+```bash
+# Run all unit and integration tests
+make test
+
+# Run a specific smoke test
+make smoke-scale-cas
+```
 
 Momo includes a built-in benchmarking suite and performance history tracking. Refer to the [Performance](#performance) section below for the latest metrics.
 

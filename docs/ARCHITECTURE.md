@@ -35,6 +35,12 @@ To maintain high integrity in a single-contributor environment, Momo employs an 
 - **Gemini AI Reviewer**: A GitHub Action that uses the Gemini API to analyze PR diffs. It specifically enforces the **⚡ Bolt** (performance) and **🛡️ Sentinel** (security) patterns.
 - **Project Steering Rules**: Mandatory mandates (Zero-Crash, POSIX Error Mapping) are codified in `openspec/project.md` and automatically validated by the AI Reviewer.
 
+### 6. Verification & Quality Assurance
+The system is backed by a multi-stage automated testing pipeline:
+- **Distributed Simulation**: End-to-end smoke tests simulate various cluster sizes (up to 5 nodes) and protocols.
+- **Placement Validation**: Automated checks verify that the CRUSH algorithm distributes data correctly and respects the `replication_factor`.
+- **Integrity Checks**: Every test suite verifies data consistency and metadata accuracy across all participating nodes.
+
 ## High-Level Architecture
 
 The system uses Sage Weil's **CRUSH algorithm** (simplified Go implementation) to distribute load across all available nodes. There is no single "entry point" or central coordinator; instead, the client deterministically selects the optimal primary node for each object based on its content hash.
