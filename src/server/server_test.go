@@ -2,7 +2,6 @@
 package server
 
 import (
-	"crypto/subtle"
 	"io"
 	"net"
 	"os"
@@ -12,19 +11,21 @@ import (
 	"testing"
 	"time"
 
-	momo_common "github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/storage"
+	"github.com/alsotoes/momo/src/transport"
 )
 
 // mockConnect is a mock implementation of Connect for testing.
-func mockConnect(wg *sync.WaitGroup, cfg momo_common.Configuration, filePath string, serverId int, timestamp int64) {
+func mockConnect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, serverId int, timestamp int64, requestedMode int, replicationFactor int) {
 	defer wg.Done()
 	// In a real test, you might add more logic here to simulate the client's behavior
 }
 
 // mockGetFile is a mock implementation of getFile for testing.
-func mockGetFile(connection net.Conn, path string, fileName string, expectedHash string, fileSize int64) error {
+func mockGetFile(comm transport.Communicator, store storage.Store, fileName string, expectedHash string, fileSize int64) error {
 	// This mock function will consume exactly fileSize bytes from the connection.
-	_, err := io.CopyN(io.Discard, connection, fileSize)
+	_, err := io.CopyN(io.Discard, comm, fileSize)
 	if err != nil {
 		// This can happen if the client closes the connection prematurely.
 		// For this test's purpose, we can ignore the error.
@@ -33,97 +34,81 @@ func mockGetFile(connection net.Conn, path string, fileName string, expectedHash
 }
 
 // handleConnection is a testable version of the connection handling logic inside Daemon.
-func handleConnection(t *testing.T, connection net.Conn, cfg momo_common.Configuration, serverId int) {
+func handleConnection(t *testing.T, connection net.Conn, cfg common.Configuration, serverId int) {
 	daemons := cfg.Daemons
 	var replicationMode int
 	var success bool
+	comm := transport.NewMomoTCPCommunicator(connection)
 	defer func() {
 		if success {
-			// In a real scenario, this might block if the client isn't reading.
-			// net.Pipe is unbuffered, so writes block until a read happens.
-			// The client *is* waiting for this ACK, so it should be fine.
-			connection.Write([]byte("ACK" + strconv.Itoa(serverId)))
+			comm.SendACK(serverId)
 		}
-		connection.Close()
+		comm.Close()
 	}()
 
-	bufferAuthToken := make([]byte, momo_common.AuthTokenLength)
-	if _, err := io.ReadFull(connection, bufferAuthToken); err != nil {
-		t.Logf("Error reading AuthToken: %v", err)
-		return
-	}
-	expectedAuthToken := []byte(momo_common.PadString(cfg.Global.AuthToken, momo_common.AuthTokenLength))
-	if subtle.ConstantTimeCompare(bufferAuthToken, expectedAuthToken) != 1 {
-		t.Logf("Invalid AuthToken received")
-		return
-	}
-
-	bufferTimestamp := make([]byte, momo_common.TimestampLength)
-	if _, err := connection.Read(bufferTimestamp); err != nil {
-		t.Logf("Error reading timestamp: %v", err)
-		return
-	}
-	timestamp, err := strconv.ParseInt(string(bufferTimestamp), 10, 64)
+	expectedAuthToken := []byte(common.PadString(cfg.Global.AuthToken, common.AuthTokenLength))
+	
+	// HandshakeServer performs the server-side handshake: receives AuthToken + Timestamp + RequestedMode
+	replicationMode, timestamp, err := comm.HandshakeServer(expectedAuthToken)
 	if err != nil {
-		t.Errorf("Error parsing timestamp: %v", err)
+		t.Logf("Handshake failed: %v", err)
 		return
 	}
 
-	// The rest of the logic from the original Daemon function's go func() { ... }
+	// The rest of the logic from the original Daemon function
 	repState := GetReplicationState()
-	switch serverId {
-	case 0:
+	// If it's a direct client connection (timestamp == 0 in this simplified test), use local state.
+	// In the real Daemon, we use common.DummyEpoch.
+	if timestamp == 0 || timestamp == common.DummyEpoch {
 		replicationMode = repState.New
-	case 1:
-		if timestamp > repState.TimeStamp {
-			replicationMode = repState.New
-		} else {
-			replicationMode = repState.Old
-		}
-		if replicationMode != momo_common.ReplicationChain {
-			replicationMode = momo_common.ReplicationNone
-		}
-	default:
-		replicationMode = momo_common.ReplicationNone
 	}
 
-	connection.Write([]byte(strconv.Itoa(replicationMode)))
+	comm.SendReplicationMode(replicationMode)
 
-	metadata, err := getMetadata(connection)
+	metadata, err := comm.ReceiveMetadata()
 	if err != nil {
 		t.Logf("Error getting metadata: %v", err)
 		return
 	}
+
+	// Send metadata status
+	comm.SendMetadataStatus(transport.MetadataStatusSendPayload)
+
 	var wg sync.WaitGroup
 
 	// Create a temporary directory for the test
 	tempDir := t.TempDir()
 	daemons[serverId].Data = tempDir
+	store, err := storage.NewCASStore(tempDir)
+	if err != nil {
+		t.Fatalf("Failed to create CAS store: %v", err)
+	}
+	defer store.Close()
 
 	originalConnect := connectToPeer
 	connectToPeer = mockConnect
 	defer func() { connectToPeer = originalConnect }()
 
 	switch replicationMode {
-	case momo_common.ReplicationNone:
-		mockGetFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size)
-	case momo_common.ReplicationChain:
+	case common.ReplicationNone:
+		mockGetFile(comm, store, metadata.Name, metadata.Hash, metadata.Size)
+	case common.ReplicationChain:
 		if serverId == 1 {
 			wg.Add(1)
-			mockGetFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size)
-			connectToPeer(&wg, cfg, daemons[1].Data+"/"+metadata.Name, 2, timestamp)
+			mockGetFile(comm, store, metadata.Name, metadata.Hash, metadata.Size)
+			connectToPeer(&wg, cfg, daemons[1].Data+"/"+metadata.Name, 2, timestamp, 0, cfg.Global.ReplicationFactor)
 			wg.Wait()
 		} else {
 			wg.Add(1)
-			mockGetFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size)
-			connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 1, timestamp)
+			mockGetFile(comm, store, metadata.Name, metadata.Hash, metadata.Size)
+			connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 1, timestamp, 0, cfg.Global.ReplicationFactor)
 			wg.Wait()
 		}
-	case momo_common.ReplicationSplay:
+	case common.ReplicationSplay:
 		wg.Add(2)
-		mockGetFile(connection, daemons[serverId].Data+"/", metadata.Name, metadata.Hash, metadata.Size)
-		go connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 1, timestamp)
-		go connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 2, timestamp)
+		mockGetFile(comm, store, metadata.Name, metadata.Hash, metadata.Size)
+		go connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 1, timestamp, 0, cfg.Global.ReplicationFactor)
+		go connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 2, timestamp, 0, cfg.Global.ReplicationFactor)
 		wg.Wait()
 	}
 	success = true
@@ -131,7 +116,7 @@ func handleConnection(t *testing.T, connection net.Conn, cfg momo_common.Configu
 
 func TestDaemonLogic(t *testing.T) {
 	// Setup common test data
-	daemons := []*momo_common.Daemon{
+	daemons := []*common.Daemon{
 		{Host: "127.0.0.1:0", Data: ""},
 		{Host: "127.0.0.1:0", Data: ""},
 		{Host: "127.0.0.1:0", Data: ""},
@@ -152,7 +137,7 @@ func TestDaemonLogic(t *testing.T) {
 	tempFile.Write([]byte(fileContent))
 	tempFile.Close()
 
-	hash, _ := momo_common.HashFile(tempFile.Name())
+	hash, _ := common.HashFile(tempFile.Name())
 
 	testCases := []struct {
 		name                string
@@ -161,15 +146,15 @@ func TestDaemonLogic(t *testing.T) {
 		expectedAck         string
 		expectedReplication int
 	}{
-		{"ReplicationNone", momo_common.ReplicationNone, 0, "ACK0", momo_common.ReplicationNone},
-		{"ReplicationSplay", momo_common.ReplicationSplay, 0, "ACK0", momo_common.ReplicationSplay},
-		{"ReplicationChain", momo_common.ReplicationChain, 1, "ACK1", momo_common.ReplicationChain},
+		{"ReplicationNone", common.ReplicationNone, 0, "ACK0", common.ReplicationNone},
+		{"ReplicationSplay", common.ReplicationSplay, 0, "ACK0", common.ReplicationSplay},
+		{"ReplicationChain", common.ReplicationChain, 1, "ACK1", common.ReplicationChain},
 	}
 
 	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
-	cfg := momo_common.Configuration{
+	cfg := common.Configuration{
 		Daemons: daemons,
-		Global: momo_common.ConfigurationGlobal{
+		Global: common.ConfigurationGlobal{
 			AuthToken: authToken,
 		},
 	}
@@ -187,9 +172,12 @@ func TestDaemonLogic(t *testing.T) {
 			}()
 
 			// Test Execution
-			client.Write([]byte(momo_common.PadString(authToken, momo_common.AuthTokenLength)))
-			timestamp := strconv.FormatInt(time.Now().UnixNano(), 10)
+			client.Write([]byte(common.PadString(authToken, common.AuthTokenLength)))
+			// ⚡ Bolt: Use DummyEpoch to signal that we are the primary in this test
+			timestamp := strconv.FormatInt(common.DummyEpoch, 10)
 			client.Write([]byte(timestamp))
+			// ⚡ Bolt: Send the 84th byte (RequestedMode = 0)
+			client.Write([]byte("0"))
 
 			replicationModeBuf := make([]byte, 1)
 			client.Read(replicationModeBuf)
@@ -201,12 +189,19 @@ func TestDaemonLogic(t *testing.T) {
 
 			// Send metadata
 			client.Write([]byte(hash))
-			fileNameBytes := make([]byte, momo_common.FileInfoLength)
+			fileNameBytes := make([]byte, common.FileInfoLength)
 			copy(fileNameBytes, fileName)
 			client.Write(fileNameBytes)
-			fileSizeBytes := make([]byte, momo_common.FileInfoLength)
+			fileSizeBytes := make([]byte, common.FileInfoLength)
 			copy(fileSizeBytes, strconv.Itoa(len(fileContent)))
 			client.Write(fileSizeBytes)
+
+			// ⚡ Bolt: Read the Metadata Status byte
+			statusBuf := make([]byte, 1)
+			client.Read(statusBuf)
+			if statusBuf[0] != transport.MetadataStatusSendPayload {
+				t.Errorf("Expected status %d, got %d", transport.MetadataStatusSendPayload, statusBuf[0])
+			}
 
 			// Send file content
 			file, _ := os.Open(tempFile.Name())
@@ -233,12 +228,12 @@ func TestDaemonLogic(t *testing.T) {
 }
 
 func TestUnauthenticatedConnection(t *testing.T) {
-	daemons := []*momo_common.Daemon{{Host: "127.0.0.1:0", Data: ""}}
+	daemons := []*common.Daemon{{Host: "127.0.0.1:0", Data: ""}}
 	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
 	wrongToken := "wrong_token_wrong_token_wrong_token_wrong_token_wrong_token_wro"
-	cfg := momo_common.Configuration{
+	cfg := common.Configuration{
 		Daemons: daemons,
-		Global: momo_common.ConfigurationGlobal{
+		Global: common.ConfigurationGlobal{
 			AuthToken: authToken,
 		},
 	}
@@ -251,7 +246,7 @@ func TestUnauthenticatedConnection(t *testing.T) {
 	}()
 
 	// Try with wrong token
-	client.Write([]byte(momo_common.PadString(wrongToken, momo_common.AuthTokenLength)))
+	client.Write([]byte(common.PadString(wrongToken, common.AuthTokenLength)))
 
 	// Attempt to read something (e.g., replication mode) - should fail because server closes connection
 	replicationModeBuf := make([]byte, 1)

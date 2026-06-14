@@ -13,7 +13,9 @@ import (
 	"strconv"
 	"testing"
 
-	momo_common "github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/storage"
+	"github.com/alsotoes/momo/src/transport"
 )
 
 // TestGetMetadata verifies that the getMetadata function correctly reads
@@ -34,7 +36,7 @@ func TestGetMetadata(t *testing.T) {
 	tempFile.Write([]byte(fileContent))
 	tempFile.Close()
 
-	fileHash, _ := momo_common.HashFile(tempFile.Name())
+	fileHash, _ := common.HashFile(tempFile.Name())
 	fileSize := len(fileContent)
 
 	// Act: Start a goroutine to simulate the client sending metadata over the pipe.
@@ -45,12 +47,12 @@ func TestGetMetadata(t *testing.T) {
 		client.Write([]byte(fileHash))
 
 		// Send file name, padded to the fixed buffer size
-		fileNameBytes := make([]byte, momo_common.FileInfoLength)
+		fileNameBytes := make([]byte, common.FileInfoLength)
 		copy(fileNameBytes, fileName)
 		client.Write(fileNameBytes)
 
 		// Send file size, padded to the fixed buffer size
-		fileSizeBytes := make([]byte, momo_common.FileInfoLength)
+		fileSizeBytes := make([]byte, common.FileInfoLength)
 		copy(fileSizeBytes, strconv.Itoa(fileSize))
 		client.Write(fileSizeBytes)
 	}()
@@ -90,12 +92,12 @@ func TestGetMetadataDotDot(t *testing.T) {
 		client.Write([]byte(fileHash))
 
 		// Send file name, padded to the fixed buffer size
-		fileNameBytes := make([]byte, momo_common.FileInfoLength)
+		fileNameBytes := make([]byte, common.FileInfoLength)
 		copy(fileNameBytes, fileName)
 		client.Write(fileNameBytes)
 
 		// Send file size, padded to the fixed buffer size
-		fileSizeBytes := make([]byte, momo_common.FileInfoLength)
+		fileSizeBytes := make([]byte, common.FileInfoLength)
 		copy(fileSizeBytes, strconv.Itoa(fileSize))
 		client.Write(fileSizeBytes)
 	}()
@@ -125,11 +127,11 @@ func TestGetMetadataInvalidNames(t *testing.T) {
 
 				client.Write([]byte(fileHash))
 
-				fileNameBytes := make([]byte, momo_common.FileInfoLength)
+				fileNameBytes := make([]byte, common.FileInfoLength)
 				copy(fileNameBytes, fileName)
 				client.Write(fileNameBytes)
 
-				fileSizeBytes := make([]byte, momo_common.FileInfoLength)
+				fileSizeBytes := make([]byte, common.FileInfoLength)
 				copy(fileSizeBytes, strconv.Itoa(fileSize))
 				client.Write(fileSizeBytes)
 			}()
@@ -153,10 +155,11 @@ func TestGetFileTraversal(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	storageDir := filepath.Join(tempDir, "storage")
-	err = os.Mkdir(storageDir, 0755)
+	store, err := storage.NewCASStore(storageDir)
 	if err != nil {
-		t.Fatalf("Failed to create storage dir: %v", err)
+		t.Fatalf("Failed to create CAS store: %v", err)
 	}
+	defer store.Close()
 
 	traversalFileName := "../traversal.txt"
 	fileContent := "dangerous content"
@@ -175,16 +178,20 @@ func TestGetFileTraversal(t *testing.T) {
 	// Since getMetadata now sanitizes the filename, we pass the sanitized name to getFile
 	// to simulate the real behavior.
 
+	comm := transport.NewMomoTCPCommunicator(server)
 	sanitizedFileName := filepath.Base(traversalFileName)
-	getFile(server, storageDir, sanitizedFileName, fileHash, fileSize)
+	getFile(comm, store, sanitizedFileName, fileHash, fileSize)
 
-	// The file should be created in storageDir/traversal.txt, NOT in tempDir/traversal.txt
+	// The file should be created in storageDir/blobs/..., NOT in tempDir/traversal.txt
 	traversalFilePath := filepath.Join(tempDir, "traversal.txt")
 	if _, err := os.Stat(traversalFilePath); err == nil {
 		t.Errorf("Vulnerability still exists: File created outside storage directory at %s", traversalFilePath)
 	}
 
-	safeFilePath := filepath.Join(storageDir, "traversal.txt")
+	safeFilePath, err := store.GetBlobPath(sanitizedFileName)
+	if err != nil {
+		t.Fatalf("Failed to get blob path: %v", err)
+	}
 	if _, err := os.Stat(safeFilePath); os.IsNotExist(err) {
 		t.Errorf("Expected file to be created at %s, but it was not", safeFilePath)
 	}

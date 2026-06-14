@@ -30,3 +30,11 @@ func HashFile(filePath string) (string, error) {
 
 	return returnHashString, nil
 }
+
+// HashBytes calculates the SHA-256 hash of a byte slice and returns it as a hex-encoded string.
+func HashBytes(data []byte) string {
+	hash := sha256.Sum256(data)
+	var hexBuf [sha256.Size * 2]byte
+	hex.Encode(hexBuf[:], hash[:])
+	return string(hexBuf[:])
+}

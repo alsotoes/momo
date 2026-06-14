@@ -25,11 +25,17 @@ This section contains cluster-wide settings that affect all daemons.
     -   **Description:** A comma-separated list of integers that defines the sequence of replication strategies the polymorphic system can cycle through. The order determines the path of escalation and de-escalation based on system load.
     -   **Type:** Comma-separated list of integers (e.g., `1,2,3,4`)
     -   **Possible Values:** Each integer corresponds to a replication strategy:
-        -   `1`: primary-splay
+        -   `1`: chain
         -   `2`: splay
-        -   `3`: chain
+        -   `3`: primary-splay
         -   `4`: none
     -   **Default:** `1,2,3,4`
+
+-   **`replication_factor`**
+    -   **Description:** Defines the target number of physical copies (replicas) to maintain for every object in the cluster. Momo uses the CRUSH-lite algorithm to select this many distinct nodes for storage.
+    -   **Type:** Integer
+    -   **Default:** `3`
+    -   **Logic:** If the cluster contains fewer than `replication_factor` nodes, the system will store as many copies as possible and log a warning (**Degraded Mode**).
 
 -   **`polymorphic_system`**
     -   **Description:** When set to `true`, enables the polymorphic engine on the primary server (daemon 0), allowing the cluster to change replication strategies dynamically based on system load.
@@ -72,7 +78,9 @@ This section controls the behavior of the polymorphic replication system. It is 
 
 ### [daemon.N]
 
-The configuration must contain a section for each daemon in the cluster, numbered sequentially starting from `0` (e.g., `[daemon.0]`, `[daemon.1]`). **Daemon 0 is always the primary server.**
+The configuration must contain a section for each daemon in the cluster, numbered sequentially starting from `0` (e.g., `[daemon.0]`, `[daemon.1]`). 
+
+**Note:** In the **Balanced Primary** model, any node can act as the primary for a specific object based on its hash. The sequential IDs are used by the CRUSH algorithm to calculate placement.
 
 -   **`host`**
     -   **Description:** The IP address and port for this specific daemon's main service.
@@ -96,13 +104,14 @@ The configuration must contain a section for each daemon in the cluster, numbere
 
 ## Example Configurations
 
-### Standard TCP Deployment (Default)
+### High-Durability Object Storage
 
 ```ini
 [global]
 debug = true
-protocol = momo-tcp
-replication_order = 1,2,3,4
+protocol = momo-quic
+replication_factor = 5
+replication_order = 1,2,4
 polymorphic_system = true
 
 [metrics]
@@ -112,10 +121,11 @@ max_threshold = 0.9
 fallback_interval = 30
 
 [daemon.0]
-host = localhost:8080
-change_replication = localhost:9090
-data = /data/0
-drive = /dev/sda1
+host = 10.0.0.1:8080
+change_replication = 10.0.0.1:9090
+data = /mnt/data/0
+drive = /dev/nvme0n1
+# ... additional daemons up to N
 ```
 
 ### Encrypted QUIC Deployment
