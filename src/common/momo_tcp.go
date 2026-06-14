@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"syscall"
 	"time"
+	"unsafe"
 )
 
 const hashLength = 64
@@ -114,8 +115,8 @@ func (m *MomoTCPCommunicator) ReceiveMetadata() (FileMetadata, error) {
 		return metadata, err
 	}
 
-	metadata.Hash = SanitizeLog(string(bytesTrimNull(buffer[:64])))
-	metadata.Name = string(bytesTrimNull(buffer[64 : 64+FileInfoLength]))
+	metadata.Hash = SanitizeLog(bytesTrimNull(buffer[:64]))
+	metadata.Name = bytesTrimNull(buffer[64 : 64+FileInfoLength])
 	
 	size, err := SafeParseInt(buffer[64+FileInfoLength:])
 	if err != nil {
@@ -126,12 +127,12 @@ func (m *MomoTCPCommunicator) ReceiveMetadata() (FileMetadata, error) {
 	return metadata, nil
 }
 
-// bytesTrimNull is a helper to trim null bytes from a byte slice.
-func bytesTrimNull(b []byte) []byte {
+// bytesTrimNull is a helper to trim null bytes from a byte slice and return a string without allocation.
+func bytesTrimNull(b []byte) string {
 	if i := bytesIndexByte(b, 0); i != -1 {
-		return b[:i]
+		return unsafe.String(unsafe.SliceData(b), i)
 	}
-	return b
+	return unsafe.String(unsafe.SliceData(b), len(b))
 }
 
 // bytesIndexByte is a helper to find the first null byte.

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"unsafe"
 
 	momo_common "github.com/alsotoes/momo/src/common"
 )
@@ -35,12 +36,13 @@ func getMetadata(r io.Reader) (momo_common.FileMetadata, error) {
 	bufferFileName := buffer[64 : 64+momo_common.FileInfoLength]
 	bufferFileSize := buffer[64+momo_common.FileInfoLength:]
 
-	// ⚡ Bolt: Use bytes.IndexByte to find the first null character for faster trimming.
+	// ⚡ Bolt: Use bytes.IndexByte to find the first null character for faster trimming,
+	// and unsafe.String to eliminate string allocation overhead for the local buffer.
 	trimNull := func(b []byte) string {
 		if i := bytes.IndexByte(b, 0); i != -1 {
-			return string(b[:i])
+			return unsafe.String(unsafe.SliceData(b), i)
 		}
-		return string(b)
+		return unsafe.String(unsafe.SliceData(b), len(b))
 	}
 
 	fileHash := momo_common.SanitizeLog(trimNull(bufferFileHash))
