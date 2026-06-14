@@ -90,7 +90,32 @@ make build
 ./bin/momo -imp server -id 0
 ```
 
-## Performance & Monitoring
+## Automated Testing & Verification
+
+Momo employs a rigorous multi-layered testing strategy to ensure 100% architectural integrity across its distributed components.
+
+### 🔬 E2E Smoke Test Suites
+
+Every PR and commit is validated against 5 distinct end-to-end scenarios:
+
+1.  **TCP Standard (`smoke-tcp`)**: Verifies legacy TCP transport with Chain replication across 3 nodes.
+2.  **QUIC Secure (`smoke-quic`)**: Validates modern UDP-based encrypted transport using TLS 1.3.
+3.  **S3 Gateway TCP (`smoke-s3-tcp`)**: Ensures AWS S3 compatibility over standard TCP.
+4.  **S3 Gateway QUIC (`smoke-s3-quic`)**: Verifies cloud-native tool integration over secure QUIC streams.
+5.  **Scale & CAS Engine (`smoke-scale-cas`)**: A high-integrity stress test simulating a **5-node cluster** with a **replication factor of 3**. It explicitly verifies:
+    *   **CRUSH-lite Placement**: Deterministic data distribution across heterogeneous nodes.
+    *   **Content-Aware Deduplication**: Server-side "Deduplication hits" that skip redundant uploads.
+    *   **Bbolt Persistence**: Transactional metadata integrity across multiple virtual daemons.
+
+### Running Tests Locally
+
+```bash
+# Run all unit and integration tests
+make test
+
+# Run a specific smoke test
+make smoke-scale-cas
+```
 
 Momo includes a built-in benchmarking suite and performance history tracking. Refer to the [Performance](#performance) section below for the latest metrics.
 
@@ -102,42 +127,36 @@ This section is automatically updated by our GitHub Actions workflow.
 ### Comparison with previous commit
 
 ```
-                      │ /tmp/old_bench_filtered.txt │      /tmp/new_bench_filtered.txt      │
-                      │           sec/op            │    sec/op      vs base                │
-LoadGlobalConfig-4                     393.5n ± ∞ ¹
-PadString-4                            1.408n ± ∞ ¹    1.408n ± ∞ ¹       ~ (p=0.833 n=5)
-CheckMetricsAndSwap-4                  6.698n ± ∞ ¹    6.670n ± ∞ ¹       ~ (p=0.222 n=5)
-IndexSearch-4                          3.889n ± ∞ ¹    3.883n ± ∞ ¹       ~ (p=0.349 n=5)
-IndexDirectTracking-4                 0.3523n ± ∞ ¹   0.3534n ± ∞ ¹       ~ (p=0.183 n=5)
-geomean                                5.511n          1.895n        -0.07%               ²
+                      │ /tmp/old_bench_filtered.txt │     /tmp/new_bench_filtered.txt     │
+                      │           sec/op            │    sec/op      vs base              │
+PadString-4                            1.250n ± ∞ ¹    1.248n ± ∞ ¹       ~ (p=0.056 n=5)
+CheckMetricsAndSwap-4                  6.563n ± ∞ ¹    6.570n ± ∞ ¹       ~ (p=0.508 n=5)
+IndexSearch-4                          3.437n ± ∞ ¹    3.473n ± ∞ ¹  +1.05% (p=0.040 n=5)
+IndexDirectTracking-4                 0.3121n ± ∞ ¹   0.3122n ± ∞ ¹       ~ (p=0.651 n=5)
+geomean                                1.722n          1.727n        +0.26%
 ¹ need >= 6 samples for confidence interval at level 0.95
-² benchmark set differs from baseline; geomeans may not be comparable
 
-                      │ /tmp/old_bench_filtered.txt │      /tmp/new_bench_filtered.txt      │
-                      │            B/op             │    B/op      vs base                  │
-LoadGlobalConfig-4                      160.0 ± ∞ ¹
+                      │ /tmp/old_bench_filtered.txt │     /tmp/new_bench_filtered.txt     │
+                      │            B/op             │    B/op      vs base                │
 PadString-4                             0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
 CheckMetricsAndSwap-4                   0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
 IndexSearch-4                           0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
 IndexDirectTracking-4                   0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
-geomean                                           ³                +0.00%               ⁴ ³
+geomean                                           ³                +0.00%               ³
 ¹ need >= 6 samples for confidence interval at level 0.95
 ² all samples are equal
 ³ summaries must be >0 to compute geomean
-⁴ benchmark set differs from baseline; geomeans may not be comparable
 
-                      │ /tmp/old_bench_filtered.txt │      /tmp/new_bench_filtered.txt      │
-                      │          allocs/op          │  allocs/op   vs base                  │
-LoadGlobalConfig-4                      1.000 ± ∞ ¹
+                      │ /tmp/old_bench_filtered.txt │     /tmp/new_bench_filtered.txt     │
+                      │          allocs/op          │  allocs/op   vs base                │
 PadString-4                             0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
 CheckMetricsAndSwap-4                   0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
 IndexSearch-4                           0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
 IndexDirectTracking-4                   0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
-geomean                                           ³                +0.00%               ⁴ ³
+geomean                                           ³                +0.00%               ³
 ¹ need >= 6 samples for confidence interval at level 0.95
 ² all samples are equal
 ³ summaries must be >0 to compute geomean
-⁴ benchmark set differs from baseline; geomeans may not be comparable
 ```
 
 ### Latest Benchmark Results
@@ -145,11 +164,11 @@ geomean                                           ³                +0.00%      
 
 | Benchmark | Avg. Time/Op | Avg. Bytes/Op | Avg. Allocs/Op |
 |-----------|--------------|---------------|----------------|
-| BenchmarkCheckMetricsAndSwap-4 | 6.58 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkIndexDirectTracking-4 | 0.35 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkIndexSearch-4 | 3.88 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkLoadGlobalConfig-4 | 15.00 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkPadString-4 | 1.41 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkCheckMetricsAndSwap-4 | 6.57 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkIndexDirectTracking-4 | 0.31 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkIndexSearch-4 | 3.73 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkLoadGlobalConfig-4 | 20.00 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkPadString-4 | 1.25 ns/op | 0.00 B/op | 0.00 allocs/op |
 
 
 ### Performance History
@@ -170,12 +189,12 @@ xychart-beta
     title "Performance Trend (Avg. Time, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Time (ns/op)"
-    x-axis [3f35,df67,150b,b80f,e0da,f4b3,18b4,219b]
-    line "CheckMetricsAndSwap" [9,9,9,7,7,7,7,7,5,7]
+    x-axis [150b,b80f,e0da,f4b3,18b4,219b,0203,5c3c]
+    line "CheckMetricsAndSwap" [9,7,7,7,7,7,5,7,7,7]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
-    line "IndexSearch" [3,2,2,3,3,3,3,2,4,4]
-    line "LoadGlobalConfig" [546,576,578,477,427,466,453,431,418,15]
-    line "PadString" [50,54,53,55,27,29,29,1,1,1]
+    line "IndexSearch" [2,3,3,3,3,2,4,4,4,4]
+    line "LoadGlobalConfig" [578,477,427,466,453,431,418,15,6,20]
+    line "PadString" [53,55,27,29,29,1,1,1,1,1]
     line "ParseReplicationOrder_NoPrealloc" [350,349,357,354,345,225,229,165,232,234]
     line "ParseReplicationOrder_Prealloc" [229,231,237,234,229,108,107,80,110,109]
 ```
@@ -185,12 +204,12 @@ xychart-beta
     title "Memory Trend (Avg. Bytes/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Bytes/Op"
-    x-axis [3f35,df67,150b,b80f,e0da,f4b3,18b4,219b]
+    x-axis [150b,b80f,e0da,f4b3,18b4,219b,0203,5c3c]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [0,0,0,0,0,0,0,0,0,0]
-    line "LoadGlobalConfig" [480,480,480,240,240,240,240,160,160,0]
-    line "PadString" [128,128,128,128,64,64,64,0,0,0]
+    line "LoadGlobalConfig" [480,240,240,240,240,160,160,0,0,0]
+    line "PadString" [128,128,64,64,64,0,0,0,0,0]
     line "ParseReplicationOrder_NoPrealloc" [408,408,408,408,408,248,248,248,248,248]
     line "ParseReplicationOrder_Prealloc" [240,240,240,240,240,80,80,80,80,80]
 ```
@@ -200,12 +219,12 @@ xychart-beta
     title "Allocation Trend (Avg. Allocs/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Allocs/Op"
-    x-axis [3f35,df67,150b,b80f,e0da,f4b3,18b4,219b]
+    x-axis [150b,b80f,e0da,f4b3,18b4,219b,0203,5c3c]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [0,0,0,0,0,0,0,0,0,0]
-    line "LoadGlobalConfig" [2,2,2,2,2,2,2,1,1,0]
-    line "PadString" [2,2,2,2,1,1,1,0,0,0]
+    line "LoadGlobalConfig" [2,2,2,2,2,1,1,0,0,0]
+    line "PadString" [2,2,1,1,1,0,0,0,0,0]
     line "ParseReplicationOrder_NoPrealloc" [6,6,6,6,6,5,5,5,5,5]
     line "ParseReplicationOrder_Prealloc" [2,2,2,2,2,1,1,1,1,1]
 ```
