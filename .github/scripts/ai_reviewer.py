@@ -63,6 +63,29 @@ def get_jules_commit_count():
     except Exception:
         return 0
 
+def check_ci_and_merge(pr_number):
+    try:
+        # Use gh to get the status rollup of all checks
+        cmd = ["gh", "pr", "view", pr_number, "--json", "statusCheckRollup"]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        data = json.loads(result.stdout)
+        
+        rollup = data.get("statusCheckRollup", [])
+        
+        # 🛡️ Zero-Crash: Verify no checks have FAILED
+        failures = [c for c in rollup if c.get("conclusion") == "FAILURE"]
+        if failures:
+            print(f"Merge aborted: {len(failures)} checks failed.")
+            return
+
+        # ⚡ Bolt: Execute automated merge. 
+        # Using --auto handles PENDING checks by enabling GitHub's auto-merge feature.
+        print(f"All steering rules respected. Enabling auto-merge for PR #{pr_number}...")
+        subprocess.run(["gh", "pr", "merge", pr_number, "--merge", "--auto"], check=True)
+        
+    except Exception as e:
+        print(f"Error during CI audit/merge: {e}", file=sys.stderr)
+
 def main():
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
@@ -137,6 +160,10 @@ INSTRUCTIONS:
     review = call_gemini(api_key, model, prompt)
     if review:
         print(review)
+        
+        # 🚀 Final Validation & Auto-Merge Gate
+        if review.strip().startswith("✅") and pr_number:
+            check_ci_and_merge(pr_number)
 
 if __name__ == "__main__":
     main()

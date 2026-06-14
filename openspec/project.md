@@ -69,4 +69,5 @@ When analyzing or suggesting code generation, agents must adhere to the followin
 13. **PR Success Criteria (All-Green Rule):** A Pull Request is only considered "Merge Ready" when:
     - The Gemini AI Reviewer provides a `✅` approval.
     - ALL GitHub Action status checks (Build, Test, Race, Goleak, Lint) are green.
+    - Once satisfied, the AI Reviewer is authorized to perform an automated merge.
 14. **AI-to-AI Collaboration & Loop Prevention:** Automated maintenance agents (e.g., Jules) can automatically fix issues identified by the AI Reviewer. To prevent infinite loops, a **3-push circuit breaker** is enforced. If an agent fails to resolve all issues within 3 attempts, manual intervention by @alsotoes is mandatory.
