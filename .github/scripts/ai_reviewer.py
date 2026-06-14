@@ -53,6 +53,16 @@ def call_gemini(api_key, model, prompt):
     except (KeyError, IndexError):
         return "No review generated."
 
+def get_jules_commit_count():
+    try:
+        # Count commits authored by google-labs-jules in this PR branch
+        cmd = ["git", "log", "origin/master..HEAD", "--author=jules", "--oneline"]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        lines = result.stdout.strip().splitlines()
+        return len(lines)
+    except Exception:
+        return 0
+
 def main():
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
@@ -63,6 +73,13 @@ def main():
     if not model:
         model = "gemini-1.5-flash"
     
+    pr_author = os.environ.get("PR_AUTHOR", "")
+    pr_body = os.environ.get("PR_BODY", "")
+    is_jules_pr = "jules" in pr_author.lower() or "jules" in pr_body.lower()
+    
+    jules_commits = get_jules_commit_count()
+    max_jules_pushes = 3
+
     diff = get_filtered_diff()
     if not diff:
         print("No relevant changes to review.")
@@ -73,6 +90,13 @@ def main():
     if os.path.exists(rules_path):
         with open(rules_path, "r") as f:
             rules = f.read()
+
+    jules_instruction = ""
+    if is_jules_pr:
+        if jules_commits >= max_jules_pushes:
+            jules_instruction = f"\n- 🛑 AI LOOP CIRCUIT BREAKER: @jules has already made {jules_commits} attempts to fix issues. Do NOT tag him anymore. Instead, address your findings to the maintainer @alsotoes and state that manual intervention is required."
+        else:
+            jules_instruction = "\n- IMPORTANT: This PR was created by @jules. Address your findings to him by tagging @jules so he can fix them automatically."
 
     prompt = f"""You are an expert Go developer and security auditor.
 Review the following Pull Request diff against the provided Project Steering Rules.
@@ -87,7 +111,7 @@ TASK:
 - Identify violations of the Zero-Crash Pattern (missing recover, unbounded readers).
 - Ensure error mappings use syscall constants (POSIX Error Mapping).
 - Look for performance bottlenecks (unnecessary allocations in hot paths).
-- Check for security issues (path traversal, sanitization).
+- Check for security issues (path traversal, sanitization).{jules_instruction}
 
 INSTRUCTIONS:
 - Be concise.
