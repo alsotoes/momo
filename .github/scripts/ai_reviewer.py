@@ -75,8 +75,23 @@ def main():
     
     pr_author = os.environ.get("PR_AUTHOR", "")
     pr_body = os.environ.get("PR_BODY", "")
+    pr_title = os.environ.get("PR_TITLE", "")
+    pr_number = os.environ.get("PR_NUMBER", "")
     is_jules_pr = "jules" in pr_author.lower() or "jules" in pr_body.lower()
     
+    # ⚡ Bolt: Automated PR Management
+    if pr_number:
+        # 1. Labeling for Jules PRs
+        if is_jules_pr:
+            if "sentinel" in pr_title.lower():
+                subprocess.run(["gh", "pr", "edit", pr_number, "--add-label", "bug"])
+            elif "bolt" in pr_title.lower():
+                subprocess.run(["gh", "pr", "edit", pr_number, "--add-label", "enhancement"])
+        
+        # 2. Assignment for alsotoes PRs
+        if pr_author.lower() == "alsotoes":
+            subprocess.run(["gh", "pr", "edit", pr_number, "--add-assignee", "alsotoes"])
+
     jules_commits = get_jules_commit_count()
     max_jules_pushes = 3
 
