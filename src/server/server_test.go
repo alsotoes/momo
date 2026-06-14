@@ -17,7 +17,7 @@ import (
 )
 
 // mockConnect is a mock implementation of Connect for testing.
-func mockConnect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, serverId int, timestamp int64, requestedMode int) {
+func mockConnect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, serverId int, timestamp int64, requestedMode int, replicationFactor int) {
 	defer wg.Done()
 	// In a real test, you might add more logic here to simulate the client's behavior
 }
@@ -96,19 +96,19 @@ func handleConnection(t *testing.T, connection net.Conn, cfg common.Configuratio
 		if serverId == 1 {
 			wg.Add(1)
 			mockGetFile(comm, store, metadata.Name, metadata.Hash, metadata.Size)
-			connectToPeer(&wg, cfg, daemons[1].Data+"/"+metadata.Name, 2, timestamp, 0)
+			connectToPeer(&wg, cfg, daemons[1].Data+"/"+metadata.Name, 2, timestamp, 0, cfg.Global.ReplicationFactor)
 			wg.Wait()
 		} else {
 			wg.Add(1)
 			mockGetFile(comm, store, metadata.Name, metadata.Hash, metadata.Size)
-			connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 1, timestamp, 0)
+			connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 1, timestamp, 0, cfg.Global.ReplicationFactor)
 			wg.Wait()
 		}
 	case common.ReplicationSplay:
 		wg.Add(2)
 		mockGetFile(comm, store, metadata.Name, metadata.Hash, metadata.Size)
-		go connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 1, timestamp, 0)
-		go connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 2, timestamp, 0)
+		go connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 1, timestamp, 0, cfg.Global.ReplicationFactor)
+		go connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 2, timestamp, 0, cfg.Global.ReplicationFactor)
 		wg.Wait()
 	}
 	success = true

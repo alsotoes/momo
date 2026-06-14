@@ -40,6 +40,8 @@ This document explains the architecture, configuration, wire protocol, replicati
   - `server.go`: Core Daemon loop utilizing pluggable transports.
   - `file.go`: Secure metadata parsing and file writing.
   - `replication.go`: Dynamic replication mode control server.
+- `src/storage/`: Content-Addressable Storage (CAS) engine.
+  - `storage.go`: Bbolt-backed object store with tiered directory layout.
 - `src/metrics/`: Performance monitoring and polymorphic control loop.
 - `conf/momo.conf`: Secure configuration example.
 
@@ -64,7 +66,17 @@ Handshake and transfer overview:
 
 ## Configuration
 
-File: `conf/momo.conf`. Ensure the `auth_token` matches on all nodes and is exactly 64 bytes for maximum entropy.
+File: `conf/momo.conf`. 
+
+```ini
+[global]
+auth_token = YOUR_SECURE_64_BYTE_TOKEN_HERE
+replication_factor = 3
+protocol = momo-quic
+polymorphic_system = true
+```
+
+Ensure the `auth_token` matches on all nodes and is exactly 64 bytes for maximum entropy.
 
 ## Building and Running
 
@@ -78,7 +90,32 @@ make build
 ./bin/momo -imp server -id 0
 ```
 
-## Performance & Monitoring
+## Automated Testing & Verification
+
+Momo employs a rigorous multi-layered testing strategy to ensure 100% architectural integrity across its distributed components.
+
+### 🔬 E2E Smoke Test Suites
+
+Every PR and commit is validated against 5 distinct end-to-end scenarios:
+
+1.  **TCP Standard (`smoke-tcp`)**: Verifies legacy TCP transport with Chain replication across 3 nodes.
+2.  **QUIC Secure (`smoke-quic`)**: Validates modern UDP-based encrypted transport using TLS 1.3.
+3.  **S3 Gateway TCP (`smoke-s3-tcp`)**: Ensures AWS S3 compatibility over standard TCP.
+4.  **S3 Gateway QUIC (`smoke-s3-quic`)**: Verifies cloud-native tool integration over secure QUIC streams.
+5.  **Scale & CAS Engine (`smoke-scale-cas`)**: A high-integrity stress test simulating a **5-node cluster** with a **replication factor of 3**. It explicitly verifies:
+    *   **CRUSH-lite Placement**: Deterministic data distribution across heterogeneous nodes.
+    *   **Content-Aware Deduplication**: Server-side "Deduplication hits" that skip redundant uploads.
+    *   **Bbolt Persistence**: Transactional metadata integrity across multiple virtual daemons.
+
+### Running Tests Locally
+
+```bash
+# Run all unit and integration tests
+make test
+
+# Run a specific smoke test
+make smoke-scale-cas
+```
 
 Momo includes a built-in benchmarking suite and performance history tracking. Refer to the [Performance](#performance) section below for the latest metrics.
 
@@ -92,17 +129,15 @@ This section is automatically updated by our GitHub Actions workflow.
 ```
                       │ /tmp/old_bench_filtered.txt │     /tmp/new_bench_filtered.txt     │
                       │           sec/op            │    sec/op      vs base              │
-LoadGlobalConfig-4                     419.1n ± ∞ ¹    417.6n ± ∞ ¹       ~ (p=0.421 n=5)
-PadString-4                           0.8664n ± ∞ ¹   0.8672n ± ∞ ¹       ~ (p=0.341 n=5)
-CheckMetricsAndSwap-4                  5.240n ± ∞ ¹    5.285n ± ∞ ¹  +0.86% (p=0.008 n=5)
-IndexSearch-4                          3.906n ± ∞ ¹    3.754n ± ∞ ¹  -3.89% (p=0.008 n=5)
-IndexDirectTracking-4                 0.2892n ± ∞ ¹   0.2891n ± ∞ ¹       ~ (p=0.302 n=5)
-geomean                                4.639n          4.608n        -0.68%
+PadString-4                            1.408n ± ∞ ¹    1.412n ± ∞ ¹       ~ (p=0.056 n=5)
+CheckMetricsAndSwap-4                  6.696n ± ∞ ¹    6.710n ± ∞ ¹       ~ (p=1.000 n=5)
+IndexSearch-4                          3.877n ± ∞ ¹    3.892n ± ∞ ¹       ~ (p=0.333 n=5)
+IndexDirectTracking-4                 0.3520n ± ∞ ¹   0.3531n ± ∞ ¹       ~ (p=0.087 n=5)
+geomean                                1.894n          1.900n        +0.30%
 ¹ need >= 6 samples for confidence interval at level 0.95
 
                       │ /tmp/old_bench_filtered.txt │     /tmp/new_bench_filtered.txt     │
                       │            B/op             │    B/op      vs base                │
-LoadGlobalConfig-4                      160.0 ± ∞ ¹   160.0 ± ∞ ¹       ~ (p=1.000 n=5) ²
 PadString-4                             0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
 CheckMetricsAndSwap-4                   0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
 IndexSearch-4                           0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
@@ -114,7 +149,6 @@ geomean                                           ³                +0.00%      
 
                       │ /tmp/old_bench_filtered.txt │     /tmp/new_bench_filtered.txt     │
                       │          allocs/op          │  allocs/op   vs base                │
-LoadGlobalConfig-4                      1.000 ± ∞ ¹   1.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
 PadString-4                             0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
 CheckMetricsAndSwap-4                   0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
 IndexSearch-4                           0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=5) ²
@@ -130,11 +164,11 @@ geomean                                           ³                +0.00%      
 
 | Benchmark | Avg. Time/Op | Avg. Bytes/Op | Avg. Allocs/Op |
 |-----------|--------------|---------------|----------------|
-| BenchmarkCheckMetricsAndSwap-4 | 5.29 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkIndexDirectTracking-4 | 0.29 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkIndexSearch-4 | 3.76 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkLoadGlobalConfig-4 | 418.02 ns/op | 160.00 B/op | 1.00 allocs/op |
-| BenchmarkPadString-4 | 0.87 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkCheckMetricsAndSwap-4 | 6.67 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkIndexDirectTracking-4 | 0.36 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkIndexSearch-4 | 3.90 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkLoadGlobalConfig-4 | 6.00 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkPadString-4 | 1.42 ns/op | 0.00 B/op | 0.00 allocs/op |
 
 
 ### Performance History
@@ -155,12 +189,12 @@ xychart-beta
     title "Performance Trend (Avg. Time, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Time (ns/op)"
-    x-axis [2474,3f35,df67,150b,b80f,e0da,f4b3,18b4]
-    line "CheckMetricsAndSwap" [7,9,9,9,7,7,7,7,7,5]
+    x-axis [df67,150b,b80f,e0da,f4b3,18b4,219b,0203]
+    line "CheckMetricsAndSwap" [9,9,7,7,7,7,7,5,7,7]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
-    line "IndexSearch" [2,3,2,2,3,3,3,3,2,4]
-    line "LoadGlobalConfig" [427,546,576,578,477,427,466,453,431,418]
-    line "PadString" [40,50,54,53,55,27,29,29,1,1]
+    line "IndexSearch" [2,2,3,3,3,3,2,4,4,4]
+    line "LoadGlobalConfig" [576,578,477,427,466,453,431,418,15,6]
+    line "PadString" [54,53,55,27,29,29,1,1,1,1]
     line "ParseReplicationOrder_NoPrealloc" [350,349,357,354,345,225,229,165,232,234]
     line "ParseReplicationOrder_Prealloc" [229,231,237,234,229,108,107,80,110,109]
 ```
@@ -170,12 +204,12 @@ xychart-beta
     title "Memory Trend (Avg. Bytes/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Bytes/Op"
-    x-axis [2474,3f35,df67,150b,b80f,e0da,f4b3,18b4]
+    x-axis [df67,150b,b80f,e0da,f4b3,18b4,219b,0203]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [0,0,0,0,0,0,0,0,0,0]
-    line "LoadGlobalConfig" [480,480,480,480,240,240,240,240,160,160]
-    line "PadString" [128,128,128,128,128,64,64,64,0,0]
+    line "LoadGlobalConfig" [480,480,240,240,240,240,160,160,0,0]
+    line "PadString" [128,128,128,64,64,64,0,0,0,0]
     line "ParseReplicationOrder_NoPrealloc" [408,408,408,408,408,248,248,248,248,248]
     line "ParseReplicationOrder_Prealloc" [240,240,240,240,240,80,80,80,80,80]
 ```
@@ -185,12 +219,12 @@ xychart-beta
     title "Allocation Trend (Avg. Allocs/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Allocs/Op"
-    x-axis [2474,3f35,df67,150b,b80f,e0da,f4b3,18b4]
+    x-axis [df67,150b,b80f,e0da,f4b3,18b4,219b,0203]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [0,0,0,0,0,0,0,0,0,0]
-    line "LoadGlobalConfig" [2,2,2,2,2,2,2,2,1,1]
-    line "PadString" [2,2,2,2,2,1,1,1,0,0]
+    line "LoadGlobalConfig" [2,2,2,2,2,2,1,1,0,0]
+    line "PadString" [2,2,2,1,1,1,0,0,0,0]
     line "ParseReplicationOrder_NoPrealloc" [6,6,6,6,6,5,5,5,5,5]
     line "ParseReplicationOrder_Prealloc" [2,2,2,2,2,1,1,1,1,1]
 ```

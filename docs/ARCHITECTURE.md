@@ -21,10 +21,10 @@ This layer handles the physical movement of bytes. It includes the carrier trans
 The core logic defines the data distribution path (e.g., `Chain`, `Splay`). This logic is **completely agnostic** of the communication layer. It executes replication by requesting a connection (`Communicator`) from the factory and doesn't care whether bytes move via TCP or QUIC streams.
 
 #### 3. State Management (Polymorphic System)
-The metrics component runs on a designated server (server 0) and is responsible for monitoring system metrics (CPU and memory usage) and changing the replication strategy based on predefined thresholds. It operates independently of the network stack.
+The metrics component runs on every node. It is responsible for monitoring local system metrics (CPU and memory usage). When a threshold is reached, the node broadcasts the new replication strategy to the entire cluster via the `ChangeReplication` endpoint, ensuring all potential "Primary" nodes remain in sync.
 
 ### 4. Distributed Object Engine (CAS 2.0)
-Momo utilizes a **Shared-Nothing Partitioned Architecture** for its object storage layer:
+Momo utilizes a **Shared-Nothing Partitioned Architecture** for its object storage layer, encapsulated in the `src/storage` package:
 
 - **Data Placement (CRUSH)**: We use a simplified Go implementation of the **CRUSH** (Controlled Replication Under Scalable Hashing) algorithm, originally designed by **Sage Weil** (the creator of Ceph). CRUSH allows us to calculate data locations deterministically, eliminating the need for a central metadata server or coordinator. Given a file hash and the cluster map, both the client and all nodes can calculate exactly which nodes should store the data.
 - **Metadata Management (Bbolt)**: High-speed, transactional metadata is stored in local Bbolt databases on each node. Metadata is partitioned across the cluster using the same algorithmic placement as the data itself.
@@ -34,6 +34,12 @@ Momo utilizes a **Shared-Nothing Partitioned Architecture** for its object stora
 To maintain high integrity in a single-contributor environment, Momo employs an automated governance layer:
 - **Gemini AI Reviewer**: A GitHub Action that uses the Gemini API to analyze PR diffs. It specifically enforces the **⚡ Bolt** (performance) and **🛡️ Sentinel** (security) patterns.
 - **Project Steering Rules**: Mandatory mandates (Zero-Crash, POSIX Error Mapping) are codified in `openspec/project.md` and automatically validated by the AI Reviewer.
+
+### 6. Verification & Quality Assurance
+The system is backed by a multi-stage automated testing pipeline:
+- **Distributed Simulation**: End-to-end smoke tests simulate various cluster sizes (up to 5 nodes) and protocols.
+- **Placement Validation**: Automated checks verify that the CRUSH algorithm distributes data correctly and respects the `replication_factor`.
+- **Integrity Checks**: Every test suite verifies data consistency and metadata accuracy across all participating nodes.
 
 ## High-Level Architecture
 
@@ -61,11 +67,11 @@ The system uses Sage Weil's **CRUSH algorithm** (simplified Go implementation) t
 
 **Data Flow:**
 
-1.  **Placement Calculation**: The client hashes the file content (SHA-256) and runs the CRUSH-lite algorithm against its local Cluster Map.
-2.  **Primary Selection**: The algorithm returns an ordered list of nodes. The first node is the **Primary** for this specific object.
-3.  **Negotiated Transfer**: The client performs an 84-byte handshake with the Primary, providing the Content Hash and Timestamp.
+1.  **Placement Calculation**: The client hashes the file content (SHA-256) and runs the CRUSH-lite algorithm against its local Cluster Map and the configured **`replication_factor`**.
+2.  **Primary Selection**: The algorithm returns an ordered list of `n` nodes (where `n = min(factor, nodes)`). The first node is the **Primary** for this specific object.
+3.  **Negotiated Transfer**: The client performs an 84-byte handshake with the Primary, providing the Content Hash, Timestamp, and the intended replication mode.
 4.  **Deduplication Check**: The Primary queries its local **Bbolt** instance. If the hash exists, it signals the client to skip the payload.
-5.  **Algorithmic Replication**: If needed, the Primary forwards the data to the next nodes in the CRUSH list (the **Secondaries**), using the negotiated replication strategy (Chain or Splay).
+5.  **Algorithmic Replication**: If needed, the Primary forwards the data to the subsequent nodes in the CRUSH list (the **Secondaries**), continuing until the number of physical copies reaches the durability goal.
 
 ## Replication Strategies
 

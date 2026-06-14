@@ -4,20 +4,22 @@ This document describes the different data replication strategies that Momo can 
 
 Each strategy offers a different balance between write performance, data redundancy, and network overhead.
 
+In the **Balanced Primary** model, the primary node for any given object is deterministically chosen using the CRUSH-lite algorithm based on the content hash. The total number of copies (primary + secondaries) is determined by the global **`replication_factor`**.
+
 ---
 
 ## Chain Replication
 
 -   **Mode Code:** `1`
 
-In this mode, the servers are organized into a linear chain. The primary server writes the data and forwards it to the first secondary, which then forwards it to the second, and so on, until the end of the chain is reached.
+The servers are organized into a linear chain based on the CRUSH placement list. The primary server writes the data and forwards it to the first secondary, which then forwards it to the second, and so on, until the **`replication_factor`** is reached.
 
 **Data Flow:**
 The client sends the file to the primary, which initiates a sequential replication process down the chain.
 
 ```
 +----------+     +---------+     +---------+     +---------+
-|  Client  | --> | Primary | --> | Server 1| --> | Server 2| --> ...
+|  Client  | --> | Primary | --> | Second 1| --> | Second 2| --> ... (up to factor)
 +----------+     +---------+     +---------+     +---------+
 ```
 
@@ -31,18 +33,18 @@ The client sends the file to the primary, which initiates a sequential replicati
 
 -   **Mode Code:** `2`
 
-In Splay mode, the primary server sends the data to all secondary servers simultaneously (in parallel).
+The primary server sends the data to `n-1` secondary servers in the CRUSH list simultaneously (where `n = replication_factor`).
 
 **Data Flow:**
-The client sends the file to the primary. The primary then becomes a central hub, "splaying" the data out to all other servers at the same time.
+The client sends the file to the primary. The primary then becomes a central hub, "splaying" the data out to the other servers in its placement list.
 
 ```
                                   +-----------+
-                                / | Server 1  |
+                                / | Second 1  |
                               /   +-----------+
                             /
 +----------+     +----------+     +-----------+
-|  Client  | --> | Server 0 | --> | Server 2  |
+|  Client  | --> | Primary  | --> | Second 2  |
 +----------+     +----------+     +-----------+
                             \
                               \   +-----------+
@@ -60,22 +62,22 @@ The client sends the file to the primary. The primary then becomes a central hub
 
 -   **Mode Code:** `3`
 
-In this mode, the client sends the data to all servers in the cluster simultaneously (in parallel). This distributes the network load and provides the fastest replication to all nodes.
+In this mode, the client sends the data to all `n` servers in the CRUSH placement list simultaneously (where `n = replication_factor`). This distributes the network load and provides the fastest replication.
 
 **Data Flow:**
-The client establishes a connection with every server in the cluster and sends the file to all of them at the same time.
+The client establishes a connection with every server in the placement list and sends the file to all of them at the same time.
 
 ```
                  +-----------+
-               / | Server 0  |
+               / | Primary   |
              /   +-----------+
            /
 +----------+     +-----------+
-|  Client  | --> | Server 1  |
+|  Client  | --> | Second 1  |
 +----------+     +-----------+
            \ 
              \   +-----------+
-               \ | Server 2  |
+               \ | Second 2  |
                  +-----------+
 ```
 
@@ -89,7 +91,7 @@ The client establishes a connection with every server in the cluster and sends t
 
 -   **Mode Code:** `4`
 
-This is the most basic mode. Data is written only to the server that receives it from the client (usually the primary server, Daemon 0) and is not replicated to any other servers in the cluster.
+This mode explicitly overrides the global factor to `1`. Data is written only to the primary server and is not replicated.
 
 **Data Flow:**
 The client sends the file directly to the primary server, which writes it to its local storage. No other network traffic is generated.

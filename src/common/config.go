@@ -116,6 +116,18 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 		return ConfigurationGlobal{}, fmt.Errorf("failed to parse 'polymorphic_system': %w", err)
 	}
 
+	replicationFactorKey, err := section.GetKey("replication_factor")
+	if err != nil {
+		log.Printf("WARNING: No replication_factor found, defaulting to 3")
+		globalCfg.ReplicationFactor = 3
+	} else {
+		factor, err := replicationFactorKey.Int()
+		if err != nil || factor < 1 {
+			return ConfigurationGlobal{}, fmt.Errorf("invalid 'replication_factor': must be an integer >= 1")
+		}
+		globalCfg.ReplicationFactor = factor
+	}
+
 	protocolKey, err := section.GetKey("protocol")
 	if err != nil {
 		log.Printf("WARNING: No protocol definition found, falling back to default (momo-tcp)")
