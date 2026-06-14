@@ -79,8 +79,9 @@ echo "Checking data consistency across nodes..."
 FAIL=0
 
 for i in 0 1 2; do
-  if ! grep -q "e2etestdata-$PROTOCOL" $E2E_DIR/$i/test_e2e_file.txt 2>/dev/null; then
-      echo "E2E Test Failed: Data not found or mismatched on Server $i ($PROTOCOL)"
+  # ⚡ Bolt: Search recursively for the content to support CAS tiered directories
+  if ! grep -r -q "e2etestdata-$PROTOCOL" $E2E_DIR/$i/ 2>/dev/null; then
+      echo "E2E Test Failed: Data not found on Server $i ($PROTOCOL)"
       FAIL=1
   fi
 done

@@ -25,11 +25,17 @@ This section contains cluster-wide settings that affect all daemons.
     -   **Description:** A comma-separated list of integers that defines the sequence of replication strategies the polymorphic system can cycle through. The order determines the path of escalation and de-escalation based on system load.
     -   **Type:** Comma-separated list of integers (e.g., `1,2,3,4`)
     -   **Possible Values:** Each integer corresponds to a replication strategy:
-        -   `1`: primary-splay
+        -   `1`: chain
         -   `2`: splay
-        -   `3`: chain
+        -   `3`: primary-splay
         -   `4`: none
     -   **Default:** `1,2,3,4`
+
+-   **`replication_factor`**
+    -   **Description:** Defines the target number of physical copies (replicas) to maintain for every object in the cluster. Momo uses the CRUSH-lite algorithm to select this many distinct nodes for storage.
+    -   **Type:** Integer
+    -   **Default:** `3`
+    -   **Logic:** If the cluster contains fewer than `replication_factor` nodes, the system will store as many copies as possible and log a warning (**Degraded Mode**).
 
 -   **`polymorphic_system`**
     -   **Description:** When set to `true`, enables the polymorphic engine on the primary server (daemon 0), allowing the cluster to change replication strategies dynamically based on system load.
@@ -42,6 +48,8 @@ This section contains cluster-wide settings that affect all daemons.
     -   **Possible Values:**
         -   `momo-tcp`: High-performance raw TCP transport.
         -   `momo-quic`: Modern encrypted transport running over UDP utilizing TLS 1.3 and QUIC streams.
+        -   `s3-tcp`: AWS S3-compatible REST API mapping over standard TCP.
+        -   `s3-quic`: AWS S3-compatible REST API mapping over secure QUIC streams.
     -   **Default:** `momo-tcp` (if omitted, falls back to `momo-tcp` with a warning log)
 
 ### [metrics]
@@ -70,7 +78,9 @@ This section controls the behavior of the polymorphic replication system. It is 
 
 ### [daemon.N]
 
-The configuration must contain a section for each daemon in the cluster, numbered sequentially starting from `0` (e.g., `[daemon.0]`, `[daemon.1]`). **Daemon 0 is always the primary server.**
+The configuration must contain a section for each daemon in the cluster, numbered sequentially starting from `0` (e.g., `[daemon.0]`, `[daemon.1]`). 
+
+**Note:** In the **Balanced Primary** model, any node can act as the primary for a specific object based on its hash. The sequential IDs are used by the CRUSH algorithm to calculate placement.
 
 -   **`host`**
     -   **Description:** The IP address and port for this specific daemon's main service.
@@ -92,13 +102,16 @@ The configuration must contain a section for each daemon in the cluster, numbere
     -   **Type:** String (host:port)
     -   **Example:** `localhost:9090`
 
-## Example Configuration
+## Example Configurations
+
+### High-Durability Object Storage
 
 ```ini
-# Momo Server Configuration Example
 [global]
 debug = true
-replication_order = 1,2,3,4
+protocol = momo-quic
+replication_factor = 5
+replication_order = 1,2,4
 polymorphic_system = true
 
 [metrics]
@@ -107,24 +120,33 @@ min_threshold = 0.1
 max_threshold = 0.9
 fallback_interval = 30
 
-# Daemon 0 - The Primary Server
 [daemon.0]
-host = localhost:8080
-change_replication = localhost:9090
-data = /data/0
-drive = /dev/sda1
+host = 10.0.0.1:8080
+change_replication = 10.0.0.1:9090
+data = /mnt/data/0
+drive = /dev/nvme0n1
+# ... additional daemons up to N
+```
 
-# Daemon 1 - A Secondary Server
-[daemon.1]
-host = localhost:8081
-change_replication = localhost:9091
-data = /data/1
-drive = /dev/sdb1
+### Encrypted QUIC Deployment
 
-# Daemon 2 - Another Secondary Server
-[daemon.2]
-host = localhost:8082
-change_replication = localhost:9092
-data = /data/2
-drive = /dev/sdc1
+To run the cluster securely over UDP using auto-generated TLS 1.3 certificates, simply change the `protocol` field.
+
+```ini
+[global]
+protocol = momo-quic
+auth_token = YOUR_SECURE_64_BYTE_TOKEN_HERE
+polymorphic_system = true
+# ... (metrics and daemon blocks remain the same)
+```
+
+### S3 Compatibility Layer (TCP or QUIC)
+
+To allow standard AWS SDKs (like `aws-cli` or `boto3`) to upload files directly into the Momo replication ring, use the `s3-*` protocols.
+
+```ini
+[global]
+protocol = s3-tcp # Or use s3-quic for secure deployments
+polymorphic_system = true
+# ... (metrics and daemon blocks remain the same)
 ```

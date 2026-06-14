@@ -28,3 +28,12 @@ venv/
 *.log
 conf/smoke.conf
 test.sh
+
+# Temporary benchmark and filtering artifacts
+*_filtered.txt
+*_bench*.txt
+empty.txt
+
+# Coverage and profiles
+*.out
+*.prof

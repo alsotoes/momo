@@ -8,9 +8,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/alsotoes/momo/src/client"
 	"github.com/alsotoes/momo/src/common"
-	metrics "github.com/alsotoes/momo/src/metrics"
-	server "github.com/alsotoes/momo/src/server"
+	"github.com/alsotoes/momo/src/metrics"
+	"github.com/alsotoes/momo/src/server"
+	"github.com/alsotoes/momo/src/transport"
 )
 
 func main() {
@@ -46,27 +48,47 @@ func Run() {
 
 	common.LogStdOut(cfg.Global.Debug)
 
-	if (*impersonationPtr == "server" || *impersonationPtr == "repl") && (*serverIdPtr >= len(cfg.Daemons) || *serverIdPtr < 0) {
-		// Default to 0 for repl if not specified
-		if *impersonationPtr == "repl" && *serverIdPtr == -1 {
-			*serverIdPtr = 0
-		} else {
-			log.Fatalf("index out of range")
-		}
+	if (*impersonationPtr == "server") && (*serverIdPtr >= len(cfg.Daemons) || *serverIdPtr < 0) {
+		log.Fatalf("index out of range")
+	}
+
+	if *impersonationPtr == "repl" && *serverIdPtr != -1 && (*serverIdPtr >= len(cfg.Daemons) || *serverIdPtr < 0) {
+		log.Fatalf("index out of range")
 	}
 
 	switch *impersonationPtr {
 	case "client":
-		serverId := 0
-		if *serverIdPtr != -1 {
-			serverId = *serverIdPtr
+		serverId := *serverIdPtr
+		
+		// ⚡ Bolt: Implement dynamic load balancing if no serverId is specified.
+		if serverId == -1 {
+			fileHash, err := common.HashFile(*filePathPtr)
+			if err != nil {
+				log.Fatalf("Failed to hash file: %v", err)
+			}
+			
+			// Build ClusterMap
+			nodes := make([]*common.Node, len(cfg.Daemons))
+			for i, d := range cfg.Daemons {
+				nodes[i] = &common.Node{ID: i, Weight: 1, Addr: d.Host}
+			}
+			cmap := &common.ClusterMap{Nodes: nodes}
+			
+			// Calculate Primary using CRUSH
+			placement, err := cmap.Placement(fileHash, 1)
+			if err != nil {
+				log.Fatalf("Placement failed: %v", err)
+			}
+			serverId = placement[0].ID
+			log.Printf("Selected primary node %d for file %s", serverId, common.SanitizeLog(*filePathPtr))
 		}
+
 		if serverId >= len(cfg.Daemons) || serverId < 0 {
 			log.Fatalf("index out of range")
 		}
 		var wg sync.WaitGroup
 		wg.Add(1)
-		common.Connect(&wg, cfg, *filePathPtr, serverId, common.DummyEpoch)
+		client.Connect(&wg, cfg, *filePathPtr, serverId, common.DummyEpoch, 0, cfg.Global.ReplicationFactor)
 		wg.Wait()
 	case "server":
 		if err := runServer(cfg, *serverIdPtr); err != nil {
@@ -84,8 +106,28 @@ func Run() {
 		if err != nil {
 			log.Fatalf("Failed to marshal replication data: %v", err)
 		}
-		factory := common.NewProtocolFactory(cfg)
-		server.ChangeReplicationModeClient(factory, jsonBytes, *serverIdPtr)
+		factory := transport.NewProtocolFactory(cfg)
+		
+		// ⚡ Bolt: Broadcast replication change to all nodes to ensure cluster-wide consistency.
+		// In a balanced primary model, every node needs to know the latest intended mode.
+		if *serverIdPtr == -1 {
+			var wg sync.WaitGroup
+			for i := range cfg.Daemons {
+				wg.Add(1)
+				go func(id int) {
+					defer wg.Done()
+					defer func() {
+						if r := recover(); r != nil {
+							log.Printf("CRITICAL: Panic recovered in Replication Broadcast to node %d: %v", id, r)
+						}
+					}()
+					server.ChangeReplicationModeClient(factory, jsonBytes, id)
+				}(i)
+			}
+			wg.Wait()
+		} else {
+			server.ChangeReplicationModeClient(factory, jsonBytes, *serverIdPtr)
+		}
 	default:
 		log.Fatalf("*** ERROR: Option unknown: %s", common.SanitizeLog(*impersonationPtr))
 	}

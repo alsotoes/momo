@@ -1,7 +1,7 @@
 # Project Context
 
 ## Purpose
-Momo is a minimal TCP-based file replication playground written in Go. It demonstrates several replication strategies (None, Chain, Splay, Primary-Splay) and a simple, metrics‑driven controller that can dynamically switch strategies at runtime (a "polymorphic" system).
+Momo is a high-performance, distributed **Object Storage system** written in Go. It demonstrates several replication strategies (None, Chain, Splay, Primary-Splay) and a simple, metrics‑driven controller that can dynamically switch strategies at runtime (a "polymorphic" system).
 
 ## Tech Stack
 - Go (1.20+)
@@ -55,7 +55,7 @@ Momo is a minimal TCP-based file replication playground written in Go. It demons
 ## Project Steering Rules
 When analyzing or suggesting code generation, agents must adhere to the following steering rules:
 1. **Preserve Simplicity:** Momo is a minimalistic playground. Avoid over-engineering or introducing heavy external frameworks (like gRPC or complex ORMs) unless explicitly requested.
-2. **Respect Affinities:** Honor the hardcoded cluster assumptions (Daemon 0 = primary/metrics authority, Daemons 1/2 = followers/fallback). Do not build complex dynamic service discovery.
+2. **Decentralized Primary:** Momo utilizes a **Balanced Primary** model enabled by the CRUSH-lite algorithm. Any node in the cluster can act as the primary for a specific object based on its content hash. Do not build logic that assumes a single fixed coordinator or entry point.
 3. **Branching Mandate:** All significant features or spec-driven changes MUST originate from a feature branch and be merged via a validated PR to the `master` branch.
 4. **Zero-Crash Pattern:** (Mandatory) All code must follow defensive stability standards. Never assume external data is well-formed. Every goroutine MUST implement panic recovery. Use bounded readers and fixed-size buffers to prevent resource exhaustion.
 5. **Rigorous Validation:** ALL functional additions MUST include corresponding unit/integration tests. You must assert concurrency safety (`goleak.VerifyNone(t)`) and context cancellations when modifying network layers.
@@ -63,3 +63,16 @@ When analyzing or suggesting code generation, agents must adhere to the followin
 7. **Protocol Stability:** The TCP handshaking metadata relies entirely on strict byte boundaries (`19`, `32`, `64` bytes padding). Do not alter or break these payload sizes without extensive refactoring and migration planning.
 8. **Go Version Consistency:** All configuration files defining the Go language version (e.g., `go.mod`, GitHub Actions `setup-go` steps, `Dockerfile`, `dev.nix`, etc.) MUST be strictly synchronized. Any spec or code change that bumps the Go version must validate and update every occurrence across the entire repository to prevent build fragmentation or drift.
 9. **No Silent Failures:** Return explicit errors for network failures. Do not swallow errors in goroutines; use `log.Printf` to emit failures for traceability.
+10. **POSIX Error Mapping:** All application-level errors (e.g., authentication failures, hash mismatches) MUST be mapped to standard `syscall` POSIX constants (e.g., `syscall.EACCES`, `syscall.EBADMSG`) to ensure consistent, standard error propagation across the cluster. This follows the standardized pattern established in [PR #97](https://github.com/alsotoes/momo/pull/97).
+11. **Issue-Spec Traceability:** (Mandatory) ALL project specifications (`openspec/`) MUST be mirrored as GitHub Issues. Every spec file must explicitly link to its corresponding GitHub Issue URL, and the GitHub Issue must link back to the spec file in the repository. This ensures synchronization parity and end-to-end traceability for all feature designs and architectural shifts.
+12. **Object Storage Paradigm:** Momo is a distributed Object Storage system. All storage operations MUST be content-addressable and use algorithmic placement (specifically a Go implementation of **Sage Weil's CRUSH algorithm**) to ensure perfect load balancing and infinite scalability without central registry bottlenecks.
+13. **PR Success Criteria (All-Green Rule):** A Pull Request is only considered "Merge Ready" when:
+    - The Gemini AI Reviewer provides a `✅` approval.
+    - ALL GitHub Action status checks (Build, Test, Race, Goleak, Lint) are green.
+    - Once satisfied, the AI Reviewer is authorized to perform an automated merge.
+14. **AI-to-AI Collaboration & Loop Prevention:** Automated maintenance agents (e.g., Jules) can automatically fix issues identified by the AI Reviewer. To prevent infinite loops, a **3-push circuit breaker** is enforced. If an agent fails to resolve all issues within 3 attempts, manual intervention by @alsotoes is mandatory.
+15. **Token Efficiency & Filtering:** ALL AI-driven audits (Reviewer, Jules, etc.) MUST filter out non-essential files (`vendor/`, `go.sum`, binary blobs) from their context. Diffs larger than **1,000 lines** MUST be truncated with a warning to prevent token exhaustion.
+16. **Human-in-the-Loop Trigger:** Destructive operations (e.g., `git push --force`, `rm -rf` in production directories, or `gh pr close`) MUST NEVER be initiated by the AI loop without an explicit instruction from **@alsotoes** or a 3-attempt failure signal.
+17. **Atomic AI Tasks:** Automated agents (Jules) MUST work on **one specific issue at a time**. Multi-issue "batch fixes" are prohibited to prevent large, unmanageable diffs and overlapping logical conflicts.
+18. **Circuit Breaker Persistence:** The **3-push circuit breaker** (Rule 14) applies across all AI entities. If a collective AI effort (Reviewer + Jules) cannot reach an "All-Green" state in 3 iterations, the automated pipeline MUST lock the PR and tag the maintainer.
+19. **Resource-Aware Hashing:** When validating data integrity, AI agents MUST prioritize **TeeReader** and stack-allocated buffers (Bolt Pattern) to ensure that automated security checks do not become performance bottlenecks.

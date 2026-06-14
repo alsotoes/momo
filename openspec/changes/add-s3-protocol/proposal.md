@@ -1,5 +1,7 @@
 # Change: S3 Compatibility Layer
-**Related Issues:** #131, #133
+**Related Issues:**
+- https://github.com/alsotoes/momo/issues/131
+- https://github.com/alsotoes/momo/issues/133
 
 ## Why
 As Momo moves towards cloud-native integration, providing an S3-compatible interface allows the cluster to interoperate with standard storage tools and SDKs. By implementing an S3 Protocol Handler, Momo can serve as a distributed, high-performance S3 gateway, utilizing its unique polymorphic replication modes (Chain, Splay) under the hood.

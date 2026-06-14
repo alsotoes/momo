@@ -36,7 +36,7 @@ jobs:
           exit 1
         fi
         
-        # Extract the major.minor part (e.g., 1.24 from 1.24.0)
+        # Extract the major.minor part (e.g., 1.25 from 1.25.0)
         MAJOR_MINOR=$(echo "$ROOT_GO_MOD_VERSION" | cut -d. -f1,2)
         MAJOR_MINOR_USCORE=$(echo "$MAJOR_MINOR" | tr '.' '_')
         
@@ -60,7 +60,7 @@ jobs:
         echo "Checking GitHub Actions workflows..."
         for f in $(find .github/workflows -name "*.yml" -not -name "verify_go_version.yml"); do
           if grep -E "^ *go-version:" "$f" > /dev/null; then
-            # Allow strings like '1.24', '1.24.x', "1.24", etc.
+            # Allow strings like '1.25', '1.25.x', "1.25", etc.
             if ! grep -E "^ *go-version: *['\"]$MAJOR_MINOR" "$f" > /dev/null; then
               echo "❌ Mismatch in $f:"
               grep -E "^ *go-version:" "$f"
