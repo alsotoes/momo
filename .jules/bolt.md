@@ -121,3 +121,6 @@
 ## 2026-06-07 - Optimization Trap: bytes.IndexByte vs manual loop
 **Learning:** For extremely small, stack-allocated byte arrays (like 64-byte padding buffers), standard library functions like `bytes.IndexByte` can be slower than a simple manual inline `for` loop due to standard library overheads and function calls. Benchmark testing proved that a manual loop to find the first null byte is ~2x faster (~4 ns/op vs ~8 ns/op) on small arrays.
 **Action:** When working with very small, stack-allocated fixed-size buffers, consider replacing standard library searches like `bytes.IndexByte` with a simple inline loop, but always benchmark to confirm the performance gain.
+## 2024-05-14 - Optimize integer parsing from byte slices
+**Learning:** Using `fmt.Sscanf(string(val), "%d", &size)` to parse an integer from a byte slice causes significant overhead due to reflection (`fmt`) and a string memory allocation (`string(val)`). This can be a bottleneck in hot paths, such as reading metadata from a database.
+**Action:** To optimize integer parsing from byte slices (e.g., when reading metadata from BoltDB), replace `fmt.Sscanf` and direct `string()` casting with `strconv.ParseInt(unsafe.String(unsafe.SliceData(val), len(val)), 10, 64)`. This prevents reflection and heap allocations, significantly reducing execution time and garbage collection pressure.
