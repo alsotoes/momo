@@ -4,28 +4,26 @@ The most unique aspect of Momo is its ability to change replication strategies a
 
 ## How It Works
 
-The core of the polymorphic system is the **metrics component**, which runs exclusively on the primary server (**Daemon 0**). This component is responsible for the following:
+Momo utilizes a decentralized polymorphic engine. The **metrics component** runs on **every node** in the cluster. This component is responsible for the following:
 
-1.  **Monitoring System Metrics:** The metrics component periodically samples the CPU and memory usage of the system. The sampling interval is configurable in `momo.conf`.
+1.  **Monitoring System Metrics:** Each metrics component periodically samples the local CPU and memory usage. The sampling interval is configurable in `momo.conf`.
 
-2.  **Evaluating Thresholds:** The collected metrics are compared against predefined thresholds, also configurable in `momo.conf`:
+2.  **Evaluating Thresholds:** The collected metrics are compared against predefined thresholds:
     *   **`min_threshold`**: If both CPU and memory usage are below this threshold, it indicates a low system load.
     *   **`max_threshold`**: If either CPU or memory usage rises above this threshold, it indicates a high system load.
 
-3.  **Triggering Strategy Changes:** When a threshold is breached, the system initiates a change in the replication strategy. The order of strategies is defined by the `replication_order` list in the configuration.
-    *   **Under high load:** The system will switch to a *less* robust, and less resource-intensive, replication strategy. This is a **"step right"** in the `replication_order` list (moving to a higher index).
-    *   **Under low load:** After a configurable `fallback_interval` without high-load events, the system will switch to a *more* robust replication strategy. This is a **"step left"** in the `replication_order` list (moving to a lower index).
+3.  **Triggering Strategy Changes:** When a threshold is breached, the node initiates a change in the cluster's replication strategy.
+    *   **Under high load:** Switch to a *less* robust strategy (e.g., Splay -> Chain).
+    *   **Under low load:** After a `fallback_interval`, switch to a *more* robust strategy (e.g., Chain -> Splay).
 
-4.  **Propagating Changes:** When Daemon 0 decides on a new replication strategy, it communicates this change to all other daemons in the cluster via their configured `change_replication` endpoint to ensure a consistent state.
+4.  **Cluster-Wide Broadcast:** When a node decides on a new replication strategy, it **broadcasts** this change to **all other daemons** in the cluster via their configured `change_replication` endpoint. This ensures that every potential "Primary" node (as determined by CRUSH) stays synchronized with the current cluster policy.
 
 ### Decision Flow Diagram
 
-The following diagram illustrates the decision-making process of the metrics component:
-
 ```
                       +-----------------------------+
-                      |   Metrics Component on D0   |
-                      | (Reads CPU/Memory stats)    |
+                      | Metrics Component (Any Node)|
+                      | (Reads local CPU/Memory)    |
                       +-----------------------------+
                                      |
                                      v
@@ -43,17 +41,16 @@ The following diagram illustrates the decision-making process of the metrics com
           v                                                 | Is CPU and Memory usage < min_threshold
 +-----------------------------+                             | AND has `fallback_interval` passed
 | Switch to LESS robust       |                             | since the last HIGH load event?
-| replication strategy        |                             |
-| (Step Right in order list)  |                             +---------------------------------+
-| (e.g. splay -> chain)       |                                       |                |
-+-----------------------------+                                     (Yes)            (No)
+| strategy AND broadcast to   |                             |
+| all nodes in config.        |                             +---------------------------------+
++-----------------------------+                                       |                |
+                                                                      (Yes)            (No)
                                                                       |                |
                                                                       v                v
                                                           +--------------------------+  (Do Nothing)
                                                           | Switch to MORE robust     |
-                                                          | replication strategy      |
-                                                          | (Step Left in order list) |
-                                                          | (e.g. chain -> splay)     |
+                                                          | strategy AND broadcast to |
+                                                          | all nodes in config.      |
                                                           +---------------------------+
 ```
 
