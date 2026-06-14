@@ -1,13 +1,16 @@
 package storage
 
 import (
+	"log"
 	"bufio"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"syscall"
+	"unsafe"
 
 	"github.com/alsotoes/momo/src/common"
 	"go.etcd.io/bbolt"
@@ -73,7 +76,15 @@ func (s *CASStore) Close() error {
 
 // Put saves an object to the store.
 // If the hash already exists, it only updates the namespace mapping (deduplication).
-func (s *CASStore) Put(name string, hash string, size int64, content io.Reader) error {
+func (s *CASStore) Put(name string, hash string, size int64, content io.Reader) (err error) {
+	// 🛡️ Zero-Crash: Recover from any unexpected panics in the storage backend.
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in CASStore.Put for %s: %v", name, r)
+			err = fmt.Errorf("internal storage panic: %w", syscall.EIO)
+		}
+	}()
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -123,7 +134,9 @@ func (s *CASStore) Put(name string, hash string, size int64, content io.Reader) 
 		obj := tx.Bucket(bucketObjects)
 		// ⚡ Bolt: Store size as a simple 8-byte binary value for speed.
 		// In a full implementation, we would store a JSON struct with RefCount.
-		if err := obj.Put([]byte(hash), []byte(fmt.Sprintf("%d", size))); err != nil {
+		// ⚡ Bolt: Eliminate heap allocation and GC overhead for number to byte slice conversion
+		var sizeBuf [32]byte
+		if err := obj.Put([]byte(hash), strconv.AppendInt(sizeBuf[:0], size, 10)); err != nil {
 			return fmt.Errorf("metadata error: %w", syscall.EIO)
 		}
 		return nil
@@ -131,15 +144,23 @@ func (s *CASStore) Put(name string, hash string, size int64, content io.Reader) 
 }
 
 // Get retrieves an object by its human-readable name.
-func (s *CASStore) Get(name string) (io.ReadCloser, common.FileMetadata, error) {
+func (s *CASStore) Get(name string) (rc io.ReadCloser, meta common.FileMetadata, err error) {
+	// 🛡️ Zero-Crash: Recover from any unexpected panics during metadata parsing.
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in CASStore.Get for %s: %v", name, r)
+			err = fmt.Errorf("internal storage panic: %w", syscall.EIO)
+		}
+	}()
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	var hash string
-	err := s.db.View(func(tx *bbolt.Tx) error {
+	err = s.db.View(func(tx *bbolt.Tx) error {
 		h := tx.Bucket(bucketNamespace).Get([]byte(name))
 		if h == nil {
-			return os.ErrNotExist
+			return syscall.ENOENT
 		}
 		hash = string(h)
 		return nil
@@ -149,24 +170,57 @@ func (s *CASStore) Get(name string) (io.ReadCloser, common.FileMetadata, error) 
 	}
 
 	blobPath := s.getBlobPath(hash)
-	f, err := os.Open(blobPath)
-	if err != nil {
-		return nil, common.FileMetadata{}, err
+	f, openErr := os.Open(blobPath)
+	if openErr != nil {
+		return nil, common.FileMetadata{}, openErr
 	}
+
+	// 🛡️ Zero-Crash: Ensure file is closed if subsequent metadata lookups fail.
+	defer func() {
+		if err != nil {
+			f.Close()
+		}
+	}()
 
 	// Read metadata from DB
 	var size int64
-	s.db.View(func(tx *bbolt.Tx) error {
+	err = s.db.View(func(tx *bbolt.Tx) error {
 		val := tx.Bucket(bucketObjects).Get([]byte(hash))
-		fmt.Sscanf(string(val), "%d", &size)
+		// 🛡️ Zero-Crash: Guard against missing metadata to prevent nil pointer dereference in unsafe.SliceData.
+		if val == nil {
+			return fmt.Errorf("metadata missing for hash %s: %w", hash, syscall.ENOENT)
+		}
+
+		// ⚡ Bolt: Eliminate allocs and overhead of fmt.Sscanf by using strconv.ParseInt with unsafe.String.
+		var parseErr error
+		size, parseErr = strconv.ParseInt(unsafe.String(unsafe.SliceData(val), len(val)), 10, 64)
+		if parseErr != nil {
+			return fmt.Errorf("metadata corruption for hash %s: %w", hash, syscall.EBADMSG)
+		}
+
+		// 🛡️ Zero-Crash: Ensure size is non-negative to prevent downstream overflows or invalid allocations.
+		if size < 0 {
+			return fmt.Errorf("invalid size %d for hash %s: %w", size, hash, syscall.EBADMSG)
+		}
 		return nil
 	})
+	if err != nil {
+		return nil, common.FileMetadata{}, err
+	}
 
 	return f, common.FileMetadata{Name: name, Hash: hash, Size: size}, nil
 }
 
 // Has checks if a content hash exists in the store.
-func (s *CASStore) Has(hash string) (bool, error) {
+func (s *CASStore) Has(hash string) (exists bool, err error) {
+	// 🛡️ Zero-Crash: Recover from any unexpected panics.
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in CASStore.Has for %s: %v", hash, r)
+			err = fmt.Errorf("internal storage panic: %w", syscall.EIO)
+		}
+	}()
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.hasInternal(hash)
@@ -182,7 +236,15 @@ func (s *CASStore) hasInternal(hash string) (bool, error) {
 	return exists, err
 }
 
-func (s *CASStore) Delete(name string) error {
+func (s *CASStore) Delete(name string) (err error) {
+	// 🛡️ Zero-Crash: Recover from any unexpected panics.
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in CASStore.Delete for %s: %v", name, r)
+			err = fmt.Errorf("internal storage panic: %w", syscall.EIO)
+		}
+	}()
+
 	// Simple deletion of the namespace entry. 
 	// Real CAS would implement reference counting and garbage collection for the blobs.
 	return s.db.Update(func(tx *bbolt.Tx) error {
@@ -190,15 +252,23 @@ func (s *CASStore) Delete(name string) error {
 	})
 }
 
-func (s *CASStore) GetBlobPath(name string) (string, error) {
+func (s *CASStore) GetBlobPath(name string) (path string, err error) {
+	// 🛡️ Zero-Crash: Recover from any unexpected panics.
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in CASStore.GetBlobPath for %s: %v", name, r)
+			err = fmt.Errorf("internal storage panic: %w", syscall.EIO)
+		}
+	}()
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	var hash string
-	err := s.db.View(func(tx *bbolt.Tx) error {
+	err = s.db.View(func(tx *bbolt.Tx) error {
 		h := tx.Bucket(bucketNamespace).Get([]byte(name))
 		if h == nil {
-			return os.ErrNotExist
+			return syscall.ENOENT
 		}
 		hash = string(h)
 		return nil
