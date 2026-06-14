@@ -55,7 +55,7 @@ Momo is a high-performance, distributed **Object Storage system** written in Go.
 ## Project Steering Rules
 When analyzing or suggesting code generation, agents must adhere to the following steering rules:
 1. **Preserve Simplicity:** Momo is a minimalistic playground. Avoid over-engineering or introducing heavy external frameworks (like gRPC or complex ORMs) unless explicitly requested.
-2. **Respect Affinities:** Honor the hardcoded cluster assumptions (Daemon 0 = primary/metrics authority, Daemons 1/2 = followers/fallback). Do not build complex dynamic service discovery.
+2. **Decentralized Primary:** Momo utilizes a **Balanced Primary** model enabled by the CRUSH-lite algorithm. Any node in the cluster can act as the primary for a specific object based on its content hash. Do not build logic that assumes a single fixed coordinator or entry point.
 3. **Branching Mandate:** All significant features or spec-driven changes MUST originate from a feature branch and be merged via a validated PR to the `master` branch.
 4. **Zero-Crash Pattern:** (Mandatory) All code must follow defensive stability standards. Never assume external data is well-formed. Every goroutine MUST implement panic recovery. Use bounded readers and fixed-size buffers to prevent resource exhaustion.
 5. **Rigorous Validation:** ALL functional additions MUST include corresponding unit/integration tests. You must assert concurrency safety (`goleak.VerifyNone(t)`) and context cancellations when modifying network layers.

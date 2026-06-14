@@ -135,6 +135,6 @@ In this mode, the client sends the file to all servers in the cluster simultaneo
 
 ## Polymorphic System
 
-The most unique aspect of Momo is its ability to change replication strategies at runtime. The metrics component on Server 0 monitors the CPU and memory usage of the system. If the usage exceeds a certain threshold, the system will switch to a less resource-intensive replication strategy. Conversely, if the usage is low, the system will switch to a more robust replication strategy.
+The most unique aspect of Momo is its ability to change replication strategies at runtime. Each node monitors its local CPU and memory usage. If a threshold is exceeded, the node triggers a cluster-wide strategy shift. Conversely, when load remains low, the system automatically switches to a more robust replication strategy.
 
-This allows the system to adapt to changing workloads and maintain optimal performance and data redundancy.
+This decentralized adaptation allows the cluster to maintain optimal performance and data redundancy without a single point of failure.
