@@ -30,8 +30,9 @@ Momo is a high-performance, distributed Object Storage system written in Go. Sim
 9. **AI Governance & Token Efficiency:** All AI-driven operations MUST prioritize token conservation. Diffs larger than 1,000 lines MUST be truncated. Automated agents MUST work on one specific issue at a time.
 10. **Human-in-the-Loop:** Destructive operations (force-push, directory deletion) REQUIRE explicit approval from **@alsotoes**. The 3-push circuit breaker is mandatory for all AI-to-AI loops.
 11. **Autonomous Traceability:** The AI Reviewer is authorized to autonomously create missing tracking issues (Rule 11) and link them to PRs using the **`Resolves #ISSUE_ID`** keyword to ensure consistent project organization and formal GitHub linkage.
-
+12. **All-Green Merge Rule:** A PR is only merge-ready when the AI Reviewer provides a `✅` and all CI checks are green. The Reviewer is authorized to perform autonomous merges under these conditions.
 5. **Clean Repository:** Do not commit `.dat` files or logs. Use `.gitignore` strictly.
+
 
 ## Technical Integrity
 - Prefer `net.Pipe` for unit testing protocol logic to avoid port contention.
