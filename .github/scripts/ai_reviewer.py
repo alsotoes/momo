@@ -64,6 +64,26 @@ def get_jules_commit_count():
     except Exception:
         return 0
 
+def create_missing_issue(pr_number, pr_title, pr_body):
+    try:
+        print(f"Rule 11 Violation detected. Autonomously creating tracking issue for PR #{pr_number}...")
+        
+        issue_title = f"[Auto-Trace] {pr_title}"
+        issue_body = f"This issue was created autonomously to satisfy Rule 11 (Traceability) for PR #{pr_number}.\n\n### Original PR Description:\n{pr_body}"
+        
+        # Create the issue
+        cmd = ["gh", "issue", "create", "--title", issue_title, "--body", issue_body, "--label", "enhancement"]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        issue_url = result.stdout.strip()
+        
+        # Link the issue back to the PR
+        subprocess.run(["gh", "pr", "edit", pr_number, "--body", f"{pr_body}\n\n**Related Issue:** {issue_url}"], check=True)
+        print(f"Successfully created and linked issue: {issue_url}")
+        return True
+    except Exception as e:
+        print(f"Failed to create autonomous issue: {e}", file=sys.stderr)
+        return False
+
 def check_ci_and_merge(pr_number):
     try:
         # Use gh to get the status rollup of all checks
@@ -106,8 +126,12 @@ def main():
     # 🛡️ Rule 11: Check for Issue-Spec Traceability
     has_issue_link = "github.com/alsotoes/momo/issues/" in pr_body
     traceability_instruction = ""
-    if not has_issue_link:
-        traceability_instruction = "\n- 🚨 VIOLATION (Rule 11): This PR is missing a link to a GitHub Issue. Remind the author that ALL PRs must be mirrored as issues for traceability."
+    if not has_issue_link and pr_number:
+        # ⚡ Bolt: Autonomously resolve Rule 11 violation
+        if create_missing_issue(pr_number, pr_title, pr_body):
+            has_issue_link = True # Mark as resolved for the current run
+        else:
+            traceability_instruction = "\n- 🚨 VIOLATION (Rule 11): This PR is missing a link to a GitHub Issue. Remind the author that ALL PRs must be mirrored as issues for traceability."
 
     # ⚡ Bolt: Automated PR Management
     if pr_number:
@@ -139,9 +163,9 @@ def main():
     jules_instruction = ""
     if is_jules_pr:
         if jules_commits >= max_jules_pushes:
-            jules_instruction = f"\n- 🛑 AI LOOP CIRCUIT BREAKER: @jules has already made {jules_commits} attempts to fix issues. Do NOT tag him anymore. Instead, address your findings to the maintainer @alsotoes and state that manual intervention is required."
+            jules_instruction = f"\n- 🛑 AI LOOP CIRCUIT BREAKER: @google-labs-jules has already made {jules_commits} attempts to fix issues. Do NOT tag him anymore. Instead, address your findings to the maintainer @alsotoes and state that manual intervention is required."
         else:
-            jules_instruction = "\n- IMPORTANT: This PR was created by @jules. Address your findings to him by tagging @jules so he can fix them automatically."
+            jules_instruction = "\n- IMPORTANT: This PR was created by @google-labs-jules. Address your findings to him by tagging @google-labs-jules so he can fix them automatically."
 
     prompt = f"""You are an expert Go developer and security auditor.
 Review the following Pull Request diff against the provided Project Steering Rules.
