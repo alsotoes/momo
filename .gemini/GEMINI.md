@@ -25,11 +25,12 @@ Momo is a high-performance, distributed Object Storage system written in Go. Sim
    - `make benchmark`
    - `make test-e2e` (Docker Compose)
 6. **POSIX Error Mapping:** All application-level errors (e.g., authentication failures, hash mismatches) MUST be mapped to standard `syscall` POSIX constants (e.g., `syscall.EACCES`, `syscall.EBADMSG`) to ensure consistent, standard error propagation across the cluster. This follows the standardized pattern established in [PR #97](https://github.com/alsotoes/momo/pull/97).
-7. **Issue-Spec Traceability:** (Mandatory) ALL project specifications (`openspec/`) MUST be mirrored as GitHub Issues. Every spec file must explicitly link to its corresponding GitHub Issue URL, and the GitHub Issue must link back to the spec file in the repository. This ensures synchronization parity and end-to-end traceability for all feature designs and architectural shifts.
+7. **Issue-Spec Traceability:** (Mandatory) ALL project specifications (`openspec/`) MUST be mirrored as GitHub Issues. Every spec file must explicitly link to its corresponding GitHub Issue URL. To ensure formal GitHub linkage, the Pull Request description MUST include the **`Resolves #ISSUE_ID`** keyword. This ensures synchronization parity and automated issue closure.
 8. **Object Storage Paradigm:** Momo is a distributed Object Storage system. All storage operations MUST be content-addressable and use algorithmic placement (specifically a Go implementation of **Sage Weil's CRUSH algorithm**) to ensure perfect load balancing and infinite scalability without central registry bottlenecks.
 9. **AI Governance & Token Efficiency:** All AI-driven operations MUST prioritize token conservation. Diffs larger than 1,000 lines MUST be truncated. Automated agents MUST work on one specific issue at a time.
 10. **Human-in-the-Loop:** Destructive operations (force-push, directory deletion) REQUIRE explicit approval from **@alsotoes**. The 3-push circuit breaker is mandatory for all AI-to-AI loops.
-11. **Autonomous Traceability:** The AI Reviewer is authorized to autonomously create missing tracking issues (Rule 11) and link them to PRs to ensure consistent project organization.
+11. **Autonomous Traceability:** The AI Reviewer is authorized to autonomously create missing tracking issues (Rule 11) and link them to PRs using the **`Resolves #ISSUE_ID`** keyword to ensure consistent project organization and formal GitHub linkage.
+
 5. **Clean Repository:** Do not commit `.dat` files or logs. Use `.gitignore` strictly.
 
 ## Technical Integrity
