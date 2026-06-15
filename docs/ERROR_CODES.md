@@ -23,6 +23,7 @@ Below is a list of common `errno` values that might be encountered and their spe
 | `EPIPE` | Broken pipe | An attempt was made to write to a pipe or socket that is not open for reading on the other end. | This commonly occurs if the client or a downstream server closes the connection while an upstream server is still trying to send data. |
 | `ENOSPC` | No space left on device | An attempt to write a file to a device has failed because the device is full. | A server in the cluster has run out of disk space. The replication for the current file will fail on that specific server. |
 | `EIO` | I/O error | A physical I/O error has occurred. | This indicates a problem with the underlying storage hardware on one of the servers, or a serious data integrity issue. |
+| `ENOENT` | No such file or directory | The specified file or directory does not exist. | In the Momo Object Store, this signifies that a requested human-readable name or content hash was not found in the local Bbolt metadata index. |
 
 ## Application-Specific Exit Codes
 
