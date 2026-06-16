@@ -121,6 +121,10 @@
 ## 2026-06-07 - Optimization Trap: bytes.IndexByte vs manual loop
 **Learning:** For extremely small, stack-allocated byte arrays (like 64-byte padding buffers), standard library functions like `bytes.IndexByte` can be slower than a simple manual inline `for` loop due to standard library overheads and function calls. Benchmark testing proved that a manual loop to find the first null byte is ~2x faster (~4 ns/op vs ~8 ns/op) on small arrays.
 **Action:** When working with very small, stack-allocated fixed-size buffers, consider replacing standard library searches like `bytes.IndexByte` with a simple inline loop, but always benchmark to confirm the performance gain.
+
+## 2026-06-14 - Optimize fixed-size stack buffer searching with standard library
+**Learning:** For typical fixed-size stack buffers in hot loops (e.g. 64-128 bytes), the standard library `bytes.IndexByte` is significantly faster (in modern Go versions) than manual byte-searching loops. Older code may have avoided standard library calls assuming function-call overhead was too high, but Go's assembly optimizations and inlining now make `bytes.IndexByte` the optimal choice for fixed-length byte slices.
+**Action:** Replace custom inline `for` loops designed to find a specific byte (e.g. trimming null characters in fixed-size buffers) with `bytes.IndexByte` for both cleaner code and better performance.
 ## 2024-06-12 - Eliminate fmt.Sprintf and fmt.Sscanf in metadata DB queries
 **Learning:** `fmt.Sprintf` and `fmt.Sscanf` involve runtime reflection and result in memory allocations when converting integers to strings or strings to integers. Using `fmt.Sscanf` to read the size out of bbolt takes ~810 ns/op and causes 4 allocations. `strconv.ParseInt` with `unsafe.String` takes ~31.81 ns/op and 0 allocations, making it >25x faster.
 **Action:** When saving integer metadata to bytes or parsing them, always use `strconv.AppendInt` onto a stack array and `strconv.ParseInt` with `unsafe.String`, to avoid heap escapes, save CPU time, and reduce GC pressure.

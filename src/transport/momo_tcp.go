@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"bytes"
 	"crypto/subtle"
 	"fmt"
 	"io"
@@ -149,20 +150,10 @@ func (m *MomoTCPCommunicator) SendMetadataStatus(status int) error {
 
 // bytesTrimNull is a helper to trim null bytes from a byte slice.
 func bytesTrimNull(b []byte) []byte {
-	if i := bytesIndexByte(b, 0); i != -1 {
+	if i := bytes.IndexByte(b, 0); i != -1 {
 		return b[:i]
 	}
 	return b
-}
-
-// bytesIndexByte is a helper to find the first null byte.
-func bytesIndexByte(b []byte, c byte) int {
-	for i, v := range b {
-		if v == c {
-			return i
-		}
-	}
-	return -1
 }
 
 func (m *MomoTCPCommunicator) SendACK(serverId int) error {
