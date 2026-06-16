@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 	"syscall"
@@ -141,7 +142,15 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (int, int64, 
 
 	// Parse Metadata if it's a PUT request
 	if req.Method == "PUT" {
-		m.meta.Name = strings.TrimPrefix(req.URL.Path, "/")
+		// 🛡️ Sentinel: Sanitize S3 path to prevent traversal attacks.
+		// S3 paths can contain slashes, but must not traverse out of the storage root.
+		rawPath := req.URL.Path
+		cleanPath := path.Clean(rawPath)
+		if cleanPath == "." || cleanPath == ".." || strings.HasPrefix(cleanPath, "../") || cleanPath == "/" {
+			return 0, 0, fmt.Errorf("invalid S3 path: %s: %w", rawPath, syscall.EBADMSG)
+		}
+
+		m.meta.Name = strings.TrimPrefix(cleanPath, "/")
 		m.meta.Size = req.ContentLength
 		m.meta.Hash = req.Header.Get("X-Amz-Content-Sha256")
 		if m.meta.Hash == "" {
@@ -206,7 +215,15 @@ func (m *S3Communicator) ReceiveMetadata() (common.FileMetadata, error) {
 		if err != nil {
 			return common.FileMetadata{}, fmt.Errorf("ReceiveMetadata ReadRequest failed: %w", err)
 		}
-		m.meta.Name = strings.TrimPrefix(req.URL.Path, "/")
+
+		// 🛡️ Sentinel: Sanitize S3 path to prevent traversal attacks.
+		rawPath := req.URL.Path
+		cleanPath := path.Clean(rawPath)
+		if cleanPath == "." || cleanPath == ".." || strings.HasPrefix(cleanPath, "../") || cleanPath == "/" {
+			return common.FileMetadata{}, fmt.Errorf("invalid S3 path: %s: %w", rawPath, syscall.EBADMSG)
+		}
+
+		m.meta.Name = strings.TrimPrefix(cleanPath, "/")
 		m.meta.Size = req.ContentLength
 		hash := req.Header.Get("X-Amz-Content-Sha256")
 		if hash == "" {
