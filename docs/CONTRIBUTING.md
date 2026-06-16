@@ -27,7 +27,10 @@ Momo utilizes an autonomous merge protocol. A PR is considered "Merge Ready" onl
 Once these conditions are met, the AI Reviewer is authorized to perform an **automated merge** into the `master` branch.
 
 ### AI-to-AI Loop & Circuit Breaker
-Automated maintenance agents (e.g., Jules) can automatically fix issues identified by the Reviewer. To prevent infinite loops, a **3-push circuit breaker** is enforced. If an agent fails to resolve all issues within 3 attempts, the loop is locked, and manual intervention by **@alsotoes** is required.
+Automated maintenance agents (e.g., **@google-labs-jules**) can automatically fix issues identified by the Reviewer. To prevent infinite loops, a **3-push circuit breaker** is enforced. If an agent fails to resolve all issues within 3 attempts, the loop is locked, and manual intervention by **@alsotoes** is required.
+
+### Autonomous Traceability
+To satisfy **Steering Rule #11**, the Gemini AI Reviewer is authorized to autonomously create and link tracking issues to any Pull Request that lacks them. These issues are prefixed with `[Auto-Trace]` and use the `Resolves` keyword for formal linkage.
 
 ## CI/CD Pipeline
 
@@ -38,4 +41,4 @@ Every Pull Request must pass the full suite of validations before merging:
 - **Version Consistency**: Go versions must be synchronized across all config files.
 
 ---
-*Momo is a collaborative effort between human developers and AI agents (Gemini CLI, Jules).*
+*Momo is a collaborative effort between human developers and AI agents (Gemini CLI, @google-labs-jules).*

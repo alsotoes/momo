@@ -54,10 +54,10 @@ This section contains cluster-wide settings that affect all daemons.
 
 ### [metrics]
 
-This section controls the behavior of the polymorphic replication system. It is only active if `polymorphic_system = true` in the `[global]` section.
+This section controls the behavior of the decentralized polymorphic system. It is only active if `polymorphic_system = true` in the `[global]` section.
 
 -   **`interval`**
-    -   **Description:** The interval in seconds at which the primary server samples CPU and memory metrics.
+    -   **Description:** The interval in seconds at which each daemon samples its local CPU and memory metrics.
     -   **Type:** Integer
     -   **Default:** `10`
 
