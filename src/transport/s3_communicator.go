@@ -6,8 +6,10 @@ import (
 	"crypto/subtle"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
+	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -91,7 +93,15 @@ func (m *S3Communicator) HandshakeClient(authToken string, timestamp int64, requ
 	return mode, nil
 }
 
-func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (int, int64, error) {
+func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMode int, timestamp int64, err error) {
+	// 🛡️ Zero-Crash: Recover from any unexpected panics in S3 request parsing.
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in S3 HandshakeServer: %v", r)
+			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+		}
+	}()
+
 	req, err := http.ReadRequest(m.reader)
 	if err != nil {
 		return 0, 0, err
@@ -204,7 +214,15 @@ func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (int, error) {
 	return status, nil
 }
 
-func (m *S3Communicator) ReceiveMetadata() (common.FileMetadata, error) {
+func (m *S3Communicator) ReceiveMetadata() (meta common.FileMetadata, err error) {
+	// 🛡️ Zero-Crash: Recover from any unexpected panics in S3 metadata parsing.
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in S3 ReceiveMetadata: %v", r)
+			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+		}
+	}()
+
 	// If HandshakeServer already parsed the PUT request (e.g., from AWS CLI),
 	// we just return it.
 	// But wait! If the client used OPTIONS for handshake, then the PUT request
