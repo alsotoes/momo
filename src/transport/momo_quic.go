@@ -134,8 +134,8 @@ func (m *MomoQUICCommunicator) ReceiveMetadata() (common.FileMetadata, error) {
 		return metadata, err
 	}
 
-	metadata.Hash = common.SanitizeLog(string(bytesTrimNull(buffer[:64])))
-	metadata.Name = string(bytesTrimNull(buffer[64 : 64+common.FileInfoLength]))
+	metadata.Hash = common.SanitizeLog(bytesTrimNull(buffer[:64]))
+	metadata.Name = bytesTrimNull(buffer[64 : 64+common.FileInfoLength])
 
 	size, err := common.SafeParseInt(buffer[64+common.FileInfoLength:])
 	if err != nil {
