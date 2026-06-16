@@ -9,7 +9,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -130,7 +129,6 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		timestampStr = req.Header.Get("X-Amz-Date")
 	}
 
-	var timestamp int64
 	if timestampStr != "" {
 		// Handle Momo timestamp (int64) or Amz-Date (ISO8601)
 		t, err := strconv.ParseInt(timestampStr, 10, 64)
@@ -145,7 +143,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 	}
 
 	requestedModeStr := req.Header.Get("X-Momo-Requested-Mode")
-	requestedMode := 0
+	requestedMode = 0
 	if requestedModeStr != "" {
 		requestedMode, _ = strconv.Atoi(requestedModeStr)
 	}
