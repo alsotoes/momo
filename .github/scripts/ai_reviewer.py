@@ -76,8 +76,8 @@ def create_missing_issue(pr_number, pr_title, pr_body):
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         issue_url = result.stdout.strip()
         
-        # Link the issue back to the PR
-        subprocess.run(["gh", "pr", "edit", pr_number, "--body", f"{pr_body}\n\n**Related Issue:** {issue_url}"], check=True)
+        # Link the issue back to the PR using the 'Resolves' keyword
+        subprocess.run(["gh", "pr", "edit", pr_number, "--body", f"{pr_body}\n\nResolves {issue_url}"], check=True)
         print(f"Successfully created and linked issue: {issue_url}")
         return True
     except Exception as e:

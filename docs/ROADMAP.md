@@ -14,15 +14,16 @@ This document outlines the high-level roadmap for the Momo project, tracking maj
 | **POSIX Error Mapping** | [PR #97](https://github.com/alsotoes/momo/pull/97) | ✅ Merged | Aligned application errors (Auth, Hash Mismatch) with standard `syscall` constants. |
 | **Gemini AI Reviewer** | [#156](https://github.com/alsotoes/momo/issues/156) | ✅ Merged | Automated PR reviews using Gemini API to enforce steering rules. |
 | **CAS Storage** | [#151](https://github.com/alsotoes/momo/issues/151) | ✅ Merged | Content-Addressable Storage with Bbolt metadata and CRUSH-lite placement. |
+| **AI Reviewer 2.0** | [#156](https://github.com/alsotoes/momo/issues/156) | ✅ Merged | Automated PR reviews and autonomous merging via Gemini and GitHub Actions. |
+| **Dynamic Replication** | [#165](https://github.com/alsotoes/momo/issues/165) | ✅ Merged | Configurable replication factor (1, 3, 5, etc.) with degraded mode support. |
 
 ## 🟡 In Progress / Upcoming
 
 | Feature | Issue | Spec | Priority | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| **Dynamic Replication** | [#165](https://github.com/alsotoes/momo/issues/165) | [Replication Spec](../openspec/changes/dynamic-replication-factor/proposal.md) | High | Configurable replication factor (1, 3, 5, etc.) with degraded mode support. |
 | **E2E Encryption** | [#152](https://github.com/alsotoes/momo/issues/152) | [E2EE Spec](../openspec/changes/add-e2e-encryption/proposal.md) | High | Application-layer AES-GCM encryption for all file data. |
-| **P2P Transport** | [#153](https://github.com/alsotoes/momo/issues/153) | [P2P Spec](../openspec/changes/add-p2p-transport/proposal.md) | Medium | Decentralized gossip-based discovery and elastic membership. |
-| **Comprehensive Testing** | [#155](https://github.com/alsotoes/momo/issues/155) | [Testing Spec](../openspec/changes/add-comprehensive-testing/proposal.md) | Low | Chaos testing, distributed load generation, and observability. |
+| **P2P Transport** | [#153](https://github.com/alsotoes/momo/issues/153) | [P2P Spec](../openspec/changes/add-p2p-transport/proposal.md) | High | Decentralized gossip-based discovery and elastic membership. |
+| **Comprehensive Testing** | [#155](https://github.com/alsotoes/momo/issues/155) | [Testing Spec](../openspec/changes/add-comprehensive-testing/proposal.md) | Medium | Chaos testing, distributed load generation, and observability. |
 
 ## 🔴 Future Explorations
 
