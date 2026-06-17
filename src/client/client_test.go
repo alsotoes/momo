@@ -103,7 +103,7 @@ func startDummyServer(t *testing.T, authToken string) (string, net.Listener) {
 
 				buf := make([]byte, common.TimestampLength+1) // Read Timestamp (19) + RequestedMode (1)
 				io.ReadFull(c, buf)
-				c.Write([]byte("4")) // Not Splay
+				c.Write([]byte(strconv.Itoa(common.ReplicationNone))) // Not Splay
 
 				// Wait for metadata
 				bufHash := make([]byte, 64)

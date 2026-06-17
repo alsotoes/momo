@@ -81,7 +81,7 @@ func (m *S3Communicator) HandshakeClient(authToken string, timestamp int64, requ
 
 	modeStr := resp.Header.Get("X-Momo-Replication-Mode")
 	if modeStr == "" {
-		return 4, nil // Default to ReplicationNone
+		return common.ReplicationNone, nil // Default to ReplicationNone (ID 0)
 	}
 
 	// 🛡️ Zero-Crash: Defensive parsing of external headers
