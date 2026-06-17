@@ -174,7 +174,7 @@ func (m *MomoTCPCommunicator) ReceiveACK() error {
 		return fmt.Errorf("failed to read ACK: %w", err)
 	}
 
-	if string(ackBuffer[:]) != "ACK" {
+	if !bytes.Equal(ackBuffer[:], []byte("ACK")) {
 		return fmt.Errorf("unexpected response: %q", string(ackBuffer[:]))
 	}
 	return nil
