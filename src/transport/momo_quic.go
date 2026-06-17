@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
@@ -134,8 +135,8 @@ func (m *MomoQUICCommunicator) ReceiveMetadata() (common.FileMetadata, error) {
 		return metadata, err
 	}
 
-	metadata.Hash = common.SanitizeLog(bytesTrimNull(buffer[:64]))
-	metadata.Name = bytesTrimNull(buffer[64 : 64+common.FileInfoLength])
+	metadata.Hash = common.SanitizeLog(string(bytesTrimNull(buffer[:64])))
+	metadata.Name = string(bytesTrimNull(buffer[64 : 64+common.FileInfoLength]))
 
 	size, err := common.SafeParseInt(buffer[64+common.FileInfoLength:])
 	if err != nil {
@@ -168,7 +169,7 @@ func (m *MomoQUICCommunicator) ReceiveACK() error {
 		return fmt.Errorf("failed to read ACK: %w", err)
 	}
 
-	if string(ackBuffer[:]) != "ACK" {
+	if !bytes.Equal(ackBuffer[:], []byte("ACK")) {
 		return fmt.Errorf("unexpected response: %q", string(ackBuffer[:]))
 	}
 	return nil

@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"syscall"
 	"time"
-	"unsafe"
 
 	"github.com/alsotoes/momo/src/common"
 )
@@ -129,8 +128,8 @@ func (m *MomoTCPCommunicator) ReceiveMetadata() (common.FileMetadata, error) {
 		return metadata, err
 	}
 
-	metadata.Hash = common.SanitizeLog(bytesTrimNull(buffer[:64]))
-	metadata.Name = bytesTrimNull(buffer[64 : 64+common.FileInfoLength])
+	metadata.Hash = common.SanitizeLog(string(bytesTrimNull(buffer[:64])))
+	metadata.Name = string(bytesTrimNull(buffer[64 : 64+common.FileInfoLength]))
 
 	size, err := common.SafeParseInt(buffer[64+common.FileInfoLength:])
 	if err != nil {
@@ -149,12 +148,12 @@ func (m *MomoTCPCommunicator) SendMetadataStatus(status int) error {
 	return nil
 }
 
-// bytesTrimNull is a helper to trim null bytes from a byte slice and return a string without allocation.
-func bytesTrimNull(b []byte) string {
+// bytesTrimNull is a helper to trim null bytes from a byte slice.
+func bytesTrimNull(b []byte) []byte {
 	if i := bytes.IndexByte(b, 0); i != -1 {
-		return unsafe.String(unsafe.SliceData(b), i)
+		return b[:i]
 	}
-	return unsafe.String(unsafe.SliceData(b), len(b))
+	return b
 }
 
 func (m *MomoTCPCommunicator) SendACK(serverId int) error {
@@ -175,7 +174,7 @@ func (m *MomoTCPCommunicator) ReceiveACK() error {
 		return fmt.Errorf("failed to read ACK: %w", err)
 	}
 
-	if string(ackBuffer[:]) != "ACK" {
+	if !bytes.Equal(ackBuffer[:], []byte("ACK")) {
 		return fmt.Errorf("unexpected response: %q", string(ackBuffer[:]))
 	}
 	return nil

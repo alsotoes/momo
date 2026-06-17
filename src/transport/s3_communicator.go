@@ -284,7 +284,7 @@ func (m *S3Communicator) ReceiveACK() error {
 	defer resp.Body.Close()
 	// 🛡️ Zero-Crash: Use LimitReader to prevent unbounded memory allocation
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-	if !strings.HasPrefix(string(body), "ACK") {
+	if !bytes.HasPrefix(body, []byte("ACK")) {
 		return fmt.Errorf("unexpected ACK: %s", string(body))
 	}
 	return nil

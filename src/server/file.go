@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
-	"unsafe"
 
 	"github.com/alsotoes/momo/src/common"
 	"github.com/alsotoes/momo/src/storage"
@@ -38,13 +37,14 @@ func getMetadata(r io.Reader) (common.FileMetadata, error) {
 	bufferFileName := buffer[64 : 64+common.FileInfoLength]
 	bufferFileSize := buffer[64+common.FileInfoLength:]
 
-	// ⚡ Bolt: Use bytes.IndexByte from the standard library for finding the first null byte,
-	// and unsafe.String to eliminate string allocation overhead for the local buffer.
+	// ⚡ Bolt: Use bytes.IndexByte from the standard library for finding the first null byte.
+	// Re-evaluation of benchmarks on go 1.25.0 shows that bytes.IndexByte significantly
+	// outperforms the manual loop for this fixed-size stack buffer.
 	trimNull := func(b []byte) string {
 		if idx := bytes.IndexByte(b, 0); idx != -1 {
-			return unsafe.String(unsafe.SliceData(b), idx)
+			return string(b[:idx])
 		}
-		return unsafe.String(unsafe.SliceData(b), len(b))
+		return string(b)
 	}
 
 	fileHash := common.SanitizeLog(trimNull(bufferFileHash))
