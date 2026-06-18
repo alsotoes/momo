@@ -59,7 +59,15 @@ func (m *S3Communicator) SetAbsoluteDeadline(t interface{}) error {
 	return m.conn.SetDeadline(deadline)
 }
 
-func (m *S3Communicator) HandshakeClient(authToken string, timestamp int64, requestedMode int) (int, error) {
+func (m *S3Communicator) HandshakeClient(authToken string, timestamp int64, requestedMode int) (finalMode int, err error) {
+	// 🛡️ Zero-Crash: Recover from any unexpected panics in S3 response parsing.
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in S3 HandshakeClient: %v", r)
+			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+		}
+	}()
+
 	m.clientAuthToken = authToken
 	m.clientTimestamp = timestamp
 
@@ -81,15 +89,16 @@ func (m *S3Communicator) HandshakeClient(authToken string, timestamp int64, requ
 
 	modeStr := resp.Header.Get("X-Momo-Replication-Mode")
 	if modeStr == "" {
-		return common.ReplicationNone, nil // Default to ReplicationNone (ID 0)
+		// 🛡️ Rule 10: Map missing protocol headers to syscall.EBADMSG for consistent propagation.
+		return 0, fmt.Errorf("missing replication mode header: %w", syscall.EBADMSG)
 	}
 
 	// 🛡️ Zero-Crash: Defensive parsing of external headers
-	mode, err := strconv.Atoi(modeStr)
+	finalMode, err = strconv.Atoi(modeStr)
 	if err != nil {
-		return 0, fmt.Errorf("invalid replication mode header: %w", err)
+		return 0, fmt.Errorf("invalid replication mode header: %s: %w", modeStr, syscall.EBADMSG)
 	}
-	return mode, nil
+	return finalMode, nil
 }
 
 func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMode int, timestamp int64, err error) {
