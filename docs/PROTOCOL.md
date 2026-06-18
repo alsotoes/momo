@@ -71,14 +71,14 @@ The following diagrams illustrate the message flow for each replication mode.
 
 ### No Replication
 
-The client sends the file to the primary server, and no further replication occurs.
+The client sends the file to the primary server, and no further replication occurs. This typically happens when the `replication_factor` is 1 or when a node is acting as the terminal destination.
 
 ```
 +--------+                           +----------+
 | Client |                           | Server 0 |
 +--------+                           +----------+
     | --- Handshake ----------------------> |
-    | <--- Replication Mode (4) ----------  |
+    | <--- Replication Mode (0) ----------  |
     | --- Metadata & Payload ----------->   |
     | <--- ACK0 --------------------------  |
 ```

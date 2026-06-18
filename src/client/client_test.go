@@ -103,7 +103,7 @@ func startDummyServer(t *testing.T, authToken string) (string, net.Listener) {
 
 				buf := make([]byte, common.TimestampLength+1) // Read Timestamp (19) + RequestedMode (1)
 				io.ReadFull(c, buf)
-				c.Write([]byte("4")) // Not Splay
+				c.Write([]byte{byte(strconv.Itoa(common.ReplicationNone)[0])}) // Send as 1-byte ASCII
 
 				// Wait for metadata
 				bufHash := make([]byte, 64)
@@ -192,7 +192,7 @@ func TestConnect(t *testing.T) {
 
 		buf := make([]byte, common.TimestampLength+1) // Read Timestamp (19) + RequestedMode (1)
 		io.ReadFull(conn, buf)
-		conn.Write([]byte(strconv.Itoa(common.ReplicationPrimarySplay))) // Send 3
+		conn.Write([]byte{byte(strconv.Itoa(common.ReplicationPrimarySplay)[0])}) // Send as 1-byte ASCII
 
 		// Read file metadata
 		bufHash := make([]byte, 64)

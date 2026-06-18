@@ -19,7 +19,7 @@ func BenchmarkCheckMetricsAndSwap(b *testing.B) {
 		},
 	}
 
-	replicationOrder := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+	replicationOrder := []int{3, 2, 1}
 	sm := &MockSystemMetrics{
 		memStat: &mem.VirtualMemoryStat{
 			UsedPercent: 50.0,
@@ -31,13 +31,13 @@ func BenchmarkCheckMetricsAndSwap(b *testing.B) {
 	maxThreshPercent := cfg.Metrics.MaxThreshold * 100
 	minThreshPercent := cfg.Metrics.MinThreshold * 100
 	for i := 0; i < b.N; i++ {
-		checkMetricsAndSwap(sm, 4, replicationOrder, maxThreshPercent, minThreshPercent)
+		checkMetricsAndSwap(sm, 2, replicationOrder, maxThreshPercent, minThreshPercent)
 	}
 }
 
 func BenchmarkIndexSearch(b *testing.B) {
-	replicationOrder := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-	currentReplicationMode := 5
+	replicationOrder := []int{3, 2, 1}
+	currentReplicationMode := 2
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		index := slices.Index(replicationOrder, currentReplicationMode)
@@ -46,8 +46,8 @@ func BenchmarkIndexSearch(b *testing.B) {
 }
 
 func BenchmarkIndexDirectTracking(b *testing.B) {
-	replicationOrder := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-	currentIndex := 4 // tracks currentReplicationMode = 5
+	replicationOrder := []int{3, 2, 1}
+	currentIndex := 1 // tracks currentReplicationMode = 2
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = replicationOrder[currentIndex]

@@ -16,6 +16,7 @@ This document outlines the high-level roadmap for the Momo project, tracking maj
 | **CAS Storage** | [#151](https://github.com/alsotoes/momo/issues/151) | ✅ Merged | Content-Addressable Storage with Bbolt metadata and CRUSH-lite placement. |
 | **AI Reviewer 2.0** | [#156](https://github.com/alsotoes/momo/issues/156) | ✅ Merged | Automated PR reviews and autonomous merging via Gemini and GitHub Actions. |
 | **Dynamic Replication** | [#165](https://github.com/alsotoes/momo/issues/165) | ✅ Merged | Configurable replication factor (1, 3, 5, etc.) with degraded mode support. |
+| **Replication ID Shift** | [#158](https://github.com/alsotoes/momo/issues/158) | ✅ Merged | Re-indexed constants to set ReplicationNone as ID 0 (Internal use only). |
 
 ## 🟡 In Progress / Upcoming
 
@@ -32,4 +33,4 @@ This document outlines the high-level roadmap for the Momo project, tracking maj
 - **Client SDKs**: Native SDKs for Python and Rust.
 
 ---
-*Last Updated: 2026-06-11*
+*Last Updated: 2026-06-17*

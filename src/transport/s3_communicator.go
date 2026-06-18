@@ -59,7 +59,15 @@ func (m *S3Communicator) SetAbsoluteDeadline(t interface{}) error {
 	return m.conn.SetDeadline(deadline)
 }
 
-func (m *S3Communicator) HandshakeClient(authToken string, timestamp int64, requestedMode int) (int, error) {
+func (m *S3Communicator) HandshakeClient(authToken string, timestamp int64, requestedMode int) (finalMode int, err error) {
+	// 🛡️ Zero-Crash: Recover from any unexpected panics in S3 response parsing.
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in S3 HandshakeClient: %v", r)
+			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+		}
+	}()
+
 	m.clientAuthToken = authToken
 	m.clientTimestamp = timestamp
 
@@ -81,15 +89,16 @@ func (m *S3Communicator) HandshakeClient(authToken string, timestamp int64, requ
 
 	modeStr := resp.Header.Get("X-Momo-Replication-Mode")
 	if modeStr == "" {
-		return 4, nil // Default to ReplicationNone
+		// 🛡️ Rule 10: Map missing protocol headers to syscall.EBADMSG for consistent propagation.
+		return 0, fmt.Errorf("missing replication mode header: %w", syscall.EBADMSG)
 	}
 
 	// 🛡️ Zero-Crash: Defensive parsing of external headers
-	mode, err := strconv.Atoi(modeStr)
+	finalMode, err = strconv.Atoi(modeStr)
 	if err != nil {
-		return 0, fmt.Errorf("invalid replication mode header: %w", err)
+		return 0, fmt.Errorf("invalid replication mode header: %s: %w", modeStr, syscall.EBADMSG)
 	}
-	return mode, nil
+	return finalMode, nil
 }
 
 func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMode int, timestamp int64, err error) {
@@ -138,6 +147,8 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			parsedTime, err := time.Parse("20060102T150405Z", timestampStr)
 			if err == nil {
 				timestamp = parsedTime.UnixNano()
+			} else {
+				return 0, 0, fmt.Errorf("invalid timestamp header: %s: %w", timestampStr, syscall.EBADMSG)
 			}
 		}
 	}
@@ -145,7 +156,10 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 	requestedModeStr := req.Header.Get("X-Momo-Requested-Mode")
 	requestedMode = 0
 	if requestedModeStr != "" {
-		requestedMode, _ = strconv.Atoi(requestedModeStr)
+		requestedMode, err = strconv.Atoi(requestedModeStr)
+		if err != nil {
+			return 0, 0, fmt.Errorf("invalid requested mode header: %s: %w", requestedModeStr, syscall.EBADMSG)
+		}
 	}
 
 	// Parse Metadata if it's a PUT request
