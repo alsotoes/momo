@@ -147,6 +147,8 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			parsedTime, err := time.Parse("20060102T150405Z", timestampStr)
 			if err == nil {
 				timestamp = parsedTime.UnixNano()
+			} else {
+				return 0, 0, fmt.Errorf("invalid timestamp header: %s: %w", timestampStr, syscall.EBADMSG)
 			}
 		}
 	}
@@ -154,7 +156,10 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 	requestedModeStr := req.Header.Get("X-Momo-Requested-Mode")
 	requestedMode = 0
 	if requestedModeStr != "" {
-		requestedMode, _ = strconv.Atoi(requestedModeStr)
+		requestedMode, err = strconv.Atoi(requestedModeStr)
+		if err != nil {
+			return 0, 0, fmt.Errorf("invalid requested mode header: %s: %w", requestedModeStr, syscall.EBADMSG)
+		}
 	}
 
 	// Parse Metadata if it's a PUT request
