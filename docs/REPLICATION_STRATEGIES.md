@@ -87,18 +87,20 @@ The client establishes a connection with every server in the placement list and 
 
 ---
 
-## No Replication (Standalone)
+## No Replication (Internal Termination Signal)
 
--   **Mode Code:** `4`
+-   **Mode Code:** `0`
 
-This mode explicitly overrides the global factor to `1`. Data is written only to the primary server and is not replicated.
+This mode is used **internally** by the cluster to signal that an object has reached its final destination in a replication sequence (e.g., at the end of a chain or as a parallel write target). It explicitly overrides the global factor to `1`. 
+
+**Note:** This mode should not be used in the `replication_order` configuration.
 
 **Data Flow:**
-The client sends the file directly to the primary server, which writes it to its local storage. No other network traffic is generated.
+The server receiving this mode writes the file directly to its local storage and returns an ACK without further forwarding.
 
 ```
 +----------+           +-----------------+
-|  Client  | --------> | Primary Server  |
+|  Sender  | --------> | Target Server   |
 +----------+           | (writes to disk)| 
                        +-----------------+
 ```
