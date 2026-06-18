@@ -56,12 +56,12 @@ Momo utilizes a decentralized polymorphic engine. The **metrics component** runs
 
 ## Example Scenario
 
-Consider a `replication_order` of `3,2,1,4` which maps to `primary-splay, splay, chain, none`.
+Consider a `replication_order` of `3,2,1` which maps to `primary-splay, splay, chain`.
 
 1.  The system starts in **primary-splay** mode (mode `3`).
 2.  A large number of files are uploaded, causing CPU usage to exceed the `max_threshold`.
 3.  The metrics component detects this and switches the strategy to **splay** (mode `2`), which is less demanding.
-4.  If the load continues to increase and breaches the threshold again, the system will step right again to **chain** (mode `1`).
+4.  If the load continues to increase and breaches the threshold again, the system will switch to **chain** (mode `1`).
 5.  Once the file uploads are complete and the system load remains low (below `min_threshold`) for the duration of the `fallback_interval`, the metrics component will switch the strategy back to **splay** (mode `2`) and, if conditions remain calm, eventually back to **primary-splay** (mode `3`).
 
 ## Benefits of a Polymorphic System
