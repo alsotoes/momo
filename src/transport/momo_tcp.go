@@ -94,17 +94,17 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 		return 0, 0, syscall.EACCES
 	}
 
-	timestampVal, err := common.SafeParseInt(bufferTimestamp)
+	timestamp, err = common.SafeParseInt(bufferTimestamp)
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to parse timestamp: %v: %w", err, syscall.EBADMSG)
 	}
 
-	requestedModeVal := int(requestedModeByte - '0')
-	if requestedModeVal < 0 || requestedModeVal > 9 {
-		return 0, 0, fmt.Errorf("invalid requested mode: %d: %w", requestedModeVal, syscall.EBADMSG)
+	requestedMode = int(requestedModeByte - '0')
+	if requestedMode < 0 || requestedMode > 9 {
+		return 0, 0, fmt.Errorf("invalid requested mode: %d: %w", requestedMode, syscall.EBADMSG)
 	}
 
-	return requestedModeVal, timestampVal, nil
+	return requestedMode, timestamp, nil
 }
 
 // SendReplicationMode is a helper for HandshakeServer to send the selected mode back.
@@ -220,11 +220,24 @@ func (m *MomoTCPCommunicator) ReceiveACK() (err error) {
 
 	var ackBuffer [3]byte
 	if _, err := io.ReadFull(io.LimitReader(m, 3), ackBuffer[:]); err != nil {
-		return fmt.Errorf("failed to read ACK: %v: %w", err, syscall.EBADMSG)
+		return fmt.Errorf("failed to read ACK prefix: %v: %w", err, syscall.EBADMSG)
 	}
 
 	if !bytes.Equal(ackBuffer[:], []byte("ACK")) {
 		return fmt.Errorf("unexpected response: %s: %w", string(ackBuffer[:]), syscall.EBADMSG)
 	}
+
+	// ⚡ Bolt: Read any server ID digits trailing the ACK using a short deadline to prevent socket stream pollution
+	m.SetDeadline(time.Now().Add(5 * time.Millisecond))
+	var oneByte [1]byte
+	for {
+		n, _ := m.Read(oneByte[:])
+		if n == 1 && oneByte[0] >= '0' && oneByte[0] <= '9' {
+			// Continue reading digits
+		} else {
+			break
+		}
+	}
+	m.SetDeadline(time.Time{}) // Restore default deadline
 	return nil
 }
