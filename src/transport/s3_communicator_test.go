@@ -5,9 +5,21 @@ import (
 	"testing"
 
 	"github.com/alsotoes/momo/src/common"
+	"go.uber.org/goleak"
 )
 
+func verifyNoLeaks(t *testing.T) {
+	goleak.VerifyNone(t,
+		goleak.IgnoreAnyFunction("github.com/quic-go/quic-go.(*Transport).runSendQueue"),
+		goleak.IgnoreAnyFunction("github.com/quic-go/quic-go.(*Transport).listen"),
+		goleak.IgnoreAnyFunction("github.com/quic-go/quic-go.(*Conn).run"),
+		goleak.IgnoreAnyFunction("github.com/quic-go/quic-go.(*sendQueue).Run"),
+	)
+}
+
 func TestS3Communicator_HandshakeServer(t *testing.T) {
+	defer verifyNoLeaks(t)
+
 	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
 	expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
 
@@ -64,6 +76,8 @@ func TestS3Communicator_HandshakeServer(t *testing.T) {
 }
 
 func TestS3Communicator_AWSV4Auth(t *testing.T) {
+	defer verifyNoLeaks(t)
+
 	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
 	expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
 

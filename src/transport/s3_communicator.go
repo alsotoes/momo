@@ -99,8 +99,9 @@ func (m *S3Communicator) HandshakeClient(authToken string, timestamp int64, requ
 		host = m.remoteAddr.String()
 	}
 
-	// ⚡ Bolt: Eliminate fmt.Sprintf and string allocations using byte slice appending
-	b := make([]byte, 0, 256)
+	// ⚡ Bolt: Eliminate fmt.Sprintf and string allocations using stack-allocated buffer
+	var buf [256]byte
+	b := buf[:0]
 	b = append(b, "OPTIONS / HTTP/1.1\r\nHost: "...)
 	b = append(b, host...)
 	b = append(b, "\r\nAuthorization: Bearer "...)
@@ -117,7 +118,7 @@ func (m *S3Communicator) HandshakeClient(authToken string, timestamp int64, requ
 
 	resp, err := http.ReadResponse(m.reader, nil)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to read handshake response: %v: %w", err, syscall.EBADMSG)
 	}
 	defer resp.Body.Close()
 
@@ -145,7 +146,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 
 	req, err := http.ReadRequest(m.reader)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, fmt.Errorf("failed to read handshake request: %v: %w", err, syscall.EBADMSG)
 	}
 
 	authHeader := req.Header.Get("Authorization")
@@ -244,8 +245,9 @@ func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (status int, er
 		host = m.remoteAddr.String()
 	}
 
-	// ⚡ Bolt: Eliminate fmt.Sprintf and string allocations using byte slice appending
-	b := make([]byte, 0, 256)
+	// ⚡ Bolt: Eliminate fmt.Sprintf and string allocations using stack-allocated buffer
+	var buf [256]byte
+	b := buf[:0]
 	b = append(b, "PUT /"...)
 	b = append(b, strings.TrimRight(meta.Name, "\x00")...)
 	b = append(b, " HTTP/1.1\r\nHost: "...)
@@ -267,7 +269,7 @@ func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (status int, er
 	// ⚡ Bolt: Read the response immediately to get the metadata status.
 	resp, err := http.ReadResponse(m.reader, nil)
 	if err != nil {
-		return 0, fmt.Errorf("failed to read metadata status response: %w", err)
+		return 0, fmt.Errorf("failed to read metadata status response: %v: %w", err, syscall.EBADMSG)
 	}
 	defer resp.Body.Close()
 
@@ -324,7 +326,8 @@ func (m *S3Communicator) SendMetadataStatus(status int) (err error) {
 		}
 	}()
 	// ⚡ Bolt: Eliminate http.Response and header map allocations via direct byte response writing
-	b := make([]byte, 0, 128)
+	var buf [128]byte
+	b := buf[:0]
 	b = append(b, "HTTP/1.1 200 OK\r\nX-Momo-Metadata-Status: "...)
 	b = strconv.AppendInt(b, int64(status), 10)
 	b = append(b, "\r\nContent-Length: 0\r\nConnection: keep-alive\r\n\r\n"...)
@@ -341,7 +344,8 @@ func (m *S3Communicator) SendACK(serverId int) (err error) {
 		}
 	}()
 	// ⚡ Bolt: Eliminate http.Response allocation and fmt.Sprintf using stack buffer direct write
-	b := make([]byte, 0, 128)
+	var buf [128]byte
+	b := buf[:0]
 	b = append(b, "HTTP/1.1 200 OK\r\nContent-Length: "...)
 
 	// serverId string length calculation
@@ -365,7 +369,7 @@ func (m *S3Communicator) ReceiveACK() (err error) {
 	}()
 	resp, err := http.ReadResponse(m.reader, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to read ACK response: %v: %w", err, syscall.EBADMSG)
 	}
 	defer resp.Body.Close()
 	// 🛡️ Zero-Crash: Use LimitReader to prevent unbounded memory allocation
