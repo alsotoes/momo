@@ -40,18 +40,42 @@ func NewS3Communicator(conn net.Conn) *S3Communicator {
 }
 
 func (m *S3Communicator) Read(p []byte) (n int, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in S3 Read: %v", r)
+			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+		}
+	}()
 	return m.reader.Read(p)
 }
 
 func (m *S3Communicator) Write(p []byte) (n int, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in S3 Write: %v", r)
+			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+		}
+	}()
 	return m.conn.Write(p)
 }
 
-func (m *S3Communicator) Close() error {
+func (m *S3Communicator) Close() (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in S3 Close: %v", r)
+			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+		}
+	}()
 	return m.conn.Close()
 }
 
-func (m *S3Communicator) SetAbsoluteDeadline(t interface{}) error {
+func (m *S3Communicator) SetAbsoluteDeadline(t interface{}) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in S3 SetAbsoluteDeadline: %v", r)
+			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+		}
+	}()
 	deadline, ok := t.(time.Time)
 	if !ok {
 		return fmt.Errorf("invalid deadline type: expected time.Time")
@@ -60,7 +84,6 @@ func (m *S3Communicator) SetAbsoluteDeadline(t interface{}) error {
 }
 
 func (m *S3Communicator) HandshakeClient(authToken string, timestamp int64, requestedMode int) (finalMode int, err error) {
-	// 🛡️ Zero-Crash: Recover from any unexpected panics in S3 response parsing.
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Panic recovered in S3 HandshakeClient: %v", r)
@@ -76,14 +99,26 @@ func (m *S3Communicator) HandshakeClient(authToken string, timestamp int64, requ
 		host = m.remoteAddr.String()
 	}
 
-	reqStr := fmt.Sprintf("OPTIONS / HTTP/1.1\r\nHost: %s\r\nAuthorization: Bearer %s\r\nX-Momo-Timestamp: %d\r\nX-Momo-Requested-Mode: %d\r\n\r\n", host, authToken, timestamp, requestedMode)
-	if _, err := m.conn.Write([]byte(reqStr)); err != nil {
+	// ⚡ Bolt: Eliminate fmt.Sprintf and string allocations using stack-allocated buffer
+	var buf [256]byte
+	b := buf[:0]
+	b = append(b, "OPTIONS / HTTP/1.1\r\nHost: "...)
+	b = append(b, host...)
+	b = append(b, "\r\nAuthorization: Bearer "...)
+	b = append(b, authToken...)
+	b = append(b, "\r\nX-Momo-Timestamp: "...)
+	b = strconv.AppendInt(b, timestamp, 10)
+	b = append(b, "\r\nX-Momo-Requested-Mode: "...)
+	b = strconv.AppendInt(b, int64(requestedMode), 10)
+	b = append(b, "\r\n\r\n"...)
+
+	if _, err := m.conn.Write(b); err != nil {
 		return 0, err
 	}
 
 	resp, err := http.ReadResponse(m.reader, nil)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to read handshake response: %v: %w", err, syscall.EBADMSG)
 	}
 	defer resp.Body.Close()
 
@@ -102,7 +137,6 @@ func (m *S3Communicator) HandshakeClient(authToken string, timestamp int64, requ
 }
 
 func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMode int, timestamp int64, err error) {
-	// 🛡️ Zero-Crash: Recover from any unexpected panics in S3 request parsing.
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Panic recovered in S3 HandshakeServer: %v", r)
@@ -112,7 +146,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 
 	req, err := http.ReadRequest(m.reader)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, fmt.Errorf("failed to read handshake request: %v: %w", err, syscall.EBADMSG)
 	}
 
 	authHeader := req.Header.Get("Authorization")
@@ -165,7 +199,6 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 	// Parse Metadata if it's a PUT request
 	if req.Method == "PUT" {
 		// 🛡️ Sentinel: Sanitize S3 path to prevent traversal attacks.
-		// S3 paths can contain slashes, but must not traverse out of the storage root.
 		rawPath := req.URL.Path
 		cleanPath := path.Clean(rawPath)
 		if cleanPath == "." || cleanPath == ".." || strings.HasPrefix(cleanPath, "../") || cleanPath == "/" {
@@ -183,38 +216,60 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 	return requestedMode, timestamp, nil
 }
 
-func (m *S3Communicator) SendReplicationMode(mode int) error {
-	// SendReplicationMode is called by the server after HandshakeServer.
-	// Since HTTP requests expect an HTTP response, we write an HTTP response.
-	resp := http.Response{
-		StatusCode: 200,
-		ProtoMajor: 1,
-		ProtoMinor: 1,
-		Header:     make(http.Header),
-	}
-	resp.Header.Set("X-Momo-Replication-Mode", strconv.Itoa(mode))
-	resp.Header.Set("Content-Length", "0")
-	resp.Header.Set("Connection", "keep-alive")
-	return resp.Write(m.conn)
+func (m *S3Communicator) SendReplicationMode(mode int) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in S3 SendReplicationMode: %v", r)
+			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+		}
+	}()
+	// ⚡ Bolt: Eliminate http.Response and header map allocations via direct byte response writing
+	b := make([]byte, 0, 128)
+	b = append(b, "HTTP/1.1 200 OK\r\nX-Momo-Replication-Mode: "...)
+	b = strconv.AppendInt(b, int64(mode), 10)
+	b = append(b, "\r\nContent-Length: 0\r\nConnection: keep-alive\r\n\r\n"...)
+
+	_, err = m.conn.Write(b)
+	return err
 }
 
-func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (int, error) {
+func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (status int, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in S3 SendMetadata: %v", r)
+			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+		}
+	}()
 	host := "127.0.0.1"
 	if m.remoteAddr != nil {
 		host = m.remoteAddr.String()
 	}
 
-	reqStr := fmt.Sprintf("PUT /%s HTTP/1.1\r\nHost: %s\r\nAuthorization: Bearer %s\r\nX-Momo-Timestamp: %d\r\nX-Amz-Content-Sha256: %s\r\nContent-Length: %d\r\n\r\n",
-		strings.TrimRight(meta.Name, "\x00"), host, m.clientAuthToken, m.clientTimestamp, strings.TrimRight(meta.Hash, "\x00"), meta.Size)
+	// ⚡ Bolt: Eliminate fmt.Sprintf and string allocations using stack-allocated buffer
+	var buf [256]byte
+	b := buf[:0]
+	b = append(b, "PUT /"...)
+	b = append(b, strings.TrimRight(meta.Name, "\x00")...)
+	b = append(b, " HTTP/1.1\r\nHost: "...)
+	b = append(b, host...)
+	b = append(b, "\r\nAuthorization: Bearer "...)
+	b = append(b, m.clientAuthToken...)
+	b = append(b, "\r\nX-Momo-Timestamp: "...)
+	b = strconv.AppendInt(b, m.clientTimestamp, 10)
+	b = append(b, "\r\nX-Amz-Content-Sha256: "...)
+	b = append(b, strings.TrimRight(meta.Hash, "\x00")...)
+	b = append(b, "\r\nContent-Length: "...)
+	b = strconv.AppendInt(b, meta.Size, 10)
+	b = append(b, "\r\n\r\n"...)
 
-	if _, err := m.conn.Write([]byte(reqStr)); err != nil {
+	if _, err := m.conn.Write(b); err != nil {
 		return 0, err
 	}
 
 	// ⚡ Bolt: Read the response immediately to get the metadata status.
 	resp, err := http.ReadResponse(m.reader, nil)
 	if err != nil {
-		return 0, fmt.Errorf("failed to read metadata status response: %w", err)
+		return 0, fmt.Errorf("failed to read metadata status response: %v: %w", err, syscall.EBADMSG)
 	}
 	defer resp.Body.Close()
 
@@ -222,12 +277,11 @@ func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (int, error) {
 	if statusStr == "" {
 		return MetadataStatusSendPayload, nil
 	}
-	status, _ := strconv.Atoi(statusStr)
-	return status, nil
+	statusVal, _ := strconv.Atoi(statusStr)
+	return statusVal, nil
 }
 
 func (m *S3Communicator) ReceiveMetadata() (meta common.FileMetadata, err error) {
-	// 🛡️ Zero-Crash: Recover from any unexpected panics in S3 metadata parsing.
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Panic recovered in S3 ReceiveMetadata: %v", r)
@@ -243,7 +297,7 @@ func (m *S3Communicator) ReceiveMetadata() (meta common.FileMetadata, err error)
 	if m.meta.Name == "" {
 		req, err := http.ReadRequest(m.reader)
 		if err != nil {
-			return common.FileMetadata{}, fmt.Errorf("ReceiveMetadata ReadRequest failed: %w", err)
+			return common.FileMetadata{}, fmt.Errorf("ReceiveMetadata ReadRequest failed: %v: %w", err, syscall.EBADMSG)
 		}
 
 		// 🛡️ Sentinel: Sanitize S3 path to prevent traversal attacks.
@@ -264,42 +318,67 @@ func (m *S3Communicator) ReceiveMetadata() (meta common.FileMetadata, err error)
 	return m.meta, nil
 }
 
-func (m *S3Communicator) SendMetadataStatus(status int) error {
-	resp := http.Response{
-		StatusCode: 200,
-		ProtoMajor: 1,
-		ProtoMinor: 1,
-		Header:     make(http.Header),
-	}
-	resp.Header.Set("X-Momo-Metadata-Status", strconv.Itoa(status))
-	resp.Header.Set("Content-Length", "0")
-	resp.Header.Set("Connection", "keep-alive")
-	return resp.Write(m.conn)
+func (m *S3Communicator) SendMetadataStatus(status int) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in S3 SendMetadataStatus: %v", r)
+			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+		}
+	}()
+	// ⚡ Bolt: Eliminate http.Response and header map allocations via direct byte response writing
+	var buf [128]byte
+	b := buf[:0]
+	b = append(b, "HTTP/1.1 200 OK\r\nX-Momo-Metadata-Status: "...)
+	b = strconv.AppendInt(b, int64(status), 10)
+	b = append(b, "\r\nContent-Length: 0\r\nConnection: keep-alive\r\n\r\n"...)
+
+	_, err = m.conn.Write(b)
+	return err
 }
 
-func (m *S3Communicator) SendACK(serverId int) error {
-	// If the server is sending an ACK after receiving the payload.
-	resp := http.Response{
-		StatusCode:    200,
-		ProtoMajor:    1,
-		ProtoMinor:    1,
-		Header:        make(http.Header),
-		Body:          io.NopCloser(bytes.NewBufferString(fmt.Sprintf("ACK%d", serverId))),
-		ContentLength: int64(3 + len(strconv.Itoa(serverId))),
-	}
-	return resp.Write(m.conn)
+func (m *S3Communicator) SendACK(serverId int) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in S3 SendACK: %v", r)
+			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+		}
+	}()
+	// ⚡ Bolt: Eliminate http.Response allocation and fmt.Sprintf using stack buffer direct write
+	var buf [128]byte
+	b := buf[:0]
+	b = append(b, "HTTP/1.1 200 OK\r\nContent-Length: "...)
+
+	// serverId string length calculation
+	idStr := strconv.Itoa(serverId)
+	bodyLength := 3 + len(idStr)
+
+	b = strconv.AppendInt(b, int64(bodyLength), 10)
+	b = append(b, "\r\nConnection: keep-alive\r\n\r\nACK"...)
+	b = append(b, idStr...)
+
+	_, err = m.conn.Write(b)
+	return err
 }
 
-func (m *S3Communicator) ReceiveACK() error {
+func (m *S3Communicator) ReceiveACK() (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in S3 ReceiveACK: %v", r)
+			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+		}
+	}()
 	resp, err := http.ReadResponse(m.reader, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to read ACK response: %v: %w", err, syscall.EBADMSG)
 	}
 	defer resp.Body.Close()
 	// 🛡️ Zero-Crash: Use LimitReader to prevent unbounded memory allocation
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1024))
+	if err != nil {
+		return fmt.Errorf("failed to read ACK body: %w", err)
+	}
 	if !bytes.HasPrefix(body, []byte("ACK")) {
-		return fmt.Errorf("unexpected ACK: %s", string(body))
+		return fmt.Errorf("unexpected ACK: %s: %w", string(body), syscall.EBADMSG)
 	}
 	return nil
 }

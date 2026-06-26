@@ -10,6 +10,8 @@ import (
 )
 
 func TestS3Communicator_FullFlow(t *testing.T) {
+	defer verifyNoLeaks(t)
+
 	authToken := "test-token-1234567890123456789012345678901234567890123456789012345"
 	expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
 	addr := "127.0.0.1:45698"
@@ -116,6 +118,8 @@ func TestS3Communicator_FullFlow(t *testing.T) {
 }
 
 func TestS3Communicator_Methods(t *testing.T) {
+	defer verifyNoLeaks(t)
+
 	conn, _ := net.Pipe()
 	defer conn.Close()
 	comm := NewS3Communicator(conn)
