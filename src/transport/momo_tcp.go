@@ -27,7 +27,12 @@ func NewMomoTCPCommunicator(conn net.Conn) *MomoTCPCommunicator {
 	}
 }
 
-func (m *MomoTCPCommunicator) SetAbsoluteDeadline(t interface{}) error {
+func (m *MomoTCPCommunicator) SetAbsoluteDeadline(t interface{}) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in SetAbsoluteDeadline: %v: %w", r, syscall.EIO)
+		}
+	}()
 	deadline, ok := t.(time.Time)
 	if !ok {
 		return fmt.Errorf("invalid deadline type: expected time.Time")
@@ -36,7 +41,13 @@ func (m *MomoTCPCommunicator) SetAbsoluteDeadline(t interface{}) error {
 	return nil
 }
 
-func (m *MomoTCPCommunicator) HandshakeClient(authToken string, timestamp int64, requestedMode int) (int, error) {
+func (m *MomoTCPCommunicator) HandshakeClient(authToken string, timestamp int64, requestedMode int) (mode int, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in HandshakeClient: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	var handshakeBuf [common.AuthTokenLength + common.TimestampLength + 1]byte
 	copy(handshakeBuf[0:common.AuthTokenLength], common.PadString(authToken, common.AuthTokenLength))
 
@@ -47,26 +58,32 @@ func (m *MomoTCPCommunicator) HandshakeClient(authToken string, timestamp int64,
 	handshakeBuf[common.AuthTokenLength+common.TimestampLength] = byte(requestedMode + '0')
 
 	if _, err := m.Write(handshakeBuf[:]); err != nil {
-		return 0, fmt.Errorf("failed to send handshake: %w", err)
+		return 0, fmt.Errorf("failed to send handshake: %v: %w", err, syscall.EIO)
 	}
 
 	var bufferReplicationMode [1]byte
-	if _, err := io.ReadFull(m, bufferReplicationMode[:]); err != nil {
-		return 0, fmt.Errorf("failed to read replication mode response: %w", err)
+	if _, err := io.ReadFull(io.LimitReader(m, 1), bufferReplicationMode[:]); err != nil {
+		return 0, fmt.Errorf("failed to read replication mode response: %v: %w", err, syscall.EBADMSG)
 	}
 
 	replicationModeInt64, err := common.SafeParseInt(bufferReplicationMode[:])
 	if err != nil {
-		return 0, fmt.Errorf("invalid replication mode response: %w", err)
+		return 0, fmt.Errorf("invalid replication mode response: %v: %w", err, syscall.EBADMSG)
 	}
 
 	return int(replicationModeInt64), nil
 }
 
-func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (int, int64, error) {
+func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (requestedMode int, timestamp int64, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in HandshakeServer: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	var handshakeBuf [common.AuthTokenLength + common.TimestampLength + 1]byte
-	if _, err := io.ReadFull(m, handshakeBuf[:]); err != nil {
-		return 0, 0, fmt.Errorf("failed to read handshake: %w", err)
+	if _, err := io.ReadFull(io.LimitReader(m, common.AuthTokenLength+common.TimestampLength+1), handshakeBuf[:]); err != nil {
+		return 0, 0, fmt.Errorf("failed to read handshake: %v: %w", err, syscall.EBADMSG)
 	}
 
 	bufferAuthToken := handshakeBuf[:common.AuthTokenLength]
@@ -77,29 +94,41 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (int, in
 		return 0, 0, syscall.EACCES
 	}
 
-	timestamp, err := common.SafeParseInt(bufferTimestamp)
+	timestampVal, err := common.SafeParseInt(bufferTimestamp)
 	if err != nil {
-		return 0, 0, fmt.Errorf("failed to parse timestamp: %w", err)
+		return 0, 0, fmt.Errorf("failed to parse timestamp: %v: %w", err, syscall.EBADMSG)
 	}
 
-	requestedMode := int(requestedModeByte - '0')
-	if requestedMode < 0 || requestedMode > 9 {
-		return 0, 0, fmt.Errorf("invalid requested mode: %d", requestedMode)
+	requestedModeVal := int(requestedModeByte - '0')
+	if requestedModeVal < 0 || requestedModeVal > 9 {
+		return 0, 0, fmt.Errorf("invalid requested mode: %d: %w", requestedModeVal, syscall.EBADMSG)
 	}
 
-	return requestedMode, timestamp, nil
+	return requestedModeVal, timestampVal, nil
 }
 
 // SendReplicationMode is a helper for HandshakeServer to send the selected mode back.
-func (m *MomoTCPCommunicator) SendReplicationMode(mode int) error {
+func (m *MomoTCPCommunicator) SendReplicationMode(mode int) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in SendReplicationMode: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	var repModeBuf [16]byte
 	if _, err := m.Write(strconv.AppendInt(repModeBuf[:0], int64(mode), 10)); err != nil {
-		return fmt.Errorf("failed to send replication mode: %w", err)
+		return fmt.Errorf("failed to send replication mode: %v: %w", err, syscall.EIO)
 	}
 	return nil
 }
 
-func (m *MomoTCPCommunicator) SendMetadata(meta *common.FileMetadata) (int, error) {
+func (m *MomoTCPCommunicator) SendMetadata(meta *common.FileMetadata) (status int, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in SendMetadata: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	var metadataBuffer [hashLength + common.FileInfoLength + common.FileInfoLength]byte
 	copy(metadataBuffer[0:hashLength], meta.Hash)
 	copy(metadataBuffer[hashLength:hashLength+common.FileInfoLength], common.PadString(meta.Name, common.FileInfoLength))
@@ -109,22 +138,28 @@ func (m *MomoTCPCommunicator) SendMetadata(meta *common.FileMetadata) (int, erro
 	copy(metadataBuffer[hashLength+common.FileInfoLength:], sizeBytes)
 
 	if _, err := m.Write(metadataBuffer[:]); err != nil {
-		return 0, fmt.Errorf("failed to send metadata: %w", err)
+		return 0, fmt.Errorf("failed to send metadata: %v: %w", err, syscall.EIO)
 	}
 
 	// ⚡ Bolt: Read the metadata status code (1 byte) to determine if we should send the payload.
-	var status [1]byte
-	if _, err := io.ReadFull(m, status[:]); err != nil {
-		return 0, fmt.Errorf("failed to read metadata status: %w", err)
+	var statusBuf [1]byte
+	if _, err := io.ReadFull(io.LimitReader(m, 1), statusBuf[:]); err != nil {
+		return 0, fmt.Errorf("failed to read metadata status: %v: %w", err, syscall.EBADMSG)
 	}
-	return int(status[0]), nil
+	return int(statusBuf[0]), nil
 }
 
-func (m *MomoTCPCommunicator) ReceiveMetadata() (common.FileMetadata, error) {
+func (m *MomoTCPCommunicator) ReceiveMetadata() (meta common.FileMetadata, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in ReceiveMetadata: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	var metadata common.FileMetadata
 	var buffer [64 + common.FileInfoLength + common.FileInfoLength]byte
 
-	if _, err := io.ReadFull(m, buffer[:]); err != nil {
+	if _, err := io.ReadFull(io.LimitReader(m, 64+common.FileInfoLength+common.FileInfoLength), buffer[:]); err != nil {
 		return metadata, err
 	}
 
@@ -141,9 +176,15 @@ func (m *MomoTCPCommunicator) ReceiveMetadata() (common.FileMetadata, error) {
 }
 
 // SendMetadataStatus is called by the server after receiving metadata.
-func (m *MomoTCPCommunicator) SendMetadataStatus(status int) error {
+func (m *MomoTCPCommunicator) SendMetadataStatus(status int) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in SendMetadataStatus: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	if _, err := m.Write([]byte{byte(status)}); err != nil {
-		return fmt.Errorf("failed to send metadata status: %w", err)
+		return fmt.Errorf("failed to send metadata status: %v: %w", err, syscall.EIO)
 	}
 	return nil
 }
@@ -156,26 +197,34 @@ func bytesTrimNull(b []byte) []byte {
 	return b
 }
 
-func (m *MomoTCPCommunicator) SendACK(serverId int) error {
+func (m *MomoTCPCommunicator) SendACK(serverId int) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in SendACK: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	var ackBuf [32]byte
 	if _, err := m.Write(strconv.AppendInt(append(ackBuf[:0], "ACK"...), int64(serverId), 10)); err != nil {
-		return fmt.Errorf("failed to send ACK: %w", err)
+		return fmt.Errorf("failed to send ACK: %v: %w", err, syscall.EIO)
 	}
 	return nil
 }
 
-func (m *MomoTCPCommunicator) ReceiveACK() error {
-	var ackBuffer [3]byte // "ACK" is 3 bytes, wait serverId is also there?
-	// The existing logic reads 3 bytes but expects "ACK"?
-	// Wait, the existing logic in sendFile reads 3 bytes: var ackBuffer [3]byte
-	// and checks if it's "ACK". But server sends "ACK%d".
+func (m *MomoTCPCommunicator) ReceiveACK() (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in ReceiveACK: %v: %w", r, syscall.EIO)
+		}
+	}()
 
-	if _, err := io.ReadFull(m, ackBuffer[:]); err != nil {
-		return fmt.Errorf("failed to read ACK: %w", err)
+	var ackBuffer [3]byte
+	if _, err := io.ReadFull(io.LimitReader(m, 3), ackBuffer[:]); err != nil {
+		return fmt.Errorf("failed to read ACK: %v: %w", err, syscall.EBADMSG)
 	}
 
 	if !bytes.Equal(ackBuffer[:], []byte("ACK")) {
-		return fmt.Errorf("unexpected response: %q", string(ackBuffer[:]))
+		return fmt.Errorf("unexpected response: %s: %w", string(ackBuffer[:]), syscall.EBADMSG)
 	}
 	return nil
 }

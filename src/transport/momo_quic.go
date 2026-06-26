@@ -35,7 +35,13 @@ func NewMomoQUICCommunicator(stream *quic.Stream, conn *quic.Conn) *MomoQUICComm
 	}
 }
 
-func (m *MomoQUICCommunicator) SetAbsoluteDeadline(t interface{}) error {
+func (m *MomoQUICCommunicator) SetAbsoluteDeadline(t interface{}) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in SetAbsoluteDeadline: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	deadline, ok := t.(time.Time)
 	if !ok {
 		return fmt.Errorf("invalid deadline type: expected time.Time")
@@ -44,7 +50,13 @@ func (m *MomoQUICCommunicator) SetAbsoluteDeadline(t interface{}) error {
 	return nil
 }
 
-func (m *MomoQUICCommunicator) HandshakeClient(authToken string, timestamp int64, requestedMode int) (int, error) {
+func (m *MomoQUICCommunicator) HandshakeClient(authToken string, timestamp int64, requestedMode int) (mode int, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in HandshakeClient: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	var handshakeBuf [common.AuthTokenLength + common.TimestampLength + 1]byte
 	copy(handshakeBuf[0:common.AuthTokenLength], common.PadString(authToken, common.AuthTokenLength))
 
@@ -55,26 +67,32 @@ func (m *MomoQUICCommunicator) HandshakeClient(authToken string, timestamp int64
 	handshakeBuf[common.AuthTokenLength+common.TimestampLength] = byte(requestedMode + '0')
 
 	if _, err := m.Write(handshakeBuf[:]); err != nil {
-		return 0, fmt.Errorf("failed to send handshake: %w", err)
+		return 0, err
 	}
 
-	var bufferReplicationMode [1]byte
-	if _, err := io.ReadFull(m, bufferReplicationMode[:]); err != nil {
-		return 0, fmt.Errorf("failed to read replication mode response: %w", err)
+	respBuf := make([]byte, 1)
+	if _, err := io.ReadFull(io.LimitReader(m, 1), respBuf); err != nil {
+		return 0, fmt.Errorf("failed to read replication mode response: %v: %w", err, syscall.EBADMSG)
 	}
 
-	replicationModeInt64, err := common.SafeParseInt(bufferReplicationMode[:])
+	replicationModeInt64, err := common.SafeParseInt(respBuf)
 	if err != nil {
-		return 0, fmt.Errorf("invalid replication mode response: %w", err)
+		return 0, fmt.Errorf("invalid replication mode response: %v: %w", err, syscall.EBADMSG)
 	}
 
 	return int(replicationModeInt64), nil
 }
 
-func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (int, int64, error) {
+func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (requestedMode int, timestamp int64, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in HandshakeServer: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	var handshakeBuf [common.AuthTokenLength + common.TimestampLength + 1]byte
-	if _, err := io.ReadFull(m, handshakeBuf[:]); err != nil {
-		return 0, 0, fmt.Errorf("failed to read handshake: %w", err)
+	if _, err := io.ReadFull(io.LimitReader(m, common.AuthTokenLength+common.TimestampLength+1), handshakeBuf[:]); err != nil {
+		return 0, 0, fmt.Errorf("failed to read handshake: %v: %w", err, syscall.EBADMSG)
 	}
 
 	bufferAuthToken := handshakeBuf[:common.AuthTokenLength]
@@ -85,28 +103,40 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (int, i
 		return 0, 0, syscall.EACCES
 	}
 
-	timestamp, err := common.SafeParseInt(bufferTimestamp)
+	timestampVal, err := common.SafeParseInt(bufferTimestamp)
 	if err != nil {
-		return 0, 0, fmt.Errorf("failed to parse timestamp: %w", err)
+		return 0, 0, fmt.Errorf("failed to parse timestamp: %v: %w", err, syscall.EBADMSG)
 	}
 
-	requestedMode := int(requestedModeByte - '0')
-	if requestedMode < 0 || requestedMode > 9 {
-		return 0, 0, fmt.Errorf("invalid requested mode: %d", requestedMode)
+	requestedModeVal := int(requestedModeByte - '0')
+	if requestedModeVal < 0 || requestedModeVal > 9 {
+		return 0, 0, fmt.Errorf("invalid requested mode: %d: %w", requestedModeVal, syscall.EBADMSG)
 	}
 
-	return requestedMode, timestamp, nil
+	return requestedModeVal, timestampVal, nil
 }
 
-func (m *MomoQUICCommunicator) SendReplicationMode(mode int) error {
+func (m *MomoQUICCommunicator) SendReplicationMode(mode int) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in SendReplicationMode: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	var repModeBuf [16]byte
 	if _, err := m.Write(strconv.AppendInt(repModeBuf[:0], int64(mode), 10)); err != nil {
-		return fmt.Errorf("failed to send replication mode: %w", err)
+		return fmt.Errorf("failed to send replication mode: %v: %w", err, syscall.EIO)
 	}
 	return nil
 }
 
-func (m *MomoQUICCommunicator) SendMetadata(meta *common.FileMetadata) (int, error) {
+func (m *MomoQUICCommunicator) SendMetadata(meta *common.FileMetadata) (status int, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in SendMetadata: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	var metadataBuffer [64 + common.FileInfoLength + common.FileInfoLength]byte
 	copy(metadataBuffer[0:64], meta.Hash)
 	copy(metadataBuffer[64:64+common.FileInfoLength], common.PadString(meta.Name, common.FileInfoLength))
@@ -116,22 +146,28 @@ func (m *MomoQUICCommunicator) SendMetadata(meta *common.FileMetadata) (int, err
 	copy(metadataBuffer[64+common.FileInfoLength:], sizeBytes)
 
 	if _, err := m.Write(metadataBuffer[:]); err != nil {
-		return 0, fmt.Errorf("failed to send metadata: %w", err)
+		return 0, fmt.Errorf("failed to send metadata: %v: %w", err, syscall.EIO)
 	}
 
 	// ⚡ Bolt: Read the metadata status code (1 byte) to determine if we should send the payload.
-	var status [1]byte
-	if _, err := io.ReadFull(m, status[:]); err != nil {
-		return 0, fmt.Errorf("failed to read metadata status: %w", err)
+	var statusBuf [1]byte
+	if _, err := io.ReadFull(io.LimitReader(m, 1), statusBuf[:]); err != nil {
+		return 0, fmt.Errorf("failed to read metadata status: %v: %w", err, syscall.EBADMSG)
 	}
-	return int(status[0]), nil
+	return int(statusBuf[0]), nil
 }
 
-func (m *MomoQUICCommunicator) ReceiveMetadata() (common.FileMetadata, error) {
+func (m *MomoQUICCommunicator) ReceiveMetadata() (meta common.FileMetadata, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in ReceiveMetadata: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	var metadata common.FileMetadata
 	var buffer [64 + common.FileInfoLength + common.FileInfoLength]byte
 
-	if _, err := io.ReadFull(m, buffer[:]); err != nil {
+	if _, err := io.ReadFull(io.LimitReader(m, 64+common.FileInfoLength+common.FileInfoLength), buffer[:]); err != nil {
 		return metadata, err
 	}
 
@@ -148,29 +184,47 @@ func (m *MomoQUICCommunicator) ReceiveMetadata() (common.FileMetadata, error) {
 }
 
 // SendMetadataStatus is called by the server after receiving metadata.
-func (m *MomoQUICCommunicator) SendMetadataStatus(status int) error {
+func (m *MomoQUICCommunicator) SendMetadataStatus(status int) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in SendMetadataStatus: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	if _, err := m.Write([]byte{byte(status)}); err != nil {
-		return fmt.Errorf("failed to send metadata status: %w", err)
+		return fmt.Errorf("failed to send metadata status: %v: %w", err, syscall.EIO)
 	}
 	return nil
 }
 
-func (m *MomoQUICCommunicator) SendACK(serverId int) error {
+func (m *MomoQUICCommunicator) SendACK(serverId int) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in SendACK: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	var ackBuf [32]byte
 	if _, err := m.Write(strconv.AppendInt(append(ackBuf[:0], "ACK"...), int64(serverId), 10)); err != nil {
-		return fmt.Errorf("failed to send ACK: %w", err)
+		return fmt.Errorf("failed to send ACK: %v: %w", err, syscall.EIO)
 	}
 	return nil
 }
 
-func (m *MomoQUICCommunicator) ReceiveACK() error {
+func (m *MomoQUICCommunicator) ReceiveACK() (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in ReceiveACK: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	var ackBuffer [3]byte
-	if _, err := io.ReadFull(m, ackBuffer[:]); err != nil {
-		return fmt.Errorf("failed to read ACK: %w", err)
+	if _, err := io.ReadFull(io.LimitReader(m, 3), ackBuffer[:]); err != nil {
+		return fmt.Errorf("failed to read ACK: %v: %w", err, syscall.EBADMSG)
 	}
 
 	if !bytes.Equal(ackBuffer[:], []byte("ACK")) {
-		return fmt.Errorf("unexpected response: %q", string(ackBuffer[:]))
+		return fmt.Errorf("unexpected response: %s: %w", string(ackBuffer[:]), syscall.EBADMSG)
 	}
 	return nil
 }
@@ -179,7 +233,12 @@ func (m *MomoQUICCommunicator) RemoteAddr() net.Addr {
 	return m.conn.RemoteAddr()
 }
 
-func (m *MomoQUICCommunicator) Close() error {
+func (m *MomoQUICCommunicator) Close() (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in Close: %v: %w", r, syscall.EIO)
+		}
+	}()
 	return m.Stream.Close()
 }
 
