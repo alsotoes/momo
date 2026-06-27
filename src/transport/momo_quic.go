@@ -137,13 +137,13 @@ func (m *MomoQUICCommunicator) SendMetadata(meta *common.FileMetadata) (status i
 		}
 	}()
 
-	var metadataBuffer [64 + common.FileInfoLength + common.FileInfoLength]byte
-	copy(metadataBuffer[0:64], meta.Hash)
-	copy(metadataBuffer[64:64+common.FileInfoLength], common.PadString(meta.Name, common.FileInfoLength))
+	var metadataBuffer [hashLength + common.FileInfoLength + common.FileInfoLength]byte
+	copy(metadataBuffer[0:hashLength], meta.Hash)
+	copy(metadataBuffer[hashLength:hashLength+common.FileInfoLength], common.PadString(meta.Name, common.FileInfoLength))
 
 	var sizeBuf [common.FileInfoLength]byte
 	sizeBytes := strconv.AppendInt(sizeBuf[:0], meta.Size, 10)
-	copy(metadataBuffer[64+common.FileInfoLength:], sizeBytes)
+	copy(metadataBuffer[hashLength+common.FileInfoLength:], sizeBytes)
 
 	if _, err := m.Write(metadataBuffer[:]); err != nil {
 		return 0, fmt.Errorf("failed to send metadata: %v: %w", err, syscall.EIO)
@@ -165,16 +165,16 @@ func (m *MomoQUICCommunicator) ReceiveMetadata() (meta common.FileMetadata, err 
 	}()
 
 	var metadata common.FileMetadata
-	var buffer [64 + common.FileInfoLength + common.FileInfoLength]byte
+	var buffer [hashLength + common.FileInfoLength + common.FileInfoLength]byte
 
-	if _, err := io.ReadFull(io.LimitReader(m, 64+common.FileInfoLength+common.FileInfoLength), buffer[:]); err != nil {
+	if _, err := io.ReadFull(io.LimitReader(m, hashLength+common.FileInfoLength+common.FileInfoLength), buffer[:]); err != nil {
 		return metadata, err
 	}
 
-	metadata.Hash = common.SanitizeLog(string(bytesTrimNull(buffer[:64])))
-	metadata.Name = string(bytesTrimNull(buffer[64 : 64+common.FileInfoLength]))
+	metadata.Hash = common.SanitizeLog(string(bytesTrimNull(buffer[:hashLength])))
+	metadata.Name = string(bytesTrimNull(buffer[hashLength : hashLength+common.FileInfoLength]))
 
-	size, err := common.SafeParseInt(buffer[64+common.FileInfoLength:])
+	size, err := common.SafeParseInt(buffer[hashLength+common.FileInfoLength:])
 	if err != nil {
 		return metadata, err
 	}
@@ -227,13 +227,14 @@ func (m *MomoQUICCommunicator) ReceiveACK() (err error) {
 		return fmt.Errorf("unexpected response: %s: %w", string(ackBuffer[:]), syscall.EBADMSG)
 	}
 
-	// ⚡ Bolt: Read any server ID digits trailing the ACK using a short deadline to prevent socket stream pollution
+	// ⚡ Bolt: Read any trailing server ID digits under a short deadline to prevent blocking,
+	// limited to at most 10 iterations to prevent infinite-loop CPU exhaustion (DoS).
 	m.Stream.SetDeadline(time.Now().Add(5 * time.Millisecond))
 	var oneByte [1]byte
-	for {
+	for i := 0; i < 10; i++ {
 		n, _ := m.Read(oneByte[:])
 		if n == 1 && oneByte[0] >= '0' && oneByte[0] <= '9' {
-			// Continue reading digits
+			// Continue
 		} else {
 			break
 		}
