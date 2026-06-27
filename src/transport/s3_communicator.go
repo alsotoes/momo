@@ -112,8 +112,17 @@ func (m *S3Communicator) HandshakeClient(authToken string, timestamp int64, requ
 	b = strconv.AppendInt(b, int64(requestedMode), 10)
 	b = append(b, "\r\n\r\n"...)
 
+	// 🛡️ Zero-Crash: Defensive bounds check to verify the formatted content fits safely within the stack buffer
+	if len(b) > 256 {
+		return 0, fmt.Errorf("buffer overflow: formatted data exceeds stack capacity: %w", syscall.ENOBUFS)
+	}
+
+	// 🛡️ Zero-Crash: Set a short write deadline to prevent stalled socket hanging
+	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	defer m.conn.SetWriteDeadline(time.Time{})
+
 	if _, err := m.conn.Write(b); err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to write handshake request: %v: %w", err, syscall.EPIPE)
 	}
 
 	resp, err := http.ReadResponse(m.reader, nil)
@@ -192,7 +201,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 	if requestedModeStr != "" {
 		requestedMode, err = strconv.Atoi(requestedModeStr)
 		if err != nil {
-			return 0, 0, fmt.Errorf("invalid requested mode header: %s: %w", requestedModeStr, syscall.EBADMSG)
+			return 0, 0, fmt.Errorf("invalid requested mode: %s: %w", requestedModeStr, syscall.EBADMSG)
 		}
 	}
 
@@ -223,14 +232,26 @@ func (m *S3Communicator) SendReplicationMode(mode int) (err error) {
 			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
 		}
 	}()
+	// 🛡️ Zero-Crash: Set a short write deadline to prevent stalled socket hanging
+	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	defer m.conn.SetWriteDeadline(time.Time{})
+
 	// ⚡ Bolt: Eliminate http.Response and header map allocations via direct byte response writing
-	b := make([]byte, 0, 128)
+	var buf [256]byte
+	b := buf[:0]
 	b = append(b, "HTTP/1.1 200 OK\r\nX-Momo-Replication-Mode: "...)
 	b = strconv.AppendInt(b, int64(mode), 10)
 	b = append(b, "\r\nContent-Length: 0\r\nConnection: keep-alive\r\n\r\n"...)
 
-	_, err = m.conn.Write(b)
-	return err
+	// 🛡️ Zero-Crash: Defensive bounds check to verify the formatted content fits safely within the stack buffer
+	if len(b) > 256 {
+		return fmt.Errorf("buffer overflow: formatted data exceeds stack capacity: %w", syscall.ENOBUFS)
+	}
+
+	if _, err = m.conn.Write(b); err != nil {
+		return fmt.Errorf("failed to write replication mode response: %v: %w", err, syscall.EPIPE)
+	}
+	return nil
 }
 
 func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (status int, err error) {
@@ -240,13 +261,17 @@ func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (status int, er
 			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
 		}
 	}()
+	// 🛡️ Zero-Crash: Set a short write deadline to prevent stalled socket hanging
+	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	defer m.conn.SetWriteDeadline(time.Time{})
+
 	host := "127.0.0.1"
 	if m.remoteAddr != nil {
 		host = m.remoteAddr.String()
 	}
 
 	// ⚡ Bolt: Eliminate fmt.Sprintf and string allocations using stack-allocated buffer
-	var buf [256]byte
+	var buf [512]byte
 	b := buf[:0]
 	b = append(b, "PUT /"...)
 	b = append(b, strings.TrimRight(meta.Name, "\x00")...)
@@ -262,8 +287,13 @@ func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (status int, er
 	b = strconv.AppendInt(b, meta.Size, 10)
 	b = append(b, "\r\n\r\n"...)
 
-	if _, err := m.conn.Write(b); err != nil {
-		return 0, err
+	// 🛡️ Zero-Crash: Defensive bounds check to verify the formatted content fits safely within the stack buffer
+	if len(b) > 512 {
+		return 0, fmt.Errorf("buffer overflow: formatted data exceeds stack capacity: %w", syscall.ENOBUFS)
+	}
+
+	if _, err = m.conn.Write(b); err != nil {
+		return 0, fmt.Errorf("failed to write metadata request: %v: %w", err, syscall.EPIPE)
 	}
 
 	// ⚡ Bolt: Read the response immediately to get the metadata status.
@@ -325,15 +355,26 @@ func (m *S3Communicator) SendMetadataStatus(status int) (err error) {
 			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
 		}
 	}()
+	// 🛡️ Zero-Crash: Set a short write deadline to prevent stalled socket hanging
+	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	defer m.conn.SetWriteDeadline(time.Time{})
+
 	// ⚡ Bolt: Eliminate http.Response and header map allocations via direct byte response writing
-	var buf [128]byte
+	var buf [256]byte
 	b := buf[:0]
 	b = append(b, "HTTP/1.1 200 OK\r\nX-Momo-Metadata-Status: "...)
 	b = strconv.AppendInt(b, int64(status), 10)
 	b = append(b, "\r\nContent-Length: 0\r\nConnection: keep-alive\r\n\r\n"...)
 
-	_, err = m.conn.Write(b)
-	return err
+	// 🛡️ Zero-Crash: Defensive bounds check to verify the formatted content fits safely within the stack buffer
+	if len(b) > 256 {
+		return fmt.Errorf("buffer overflow: formatted data exceeds stack capacity: %w", syscall.ENOBUFS)
+	}
+
+	if _, err = m.conn.Write(b); err != nil {
+		return fmt.Errorf("failed to write metadata status response: %v: %w", err, syscall.EPIPE)
+	}
+	return nil
 }
 
 func (m *S3Communicator) SendACK(serverId int) (err error) {
@@ -343,8 +384,12 @@ func (m *S3Communicator) SendACK(serverId int) (err error) {
 			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
 		}
 	}()
+	// 🛡️ Zero-Crash: Set a short write deadline to prevent stalled socket hanging
+	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	defer m.conn.SetWriteDeadline(time.Time{})
+
 	// ⚡ Bolt: Eliminate http.Response allocation and fmt.Sprintf using stack buffer direct write
-	var buf [128]byte
+	var buf [256]byte
 	b := buf[:0]
 	b = append(b, "HTTP/1.1 200 OK\r\nContent-Length: "...)
 
@@ -356,8 +401,15 @@ func (m *S3Communicator) SendACK(serverId int) (err error) {
 	b = append(b, "\r\nConnection: keep-alive\r\n\r\nACK"...)
 	b = append(b, idStr...)
 
-	_, err = m.conn.Write(b)
-	return err
+	// 🛡️ Zero-Crash: Defensive bounds check to verify the formatted content fits safely within the stack buffer
+	if len(b) > 256 {
+		return fmt.Errorf("buffer overflow: formatted data exceeds stack capacity: %w", syscall.ENOBUFS)
+	}
+
+	if _, err = m.conn.Write(b); err != nil {
+		return fmt.Errorf("failed to write ACK response: %v: %w", err, syscall.EPIPE)
+	}
+	return nil
 }
 
 func (m *S3Communicator) ReceiveACK() (err error) {
