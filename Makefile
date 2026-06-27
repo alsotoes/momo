@@ -29,6 +29,9 @@ doc:
 	curl -s http://localhost:6060/pkg/github.com/alsotoes/momo/server/ > $(HTML_DOCS)/server.html; \
 	pkill godoc
 
+fmt:
+	$(GO) fmt ./...
+
 tidy:
 	$(GO) work sync
 

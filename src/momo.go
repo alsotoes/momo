@@ -59,21 +59,21 @@ func Run() {
 	switch *impersonationPtr {
 	case "client":
 		serverId := *serverIdPtr
-		
+
 		// ⚡ Bolt: Implement dynamic load balancing if no serverId is specified.
 		if serverId == -1 {
 			fileHash, err := common.HashFile(*filePathPtr)
 			if err != nil {
 				log.Fatalf("Failed to hash file: %v", err)
 			}
-			
+
 			// Build ClusterMap
 			nodes := make([]*common.Node, len(cfg.Daemons))
 			for i, d := range cfg.Daemons {
 				nodes[i] = &common.Node{ID: i, Weight: 1, Addr: d.Host}
 			}
 			cmap := &common.ClusterMap{Nodes: nodes}
-			
+
 			// Calculate Primary using CRUSH
 			placement, err := cmap.Placement(fileHash, 1)
 			if err != nil {
@@ -107,7 +107,7 @@ func Run() {
 			log.Fatalf("Failed to marshal replication data: %v", err)
 		}
 		factory := transport.NewProtocolFactory(cfg)
-		
+
 		// ⚡ Bolt: Broadcast replication change to all nodes to ensure cluster-wide consistency.
 		// In a balanced primary model, every node needs to know the latest intended mode.
 		if *serverIdPtr == -1 {

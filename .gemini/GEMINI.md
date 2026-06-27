@@ -36,7 +36,8 @@ Momo is a high-performance, distributed Object Storage system written in Go. Sim
 15. **Stale Branch Re-Alignment**: Prior to resolving audits or applying modifications on a PR branch, the AI agent MUST verify alignment with the latest `master`. If the branch contains stale directory structures or package moves, the agent MUST reset the branch to the head of `master` and cleanly port/re-apply only the functional PR optimizations. Direct merges of structural re-organizations are prohibited to prevent codebase layout regressions.
 16. **Bounded Network Loops**: All loops parsing network stream sockets character-by-character or reading chunked data MUST have a hard-coded maximum iteration limit (e.g., at most 10 iterations for a node ID) alongside standard deadlines. Infinite read loops are strictly prohibited to prevent malicious peers from triggering CPU exhaustion and thread starvation.
 17. **Workspace Vendoring Parity**: Whenever dependencies are added, updated, or removed in any sub-module of a multi-module workspace, the AI agent MUST immediately run workspace synchronization and vendoring commands (e.g., `go work sync` and `go work vendor`) to guarantee local vendoring parity and prevent pipeline toolchain collisions.
-5. **Clean Repository**: Do not commit `.dat` files or logs. Use `.gitignore` strictly.
+18. **Clean Repository**: Do not commit `.dat` files or logs. Use `.gitignore` strictly.
+19. **Code Formatting**: The AI agent MUST format all Go files using `go fmt ./...` and ensure no unused imports remain before pushing code to avoid CI pipeline failures.
 
 
 ## Technical Integrity
