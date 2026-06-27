@@ -1,0 +1,48 @@
+name: Weekly Sanity & Security Check
+
+on:
+  schedule:
+    # Run once a week at Sunday midnight (00:00 UTC)
+    - cron: "0 0 * * 0"
+  workflow_dispatch:
+    # Enable manual triggering from GitHub Actions UI
+
+jobs:
+  sanity-check:
+    name: Sanity & Security Audit
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.25.x'
+
+    - name: Build Momo Daemon
+      run: make build
+
+    - name: Verify Code Formatting (Rule 26)
+      run: |
+        make fmt
+        if [ -n "$(git status --porcelain)" ]; then
+          echo "Error: Some Go source files are not formatted properly. Please run 'make fmt' locally."
+          git diff
+          exit 1
+        fi
+
+    - name: Verify Workspace Vendoring Parity (Rule 25)
+      run: |
+        make vendor
+        if [ -n "$(git status --porcelain vendor/)" ]; then
+          echo "Error: Vendor directory is out of sync with go.work. Please run 'go work vendor' locally."
+          git status --porcelain vendor/
+          exit 1
+        fi
+
+    - name: Run Test Suite (with Race and Leak Checks - Rule 5)
+      run: make test
+
+    - name: Run Performance Benchmarks
+      run: make benchmark
