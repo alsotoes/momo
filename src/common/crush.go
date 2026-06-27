@@ -46,8 +46,15 @@ func (m *ClusterMap) Placement(objectHash string, replicationFactor int) ([]*Nod
 		// Calculate a deterministic float score between 0 and 1 for this node/hash pair.
 		h := sha256.New()
 		h.Write([]byte(objectHash))
-		binary.Write(h, binary.LittleEndian, uint32(node.ID))
-		sum := h.Sum(nil)
+
+		// ⚡ Bolt: Eliminate reflection overhead and allocations by using stack-allocated buffer
+		var idBuf [4]byte
+		binary.LittleEndian.PutUint32(idBuf[:], uint32(node.ID))
+		h.Write(idBuf[:])
+
+		// ⚡ Bolt: Eliminate heap allocation of hash.Sum by using stack-allocated slice
+		var sumBuf [sha256.Size]byte
+		sum := h.Sum(sumBuf[:0])
 		
 		val := binary.LittleEndian.Uint64(sum[:8])
 		floatVal := float64(val) / float64(math.MaxUint64)
