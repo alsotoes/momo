@@ -32,6 +32,7 @@ Momo is a high-performance, distributed Object Storage system written in Go. Sim
 11. **Autonomous Traceability**: The AI Reviewer is authorized to autonomously create missing tracking issues (Rule 11) and link them to PRs using the **`Resolves #ISSUE_ID`** keyword to ensure consistent project organization and formal GitHub linkage.
 12. **All-Green Merge Rule**: A PR is only merge-ready when the AI Reviewer provides a `✅` and all CI checks are green. The Reviewer is authorized to perform autonomous merges under these conditions.
 13. **PR Synchronization Update**: After completing development or refactoring on a PR branch, the AI agent MUST update the pull request description on GitHub with a detailed summary of the changes made, resolved audits, and optimizations *before* pushing the code to the remote repository. This ensures that the automated AI Reviewer bot, once triggered by the push, evaluates the work with full, updated context.
+14. **Detailed Resolution Comments**: Upon completing work or making corrections on a PR or an Issue, the AI agent MUST post a detailed summary comment on the Pull Request and/or the associated Issue explaining the findings, the specific architectural fixes applied, and the verification status (including test and benchmark results). This ensures full visibility, traceability, and asynchronous context alignment for all human reviewers and collaborators working on the project.
 5. **Clean Repository**: Do not commit `.dat` files or logs. Use `.gitignore` strictly.
 
 
