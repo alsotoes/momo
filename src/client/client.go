@@ -14,7 +14,7 @@ import (
 // It first connects to a specified daemon to determine the replication mode.
 // If splay replication is active, it connects to all other daemons.
 // Finally, it sends the file to all established connections concurrently.
-func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, serverId int, timestamp int64, requestedMode int, replicationFactor int) {
+func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remotePath string, serverId int, timestamp int64, requestedMode int, replicationFactor int) {
 	defer wg.Done()
 	daemons := cfg.Daemons
 	authToken := cfg.Global.AuthToken
@@ -92,9 +92,10 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, serv
 	}
 
 	meta := &common.FileMetadata{
-		Name: fileInfo.Name(),
-		Hash: fileHash,
-		Size: fileInfo.Size(),
+		Name:       fileInfo.Name(),
+		Hash:       fileHash,
+		Size:       fileInfo.Size(),
+		RemotePath: remotePath,
 	}
 
 	log.Printf("=> Hash:    %s", common.SanitizeLog(meta.Hash))

@@ -180,7 +180,7 @@ func TestGetFileTraversal(t *testing.T) {
 
 	comm := transport.NewMomoTCPCommunicator(server)
 	sanitizedFileName := filepath.Base(traversalFileName)
-	getFile(comm, store, sanitizedFileName, fileHash, fileSize)
+	getFile(comm, store, sanitizedFileName, fileHash, fileSize, "")
 
 	// The file should be created in storageDir/blobs/..., NOT in tempDir/traversal.txt
 	traversalFilePath := filepath.Join(tempDir, "traversal.txt")

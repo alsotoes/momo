@@ -279,6 +279,10 @@ func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (status int, er
 	var buf [512]byte
 	b := buf[:0]
 	b = append(b, "PUT /"...)
+	if meta.RemotePath != "" {
+		b = append(b, common.NormalizeVirtualPath(meta.RemotePath)...)
+		b = append(b, '/')
+	}
 	b = append(b, strings.TrimRight(meta.Name, "\x00")...)
 	b = append(b, " HTTP/1.1\r\nHost: "...)
 	b = append(b, host...)

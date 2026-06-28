@@ -1,10 +1,10 @@
 package storage
 
 import (
-	"log"
 	"bufio"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -20,12 +20,13 @@ import (
 var (
 	bucketObjects   = []byte("objects")   // Maps ContentHash -> {Metadata JSON}
 	bucketNamespace = []byte("namespace") // Maps FileName -> ContentHash
+	bucketPaths     = []byte("paths")     // Maps FileName -> RemotePath
 )
 
 // Store defines the interface for object storage operations.
 type Store interface {
 	io.Closer
-	Put(name string, hash string, size int64, content io.Reader) error
+	Put(name string, hash string, size int64, remotePath string, content io.Reader) error
 	Get(name string) (io.ReadCloser, common.FileMetadata, error)
 	Has(hash string) (bool, error)
 	Delete(name string) error
@@ -56,7 +57,10 @@ func NewCASStore(dataDir string) (*CASStore, error) {
 		if _, err := tx.CreateBucketIfNotExists(bucketObjects); err != nil {
 			return err
 		}
-		_, err := tx.CreateBucketIfNotExists(bucketNamespace)
+		if _, err := tx.CreateBucketIfNotExists(bucketNamespace); err != nil {
+			return err
+		}
+		_, err := tx.CreateBucketIfNotExists(bucketPaths)
 		return err
 	})
 	if err != nil {
@@ -76,7 +80,7 @@ func (s *CASStore) Close() error {
 
 // Put saves an object to the store.
 // If the hash already exists, it only updates the namespace mapping (deduplication).
-func (s *CASStore) Put(name string, hash string, size int64, content io.Reader) (err error) {
+func (s *CASStore) Put(name string, hash string, size int64, remotePath string, content io.Reader) (err error) {
 	// 🛡️ Zero-Crash: Recover from any unexpected panics in the storage backend.
 	defer func() {
 		if r := recover(); r != nil {
@@ -138,6 +142,15 @@ func (s *CASStore) Put(name string, hash string, size int64, content io.Reader) 
 		var sizeBuf [32]byte
 		if err := obj.Put([]byte(hash), strconv.AppendInt(sizeBuf[:0], size, 10)); err != nil {
 			return fmt.Errorf("metadata error: %w", syscall.EIO)
+		}
+
+		// Store RemotePath
+		if remotePath != "" {
+			normalized := common.NormalizeVirtualPath(remotePath)
+			paths := tx.Bucket(bucketPaths)
+			if err := paths.Put([]byte(name), []byte(normalized)); err != nil {
+				return fmt.Errorf("metadata error: %w", syscall.EIO)
+			}
 		}
 		return nil
 	})
@@ -208,7 +221,16 @@ func (s *CASStore) Get(name string) (rc io.ReadCloser, meta common.FileMetadata,
 		return nil, common.FileMetadata{}, err
 	}
 
-	return f, common.FileMetadata{Name: name, Hash: hash, Size: size}, nil
+	var remotePath string
+	_ = s.db.View(func(tx *bbolt.Tx) error {
+		p := tx.Bucket(bucketPaths).Get([]byte(name))
+		if p != nil {
+			remotePath = string(p)
+		}
+		return nil
+	})
+
+	return f, common.FileMetadata{Name: name, Hash: hash, Size: size, RemotePath: remotePath}, nil
 }
 
 // Has checks if a content hash exists in the store.

@@ -96,10 +96,10 @@ func TestCAS_MultiNode_Integration(t *testing.T) {
 					if exists {
 						comm.SendMetadataStatus(transport.MetadataStatusSkipPayload)
 						// Update metadata only
-						store.Put(meta.Name, meta.Hash, meta.Size, nil)
+						store.Put(meta.Name, meta.Hash, meta.Size, "", nil)
 					} else {
 						comm.SendMetadataStatus(transport.MetadataStatusSendPayload)
-						getFile(comm, store, meta.Name, meta.Hash, meta.Size)
+						getFile(comm, store, meta.Name, meta.Hash, meta.Size, "")
 					}
 					comm.SendACK(id)
 				}(conn)

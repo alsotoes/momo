@@ -28,7 +28,7 @@ func TestCASStore(t *testing.T) {
 	name := "test.txt"
 
 	// 1. Put
-	if err := store.Put(name, hash, int64(len(content)), bytes.NewReader(content)); err != nil {
+	if err := store.Put(name, hash, int64(len(content)), "", bytes.NewReader(content)); err != nil {
 		t.Fatalf("Put failed: %v", err)
 	}
 
@@ -55,7 +55,7 @@ func TestCASStore(t *testing.T) {
 	}
 
 	// 4. Deduplication Test
-	if err := store.Put("copy.txt", hash, int64(len(content)), bytes.NewReader(content)); err != nil {
+	if err := store.Put("copy.txt", hash, int64(len(content)), "", bytes.NewReader(content)); err != nil {
 		t.Fatalf("Put copy failed: %v", err)
 	}
 
@@ -64,7 +64,7 @@ func TestCASStore(t *testing.T) {
 	r2.Close()
 
 	// 5. Deduplication Hit (nil reader)
-	if err := store.Put("third.txt", hash, int64(len(content)), nil); err != nil {
+	if err := store.Put("third.txt", hash, int64(len(content)), "", nil); err != nil {
 		t.Fatalf("Put with nil reader failed: %v", err)
 	}
 	r3, m3, _ := store.Get("third.txt")
@@ -80,5 +80,43 @@ func TestCASStore(t *testing.T) {
 	_, _, err = store.Get(name)
 	if err == nil {
 		t.Errorf("Get after delete should fail")
+	}
+}
+
+func TestCASStore_RemotePath(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	tmpDir, err := os.MkdirTemp("", "momo-storage-path-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	store, err := NewCASStore(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to create CASStore: %v", err)
+	}
+	defer store.Close()
+
+	content := []byte("hello world path")
+	hash := "5eb63bbbe01eeed093cb22bb8f5acdc3"
+	name := "path-test.txt"
+
+	// 1. Put with RemotePath containing slashes/spaces (normalization check)
+	rawPath := " /customer01//documents/invoice.pdf/ "
+	expectedNormalizedPath := "customer01/documents/invoice.pdf"
+
+	if err := store.Put(name, hash, int64(len(content)), rawPath, bytes.NewReader(content)); err != nil {
+		t.Fatalf("Put failed: %v", err)
+	}
+
+	// 2. Get and Verify RemotePath
+	reader, meta, err := store.Get(name)
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	defer reader.Close()
+
+	if meta.RemotePath != expectedNormalizedPath {
+		t.Errorf("Expected RemotePath %q, got %q", expectedNormalizedPath, meta.RemotePath)
 	}
 }
