@@ -1,7 +1,9 @@
 package common
 
 import (
+	"errors"
 	"fmt"
+	"syscall"
 	"testing"
 )
 
@@ -64,5 +66,49 @@ func TestClusterMap_Weighting(t *testing.T) {
 	t.Logf("Weighted distribution: %v", distribution)
 	if distribution[0] <= distribution[1] {
 		t.Errorf("Expected node 0 (weight 10) to have more load than node 1 (weight 1), got %v", distribution)
+	}
+}
+
+func TestClusterMap_Placement_Defensive(t *testing.T) {
+	nodes := []*Node{
+		{ID: 0, Weight: 1, Addr: "127.0.0.1:4440"},
+	}
+	m := &ClusterMap{Nodes: nodes}
+
+	// Test empty object hash
+	_, err := m.Placement("", 1)
+	if err == nil {
+		t.Errorf("Expected error for empty object hash, got nil")
+	}
+	if !errors.Is(err, syscall.EINVAL) {
+		t.Errorf("Expected error to wrap syscall.EINVAL, got %v", err)
+	}
+
+	// Test zero replication factor
+	_, err = m.Placement("some-hash", 0)
+	if err == nil {
+		t.Errorf("Expected error for zero replication factor, got nil")
+	}
+	if !errors.Is(err, syscall.EINVAL) {
+		t.Errorf("Expected error to wrap syscall.EINVAL, got %v", err)
+	}
+
+	// Test negative replication factor
+	_, err = m.Placement("some-hash", -5)
+	if err == nil {
+		t.Errorf("Expected error for negative replication factor, got nil")
+	}
+	if !errors.Is(err, syscall.EINVAL) {
+		t.Errorf("Expected error to wrap syscall.EINVAL, got %v", err)
+	}
+
+	// Test empty cluster map nodes
+	mEmpty := &ClusterMap{Nodes: []*Node{}}
+	_, err = mEmpty.Placement("some-hash", 1)
+	if err == nil {
+		t.Errorf("Expected error for empty cluster map, got nil")
+	}
+	if !errors.Is(err, syscall.EINVAL) {
+		t.Errorf("Expected error to wrap syscall.EINVAL, got %v", err)
 	}
 }

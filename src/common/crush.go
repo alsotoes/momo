@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"syscall"
 )
 
 // CRUSH (Controlled Replication Under Scalable Hashing) was originally conceived by Sage Weil.
@@ -28,7 +29,15 @@ type ClusterMap struct {
 // to ensure perfect load balancing and minimal data movement when nodes are added/removed.
 func (m *ClusterMap) Placement(objectHash string, replicationFactor int) ([]*Node, error) {
 	if len(m.Nodes) == 0 {
-		return nil, fmt.Errorf("cluster map has no nodes")
+		return nil, fmt.Errorf("cluster map has no nodes: %w", syscall.EINVAL)
+	}
+
+	if replicationFactor <= 0 {
+		return nil, fmt.Errorf("invalid replication factor: %d: %w", replicationFactor, syscall.EINVAL)
+	}
+
+	if objectHash == "" {
+		return nil, fmt.Errorf("invalid object hash: empty: %w", syscall.EINVAL)
 	}
 
 	if replicationFactor > len(m.Nodes) {
