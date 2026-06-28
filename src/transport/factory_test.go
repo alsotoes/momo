@@ -232,3 +232,48 @@ func TestMomoQUICCommunicator_Metadata_And_Payload(t *testing.T) {
 		t.Fatalf("Server error: %v", err)
 	}
 }
+
+func TestMomoQUICCommunicator_EdgeCases(t *testing.T) {
+	// 1. Panic recovery tests (Rule 4) via nil communicator
+	var nilComm *MomoQUICCommunicator
+	
+	_, _, err := nilComm.HandshakeServer([]byte("token"))
+	if err == nil {
+		t.Errorf("Expected HandshakeServer on nilComm to fail")
+	}
+
+	_, err = nilComm.HandshakeClient("token", 12345, 1)
+	if err == nil {
+		t.Errorf("Expected HandshakeClient on nilComm to fail")
+	}
+
+	err = nilComm.SendReplicationMode(1)
+	if err == nil {
+		t.Errorf("Expected SendReplicationMode on nilComm to fail")
+	}
+
+	_, err = nilComm.SendMetadata(&common.FileMetadata{})
+	if err == nil {
+		t.Errorf("Expected SendMetadata on nilComm to fail")
+	}
+
+	_, err = nilComm.ReceiveMetadata()
+	if err == nil {
+		t.Errorf("Expected ReceiveMetadata on nilComm to fail")
+	}
+
+	err = nilComm.SendMetadataStatus(1)
+	if err == nil {
+		t.Errorf("Expected SendMetadataStatus on nilComm to fail")
+	}
+
+	err = nilComm.SendACK(0)
+	if err == nil {
+		t.Errorf("Expected SendACK on nilComm to fail")
+	}
+
+	err = nilComm.ReceiveACK()
+	if err == nil {
+		t.Errorf("Expected ReceiveACK on nilComm to fail")
+	}
+}

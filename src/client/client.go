@@ -17,6 +17,10 @@ import (
 func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remotePath string, serverId int, timestamp int64, requestedMode int, replicationFactor int) {
 	defer wg.Done()
 	daemons := cfg.Daemons
+	if serverId < 0 || serverId >= len(daemons) {
+		log.Printf("Server ID %d is out of range", serverId)
+		return
+	}
 	authToken := cfg.Global.AuthToken
 	factory := transport.NewProtocolFactory(cfg)
 	var communicators []transport.Communicator
