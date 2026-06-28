@@ -5,9 +5,13 @@ import (
 	"fmt"
 	"syscall"
 	"testing"
+
+	"go.uber.org/goleak"
 )
 
 func TestClusterMap_Placement(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
 	nodes := []*Node{
 		{ID: 0, Weight: 1, Addr: "127.0.0.1:4440"},
 		{ID: 1, Weight: 1, Addr: "127.0.0.1:4441"},
@@ -50,6 +54,8 @@ func TestClusterMap_Placement(t *testing.T) {
 }
 
 func TestClusterMap_Weighting(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
 	nodes := []*Node{
 		{ID: 0, Weight: 10, Addr: "big-node"},
 		{ID: 1, Weight: 1, Addr: "small-node"},
@@ -70,6 +76,8 @@ func TestClusterMap_Weighting(t *testing.T) {
 }
 
 func TestClusterMap_Placement_Defensive(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
 	nodes := []*Node{
 		{ID: 0, Weight: 1, Addr: "127.0.0.1:4440"},
 	}
@@ -110,5 +118,15 @@ func TestClusterMap_Placement_Defensive(t *testing.T) {
 	}
 	if !errors.Is(err, syscall.EINVAL) {
 		t.Errorf("Expected error to wrap syscall.EINVAL, got %v", err)
+	}
+
+	// Test panic recovery with nil Node
+	mPanic := &ClusterMap{Nodes: []*Node{nil}}
+	_, err = mPanic.Placement("some-hash", 1)
+	if err == nil {
+		t.Errorf("Expected error from panic recovery, got nil")
+	}
+	if !errors.Is(err, syscall.EIO) {
+		t.Errorf("Expected error to wrap syscall.EIO, got %v", err)
 	}
 }

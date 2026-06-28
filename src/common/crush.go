@@ -27,7 +27,13 @@ type ClusterMap struct {
 // Placement returns an ordered list of nodes where an object should be stored, based on its hash.
 // It uses a simplified version of the CRUSH algorithm (Weighted Rendezvous Hashing)
 // to ensure perfect load balancing and minimal data movement when nodes are added/removed.
-func (m *ClusterMap) Placement(objectHash string, replicationFactor int) ([]*Node, error) {
+func (m *ClusterMap) Placement(objectHash string, replicationFactor int) (nodes []*Node, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in Placement: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	if len(m.Nodes) == 0 {
 		return nil, fmt.Errorf("cluster map has no nodes: %w", syscall.EINVAL)
 	}
