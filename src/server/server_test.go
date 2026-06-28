@@ -151,7 +151,7 @@ func TestDaemonLogic(t *testing.T) {
 		{"ReplicationChain", common.ReplicationChain, 1, "ACK1", common.ReplicationChain},
 	}
 
-	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // not a real token
 	cfg := common.Configuration{
 		Daemons: daemons,
 		Global: common.ConfigurationGlobal{
@@ -229,7 +229,7 @@ func TestDaemonLogic(t *testing.T) {
 
 func TestUnauthenticatedConnection(t *testing.T) {
 	daemons := []*common.Daemon{{Host: "127.0.0.1:0", Data: ""}}
-	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // not a real token
 	wrongToken := "wrong_token_wrong_token_wrong_token_wrong_token_wrong_token_wro"
 	cfg := common.Configuration{
 		Daemons: daemons,

@@ -23,7 +23,7 @@ func verifyNoLeaks(t *testing.T) {
 func TestS3Communicator_HandshakeServer(t *testing.T) {
 	defer verifyNoLeaks(t)
 
-	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // not a real token
 	expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
 
 	reqBody := "PUT /test-file.txt HTTP/1.1\r\n" +
@@ -81,7 +81,7 @@ func TestS3Communicator_HandshakeServer(t *testing.T) {
 func TestS3Communicator_AWSV4Auth(t *testing.T) {
 	defer verifyNoLeaks(t)
 
-	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // not a real token
 	expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
 
 	// AWS v4 style Auth header
@@ -121,7 +121,7 @@ func TestS3Communicator_AWSV4Auth(t *testing.T) {
 func TestS3Communicator_HashTraversalValidation(t *testing.T) {
 	defer verifyNoLeaks(t)
 
-	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // not a real token
 	expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
 
 	maliciousHashes := []string{
