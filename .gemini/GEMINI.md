@@ -46,6 +46,8 @@ Momo is a high-performance, distributed Object Storage system written in Go. Sim
 26. **Code Formatting**: The AI agent MUST format all Go files using `go fmt ./...` and ensure no unused imports remain before pushing code to avoid CI pipeline failures.
 27. **Documentation-to-Code Parity**: To prevent documentation drift and critical inconsistencies, any Pull Request or commit that modifies system-wide constants, protocol enums, or configuration schemas MUST simultaneously update all corresponding reference manuals, architecture guides, and diagrams in the `docs/` directory and the root `README.md`.
 28. **AI Collaborative Alignment**: To prevent destructive AI-to-AI modification loops or accidental reverts of functional code, whenever an AI agent collaborates on a PR branch that has divergent remote history, the agent MUST first pull the latest remote ref and surgically resolve conflicts, preserving functional optimizations unless explicitly instructed to revert.
+29. **Scanner-Safe Test Secrets**: To prevent third-party security scanners (e.g., Gitleaks, GitGuardian, TruffleHog) from triggering false-positive alerts on test credentials, all dummy API keys, auth tokens, or private keys committed to configuration files or test suites MUST be explicitly annotated with a trailing comment indicating they are fake (e.g., `// not a real token` or `# not a real API key`).
+30. **Repository Branch Hygiene**: To maintain a clean and lightweight repository structure, any local or remote-tracking branch associated with an already merged or closed Pull Request MUST be promptly deleted from the local workspace and the remote origin. Active development branches must strictly correspond to an open tracking issue or Pull Request.
 
 
 ## Technical Integrity
