@@ -1,6 +1,11 @@
 package common
 
-import "unsafe"
+import (
+	"path"
+	"strings"
+	"syscall"
+	"unsafe"
+)
 
 // PadString pads or truncates a string to the given length.
 func PadString(input string, length int) string {
@@ -13,20 +18,38 @@ func PadString(input string, length int) string {
         return unsafe.String(unsafe.SliceData(b), length)
 }
 
-// NormalizeVirtualPath trims leading/trailing slashes, resolutions, and whitespace.
-func NormalizeVirtualPath(p string) string {
-	for len(p) > 0 && (p[0] == ' ' || p[0] == '/') {
-		p = p[1:]
+// NormalizeVirtualPath cleans and validates virtual remote paths.
+// It trims whitespace, resolves parent directory references via path.Clean, 
+// and strictly rejects any directory traversal (..) sequences to prevent security escalation.
+func NormalizeVirtualPath(p string) (string, error) {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return "", nil
 	}
-	for len(p) > 0 && (p[len(p)-1] == ' ' || p[len(p)-1] == '/') {
-		p = p[:len(p)-1]
+
+	// Strictly reject parent directory references and backslashes immediately
+	if strings.Contains(p, "..") || strings.Contains(p, "\\") {
+		return "", syscall.EINVAL
 	}
-	// Replace consecutive slashes
-	for i := 0; i < len(p)-1; i++ {
-		if p[i] == '/' && p[i+1] == '/' {
-			p = p[:i] + p[i+1:]
-			i--
+
+	// Resolve slashes and remove redundancies efficiently
+	cleaned := path.Clean(p)
+
+	// Split and validate each segment to ensure no empty or whitespace-only paths exist
+	segments := strings.Split(cleaned, "/")
+	var validSegments []string
+
+	for _, seg := range segments {
+		trimmedSeg := strings.TrimSpace(seg)
+		if trimmedSeg == "" || trimmedSeg == "." || trimmedSeg == ".." {
+			continue
 		}
+		validSegments = append(validSegments, trimmedSeg)
 	}
-	return p
+
+	if len(validSegments) == 0 {
+		return "", syscall.EINVAL
+	}
+
+	return strings.Join(validSegments, "/"), nil
 }

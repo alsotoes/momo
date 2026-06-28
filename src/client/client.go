@@ -102,6 +102,21 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 		RemotePath: remotePath,
 	}
 
+	// Validate RemotePath and length limit before transmission
+	wireName := meta.Name
+	if meta.RemotePath != "" {
+		normalized, err := common.NormalizeVirtualPath(meta.RemotePath)
+		if err != nil {
+			log.Printf("Failed to upload %s: invalid remote path %q: %v", common.SanitizeLog(filePath), common.SanitizeLog(meta.RemotePath), err)
+			return
+		}
+		wireName = normalized + "/" + meta.Name
+	}
+	if len(wireName) > common.FileInfoLength {
+		log.Printf("Failed to upload %s: remote path and filename exceed limit of %d characters", common.SanitizeLog(filePath), common.FileInfoLength)
+		return
+	}
+
 	log.Printf("=> Hash:    %s", common.SanitizeLog(meta.Hash))
 	log.Printf("=> Name:    %s", common.SanitizeLog(meta.Name))
 	log.Printf("=> Size:    %d", meta.Size)
