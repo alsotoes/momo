@@ -98,7 +98,7 @@ func TestCASStore_RemotePath(t *testing.T) {
 	defer store.Close()
 
 	content := []byte("hello world path")
-	hash := "5eb63bbbe01eeed093cb22bb8f5acdc3"
+	hash := "5eb63bbbe01eeed093cb22bb8f5acdc3" // not a real token
 	name := "path-test.txt"
 
 	// 1. Put with RemotePath containing slashes/spaces (normalization check)
