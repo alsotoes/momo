@@ -11,6 +11,11 @@ By storing user-defined paths purely as virtual metadata mapping to the content 
 - **Server Bbolt Indexing:** Update the server's Bbolt metadata store (`CASStore`) to securely index and retrieve the `RemotePath` mapping of each content-addressed object.
 - **Standard Linkage:** Link this specification to Issue #227.
 
+## Production & Multi-Tenancy Considerations
+1. **Path Normalization & Sanitization:** Virtual paths MUST be normalized prior to indexing (e.g., stripping leading/trailing slashes, resolving `//` to `/`, and trimming whitespace) to prevent malicious path formatting or duplicate variations in indexing.
+2. **Namespace Overwrite Policy:** If a client uploads a file to an existing virtual path (`RemotePath`), the storage engine MUST support a strict conflict policy: either fail explicitly to prevent accidental loss, or overwrite (updating the path-to-hash pointer and decrementing the reference count of the old CAS block).
+3. **Isolated Deduplication Boundaries:** For enterprise multi-tenancy, global CAS deduplication can leak metadata across tenants via timing attacks (side-channel). Future iterations MUST support tenant-level scoping of content-hash indexes, ensuring deduplication is isolated strictly within a tenant's namespace boundary.
+
 ## Impact
 - **Affected Specs:** `specs/storage/spec.md` (added metadata requirements).
 - **Affected Code:** `src/common/struct.go`, `src/client/client.go`, `src/server/server.go`, `src/storage/storage.go`.
