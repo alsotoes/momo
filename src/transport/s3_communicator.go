@@ -275,10 +275,28 @@ func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (status int, er
 		host = m.remoteAddr.String()
 	}
 
+	// Validate wire name length to prevent protocol buffer overflow
+	wireName := meta.Name
+	if meta.RemotePath != "" {
+		norm, err := common.NormalizeVirtualPath(meta.RemotePath)
+		if err != nil {
+			return 0, fmt.Errorf("invalid path: %w", err)
+		}
+		wireName = norm + "/" + meta.Name
+	}
+	if len(wireName) > common.FileInfoLength {
+		return 0, fmt.Errorf("joined remote path exceeds maximum length of %d: %w", common.FileInfoLength, syscall.ENAMETOOLONG)
+	}
+
 	// ⚡ Bolt: Eliminate fmt.Sprintf and string allocations using stack-allocated buffer
 	var buf [512]byte
 	b := buf[:0]
 	b = append(b, "PUT /"...)
+	if meta.RemotePath != "" {
+		norm, _ := common.NormalizeVirtualPath(meta.RemotePath)
+		b = append(b, norm...)
+		b = append(b, '/')
+	}
 	b = append(b, strings.TrimRight(meta.Name, "\x00")...)
 	b = append(b, " HTTP/1.1\r\nHost: "...)
 	b = append(b, host...)

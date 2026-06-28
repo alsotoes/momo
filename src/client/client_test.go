@@ -152,7 +152,7 @@ func TestConnect(t *testing.T) {
 
 	var wg sync.WaitGroup
 	wg.Add(1)
-	Connect(&wg, cfg, file.Name(), 0, time.Now().UnixNano(), 0, 3)
+	Connect(&wg, cfg, file.Name(), "", 0, time.Now().UnixNano(), 0, 3)
 	wg.Wait()
 
 	// Splay Connect
@@ -218,7 +218,7 @@ func TestConnect(t *testing.T) {
 	}
 
 	wg.Add(1)
-	Connect(&wg, cfgSplay, file.Name(), 0, time.Now().UnixNano(), 0, 3)
+	Connect(&wg, cfgSplay, file.Name(), "", 0, time.Now().UnixNano(), 0, 3)
 	wg.Wait()
 }
 
@@ -285,13 +285,13 @@ func TestConnect_Errors(t *testing.T) {
 
 	// 1. Non-existent file
 	wg.Add(1)
-	Connect(&wg, cfg, "nonexistent-file.txt", 0, 0, 0, 3)
+	Connect(&wg, cfg, "nonexistent-file.txt", "", 0, 0, 0, 3)
 	wg.Wait()
 
 	// 2. Directory as file (will fail os.Stat or HashFile)
 	tmpDir := t.TempDir()
 	wg.Add(1)
-	Connect(&wg, cfg, tmpDir, 0, 0, 0, 3)
+	Connect(&wg, cfg, tmpDir, "", 0, 0, 0, 3)
 	wg.Wait()
 
 	// 3. Dial error (unreachable peer)
@@ -301,7 +301,7 @@ func TestConnect_Errors(t *testing.T) {
 		t.Fatalf("Failed to create temp file: %v", err)
 	}
 	defer os.Remove(file.Name())
-	Connect(&wg, cfg, file.Name(), 0, 0, 0, 3)
+	Connect(&wg, cfg, file.Name(), "", 0, 0, 0, 3)
 	wg.Wait()
 
 	// 4. Invalid protocol error
@@ -312,17 +312,17 @@ func TestConnect_Errors(t *testing.T) {
 		},
 	}
 	wg.Add(1)
-	Connect(&wg, cfgInvalidProto, file.Name(), 0, 0, 0, 3)
+	Connect(&wg, cfgInvalidProto, file.Name(), "", 0, 0, 0, 3)
 	wg.Wait()
 
 	// 5. Out of range server ID (negative)
 	wg.Add(1)
-	Connect(&wg, cfg, file.Name(), -5, 0, 0, 3)
+	Connect(&wg, cfg, file.Name(), "", -5, 0, 0, 3)
 	wg.Wait()
 
 	// 6. Out of range server ID (too high)
 	wg.Add(1)
-	Connect(&wg, cfg, file.Name(), 50, 0, 0, 3)
+	Connect(&wg, cfg, file.Name(), "", 50, 0, 0, 3)
 	wg.Wait()
 }
 

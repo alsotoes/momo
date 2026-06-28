@@ -39,6 +39,7 @@ func Run() {
 	filePathPtr := flag.String("file", "/tmp/momo", "File path to upload")
 	configPathPtr := flag.String("config", "conf/momo.conf", "Path to the configuration file")
 	modePtr := flag.Int("mode", -1, "Replication mode to set (used with -imp repl)")
+	remotePathPtr := flag.String("remote-path", "", "Remote virtual directory path to upload the file to")
 	flag.Parse()
 
 	cfg, err := common.GetConfig(*configPathPtr)
@@ -88,7 +89,7 @@ func Run() {
 		}
 		var wg sync.WaitGroup
 		wg.Add(1)
-		client.Connect(&wg, cfg, *filePathPtr, serverId, common.DummyEpoch, 0, cfg.Global.ReplicationFactor)
+		client.Connect(&wg, cfg, *filePathPtr, *remotePathPtr, serverId, common.DummyEpoch, 0, cfg.Global.ReplicationFactor)
 		wg.Wait()
 	case "server":
 		if err := runServer(cfg, *serverIdPtr); err != nil {

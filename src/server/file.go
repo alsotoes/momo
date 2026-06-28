@@ -49,9 +49,9 @@ func getMetadata(r io.Reader) (common.FileMetadata, error) {
 
 	fileHash := common.SanitizeLog(trimNull(bufferFileHash))
 
-	// 🛡️ Sentinel: Sanitize fileName immediately to prevent path traversal in all downstream consumers.
+	// 🛡️ Sentinel: Sanitize and normalize fileName to prevent path traversal attacks (Rule 4).
 	rawFileName := trimNull(bufferFileName)
-	if rawFileName == "." || rawFileName == ".." || strings.Contains(rawFileName, "/") || strings.Contains(rawFileName, "\\") {
+	if rawFileName == "." || rawFileName == ".." || strings.Contains(rawFileName, "../") || strings.Contains(rawFileName, "\\") {
 		return metadata, &os.PathError{Op: "getMetadata", Path: rawFileName, Err: os.ErrInvalid}
 	}
 	fileName := filepath.Base(rawFileName)
@@ -70,7 +70,7 @@ func getMetadata(r io.Reader) (common.FileMetadata, error) {
 		return metadata, fmt.Errorf("invalid file size: %d (max: %d)", fileSize, common.MaxFileSize)
 	}
 
-	metadata.Name = fileName
+	metadata.Name = rawFileName
 	metadata.Hash = fileHash
 	metadata.Size = fileSize
 
@@ -78,7 +78,7 @@ func getMetadata(r io.Reader) (common.FileMetadata, error) {
 }
 
 // getFile reads a file from a network connection and saves it to the storage store.
-func getFile(comm transport.Communicator, store storage.Store, fileName string, expectedHash string, fileSize int64) (err error) {
+func getFile(comm transport.Communicator, store storage.Store, fileName string, expectedHash string, fileSize int64, remotePath string) (err error) {
 	// 🛡️ Zero-Crash: Recover from any unexpected panics in the storage backend or hash calculation.
 	defer func() {
 		if r := recover(); r != nil {
@@ -95,7 +95,7 @@ func getFile(comm transport.Communicator, store storage.Store, fileName string, 
 	reader := io.TeeReader(comm, hashCalc)
 
 	// Use store.Put which handles deduplication and atomicity.
-	if err := store.Put(fileName, expectedHash, fileSize, io.LimitReader(reader, fileSize)); err != nil {
+	if err := store.Put(fileName, expectedHash, fileSize, remotePath, io.LimitReader(reader, fileSize)); err != nil {
 		return fmt.Errorf("storage error: failed to put object %s: %w", fileName, err)
 	}
 

@@ -131,7 +131,19 @@ func (m *MomoTCPCommunicator) SendMetadata(meta *common.FileMetadata) (status in
 
 	var metadataBuffer [hashLength + common.FileInfoLength + common.FileInfoLength]byte
 	copy(metadataBuffer[0:hashLength], meta.Hash)
-	copy(metadataBuffer[hashLength:hashLength+common.FileInfoLength], common.PadString(meta.Name, common.FileInfoLength))
+	
+	wireName := meta.Name
+	if meta.RemotePath != "" {
+		normalized, normErr := common.NormalizeVirtualPath(meta.RemotePath)
+		if normErr != nil {
+			return 0, fmt.Errorf("invalid remote path: %w", normErr)
+		}
+		wireName = normalized + "/" + meta.Name
+	}
+	if len(wireName) > common.FileInfoLength {
+		return 0, fmt.Errorf("metadata name exceeds limit: %w", syscall.ENAMETOOLONG)
+	}
+	copy(metadataBuffer[hashLength:hashLength+common.FileInfoLength], common.PadString(wireName, common.FileInfoLength))
 
 	var sizeBuf [common.FileInfoLength]byte
 	sizeBytes := strconv.AppendInt(sizeBuf[:0], meta.Size, 10)

@@ -43,7 +43,7 @@ func TestConnect_PrimarySplay(t *testing.T) {
 
 	var wg sync.WaitGroup
 	wg.Add(1)
-	Connect(&wg, cfg, file.Name(), 0, time.Now().UnixNano(), 0, 3)
+	Connect(&wg, cfg, file.Name(), "", 0, time.Now().UnixNano(), 0, 3)
 	wg.Wait()
 }
 
@@ -80,7 +80,7 @@ func TestConnect_PrimarySplay_Failures(t *testing.T) {
 
 	var wg sync.WaitGroup
 	wg.Add(1)
-	Connect(&wg, cfg, file.Name(), 0, time.Now().UnixNano(), 0, 3)
+	Connect(&wg, cfg, file.Name(), "", 0, time.Now().UnixNano(), 0, 3)
 	wg.Wait()
 }
 

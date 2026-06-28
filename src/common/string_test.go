@@ -79,3 +79,36 @@ func TestPadString(t *testing.T) {
 		})
 	}
 }
+
+func TestNormalizeVirtualPath(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    string
+		wantErr bool
+	}{
+		{"Simple clean path", "customer01/documents", "customer01/documents", false},
+		{"Trim leading slash", "/customer01/documents", "customer01/documents", false},
+		{"Trim trailing slash", "customer01/documents/", "customer01/documents", false},
+		{"Surrounding whitespace", "  customer01/documents  ", "customer01/documents", false},
+		{"Consecutive slashes", "customer01//documents///invoice.pdf", "customer01/documents/invoice.pdf", false},
+		{"Empty path", "", "", false},
+		{"Spaces and slashes only", "  /  ///  ", "", true},
+		{"Traversal segment", "customer01/../etc", "", true},
+		{"Traversal prefix", "../customer01", "", true},
+		{"Nested traversal", "a/b/../../c", "", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := NormalizeVirtualPath(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NormalizeVirtualPath(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("NormalizeVirtualPath(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
