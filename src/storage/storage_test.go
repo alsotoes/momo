@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"os"
+	"strings"
 	"testing"
 
 	"go.uber.org/goleak"
@@ -80,5 +81,88 @@ func TestCASStore(t *testing.T) {
 	_, _, err = store.Get(name)
 	if err == nil {
 		t.Errorf("Get after delete should fail")
+	}
+}
+
+func TestCASStore_EdgeCases(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	tmpDir, err := os.MkdirTemp("", "momo-storage-edge-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	store, err := NewCASStore(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to create CASStore: %v", err)
+	}
+	defer store.Close()
+
+	// 1. Get non-existent
+	_, _, err = store.Get("nonexistent.txt")
+	if err == nil {
+		t.Errorf("Expected error for non-existent Get")
+	}
+
+	// 2. GetBlobPath non-existent
+	_, err = store.GetBlobPath("nonexistent.txt")
+	if err == nil {
+		t.Errorf("Expected error for non-existent GetBlobPath")
+	}
+
+	// 3. Put with very small hash length (getBlobPath corner case)
+	shortHash := "abc"
+	if err := store.Put("short.txt", shortHash, 10, bytes.NewReader([]byte("test"))); err != nil {
+		t.Fatalf("Failed to Put with short hash: %v", err)
+	}
+	path, err := store.GetBlobPath("short.txt")
+	if err != nil {
+		t.Fatalf("GetBlobPath failed: %v", err)
+	}
+	if !strings.Contains(path, "blobs/abc") {
+		t.Errorf("Expected path to contain blobs/abc, got %s", path)
+	}
+
+	// 4. Panic recovery tests (Rule 4) via nil database
+	nilStore := &CASStore{}
+	
+	_, _, err = nilStore.Get("test.txt")
+	if err == nil {
+		t.Errorf("Expected Get on nilStore to fail")
+	}
+	if !strings.Contains(err.Error(), "internal storage panic") {
+		t.Errorf("Expected internal storage panic error, got %v", err)
+	}
+
+	err = nilStore.Put("test.txt", "hash", 10, bytes.NewReader([]byte("test")))
+	if err == nil {
+		t.Errorf("Expected Put on nilStore to fail")
+	}
+	if !strings.Contains(err.Error(), "internal storage panic") {
+		t.Errorf("Expected internal storage panic error, got %v", err)
+	}
+
+	_, err = nilStore.Has("hash")
+	if err == nil {
+		t.Errorf("Expected Has on nilStore to fail")
+	}
+	if !strings.Contains(err.Error(), "internal storage panic") {
+		t.Errorf("Expected internal storage panic error, got %v", err)
+	}
+
+	err = nilStore.Delete("test.txt")
+	if err == nil {
+		t.Errorf("Expected Delete on nilStore to fail")
+	}
+	if !strings.Contains(err.Error(), "internal storage panic") {
+		t.Errorf("Expected internal storage panic error, got %v", err)
+	}
+
+	_, err = nilStore.GetBlobPath("test.txt")
+	if err == nil {
+		t.Errorf("Expected GetBlobPath on nilStore to fail")
+	}
+	if !strings.Contains(err.Error(), "internal storage panic") {
+		t.Errorf("Expected internal storage panic error, got %v", err)
 	}
 }

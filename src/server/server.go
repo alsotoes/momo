@@ -33,6 +33,9 @@ var connectToPeer = client.Connect
 // The replication mode is determined by the client, and for secondary servers, it's influenced by the timestamp of the operation.
 func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 	daemons := cfg.Daemons
+	if serverId < 0 || serverId >= len(daemons) {
+		return fmt.Errorf("server id out of range")
+	}
 	factory := transport.NewProtocolFactory(cfg)
 
 	// Initialize CAS Storage

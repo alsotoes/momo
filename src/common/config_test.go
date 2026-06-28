@@ -141,3 +141,18 @@ func TestGetConfig_Failures(t *testing.T) {
 		})
 	}
 }
+
+func TestGetConfig_FileErrors(t *testing.T) {
+	// 1. Non-existent file
+	_, err := GetConfig("nonexistent-config.conf")
+	if err == nil {
+		t.Errorf("Expected error for non-existent file, got nil")
+	}
+
+	// 2. Directory as path
+	tmpDir := t.TempDir()
+	_, err = GetConfig(tmpDir)
+	if err == nil {
+		t.Errorf("Expected error for directory path, got nil")
+	}
+}

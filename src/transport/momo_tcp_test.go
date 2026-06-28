@@ -106,3 +106,48 @@ func TestMomoTCPCommunicator_Deadline(t *testing.T) {
 		t.Errorf("SetAbsoluteDeadline failed: %v", err)
 	}
 }
+
+func TestMomoTCPCommunicator_EdgeCases(t *testing.T) {
+	// 1. Panic recovery tests (Rule 4) via nil communicator
+	var nilComm *MomoTCPCommunicator
+	
+	_, _, err := nilComm.HandshakeServer([]byte("token"))
+	if err == nil {
+		t.Errorf("Expected HandshakeServer on nilComm to fail")
+	}
+
+	_, err = nilComm.HandshakeClient("token", 12345, 1)
+	if err == nil {
+		t.Errorf("Expected HandshakeClient on nilComm to fail")
+	}
+
+	err = nilComm.SendReplicationMode(1)
+	if err == nil {
+		t.Errorf("Expected SendReplicationMode on nilComm to fail")
+	}
+
+	_, err = nilComm.SendMetadata(&common.FileMetadata{})
+	if err == nil {
+		t.Errorf("Expected SendMetadata on nilComm to fail")
+	}
+
+	_, err = nilComm.ReceiveMetadata()
+	if err == nil {
+		t.Errorf("Expected ReceiveMetadata on nilComm to fail")
+	}
+
+	err = nilComm.SendMetadataStatus(1)
+	if err == nil {
+		t.Errorf("Expected SendMetadataStatus on nilComm to fail")
+	}
+
+	err = nilComm.SendACK(0)
+	if err == nil {
+		t.Errorf("Expected SendACK on nilComm to fail")
+	}
+
+	err = nilComm.ReceiveACK()
+	if err == nil {
+		t.Errorf("Expected ReceiveACK on nilComm to fail")
+	}
+}
