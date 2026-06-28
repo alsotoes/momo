@@ -50,10 +50,10 @@ This document explains the architecture, configuration, wire protocol, replicati
 
 Constants (see `src/common/constants.go`):
 
+- `0`: **No Replication**: Standalone storage on the selected primary node.
 - `1`: **Chain Replication**: Data follows an ordered path (A -> B -> C) determined by the CRUSH placement list.
 - `2`: **Splay Replication**: The primary forwards data to all other nodes in the CRUSH list concurrently.
 - `3`: **Primary-Splay Replication**: The client uploads to all nodes in the CRUSH list simultaneously.
-- `4`: **No Replication**: Standalone storage on the selected primary node.
 
 ## Data Flow
 
