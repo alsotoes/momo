@@ -66,49 +66,20 @@ Handshake Requested Mode constants (see `src/common/constants.go`):
 Handshake and transfer overview:
 
 1. **Secure Handshake**: Client opens a network connection (TCP, QUIC, or S3) and sends a combined **84-byte packet** (64-byte AuthToken + 19-byte Timestamp + 1-byte RequestedMode). The `RequestedMode` byte is polymorphic: numbers (`'0'`-`'9'`) represent replication modes, while characters (`'L'`, `'D'`, `'G'`) represent non-replication query actions.
-2. **Replication Negotiation**: Server validates token and acknowledges the mode. If the client is external, the server selects the mode based on its polymorphic metrics.
-3. **Metadata & Deduplication**: Client sends metadata (Hash, Name, Size). Server queries its local **Bbolt** index and responds with a status code. If the hash exists, the payload phase is skipped (**CAS Deduplication**).
+2. **Replication Mode Confirmation**: Server responds with a **1-byte confirmation** of the final replication strategy.
+3. **Decoupled Metadata Check**: Client sends the **192-byte file metadata packet** (64-byte Hash + 64-byte Name + 64-byte Size). Server replies with a 1-byte code indicating if the transfer is required (`'1'`) or can be skipped (`'2'`) due to matching hash database existence (**CAS Deduplication**).
 4. **Streamed Payload**: Client streams file bytes until EOF.
 5. **Validation & ACK**: Server writes to disk via `io.TeeReader` (simultaneous hashing), validates integrity, and replies with `ACK{serverId}`.
 
-## Configuration
 
-File: `conf/momo.conf`. 
+## Verification & Testing
 
-```ini
-[global]
-auth_token = YOUR_SECURE_64_BYTE_TOKEN_HERE
-replication_factor = 3
-protocol = momo-quic
-polymorphic_system = true
-```
+Momo has a highly mature local verification framework composed of unit, integration, and end-to-end (E2E) testing targets:
 
-Ensure the `auth_token` matches on all nodes and is exactly 64 bytes for maximum entropy.
-
-## Building and Running
-
-Ensure Go 1.25+ is installed.
-
-```bash
-# Build binary
-make build
-
-# Start a node
-./bin/momo -imp server -id 0
-```
-
-## Automated Testing & Verification
-
-Momo employs a rigorous multi-layered testing strategy to ensure 100% architectural integrity across its distributed components.
-
-### 🔬 E2E Smoke Test Suites
-
-Every PR and commit is validated against 5 distinct end-to-end scenarios:
-
-1.  **TCP Standard (`smoke-tcp`)**: Verifies legacy TCP transport with Chain replication across 3 nodes.
-2.  **QUIC Secure (`smoke-quic`)**: Validates modern UDP-based encrypted transport using TLS 1.3.
-3.  **S3 Gateway TCP (`smoke-s3-tcp`)**: Ensures AWS S3 compatibility over standard TCP.
-4.  **S3 Gateway QUIC (`smoke-s3-quic`)**: Verifies cloud-native tool integration over secure QUIC streams.
+1.  **Transport Decoupling Tests (`factory_test.go`)**: Verifies pluggable dialers and listeners.
+2.  **Concurrency Leak Checks (`goleak`)**: Enforces absolute thread/connection leak hygiene on all transports.
+3.  **End-to-End TCP Replication (`smoke-tcp`)**: Verifies data distribution across 3 virtual TCP daemons.
+4.  **End-to-End QUIC Replication (`smoke-quic`)**: Verifies secure data replication over encrypted QUIC streams.
 5.  **Scale & CAS Engine (`smoke-scale-cas`)**: A high-integrity stress test simulating a **5-node cluster** with a **replication factor of 3**. It explicitly verifies:
     *   **CRUSH-lite Placement**: Deterministic data distribution across heterogeneous nodes.
     *   **Content-Aware Deduplication**: Server-side "Deduplication hits" that skip redundant uploads.
@@ -124,131 +95,4 @@ make test
 make smoke-scale-cas
 ```
 
-Momo includes a built-in benchmarking suite and performance history tracking. Refer to the [Performance](#performance) section below for the latest metrics.
-
-<!-- BENCHMARK_RESULTS_START -->
-## Performance
-
-This section is automatically updated by our GitHub Actions workflow.
-
-### Comparison with previous commit
-
-```
-                      │ /tmp/old_bench_filtered.txt │      /tmp/new_bench_filtered.txt      │
-                      │           sec/op            │    sec/op      vs base                │
-PadString-8                            1.819n ± ∞ ¹    1.819n ± ∞ ¹       ~ (p=1.000 n=1) ²
-CheckMetricsAndSwap-8                  6.199n ± ∞ ¹    6.199n ± ∞ ¹       ~ (p=1.000 n=1) ²
-IndexSearch-8                          1.376n ± ∞ ¹    1.376n ± ∞ ¹       ~ (p=1.000 n=1) ²
-IndexDirectTracking-8                 0.2983n ± ∞ ¹   0.2983n ± ∞ ¹       ~ (p=1.000 n=1) ²
-geomean                                1.467n          1.467n        +0.00%
-¹ need >= 6 samples for confidence interval at level 0.95
-² all samples are equal
-
-                      │ /tmp/old_bench_filtered.txt │     /tmp/new_bench_filtered.txt     │
-                      │            B/op             │    B/op      vs base                │
-PadString-8                             0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
-CheckMetricsAndSwap-8                   0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
-IndexSearch-8                           0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
-IndexDirectTracking-8                   0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
-geomean                                           ³                +0.00%               ³
-¹ need >= 6 samples for confidence interval at level 0.95
-² all samples are equal
-³ summaries must be >0 to compute geomean
-
-                      │ /tmp/old_bench_filtered.txt │     /tmp/new_bench_filtered.txt     │
-                      │          allocs/op          │  allocs/op   vs base                │
-PadString-8                             0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
-CheckMetricsAndSwap-8                   0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
-IndexSearch-8                           0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
-IndexDirectTracking-8                   0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
-geomean                                           ³                +0.00%               ³
-¹ need >= 6 samples for confidence interval at level 0.95
-² all samples are equal
-³ summaries must be >0 to compute geomean
-```
-
-### Latest Benchmark Results
-
-
-| Benchmark | Avg. Time/Op | Avg. Bytes/Op | Avg. Allocs/Op |
-|-----------|--------------|---------------|----------------|
-| BenchmarkCheckMetricsAndSwap-8 | 6.20 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkIndexDirectTracking-8 | 0.30 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkIndexSearch-8 | 1.38 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkLoadGlobalConfig-8 | 23.00 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkPadString-8 | 1.82 ns/op | 0.00 B/op | 0.00 allocs/op |
-
-
-### Performance History
-
-**Legend**
-
-| Color | Benchmark | Description |
-|---|---|---|
-| 🟢 | CheckMetricsAndSwap | Evaluation of system metrics (CPU/Mem) and mode switching logic |
-| 🔵 | IndexDirectTracking | Accessing current replication mode via direct slice index (O(1)) |
-| 🔴 | IndexSearch | Searching for current replication mode in the order slice using `slices.Index` |
-| 🟠 | LoadGlobalConfig | Parsing and loading the `[global]` section from the INI configuration |
-| 🟣 | PadString | Padding strings with null characters to a fixed protocol length |
-| 🟡 | ParseReplicationOrder | Parsing the CSV-formatted replication order string into an integer slice |
-
-```mermaid
-xychart-beta
-    title "Performance Trend (Avg. Time, Last 10 Commits)"
-    x-axis "Commit"
-    y-axis "Avg. Time (ns/op)"
-    x-axis [0ba6,0b1a,83df,f015,9a0d,ca06,d431,f59b]
-    line "CheckMetricsAndSwap" [7,7,6,7,6,7,7,7,5,5]
-    line "CheckMetricsAndSwap" [6]
-    line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
-    line "IndexDirectTracking" [0]
-    line "IndexSearch" [4,4,4,3,4,3,3,1,1,1]
-    line "IndexSearch" [1]
-    line "LoadGlobalConfig" [6,20,21,22,16,21,1,20,22,1]
-    line "LoadGlobalConfig" [23]
-    line "PadString" [1,1,1,1,1,1,1,1,1,1]
-    line "PadString" [2]
-    line "ParseReplicationOrder_NoPrealloc" [350,349,357,354,345,225,229,165,232,234]
-    line "ParseReplicationOrder_Prealloc" [229,231,237,234,229,108,107,80,110,109]
-```
-
-```mermaid
-xychart-beta
-    title "Memory Trend (Avg. Bytes/Op, Last 10 Commits)"
-    x-axis "Commit"
-    y-axis "Avg. Bytes/Op"
-    x-axis [0ba6,0b1a,83df,f015,9a0d,ca06,d431,f59b]
-    line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
-    line "CheckMetricsAndSwap" [0]
-    line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
-    line "IndexDirectTracking" [0]
-    line "IndexSearch" [0,0,0,0,0,0,0,0,0,0]
-    line "IndexSearch" [0]
-    line "LoadGlobalConfig" [0,0,0,0,0,0,0,0,0,0]
-    line "LoadGlobalConfig" [0]
-    line "PadString" [0,0,0,0,0,0,0,0,0,0]
-    line "PadString" [0]
-    line "ParseReplicationOrder_NoPrealloc" [408,408,408,408,408,248,248,248,248,248]
-    line "ParseReplicationOrder_Prealloc" [240,240,240,240,240,80,80,80,80,80]
-```
-
-```mermaid
-xychart-beta
-    title "Allocation Trend (Avg. Allocs/Op, Last 10 Commits)"
-    x-axis "Commit"
-    y-axis "Avg. Allocs/Op"
-    x-axis [0ba6,0b1a,83df,f015,9a0d,ca06,d431,f59b]
-    line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
-    line "CheckMetricsAndSwap" [0]
-    line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
-    line "IndexDirectTracking" [0]
-    line "IndexSearch" [0,0,0,0,0,0,0,0,0,0]
-    line "IndexSearch" [0]
-    line "LoadGlobalConfig" [0,0,0,0,0,0,0,0,0,0]
-    line "LoadGlobalConfig" [0]
-    line "PadString" [0,0,0,0,0,0,0,0,0,0]
-    line "PadString" [0]
-    line "ParseReplicationOrder_NoPrealloc" [6,6,6,6,6,5,5,5,5,5]
-    line "ParseReplicationOrder_Prealloc" [2,2,2,2,2,1,1,1,1,1]
-```
-<!-- BENCHMARK_RESULTS_END -->
+Momo includes a built-in benchmarking suite and performance history tracking. Refer to the [Performance Guide](PERFORMANCE.md) for the latest metrics.

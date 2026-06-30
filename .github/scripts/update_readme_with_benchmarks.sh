@@ -8,7 +8,7 @@ set -x # Enable debugging for CI logs
 
 OLD_BENCH=$1
 NEW_BENCH=$2
-README_FILE="docs/README.md"
+README_FILE="docs/PERFORMANCE.md"
 MARKER_START="<!-- BENCHMARK_RESULTS_START -->"
 MARKER_END="<!-- BENCHMARK_RESULTS_END -->"
 
@@ -196,4 +196,4 @@ rm "$CONTENT_FILE"
 # Move the temporary file to the original README
 mv "$TMP_README" "$README_FILE"
 
-echo "README.md updated with benchmark results."
+echo "PERFORMANCE.md updated with benchmark results."
