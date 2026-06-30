@@ -137,8 +137,19 @@ In this mode, the client sends the file to all servers in the cluster simultaneo
                  +------>      ...      <------+
 ```
 
-## Polymorphic System
+## Polymorphic System: Dual-Dimensional Adaptability
 
-The most unique aspect of Momo is its ability to change replication strategies at runtime. Each node monitors its local CPU and memory usage. If a threshold is exceeded, the node triggers a cluster-wide strategy shift. Conversely, when load remains low, the system automatically switches to a more robust replication strategy.
+The defining feature of Momo is its **Dual-Dimensional Polymorphic Architecture**, which enables the system to adapt dynamically to load conditions and traffic origins with **zero manual configuration changes and zero runtime impact**:
 
-This decentralized adaptation allows the cluster to maintain optimal performance and data redundancy without a single point of failure.
+### 📈 Dimension 1: Dynamic Replication Polymorphism (Runtime Adaptation)
+Momo monitors local CPU and Memory metrics continuously on every node. 
+- **Under Surge Load:** If system metrics exceed specified thresholds (e.g., 80% usage), nodes coordinate to dynamically shift the cluster replication mode to a lower-overhead strategy (such as **No Replication** or **Primary-Splay**) to prevent bottleneck queues and protect cluster stability.
+- **Under Low Load:** When resource usage settles below thresholds (e.g., 20% usage), the system automatically promotes the mode to highly consistent, durable strategies (like **Chain** or **Splay**), optimizing data safety.
+- **Decentralized Execution:** This state change is broadcast dynamically to all potential "Primary" nodes via the `ChangeReplication` endpoint, keeping the cluster seamlessly in sync without a single point of failure.
+
+### 🔌 Dimension 2: Wire Protocol Polymorphism (Chameleon Routing)
+Momo servers listen on the exact same port (e.g., `4440`) and accept standard TCP connections or secure QUIC streams, adapting the wire framing dynamically depending on the incoming client structure:
+- **Standard S3 Clients (`aws-cli`, `boto3`):** Momo acts as a pure, standard-compliant S3/Ceph REST gateway. The communicator intercepts REST operations (`GET`, `DELETE`), processes the database operations, and streams standard S3 HTTP/XML data directly back to the client socket, gracefully exiting the session using the `ErrRequestHandled` sentinel without running any custom inter-node replication procedures.
+- **Momo Peer Nodes (Inter-Node Replication):** Momo acts as a highly synchronized, transactional replication engine. It detects custom handshake headers (`X-Momo-Requested-Mode`, `X-Momo-Timestamp`) inside `PUT` writes, executes our multi-stage replication framing (deduplication check, metadata verification, cluster-wide payload streaming), and transmits replication acknowledgements (`ACK` packets).
+
+This dual-dimensional polymorphism permits Momo to simultaneously serve cloud-native clients and peer replication rings over a single port, delivering top-tier performance (**⚡ Bolt**) and robust security (**🛡️ Sentinel**) dynamically.
