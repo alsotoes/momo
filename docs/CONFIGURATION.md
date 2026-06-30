@@ -143,7 +143,7 @@ polymorphic_system = true
 
 ### S3 Compatibility Layer (TCP or QUIC)
 
-To allow standard AWS SDKs (like `aws-cli` or `boto3`) to upload files directly into the Momo replication ring, use the `s3-*` protocols.
+To allow standard AWS SDKs (like `aws-cli` or `boto3`) to upload, list, download, and delete files directly into the Momo replication ring, use the `s3-*` protocols.
 
 ```ini
 [global]
@@ -151,3 +151,22 @@ protocol = s3-tcp # Or use s3-quic for secure deployments
 polymorphic_system = true
 # ... (metrics and daemon blocks remain the same)
 ```
+
+Now, standard S3 client tools can list, download, and delete files directly over Momo's S3 REST gateway.
+
+#### Examples (using aws-cli):
+
+- **List Objects (ListObjectsV2):**
+  ```bash
+  aws s3 ls s3://any-bucket-name/ --endpoint-url http://127.0.0.1:4440
+  ```
+
+- **Download Object (GetObject):**
+  ```bash
+  aws s3 cp s3://any-bucket-name/file.txt ./file.txt --endpoint-url http://127.0.0.1:4440
+  ```
+
+- **Delete Object (DeleteObject):**
+  ```bash
+  aws s3 rm s3://any-bucket-name/file.txt --endpoint-url http://127.0.0.1:4440
+  ```
