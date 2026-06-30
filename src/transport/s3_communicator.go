@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/storage"
 )
 
 type S3Communicator struct {
@@ -29,6 +31,9 @@ type S3Communicator struct {
 
 	// Server state
 	meta common.FileMetadata
+
+	// Storage store for list, get, and delete operations
+	store storage.Store
 }
 
 func NewS3Communicator(conn net.Conn) *S3Communicator {
@@ -37,6 +42,10 @@ func NewS3Communicator(conn net.Conn) *S3Communicator {
 		reader:     bufio.NewReader(conn),
 		remoteAddr: conn.RemoteAddr(),
 	}
+}
+
+func (m *S3Communicator) SetStore(store storage.Store) {
+	m.store = store
 }
 
 func (m *S3Communicator) Read(p []byte) (n int, err error) {
@@ -173,7 +182,115 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 
 	tokenBuf := []byte(common.PadString(token, common.AuthTokenLength))
 	if subtle.ConstantTimeCompare(tokenBuf, expectedAuthToken) != 1 {
+		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		m.conn.Write([]byte("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
 		return 0, 0, syscall.EACCES
+	}
+
+	bucket, key := extractS3BucketAndKey(req)
+
+	// Intercept GET requests (for ListObjectsV2 or GetObject)
+	if req.Method == "GET" {
+		if m.store == nil {
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			m.conn.Write([]byte("HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
+			return 0, 0, fmt.Errorf("storage store not initialized")
+		}
+
+		// ListObjectsV2 (is list if key is empty, or if list-type query is 2)
+		q := req.URL.Query()
+		isList := (key == "") || (q.Get("list-type") == "2")
+
+		if isList {
+			files, err := m.store.List()
+			if err != nil {
+				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				m.conn.Write([]byte("HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
+				return 0, 0, fmt.Errorf("failed to list files: %w", err)
+			}
+
+			prefix := q.Get("prefix")
+			delimiter := q.Get("delimiter")
+			maxKeys := 1000
+			if maxKeysStr := q.Get("max-keys"); maxKeysStr != "" {
+				if mk, err := strconv.Atoi(maxKeysStr); err == nil && mk > 0 {
+					maxKeys = mk
+				}
+			}
+
+			xmlBytes := FormatListObjectsV2XML(bucket, prefix, delimiter, maxKeys, files)
+
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			var respBuf bytes.Buffer
+			respBuf.WriteString("HTTP/1.1 200 OK\r\n")
+			respBuf.WriteString("Content-Type: application/xml\r\n")
+			respBuf.WriteString("Content-Length: " + strconv.Itoa(len(xmlBytes)) + "\r\n")
+			respBuf.WriteString("Connection: close\r\n\r\n")
+			respBuf.Write(xmlBytes)
+
+			if _, err := m.conn.Write(respBuf.Bytes()); err != nil {
+				return 0, 0, fmt.Errorf("failed to write XML list response: %w", err)
+			}
+
+			return 0, 0, ErrRequestHandled
+		}
+
+		// GetObject (file download)
+		rc, meta, err := m.store.Get(key)
+		if err != nil {
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			if err == syscall.ENOENT || os.IsNotExist(err) {
+				m.conn.Write([]byte("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
+				return 0, 0, ErrRequestHandled
+			}
+			m.conn.Write([]byte("HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
+			return 0, 0, fmt.Errorf("failed to get file %q: %w", key, err)
+		}
+		defer rc.Close()
+
+		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		var respBuf bytes.Buffer
+		respBuf.WriteString("HTTP/1.1 200 OK\r\n")
+		respBuf.WriteString("Content-Length: " + strconv.FormatInt(meta.Size, 10) + "\r\n")
+		respBuf.WriteString("Content-Type: application/octet-stream\r\n")
+		respBuf.WriteString("Connection: close\r\n\r\n")
+
+		if _, err := m.conn.Write(respBuf.Bytes()); err != nil {
+			return 0, 0, fmt.Errorf("failed to write GET headers: %w", err)
+		}
+
+		if _, err := io.Copy(m.conn, rc); err != nil {
+			return 0, 0, fmt.Errorf("failed to stream GET body: %w", err)
+		}
+
+		return 0, 0, ErrRequestHandled
+	}
+
+	// Intercept DELETE requests
+	if req.Method == "DELETE" {
+		if m.store == nil {
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			m.conn.Write([]byte("HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
+			return 0, 0, fmt.Errorf("storage store not initialized")
+		}
+
+		if key == "" {
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			m.conn.Write([]byte("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
+			return 0, 0, fmt.Errorf("missing key in DELETE request")
+		}
+
+		err := m.store.Delete(key)
+		if err != nil {
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			m.conn.Write([]byte("HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
+			return 0, 0, fmt.Errorf("failed to delete file %q: %w", key, err)
+		}
+
+		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		m.conn.Write([]byte("HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"))
+
+		return 0, 0, ErrRequestHandled
 	}
 
 	timestampStr := req.Header.Get("X-Momo-Timestamp")
@@ -477,4 +594,149 @@ func hasPathTraversalChars(s string) bool {
 		}
 	}
 	return false
+}
+
+// extractS3BucketAndKey parses the bucket name and key path from an S3 HTTP request.
+// It supports both virtual-host style and path-style S3 URL schemas.
+func extractS3BucketAndKey(req *http.Request) (bucket string, key string) {
+	host := req.Host
+	if strings.Contains(host, ".") {
+		parts := strings.Split(host, ".")
+		if len(parts) > 1 && parts[len(parts)-1] == "localhost" {
+			bucket = parts[0]
+		} else if strings.Contains(host, ".s3") {
+			idx := strings.Index(host, ".s3")
+			bucket = host[:idx]
+		}
+	}
+
+	pathStr := req.URL.Path
+	cleanPath := path.Clean(pathStr)
+	cleanPath = strings.TrimPrefix(cleanPath, "/")
+
+	if bucket == "" {
+		if cleanPath != "" && cleanPath != "." {
+			parts := strings.SplitN(cleanPath, "/", 2)
+			bucket = parts[0]
+			if len(parts) > 1 {
+				key = parts[1]
+			}
+		}
+	} else {
+		key = cleanPath
+	}
+
+	if key == "." {
+		key = ""
+	}
+	return bucket, key
+}
+
+// FormatListObjectsV2XML constructs an S3-compliant ListObjectsV2 XML response
+// using a pre-allocated bytes.Buffer to avoid excessive heap allocations (⚡ Bolt pattern).
+func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, files []common.FileMetadata) []byte {
+	var buf bytes.Buffer
+	buf.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)
+	buf.WriteString(`<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">`)
+
+	buf.WriteString(`<Name>`)
+	xmlEscape(&buf, bucketName)
+	buf.WriteString(`</Name>`)
+
+	buf.WriteString(`<Prefix>`)
+	xmlEscape(&buf, prefix)
+	buf.WriteString(`</Prefix>`)
+
+	if delimiter != "" {
+		buf.WriteString(`<Delimiter>`)
+		xmlEscape(&buf, delimiter)
+		buf.WriteString(`</Delimiter>`)
+	}
+
+	buf.WriteString(`<MaxKeys>`)
+	buf.WriteString(strconv.Itoa(maxKeys))
+	buf.WriteString(`</MaxKeys>`)
+
+	buf.WriteString(`<IsTruncated>false</IsTruncated>`)
+
+	commonPrefixes := make(map[string]bool)
+	keyCount := 0
+
+	for _, file := range files {
+		key := file.Name
+		if file.RemotePath != "" {
+			key = file.RemotePath + "/" + file.Name
+		}
+
+		if prefix != "" && !strings.HasPrefix(key, prefix) {
+			continue
+		}
+
+		if delimiter != "" {
+			relativeKey := key[len(prefix):]
+			delimIdx := strings.Index(relativeKey, delimiter)
+			if delimIdx != -1 {
+				subPrefix := prefix + relativeKey[:delimIdx+1]
+				if !commonPrefixes[subPrefix] {
+					commonPrefixes[subPrefix] = true
+				}
+				continue
+			}
+		}
+
+		buf.WriteString(`<Contents>`)
+		buf.WriteString(`<Key>`)
+		xmlEscape(&buf, key)
+		buf.WriteString(`</Key>`)
+		buf.WriteString(`<LastModified>2026-06-29T12:00:00.000Z</LastModified>`)
+		buf.WriteString(`<ETag>"`)
+		xmlEscape(&buf, file.Hash)
+		buf.WriteString(`"</ETag>`)
+		buf.WriteString(`<Size>`)
+		buf.WriteString(strconv.FormatInt(file.Size, 10))
+		buf.WriteString(`</Size>`)
+		buf.WriteString(`<StorageClass>STANDARD</StorageClass>`)
+		buf.WriteString(`</Contents>`)
+		keyCount++
+
+		if maxKeys > 0 && keyCount >= maxKeys {
+			break
+		}
+	}
+
+	for cp := range commonPrefixes {
+		buf.WriteString(`<CommonPrefixes>`)
+		buf.WriteString(`<Prefix>`)
+		xmlEscape(&buf, cp)
+		buf.WriteString(`</Prefix>`)
+		buf.WriteString(`</CommonPrefixes>`)
+		keyCount++
+	}
+
+	buf.WriteString(`<KeyCount>`)
+	buf.WriteString(strconv.Itoa(keyCount))
+	buf.WriteString(`</KeyCount>`)
+
+	buf.WriteString(`</ListBucketResult>`)
+	return buf.Bytes()
+}
+
+func xmlEscape(buf *bytes.Buffer, s string) {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch c {
+		case '&':
+			buf.WriteString("&amp;")
+		case '<':
+			buf.WriteString("&lt;")
+		case '>':
+			buf.WriteString("&gt;")
+		case '"':
+			buf.WriteString("&quot;")
+		case '\'':
+			buf.WriteString("&apos;")
+		default:
+			buf.WriteByte(c)
+		}
+	}
 }

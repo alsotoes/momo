@@ -118,6 +118,11 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 			// 🛡️ Sentinel: Capture remote address for audit logging and traceability
 			remoteAddr := common.SanitizeLog(comm.RemoteAddr().String())
 
+			// Inject storage store if the communicator supports it (e.g. S3 for list/delete)
+			if s3Comm, ok := comm.(interface{ SetStore(storage.Store) }); ok {
+				s3Comm.SetStore(store)
+			}
+
 			// 🛡️ Sentinel: Apply a strict absolute deadline for the handshake phase to prevent Slowloris trickle attacks.
 			comm.SetAbsoluteDeadline(time.Now().Add(10 * time.Second))
 
@@ -135,6 +140,11 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 			// validates the token, and returns the timestamp and requested mode.
 			replicationMode, ts, err = comm.HandshakeServer(expectedAuthToken)
 			if err != nil {
+				if err == transport.ErrRequestHandled {
+					// The request was completely handled by the gateway layer (e.g., list, get, delete)
+					success = false
+					return
+				}
 				log.Printf("AUDIT: Handshake failed from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
 				return
 			}

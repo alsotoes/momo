@@ -31,6 +31,7 @@ type Store interface {
 	Has(hash string) (bool, error)
 	Delete(name string) error
 	GetBlobPath(name string) (string, error)
+	List() ([]common.FileMetadata, error)
 }
 
 // CASStore implements Content-Addressable Storage with Bbolt metadata.
@@ -278,6 +279,65 @@ func (s *CASStore) Delete(name string) (err error) {
 	return s.db.Update(func(tx *bbolt.Tx) error {
 		return tx.Bucket(bucketNamespace).Delete([]byte(name))
 	})
+}
+
+// List retrieves all file metadata entries in the store.
+func (s *CASStore) List() (list []common.FileMetadata, err error) {
+	// 🛡️ Zero-Crash: Recover from any unexpected panics.
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in CASStore.List: %v", r)
+			err = fmt.Errorf("internal storage panic: %w", syscall.EIO)
+		}
+	}()
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	err = s.db.View(func(tx *bbolt.Tx) error {
+		ns := tx.Bucket(bucketNamespace)
+		if ns == nil {
+			return nil
+		}
+		obj := tx.Bucket(bucketObjects)
+		paths := tx.Bucket(bucketPaths)
+
+		c := ns.Cursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			name := string(k)
+			hash := string(v)
+			var size int64 = 0
+			var remotePath string = ""
+
+			if obj != nil {
+				sizeBytes := obj.Get(v)
+				if len(sizeBytes) > 0 {
+					var parseErr error
+					size, parseErr = strconv.ParseInt(unsafe.String(unsafe.SliceData(sizeBytes), len(sizeBytes)), 10, 64)
+					if parseErr != nil {
+						log.Printf("WARNING: metadata corruption for hash %s in List: %v", hash, parseErr)
+					}
+				}
+			}
+
+			if paths != nil {
+				pBytes := paths.Get(k)
+				if pBytes != nil {
+					remotePath = string(pBytes)
+				}
+			}
+
+			list = append(list, common.FileMetadata{
+				Name:       name,
+				Hash:       hash,
+				Size:       size,
+				RemotePath: remotePath,
+			})
+		}
+		return nil
+	})
+
+	return list, err
 }
 
 func (s *CASStore) GetBlobPath(name string) (path string, err error) {
