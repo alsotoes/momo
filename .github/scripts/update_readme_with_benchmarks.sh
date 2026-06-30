@@ -71,6 +71,8 @@ BENCHMARK_NAMES=$(awk -F, 'NR>1 {print $2}' "$HISTORY_FILE" | sed -E 's/-[0-9]+$
 get_desc() {
     case "$1" in
         "CheckMetricsAndSwap") echo "Evaluation of system metrics (CPU/Mem) and mode switching logic" ;;
+        "CrushOptimized") echo "Performance-tuned CRUSH-lite placement algorithm using bitwise shifts and integer math (Rule 19)" ;;
+        "CrushOriginal") echo "Original Sage Weil's CRUSH placement algorithm using reflection and float math" ;;
         "IndexDirectTracking") echo "Accessing current replication mode via direct slice index (O(1))" ;;
         "IndexSearch") echo "Searching for current replication mode in the order slice using \`slices.Index\`" ;;
         "LoadGlobalConfig") echo "Parsing and loading the \`[global]\` section from the INI configuration" ;;
@@ -105,6 +107,8 @@ $MARKDOWN_TABLE
 | Color | Benchmark | Description |
 |---|---|---|
 | 🟢 | CheckMetricsAndSwap | $(get_desc "CheckMetricsAndSwap") |
+| 🟤 | CrushOriginal | $(get_desc "CrushOriginal") |
+| ⚪ | CrushOptimized | $(get_desc "CrushOptimized") |
 | 🔵 | IndexDirectTracking | $(get_desc "IndexDirectTracking") |
 | 🔴 | IndexSearch | $(get_desc "IndexSearch") |
 | 🟠 | LoadGlobalConfig | $(get_desc "LoadGlobalConfig") |
@@ -129,6 +133,19 @@ for bench_name in $BENCHMARK_NAMES; do
     # Get the data for this benchmark for the last 10 commits (matching exact column with or without core-count suffix)
     bench_data=$(grep -E ",${bench_name}(-[0-9]+)?," "$HISTORY_FILE" | tail -n 10 | awk -F, '{printf "%.0f,", $3}' | sed 's/,$//' || true)
     short_name=$(echo "$bench_name" | sed -e 's/Benchmark//')
+    
+    # Pad with leading zeros if we have fewer than 10 commits (e.g. for recently added benchmarks)
+    count=$(echo "$bench_data" | tr -cd ',' | wc -c)
+    if [ -n "$bench_data" ]; then
+        num_points=$((count + 1))
+    else
+        num_points=0
+    fi
+    while [ $num_points -lt 10 ]; do
+        bench_data="0,$bench_data"
+        num_points=$((num_points + 1))
+    done
+
     echo "    line \"$short_name\" [${bench_data}]" >> "$CONTENT_FILE"
 done
 
@@ -147,6 +164,19 @@ for bench_name in $BENCHMARK_NAMES; do
     # Get the data for this benchmark for the last 10 commits (matching exact column with or without core-count suffix)
     bench_data=$(grep -E ",${bench_name}(-[0-9]+)?," "$HISTORY_FILE" | tail -n 10 | awk -F, '{printf "%.0f,", $4}' | sed 's/,$//' || true)
     short_name=$(echo "$bench_name" | sed -e 's/Benchmark//')
+    
+    # Pad with leading zeros if we have fewer than 10 commits (e.g. for recently added benchmarks)
+    count=$(echo "$bench_data" | tr -cd ',' | wc -c)
+    if [ -n "$bench_data" ]; then
+        num_points=$((count + 1))
+    else
+        num_points=0
+    fi
+    while [ $num_points -lt 10 ]; do
+        bench_data="0,$bench_data"
+        num_points=$((num_points + 1))
+    done
+
     echo "    line \"$short_name\" [${bench_data}]" >> "$CONTENT_FILE"
 done
 
@@ -165,6 +195,19 @@ for bench_name in $BENCHMARK_NAMES; do
     # Get the data for this benchmark for the last 10 commits (matching exact column with or without core-count suffix)
     bench_data=$(grep -E ",${bench_name}(-[0-9]+)?," "$HISTORY_FILE" | tail -n 10 | awk -F, '{printf "%.0f,", $5}' | sed 's/,$//' || true)
     short_name=$(echo "$bench_name" | sed -e 's/Benchmark//')
+    
+    # Pad with leading zeros if we have fewer than 10 commits (e.g. for recently added benchmarks)
+    count=$(echo "$bench_data" | tr -cd ',' | wc -c)
+    if [ -n "$bench_data" ]; then
+        num_points=$((count + 1))
+    else
+        num_points=0
+    fi
+    while [ $num_points -lt 10 ]; do
+        bench_data="0,$bench_data"
+        num_points=$((num_points + 1))
+    done
+
     echo "    line \"$short_name\" [${bench_data}]" >> "$CONTENT_FILE"
 done
 
