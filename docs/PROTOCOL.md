@@ -174,6 +174,22 @@ To provide absolute cloud-native interoperability, Momo implements an S3-compati
 
 Depending on the incoming network request, the server polymorphically routes traffic under two distinct scenarios:
 
+### Polymorphic S3 PUT Operation Versions
+
+While a standard S3 client (such as `aws-cli`) always issues a standard, monolithic HTTP `PUT` request, Momo's S3 gateway processes this operation polymorphically under **three distinct distributed versions** depending on the active cluster replication strategy:
+
+1. **PUT-Chain (Chain Replication):**
+   - **Behavior:** The primary node writes the file locally, then streams the payload sequentially to the next node in the replication ring (`Node A -> Node B -> Node C`).
+   - **Advantage:** Minimal Primary CPU and concurrent network output overhead.
+2. **PUT-Splay (Splay Replication):**
+   - **Behavior:** The primary node parallelizes the write, concurrently splaying the file payload to all replica nodes in the cluster simultaneously.
+   - **Advantage:** Minimum replication latency across the cluster.
+3. **PUT-PrimarySplay (Primary-Splay Replication):**
+   - **Behavior:** The primary node writes the payload locally and delegates splaying asynchronously to other designated cluster nodes.
+   - **Advantage:** Extremely balanced performance and high durability under heavy load.
+
+These versions are swapped completely on-the-fly by Momo's polymorphic metric-monitoring engine with **zero configuration changes on the S3 client side** and **zero downtime**.
+
 ### Scenario A: Standard S3 Client (e.g., aws-cli, boto3)
 
 When a standard S3 tool connects to Momo, it communicates via raw, standard S3 HTTP requests. The server intercepts these requests and bypasses the Momo-specific replication pipeline entirely.
