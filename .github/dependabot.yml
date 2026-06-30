@@ -1,0 +1,81 @@
+version: 2
+updates:
+  # Enable weekly package updates for root Go modules
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "go"
+
+  # Enable updates for the client submodule Go dependencies
+  - package-ecosystem: "gomod"
+    directory: "/src/client"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "go"
+
+  # Enable updates for the common utilities Go dependencies
+  - package-ecosystem: "gomod"
+    directory: "/src/common"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "go"
+
+  # Enable updates for the metrics monitoring Go dependencies
+  - package-ecosystem: "gomod"
+    directory: "/src/metrics"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "go"
+
+  # Enable updates for the server daemon Go dependencies
+  - package-ecosystem: "gomod"
+    directory: "/src/server"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "go"
+
+  # Enable updates for the CAS Bbolt storage Go dependencies
+  - package-ecosystem: "gomod"
+    directory: "/src/storage"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "go"
+
+  # Enable updates for the pluggable transports Go dependencies
+  - package-ecosystem: "gomod"
+    directory: "/src/transport"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "go"
+
+  # Enable updates for GitHub Actions CI/CD workflows
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "ci"
