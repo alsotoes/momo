@@ -453,6 +453,8 @@ func TestS3Communicator_XMLFormatting(t *testing.T) {
 		{Name: "file1.txt", Hash: "hash1", Size: 100, RemotePath: ""},
 		{Name: "file2.txt", Hash: "hash2", Size: 200, RemotePath: "docs"},
 		{Name: "file3.txt", Hash: "hash3", Size: 300, RemotePath: "docs/nested"},
+		{Name: "oversized-filename-exceeding-sixty-four-characters-limit-should-be-skipped-entirely.txt", Hash: "hash4", Size: 400},
+		{Name: "valid.txt", Hash: "oversized-hash-exceeding-sixty-four-characters-limit-should-be-skipped-entirely", Size: 500},
 	}
 
 	// 1. Root listing (prefix: "", delimiter: "")
@@ -473,6 +475,12 @@ func TestS3Communicator_XMLFormatting(t *testing.T) {
 	}
 	if strings.Contains(xmlStr, "<CommonPrefixes>") {
 		t.Errorf("Did not expect CommonPrefixes in flat listing")
+	}
+	if strings.Contains(xmlStr, "oversized-filename-exceeding") {
+		t.Errorf("Did not expect oversized filename in XML")
+	}
+	if strings.Contains(xmlStr, "oversized-hash-exceeding") {
+		t.Errorf("Did not expect oversized hash in XML")
 	}
 
 	// 2. Prefix and delimiter grouping

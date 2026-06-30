@@ -678,6 +678,13 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, f
 	keyCount := 0
 
 	for _, file := range files {
+		// 🛡️ Sentinel: Validate that the metadata fields conform to the project's strict size limits (64 bytes)
+		// to protect the XML buffer against oversized payloads or corrupted database inputs (Rule 32).
+		if len(file.Name) > 64 || len(file.Hash) > 64 {
+			log.Printf("WARNING: Skipping malformed metadata entry in FormatListObjectsV2XML (Name length: %d, Hash length: %d)", len(file.Name), len(file.Hash))
+			continue
+		}
+
 		key := file.Name
 		if file.RemotePath != "" {
 			key = file.RemotePath + "/" + file.Name
