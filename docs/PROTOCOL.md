@@ -20,7 +20,14 @@ The handshake is initiated by the client and is used to authenticate the connect
 2.  **Handshake Packet**: The client sends a combined authentication, timestamp, and mode packet (84 bytes):
     -   **AuthToken:** 64-byte string, null-padded.
     -   **Timestamp:** 19-byte ASCII string (e.g., `UnixNano`).
-    -   **RequestedMode:** 1-byte ASCII integer (e.g. `0` for auto-select, `1` for Chain).
+    -   **RequestedMode:** 1-byte ASCII integer representing the transaction type or replication strategy:
+        -   `'0'`: **ReplicationNone** - Upload without replication.
+        -   `'1'`: **ReplicationChain** - Upload using chain replication.
+        -   `'2'`: **ReplicationSplay** - Upload using splay replication.
+        -   `'3'`: **ReplicationPrimarySplay** - Upload using primary-splay replication.
+        -   `'4'`: **ModeList** - Query directory list of stored file objects.
+        -   `'5'`: **ModeDelete** - Request specific file deletion.
+        -   `'6'`: **ModeGet** - Request file payload retrieval (Download).
 3.  **Validation**: The server validates the AuthToken using constant-time comparison.
 4.  **Negotiation**: 
     - If it's a new client connection, the server selects the mode based on polymorphic metrics.
@@ -60,6 +67,45 @@ The metadata consists of three fixed-size fields:
 1.  After sending the metadata, the client waits for a **1-byte Status Code**.
 2.  **`1` (MetadataStatusSendPayload)**: Server does not have the content. Client must stream the payload.
 3.  **`2` (MetadataStatusSkipPayload)**: Server already has the content (**CAS Hit**). Client skips the payload phase and waits for the final ACK.
+
+### Native Directory Listing (LIST - `'4'`)
+
+When `RequestedMode` is `ModeList` (`'4'`), the client queries the list of all file metadata stored on the server.
+
+1.  **Handshake:** Completed with `'4'`.
+2.  **Server Response (File Count):** Server writes a 4-byte big-endian integer representing the number of files:
+    ```
+    |-----------------|
+    | File Count (4)  |
+    |-----------------|
+    ```
+3.  **Metadata Stream:** For each file, the server streams a 192-byte metadata packet containing:
+    -   **SHA-256 Checksum:** 64-byte hexadecimal string, null-padded.
+    -   **File Name:** 64-byte ASCII string (including subfolders), null-padded.
+    -   **File Size:** 64-byte ASCII decimal size string, null-padded.
+    ```
+    |-----------------|------------------|-----------------|
+    |   Hash (64)     | File Name (64)   | File Size (64)  |
+    |-----------------|------------------|-----------------|
+    ```
+
+### Native File Deletion (DELETE - `'5'`)
+
+When `RequestedMode` is `ModeDelete` (`'5'`), the client requests the deletion of a specific file.
+
+1.  **Handshake:** Completed with `'5'`.
+2.  **Target Name (Client sends):** Client sends the 64-byte null-padded name of the file to delete.
+3.  **Server Response (ACK):** Server deletes the mapping on BoltDB and responds with a 1-byte status code (`'0'` for success, `'1'` for error).
+
+### Native File Retrieval (GET - `'6'`)
+
+When `RequestedMode` is `ModeGet` (`'6'`), the client requests the raw binary payload download of a specific file.
+
+1.  **Handshake:** Completed with `'6'`.
+2.  **Target Name (Client sends):** Client sends the 64-byte null-padded name of the file to retrieve.
+3.  **Server Response (ACK/Payload):**
+    -   If the file does not exist, the server writes a 1-byte `'1'` (Not Found) code and closes.
+    -   If the file exists, the server writes a 1-byte `'0'` (Success) code, followed by a 64-byte null-padded `FileSize` string, followed by the raw binary stream of the file until EOF.
 
 ### Payload
 

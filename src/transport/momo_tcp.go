@@ -3,14 +3,18 @@ package transport
 import (
 	"bytes"
 	"crypto/subtle"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/storage"
 )
 
 const hashLength = 64
@@ -18,6 +22,7 @@ const hashLength = 64
 // MomoTCPCommunicator implements the Communicator interface for the legacy Momo TCP protocol.
 type MomoTCPCommunicator struct {
 	*common.IdleTimeoutConn
+	store storage.Store
 }
 
 // NewMomoTCPCommunicator creates a new MomoTCPCommunicator wrapping a net.Conn.
@@ -25,6 +30,10 @@ func NewMomoTCPCommunicator(conn net.Conn) *MomoTCPCommunicator {
 	return &MomoTCPCommunicator{
 		IdleTimeoutConn: common.NewIdleTimeoutConn(conn, 30*time.Second),
 	}
+}
+
+func (m *MomoTCPCommunicator) SetStore(store storage.Store) {
+	m.store = store
 }
 
 func (m *MomoTCPCommunicator) SetAbsoluteDeadline(t interface{}) (err error) {
@@ -102,6 +111,129 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 	requestedMode = int(requestedModeByte - '0')
 	if requestedMode < 0 || requestedMode > 9 {
 		return 0, 0, fmt.Errorf("invalid requested mode: %d: %w", requestedMode, syscall.EBADMSG)
+	}
+
+	// 🛡️ Sentinel: Handle non-replication API queries (LIST, DELETE, GET) natively on Momo-TCP.
+	if requestedMode == common.ModeList {
+		if m.store == nil {
+			return 0, 0, fmt.Errorf("storage store not initialized")
+		}
+		files, err := m.store.List()
+		if err != nil {
+			return 0, 0, fmt.Errorf("failed to list files: %w", err)
+		}
+
+		// Send file count (4 bytes big-endian)
+		m.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		if err := binary.Write(m, binary.BigEndian, int32(len(files))); err != nil {
+			return 0, 0, fmt.Errorf("failed to send file count: %w", err)
+		}
+
+		// Send metadata packets (192 bytes each)
+		for _, file := range files {
+			// 🛡️ Sentinel: Validate length bounds
+			if len(file.Name) > 64 || len(file.Hash) > 64 {
+				continue
+			}
+			var packet [192]byte
+			copy(packet[0:64], common.PadString(file.Hash, 64))
+			wireName := file.Name
+			if file.RemotePath != "" {
+				wireName = file.RemotePath + "/" + file.Name
+			}
+			copy(packet[64:128], common.PadString(wireName, 64))
+			copy(packet[128:192], common.PadString(strconv.FormatInt(file.Size, 10), 64))
+
+			if _, err := m.Write(packet[:]); err != nil {
+				return 0, 0, fmt.Errorf("failed to write metadata packet: %w", err)
+			}
+		}
+
+		return 0, 0, ErrRequestHandled
+	}
+
+	if requestedMode == common.ModeDelete {
+		if m.store == nil {
+			return 0, 0, fmt.Errorf("storage store not initialized")
+		}
+		// Read 64-byte file name
+		m.SetReadDeadline(time.Now().Add(5 * time.Second))
+		var fileBuf [64]byte
+		if _, err := io.ReadFull(m, fileBuf[:]); err != nil {
+			return 0, 0, fmt.Errorf("failed to read delete target: %w", err)
+		}
+		fileName := string(bytes.TrimRight(fileBuf[:], "\x00"))
+
+		// 🛡️ Sentinel: Block path traversal
+		if strings.Contains(fileName, "..") || strings.Contains(fileName, "\\") {
+			m.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			m.Write([]byte{'1'}) // error status
+			return 0, 0, fmt.Errorf("invalid delete target traversal: %s: %w", fileName, syscall.EBADMSG)
+		}
+
+		err = m.store.Delete(fileName)
+		m.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		if err != nil {
+			m.Write([]byte{'1'}) // error status
+			return 0, 0, fmt.Errorf("failed to delete file: %w", err)
+		}
+
+		m.Write([]byte{'0'}) // success status
+		return 0, 0, ErrRequestHandled
+	}
+
+	if requestedMode == common.ModeGet {
+		if m.store == nil {
+			return 0, 0, fmt.Errorf("storage store not initialized")
+		}
+		// Read 64-byte file name
+		m.SetReadDeadline(time.Now().Add(5 * time.Second))
+		var fileBuf [64]byte
+		if _, err := io.ReadFull(m, fileBuf[:]); err != nil {
+			return 0, 0, fmt.Errorf("failed to read get target: %w", err)
+		}
+		fileName := string(bytes.TrimRight(fileBuf[:], "\x00"))
+
+		// 🛡️ Sentinel: Block path traversal
+		if strings.Contains(fileName, "..") || strings.Contains(fileName, "\\") {
+			m.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			m.Write([]byte{'1'}) // error status
+			return 0, 0, fmt.Errorf("invalid get target traversal: %s: %w", fileName, syscall.EBADMSG)
+		}
+
+		rc, meta, err := m.store.Get(fileName)
+		m.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		if err != nil {
+			if err == syscall.ENOENT || os.IsNotExist(err) {
+				m.Write([]byte{'1'}) // file not found
+				return 0, 0, ErrRequestHandled
+			}
+			m.Write([]byte{'2'}) // server error
+			return 0, 0, fmt.Errorf("failed to read file: %w", err)
+		}
+		defer rc.Close()
+
+		// Write '0' (success status) + 64-byte size string
+		var respBuf [65]byte
+		respBuf[0] = '0'
+		copy(respBuf[1:65], common.PadString(strconv.FormatInt(meta.Size, 10), 64))
+		if _, err := m.Write(respBuf[:]); err != nil {
+			return 0, 0, fmt.Errorf("failed to send get ACK: %w", err)
+		}
+
+		// Progressive write deadline for payload copying (5s floor + 1s per MB)
+		copyTimeout := 5 * time.Second
+		mb := meta.Size / (1024 * 1024)
+		if mb > 0 {
+			copyTimeout += time.Duration(mb) * time.Second
+		}
+		m.SetWriteDeadline(time.Now().Add(copyTimeout))
+
+		if _, err := io.Copy(m, rc); err != nil {
+			return 0, 0, fmt.Errorf("failed to stream file payload: %w", err)
+		}
+
+		return 0, 0, ErrRequestHandled
 	}
 
 	return requestedMode, timestamp, nil

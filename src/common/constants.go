@@ -25,6 +25,13 @@ const (
 	// ReplicationPrimarySplay indicates a primary-splay replication strategy.
 	ReplicationPrimarySplay
 
+	// ModeList indicates a request to list files over Momo protocol.
+	ModeList = 4
+	// ModeDelete indicates a request to delete a file over Momo protocol.
+	ModeDelete = 5
+	// ModeGet indicates a request to retrieve a file over Momo protocol.
+	ModeGet = 6
+
 	// DummyEpoch is a placeholder epoch value for initialization.
 	DummyEpoch = 1557906926566451195
 )
