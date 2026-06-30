@@ -46,20 +46,26 @@ This document explains the architecture, configuration, wire protocol, replicati
 - `src/metrics/`: Performance monitoring and polymorphic control loop.
 - `conf/momo.conf`: Secure configuration example.
 
-## Replication Modes
+## Replication Modes & Handshake Actions
 
-Constants (see `src/common/constants.go`):
+Handshake Requested Mode constants (see `src/common/constants.go`):
 
+### 📈 Replication Strategies (Numeric codes)
 - `0`: **No Replication**: Standalone storage on the selected primary node.
-- `1`: **Chain Replication**: Data follows an ordered path (A -> B -> C) determined by the CRUSH placement list.
-- `2`: **Splay Replication**: The primary forwards data to all other nodes in the CRUSH list concurrently.
-- `3`: **Primary-Splay Replication**: The client uploads to all nodes in the CRUSH list simultaneously.
+- `1`: **Chain Replication**: Pipelined chain replication. Client uploads to Primary, which chain-forwards sequentially down the cluster.
+- `2`: **Splay Replication**: Server-side splaying. Client uploads a single copy, and the Primary splays it in parallel to all other nodes.
+- `3`: **Primary-Splay Replication (Client-Splay)**: Client-side splaying. Shifts replication workload to the client, which copies the payload concurrently to all replica nodes in parallel.
+
+### 🔌 Native Query Actions (ASCII character codes)
+- `'L'`: **ModeList**: Query directory list of all stored file objects.
+- `'D'`: **ModeDelete**: Request specific file deletion mapping on BoltDB.
+- `'G'`: **ModeGet**: Request native file payload retrieval (Download).
 
 ## Data Flow
 
 Handshake and transfer overview:
 
-1. **Secure Handshake**: Client opens a network connection (TCP, QUIC, or S3) and sends a combined **84-byte packet** (64-byte AuthToken + 19-byte Timestamp + 1-byte RequestedMode).
+1. **Secure Handshake**: Client opens a network connection (TCP, QUIC, or S3) and sends a combined **84-byte packet** (64-byte AuthToken + 19-byte Timestamp + 1-byte RequestedMode). The `RequestedMode` byte is polymorphic: numbers (`'0'`-`'9'`) represent replication modes, while characters (`'L'`, `'D'`, `'G'`) represent non-replication query actions.
 2. **Replication Negotiation**: Server validates token and acknowledges the mode. If the client is external, the server selects the mode based on its polymorphic metrics.
 3. **Metadata & Deduplication**: Client sends metadata (Hash, Name, Size). Server queries its local **Bbolt** index and responds with a status code. If the hash exists, the payload phase is skipped (**CAS Deduplication**).
 4. **Streamed Payload**: Client streams file bytes until EOF.
