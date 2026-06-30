@@ -17,6 +17,8 @@ This document outlines the high-level roadmap for the Momo project, tracking maj
 | **AI Reviewer 2.0** | [#156](https://github.com/alsotoes/momo/issues/156) | ✅ Merged | Automated PR reviews and autonomous merging via Gemini and GitHub Actions. |
 | **Dynamic Replication** | [#165](https://github.com/alsotoes/momo/issues/165) | ✅ Merged | Configurable replication factor (1, 3, 5, etc.) with degraded mode support. |
 | **Replication ID Shift** | [#158](https://github.com/alsotoes/momo/issues/158) | ✅ Merged | Re-indexed constants to set ReplicationNone as ID 0 (Internal use only). |
+| **S3 Listing/Deletion** | [#225](https://github.com/alsotoes/momo/issues/225) | ✅ Merged | Implemented S3 ListObjectsV2, GetObject, and DeleteObject endpoints with progressive deadlines and bounds validation. |
+| **Protocol Parity** | [#237](https://github.com/alsotoes/momo/issues/237) | ✅ Merged | Enforced Rule 33 by implementing native binary LIST, DELETE, and GET queries over both Momo-TCP and Momo-QUIC. |
 
 ## 🟡 In Progress / Upcoming
 
@@ -33,4 +35,4 @@ This document outlines the high-level roadmap for the Momo project, tracking maj
 - **Client SDKs**: Native SDKs for Python and Rust.
 
 ---
-*Last Updated: 2026-06-17*
+*Last Updated: 2026-06-29*
