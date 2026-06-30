@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"os"
 	"strconv"
@@ -86,6 +87,7 @@ func (m *MomoTCPCommunicator) HandshakeClient(authToken string, timestamp int64,
 func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (requestedMode int, timestamp int64, err error) {
 	defer func() {
 		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in HandshakeServer: %v", r)
 			err = fmt.Errorf("panic in HandshakeServer: %v: %w", r, syscall.EIO)
 		}
 	}()
