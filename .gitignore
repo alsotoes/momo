@@ -37,3 +37,10 @@ empty.txt
 # Coverage and profiles
 *.out
 *.prof
+
+# Compiled binaries and executable overrides
+momo
+src/momo
+
+# Temporary local review body text files
+body*.txt
