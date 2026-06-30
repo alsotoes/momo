@@ -1,7 +1,9 @@
+> GitHub Issue URL: https://github.com/alsotoes/momo/issues/225
+
 # s3-list-delete-get Specification
 
 ## Purpose
-TBD - created by archiving change add-s3-list-delete. Update Purpose after archive.
+This specification implements complete, lightweight S3/Ceph-compatible REST gateway endpoints (ListObjectsV2, GetObject, and DeleteObject) on Momo over standard TCP sockets and secure QUIC streams, facilitating out-of-the-box interoperability with standard cloud-native client toolchains.
 ## Requirements
 ### Requirement: S3 ListObjectsV2 API
 The system SHALL support S3-compatible `ListObjectsV2` requests to list files in the storage. It MUST parse Prefix, Delimiter, and MaxKeys query parameters, group subdirectories under `<CommonPrefixes>`, and return standard-compliant XML.
