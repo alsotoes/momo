@@ -1,8 +1,15 @@
-# Momo's Polymorphic System
+# Momo's Dual-Dimensional Polymorphic System
 
-The most unique aspect of Momo is its ability to change replication strategies at runtime. This "polymorphic" nature allows the system to be highly adaptive and resilient.
+The defining feature of Momo is its **Dual-Dimensional Polymorphic Architecture**, which enables the system to adapt dynamically to both local load conditions (Runtime Adaptation) and traffic origins (Chameleon Wire Routing) with **zero manual configuration changes and zero runtime impact**.
 
-## How It Works
+## Overview: The Two Polymorphic Dimensions
+
+Momo operates with dual dimensions of polymorphism:
+
+1. **Dimension 1: Dynamic Replication Polymorphism (Runtime Adaptation):** The system dynamically monitors local CPU and Memory metrics on each node and automatically swaps cluster replication strategies (Chain, Splay, Primary-Splay) on-the-fly to handle load surges without service disruption.
+2. **Dimension 2: Wire Protocol Polymorphism (Chameleon Wire Routing):** The server listens on the exact same port (e.g., `4440`) over TCP or QUIC, and dynamically adapts its wire framing to act as a standard S3 REST gateway (for tools like `aws-cli`) or a transactional replication peer (for inter-node cluster sync) with zero configuration changes.
+
+## How It Works (Dimension 1: Dynamic Replication)
 
 Momo utilizes a decentralized polymorphic engine. The **metrics component** runs on **every node** in the cluster. This component is responsible for the following:
 
