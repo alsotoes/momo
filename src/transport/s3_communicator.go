@@ -255,7 +255,15 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		}
 		defer rc.Close()
 
-		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		// 🛡️ Sentinel: Set a progressive write deadline proportional to the file size
+		// to prevent long-running connection stalls while supporting large objects.
+		copyTimeout := 5 * time.Second
+		mb := meta.Size / (1024 * 1024)
+		if mb > 0 {
+			copyTimeout += time.Duration(mb) * time.Second
+		}
+		m.conn.SetWriteDeadline(time.Now().Add(copyTimeout))
+
 		var respBuf bytes.Buffer
 		respBuf.WriteString("HTTP/1.1 200 OK\r\n")
 		respBuf.WriteString("Content-Length: " + strconv.FormatInt(meta.Size, 10) + "\r\n")
