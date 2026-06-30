@@ -64,8 +64,8 @@ while IFS= read -r line; do
     echo "$COMMIT_SHA,$name,$avg_ns,$avg_B,$avg_allocs" >> "$HISTORY_FILE"
 done <<< "$AVG_RESULTS"
 
-# Get the list of unique benchmark names
-BENCHMARK_NAMES=$(awk -F, 'NR>1 {print $2}' "$HISTORY_FILE" | sort -u)
+# Get the list of unique benchmark names (stripping core-count suffixes like -4, -8)
+BENCHMARK_NAMES=$(awk -F, 'NR>1 {print $2}' "$HISTORY_FILE" | sed -E 's/-[0-9]+$//' | sort -u)
 
 # Function to get description for a benchmark
 get_desc() {
@@ -126,9 +126,9 @@ cat <<EOF >> "$CONTENT_FILE"
 EOF
 
 for bench_name in $BENCHMARK_NAMES; do
-    # Get the data for this benchmark for the last 10 commits
-    bench_data=$(grep "$bench_name" "$HISTORY_FILE" | tail -n 10 | awk -F, '{printf "%.0f,", $3}' | sed 's/,$//' || true)
-    short_name=$(echo "$bench_name" | sed -e 's/Benchmark//' -e 's/-[0-9]\+$//')
+    # Get the data for this benchmark for the last 10 commits (matching exact column with or without core-count suffix)
+    bench_data=$(grep -E ",${bench_name}(-[0-9]+)?," "$HISTORY_FILE" | tail -n 10 | awk -F, '{printf "%.0f,", $3}' | sed 's/,$//' || true)
+    short_name=$(echo "$bench_name" | sed -e 's/Benchmark//')
     echo "    line \"$short_name\" [${bench_data}]" >> "$CONTENT_FILE"
 done
 
@@ -144,9 +144,9 @@ xychart-beta
 EOF
 
 for bench_name in $BENCHMARK_NAMES; do
-    # Get the data for this benchmark for the last 10 commits
-    bench_data=$(grep "$bench_name" "$HISTORY_FILE" | tail -n 10 | awk -F, '{printf "%.0f,", $4}' | sed 's/,$//' || true)
-    short_name=$(echo "$bench_name" | sed -e 's/Benchmark//' -e 's/-[0-9]\+$//')
+    # Get the data for this benchmark for the last 10 commits (matching exact column with or without core-count suffix)
+    bench_data=$(grep -E ",${bench_name}(-[0-9]+)?," "$HISTORY_FILE" | tail -n 10 | awk -F, '{printf "%.0f,", $4}' | sed 's/,$//' || true)
+    short_name=$(echo "$bench_name" | sed -e 's/Benchmark//')
     echo "    line \"$short_name\" [${bench_data}]" >> "$CONTENT_FILE"
 done
 
@@ -162,9 +162,9 @@ xychart-beta
 EOF
 
 for bench_name in $BENCHMARK_NAMES; do
-    # Get the data for this benchmark for the last 10 commits
-    bench_data=$(grep "$bench_name" "$HISTORY_FILE" | tail -n 10 | awk -F, '{printf "%.0f,", $5}' | sed 's/,$//' || true)
-    short_name=$(echo "$bench_name" | sed -e 's/Benchmark//' -e 's/-[0-9]\+$//')
+    # Get the data for this benchmark for the last 10 commits (matching exact column with or without core-count suffix)
+    bench_data=$(grep -E ",${bench_name}(-[0-9]+)?," "$HISTORY_FILE" | tail -n 10 | awk -F, '{printf "%.0f,", $5}' | sed 's/,$//' || true)
+    short_name=$(echo "$bench_name" | sed -e 's/Benchmark//')
     echo "    line \"$short_name\" [${bench_data}]" >> "$CONTENT_FILE"
 done
 
