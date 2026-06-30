@@ -154,11 +154,16 @@ def main():
         print("No relevant changes to review.")
         return
 
-    rules_path = "openspec/project.md"
+    rules_path = "openspec/config.yaml"
     rules = ""
     if os.path.exists(rules_path):
-        with open(rules_path, "r") as f:
-            rules = f.read()
+        try:
+            import yaml
+            with open(rules_path, "r") as f:
+                config = yaml.safe_load(f)
+                rules = config.get("context", "")
+        except Exception as e:
+            print(f"Error reading rules from YAML: {e}", file=sys.stderr)
 
     jules_instruction = ""
     if is_jules_pr:

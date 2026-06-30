@@ -4,7 +4,7 @@
 
 ## 2. Implementation
 - [x] 2.1 Develop a script to extract PR context (title, body, diff).
-- [x] 2.2 Design a prompt that incorporates `openspec/project.md` steering rules.
+- [x] 2.2 Design a prompt that incorporates `openspec/config.yaml` steering rules.
 - [x] 2.3 Implement the API call to Gemini.
 - [x] 2.4 Implement the feedback posting logic using `gh pr comment`.
 

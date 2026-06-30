@@ -13,7 +13,7 @@ As a single-contributor project, `momo` lacks a second pair of eyes to catch edg
 
 Integrate a Gemini-powered automated reviewer into the GitHub Actions pipeline. This reviewer will act as the automated enforcement arm for the **Gemini CLI & Jules** collaboration protocol. It will:
 1.  Analyze the diff of every Pull Request.
-2.  Assert adherence to Project Steering Rules defined in `openspec/project.md`.
+2.  Assert adherence to Project Steering Rules defined in `openspec/config.yaml`.
 3.  Specifically verify compliance with the **⚡ Bolt** (performance) and **🛡️ Sentinel** (security) patterns defined in `.jules/bolt.md` and `.jules/sentinel.md`.
 4.  Identify potential security vulnerabilities (e.g., CRLF injection, path traversal).
 5.  Suggest performance optimizations (zero-allocation patterns).

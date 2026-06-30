@@ -37,7 +37,7 @@ Momo utilizes a **Shared-Nothing Partitioned Architecture** for its object stora
 ### 5. Automated Governance & AI Reviewer
 To maintain high integrity in a single-contributor environment, Momo employs an automated governance layer:
 - **Gemini AI Reviewer**: A GitHub Action that uses the Gemini API to analyze PR diffs. It specifically enforces the **⚡ Bolt** (performance) and **🛡️ Sentinel** (security) patterns.
-- **Project Steering Rules**: Mandatory mandates (Zero-Crash, POSIX Error Mapping) are codified in `openspec/project.md` and automatically validated by the AI Reviewer.
+- **Project Steering Rules**: Mandatory mandates (Zero-Crash, POSIX Error Mapping) are codified in the `context` section of `openspec/config.yaml` and automatically validated by the AI Reviewer.
 
 ### 6. Verification & Quality Assurance
 The system is backed by a multi-stage automated testing pipeline:
