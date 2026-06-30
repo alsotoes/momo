@@ -401,6 +401,53 @@ func TestS3Communicator_URLParsing(t *testing.T) {
 	}
 }
 
+func TestS3Communicator_KeyTraversalValidation(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+	expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
+
+	maliciousKeys := []string{
+		"/bucket/../../passwd",
+		"/bucket/bad\\key",
+	}
+
+	for _, malKey := range maliciousKeys {
+		t.Run("key_"+malKey, func(t *testing.T) {
+			reqBody := "GET " + malKey + " HTTP/1.1\r\n" +
+				"Host: 127.0.0.1:4440\r\n" +
+				"Authorization: Bearer " + authToken + "\r\n\r\n"
+
+			clientConn, serverConn := net.Pipe()
+			defer clientConn.Close()
+			defer serverConn.Close()
+
+			go func() {
+				clientConn.Write([]byte(reqBody))
+				buf := make([]byte, 1024)
+				for {
+					_, err := clientConn.Read(buf)
+					if err != nil {
+						break
+					}
+				}
+			}()
+
+			comm := NewS3Communicator(serverConn)
+			_, _, err := comm.HandshakeServer(expectedAuthToken)
+			if err == nil {
+				t.Fatalf("Expected HandshakeServer to fail on malicious key %q, but got success", malKey)
+			}
+			if !strings.Contains(err.Error(), "invalid key path traversal") {
+				t.Errorf("Expected path traversal error, got %v", err)
+			}
+			if !errors.Is(err, syscall.EBADMSG) {
+				t.Errorf("Expected error to wrap syscall.EBADMSG, got %v", err)
+			}
+		})
+	}
+}
+
 func TestS3Communicator_XMLFormatting(t *testing.T) {
 	files := []common.FileMetadata{
 		{Name: "file1.txt", Hash: "hash1", Size: 100, RemotePath: ""},

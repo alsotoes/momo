@@ -187,6 +187,13 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		return 0, 0, syscall.EACCES
 	}
 
+	// 🛡️ Sentinel: Reject requests containing directory traversal characters (".." or "\") to prevent path traversal attacks.
+	if strings.Contains(req.URL.Path, "..") || strings.Contains(req.URL.Path, "\\") {
+		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		m.conn.Write([]byte("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
+		return 0, 0, fmt.Errorf("invalid key path traversal: %s: %w", req.URL.Path, syscall.EBADMSG)
+	}
+
 	bucket, key := extractS3BucketAndKey(req)
 
 	// Intercept GET requests (for ListObjectsV2 or GetObject)
