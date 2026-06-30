@@ -428,3 +428,17 @@ local-commit,BenchmarkIndexDirectTracking-8,0.29,0.00,0.00
 local-commit,BenchmarkIndexSearch-8,1.33,0.00,0.00
 local-commit,BenchmarkLoadGlobalConfig-8,616.60,160.00,1.00
 local-commit,BenchmarkPadString-8,1.82,0.00,0.00
+local-commit,BenchmarkCheckMetricsAndSwap-8,6.03,0.00,0.00
+local-commit,BenchmarkCrushOptimized-8,262.60,0.00,0.00
+local-commit,BenchmarkCrushOriginal-8,363.20,164.00,3.00
+local-commit,BenchmarkIndexDirectTracking-8,0.29,0.00,0.00
+local-commit,BenchmarkIndexSearch-8,1.35,0.00,0.00
+local-commit,BenchmarkLoadGlobalConfig-8,619.30,160.00,1.00
+local-commit,BenchmarkPadString-8,1.70,0.00,0.00
+local-commit,BenchmarkCheckMetricsAndSwap-8,6.29,0.00,0.00
+local-commit,BenchmarkCrushOptimized-8,255.20,0.00,0.00
+local-commit,BenchmarkCrushOriginal-8,390.30,164.00,3.00
+local-commit,BenchmarkIndexDirectTracking-8,0.31,0.00,0.00
+local-commit,BenchmarkIndexSearch-8,1.32,0.00,0.00
+local-commit,BenchmarkLoadGlobalConfig-8,612.70,160.00,1.00
+local-commit,BenchmarkPadString-8,1.75,0.00,0.00

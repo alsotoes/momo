@@ -119,7 +119,7 @@ xychart-beta
 EOF
 
 # Get the last 10 unique commit SHAs from the history
-LAST_10_COMMITS=$(tail -n 40 "$HISTORY_FILE" | awk -F, '{print $1}' | uniq | tail -n 10 | sed -e 's/^\(....\).*/\1/g' | tr '\n' ',' | sed 's/,$//')
+LAST_10_COMMITS=$(tail -n 200 "$HISTORY_FILE" | awk -F, '{print $1}' | uniq | tail -n 10 | sed -e 's/^\(....\).*/\1/g' | tr '\n' ',' | sed 's/,$//')
 
 cat <<EOF >> "$CONTENT_FILE"
     x-axis [${LAST_10_COMMITS}]
