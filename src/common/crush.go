@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
+	"log"
 	"math"
 	"sort"
 	"syscall"
@@ -30,6 +31,7 @@ type ClusterMap struct {
 func (m *ClusterMap) Placement(objectHash string, replicationFactor int) (nodes []*Node, err error) {
 	defer func() {
 		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in Placement: %v", r)
 			err = fmt.Errorf("panic in Placement: %v: %w", r, syscall.EIO)
 		}
 	}()

@@ -48,6 +48,7 @@ func (m *MomoQUICCommunicator) SetStore(store storage.Store) {
 func (m *MomoQUICCommunicator) SetAbsoluteDeadline(t interface{}) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in SetAbsoluteDeadline: %v", r)
 			err = fmt.Errorf("panic in SetAbsoluteDeadline: %v: %w", r, syscall.EIO)
 		}
 	}()
@@ -63,6 +64,7 @@ func (m *MomoQUICCommunicator) SetAbsoluteDeadline(t interface{}) (err error) {
 func (m *MomoQUICCommunicator) HandshakeClient(authToken string, timestamp int64, requestedMode int) (mode int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in HandshakeClient: %v", r)
 			err = fmt.Errorf("panic in HandshakeClient: %v: %w", r, syscall.EIO)
 		}
 	}()
@@ -259,6 +261,7 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 func (m *MomoQUICCommunicator) SendReplicationMode(mode int) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in SendReplicationMode: %v", r)
 			err = fmt.Errorf("panic in SendReplicationMode: %v: %w", r, syscall.EIO)
 		}
 	}()
@@ -273,6 +276,7 @@ func (m *MomoQUICCommunicator) SendReplicationMode(mode int) (err error) {
 func (m *MomoQUICCommunicator) SendMetadata(meta *common.FileMetadata) (status int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in SendMetadata: %v", r)
 			err = fmt.Errorf("panic in SendMetadata: %v: %w", r, syscall.EIO)
 		}
 	}()
@@ -312,6 +316,7 @@ func (m *MomoQUICCommunicator) SendMetadata(meta *common.FileMetadata) (status i
 func (m *MomoQUICCommunicator) ReceiveMetadata() (meta common.FileMetadata, err error) {
 	defer func() {
 		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in ReceiveMetadata: %v", r)
 			err = fmt.Errorf("panic in ReceiveMetadata: %v: %w", r, syscall.EIO)
 		}
 	}()
@@ -339,6 +344,7 @@ func (m *MomoQUICCommunicator) ReceiveMetadata() (meta common.FileMetadata, err 
 func (m *MomoQUICCommunicator) SendMetadataStatus(status int) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in SendMetadataStatus: %v", r)
 			err = fmt.Errorf("panic in SendMetadataStatus: %v: %w", r, syscall.EIO)
 		}
 	}()
@@ -352,6 +358,7 @@ func (m *MomoQUICCommunicator) SendMetadataStatus(status int) (err error) {
 func (m *MomoQUICCommunicator) SendACK(serverId int) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in SendACK: %v", r)
 			err = fmt.Errorf("panic in SendACK: %v: %w", r, syscall.EIO)
 		}
 	}()
@@ -366,6 +373,7 @@ func (m *MomoQUICCommunicator) SendACK(serverId int) (err error) {
 func (m *MomoQUICCommunicator) ReceiveACK() (err error) {
 	defer func() {
 		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in ReceiveACK: %v", r)
 			err = fmt.Errorf("panic in ReceiveACK: %v: %w", r, syscall.EIO)
 		}
 	}()
@@ -402,6 +410,7 @@ func (m *MomoQUICCommunicator) RemoteAddr() net.Addr {
 func (m *MomoQUICCommunicator) Close() (err error) {
 	defer func() {
 		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in Close: %v", r)
 			err = fmt.Errorf("panic in Close: %v: %w", r, syscall.EIO)
 		}
 	}()

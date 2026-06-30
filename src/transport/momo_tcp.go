@@ -40,6 +40,7 @@ func (m *MomoTCPCommunicator) SetStore(store storage.Store) {
 func (m *MomoTCPCommunicator) SetAbsoluteDeadline(t interface{}) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in SetAbsoluteDeadline: %v", r)
 			err = fmt.Errorf("panic in SetAbsoluteDeadline: %v: %w", r, syscall.EIO)
 		}
 	}()
@@ -54,6 +55,7 @@ func (m *MomoTCPCommunicator) SetAbsoluteDeadline(t interface{}) (err error) {
 func (m *MomoTCPCommunicator) HandshakeClient(authToken string, timestamp int64, requestedMode int) (mode int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in HandshakeClient: %v", r)
 			err = fmt.Errorf("panic in HandshakeClient: %v: %w", r, syscall.EIO)
 		}
 	}()
@@ -251,6 +253,7 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 func (m *MomoTCPCommunicator) SendReplicationMode(mode int) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in SendReplicationMode: %v", r)
 			err = fmt.Errorf("panic in SendReplicationMode: %v: %w", r, syscall.EIO)
 		}
 	}()
@@ -265,6 +268,7 @@ func (m *MomoTCPCommunicator) SendReplicationMode(mode int) (err error) {
 func (m *MomoTCPCommunicator) SendMetadata(meta *common.FileMetadata) (status int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in SendMetadata: %v", r)
 			err = fmt.Errorf("panic in SendMetadata: %v: %w", r, syscall.EIO)
 		}
 	}()
@@ -304,6 +308,7 @@ func (m *MomoTCPCommunicator) SendMetadata(meta *common.FileMetadata) (status in
 func (m *MomoTCPCommunicator) ReceiveMetadata() (meta common.FileMetadata, err error) {
 	defer func() {
 		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in ReceiveMetadata: %v", r)
 			err = fmt.Errorf("panic in ReceiveMetadata: %v: %w", r, syscall.EIO)
 		}
 	}()
@@ -331,6 +336,7 @@ func (m *MomoTCPCommunicator) ReceiveMetadata() (meta common.FileMetadata, err e
 func (m *MomoTCPCommunicator) SendMetadataStatus(status int) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in SendMetadataStatus: %v", r)
 			err = fmt.Errorf("panic in SendMetadataStatus: %v: %w", r, syscall.EIO)
 		}
 	}()
@@ -352,6 +358,7 @@ func bytesTrimNull(b []byte) []byte {
 func (m *MomoTCPCommunicator) SendACK(serverId int) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in SendACK: %v", r)
 			err = fmt.Errorf("panic in SendACK: %v: %w", r, syscall.EIO)
 		}
 	}()
@@ -366,6 +373,7 @@ func (m *MomoTCPCommunicator) SendACK(serverId int) (err error) {
 func (m *MomoTCPCommunicator) ReceiveACK() (err error) {
 	defer func() {
 		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in ReceiveACK: %v", r)
 			err = fmt.Errorf("panic in ReceiveACK: %v: %w", r, syscall.EIO)
 		}
 	}()
