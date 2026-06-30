@@ -122,6 +122,71 @@ The client sends the file to all servers in the placement list concurrently.
     | ----------------------------------------->  |
 ```
 
+## S3 Compatibility Layer & Polymorphic Routing
+
+To provide absolute cloud-native interoperability, Momo implements an S3-compatible REST protocol gateway over the same connection port. To achieve this without breaking Momo's custom distributed replication engine or introducing bloated third-party dependencies, Momo utilizes a **Strict Gateway Interceptor Pattern** within its communication layer.
+
+Depending on the incoming network request, the server polymorphically routes traffic under two distinct scenarios:
+
+### Scenario A: Standard S3 Client (e.g., aws-cli, boto3)
+
+When a standard S3 tool connects to Momo, it communicates via raw, standard S3 HTTP requests. The server intercepts these requests and bypasses the Momo-specific replication pipeline entirely.
+
+```
++---------------+                    +---------------+                    +-------------+
+| Standard S3   |                    | S3Communicator|                    | Local Bbolt |
+| Client        |                    | (Server Side) |                    | Database    |
++---------------+                    +---------------+                    +-------------+
+        |                                    |                                   |
+        | ----- GET /?list-type=2 ---------> |                                   |
+        |       (ListObjectsV2)              |                                   |
+        |                                    | ----- store.List() -------------> |
+        |                                    | <---- File list ----------------- |
+        | <---- 200 OK (S3 XML) ------------ |                                   |
+        |       (Gracefully Closes)          |                                   |
+        |                                    | (Bypasses custom Momo replication)|
+```
+
+**Step-by-step Flow:**
+1.  **Request Arrival:** The standard client makes an S3 request (e.g., `GET /?list-type=2` for listing, `GET /bucket/file.txt` for downloads, or `DELETE /bucket/file.txt` for deletion) containing standard AWS-HMAC-SHA256 headers.
+2.  **Handshake Interception:** The server accepts the socket and calls `comm.HandshakeServer(expectedAuthToken)`. S3Communicator reads the HTTP request, parses and validates the token.
+3.  **REST Query Routing:** Because the request method is `GET` or `DELETE`, S3Communicator detects it as a REST query and **bypasses standard Momo framing**:
+    -   **ListObjectsV2:** Queries `store.List()`, formats the file list into S3-compliant XML using a high-performance allocation-free `bytes.Buffer`, writes `200 OK` back to the client, and returns `ErrRequestHandled`.
+    -   **GetObject:** Queries `store.Get(key)`, streams the binary content directly to the client, and returns `ErrRequestHandled`.
+    -   **DeleteObject:** Invokes `store.Delete(key)` on BoltDB, writes a `204 No Content` response, and returns `ErrRequestHandled`.
+4.  **Graceful Termination:** Upon receiving the `ErrRequestHandled` sentinel error from the handshake, the server daemon disables Momo replication acknowledgements (ACKs) and immediately closes the connection gracefully. The S3 client receives standard HTTP bytes and never sees custom Momo handshakes.
+
+### Scenario B: Momo Server Peer (Inter-Node Replication)
+
+When a Momo cluster node acts as an S3 client to forward and replicate files to another node (such as under `Chain` or `Splay` mode), it uses standard HTTP `PUT` but embeds custom **Momo-specific handshake headers**.
+
+```
++---------------+                    +---------------+                    +-------------+
+| Momo Client   |                    | S3Communicator|                    | Server      |
+| Node (Peer)   |                    | (Server Side) |                    | Daemon      |
++---------------+                    +---------------+                    +-------------+
+        |                                    |                                   |
+        | ----- PUT /file.txt -------------> |                                   |
+        |       X-Momo-Requested-Mode: 2     |                                   |
+        |       X-Momo-Timestamp: 123...     |                                   |
+        |                                    |                                   |
+        |                                    | ----- Handshake Success --------> |
+        | <---- Final Mode (Confirmed) ----- |                                   |
+        |                                    |                                   |
+        |                                    | (Proceeds to Metadata/Payload     |
+        |                                    |  replication handshake pipeline)  |
+```
+
+**Step-by-step Flow:**
+1.  **Request Arrival:** The peer node makes an HTTP `PUT` request but includes the custom headers `X-Momo-Requested-Mode` and `X-Momo-Timestamp`.
+2.  **Replication Identification:** Inside `HandshakeServer`, the communicator detects that the HTTP method is `PUT` (a write/replicate request). It parses the requested replication mode and timestamp from the headers.
+3.  **Momo Handshake Execution:** S3Communicator validates the credentials and returns the replication mode and timestamp without triggering any REST interception.
+4.  **Framing Alignment:** Because the handshake completed normally with a `nil` error, the server daemon continues standard Momo framing over the open stream:
+    -   Server transmits the final negotiated replication mode.
+    -   Server expects and receives custom file metadata.
+    -   Server executes CAS deduplication checking and payload streaming.
+    -   Server transmits the final Momo replication acknowledgment (`ACK`).
+
 ## Security & Resilience
 
 -   **Authentication:** Every connection requires a valid 64-byte AuthToken.

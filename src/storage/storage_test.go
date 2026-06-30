@@ -203,4 +203,82 @@ func TestCASStore_EdgeCases(t *testing.T) {
 	if !strings.Contains(err.Error(), "internal storage panic") {
 		t.Errorf("Expected internal storage panic error, got %v", err)
 	}
+
+	_, err = nilStore.List()
+	if err == nil {
+		t.Errorf("Expected List on nilStore to fail")
+	}
+	if !strings.Contains(err.Error(), "internal storage panic") {
+		t.Errorf("Expected internal storage panic error, got %v", err)
+	}
+}
+
+func TestCASStore_List(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	tmpDir, err := os.MkdirTemp("", "momo-storage-list-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	store, err := NewCASStore(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to create CASStore: %v", err)
+	}
+	defer store.Close()
+
+	// Put some files
+	filesToPut := []struct {
+		name string
+		hash string
+		size int64
+		path string
+	}{
+		{"file1.txt", "hash1", 100, "docs"},
+		{"file2.txt", "hash2", 200, "images"},
+		{"file3.txt", "hash3", 300, ""},
+	}
+
+	for _, f := range filesToPut {
+		err := store.Put(f.name, f.hash, f.size, f.path, bytes.NewReader(make([]byte, f.size)))
+		if err != nil {
+			t.Fatalf("Failed to put file %s: %v", f.name, err)
+		}
+	}
+
+	// List
+	list, err := store.List()
+	if err != nil {
+		t.Fatalf("List failed: %v", err)
+	}
+
+	if len(list) != 3 {
+		t.Errorf("Expected 3 files, got %d", len(list))
+	}
+
+	found := make(map[string]bool)
+	for _, f := range list {
+		found[f.Name] = true
+		// Verify properties
+		switch f.Name {
+		case "file1.txt":
+			if f.Hash != "hash1" || f.Size != 100 || f.RemotePath != "docs" {
+				t.Errorf("Unexpected metadata for file1.txt: %+v", f)
+			}
+		case "file2.txt":
+			if f.Hash != "hash2" || f.Size != 200 || f.RemotePath != "images" {
+				t.Errorf("Unexpected metadata for file2.txt: %+v", f)
+			}
+		case "file3.txt":
+			if f.Hash != "hash3" || f.Size != 300 || f.RemotePath != "" {
+				t.Errorf("Unexpected metadata for file3.txt: %+v", f)
+			}
+		default:
+			t.Errorf("Found unexpected file in list: %s", f.Name)
+		}
+	}
+
+	if len(found) != 3 {
+		t.Errorf("Not all files were found in list: %+v", found)
+	}
 }
