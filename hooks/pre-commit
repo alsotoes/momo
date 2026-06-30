@@ -1,0 +1,23 @@
+#!/bin/bash
+set -e
+
+echo "📊 Running pre-commit benchmark check and documentation sync..."
+
+# Run benchmarks on current code
+go test -run=^$ -bench=. -benchmem -count=1 ./src/common ./src/transport ./src/client ./src/metrics ./src/server ./src/storage > /tmp/new_bench_raw.txt
+
+# If old benchmarks cache doesn't exist, create it from new benchmarks as baseline
+if [ ! -f /tmp/old_bench_raw.txt ]; then
+    cp /tmp/new_bench_raw.txt /tmp/old_bench_raw.txt
+fi
+
+# Run update script (using "local-commit" as placeholder)
+./.github/scripts/update_readme_with_benchmarks.sh /tmp/old_bench_raw.txt /tmp/new_bench_raw.txt "local-commit"
+
+# Update cache for next baseline comparison
+cp /tmp/new_bench_raw.txt /tmp/old_bench_raw.txt
+
+# Automatically stage the updated performance files so they are committed together
+git add docs/PERFORMANCE.md .github/data/benchmark_history.csv
+
+echo "✅ Benchmark metrics and PERFORMANCE.md successfully synced!"

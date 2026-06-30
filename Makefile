@@ -73,3 +73,9 @@ smoke-s3-quic:
 
 smoke-scale-cas:
 	./.github/scripts/test-scale-cas.sh
+
+install-hooks:
+	@echo "Installing Git pre-commit hook..."
+	@cp hooks/pre-commit .git/hooks/pre-commit
+	@chmod +x .git/hooks/pre-commit
+	@echo "Git hooks installed successfully!"

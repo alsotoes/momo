@@ -414,3 +414,10 @@ f59bcf2,BenchmarkIndexDirectTracking-8,0.30,0.00,0.00
 f59bcf2,BenchmarkIndexSearch-8,1.38,0.00,0.00
 f59bcf2,BenchmarkLoadGlobalConfig-8,23.00,0.00,0.00
 f59bcf2,BenchmarkPadString-8,1.82,0.00,0.00
+local-commit,BenchmarkCheckMetricsAndSwap-8,6.50,0.00,0.00
+local-commit,BenchmarkCrushOptimized-8,256.00,0.00,0.00
+local-commit,BenchmarkCrushOriginal-8,363.40,164.00,3.00
+local-commit,BenchmarkIndexDirectTracking-8,0.30,0.00,0.00
+local-commit,BenchmarkIndexSearch-8,1.39,0.00,0.00
+local-commit,BenchmarkLoadGlobalConfig-8,613.50,160.00,1.00
+local-commit,BenchmarkPadString-8,1.71,0.00,0.00
