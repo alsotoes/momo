@@ -25,9 +25,9 @@ The handshake is initiated by the client and is used to authenticate the connect
         -   `'1'`: **ReplicationChain** - Upload using chain replication.
         -   `'2'`: **ReplicationSplay** - Upload using splay replication.
         -   `'3'`: **ReplicationPrimarySplay** - Upload using primary-splay replication.
-        -   `'4'`: **ModeList** - Query directory list of stored file objects.
-        -   `'5'`: **ModeDelete** - Request specific file deletion.
-        -   `'6'`: **ModeGet** - Request file payload retrieval (Download).
+        -   `'L'`: **ModeList** - Query directory list of stored file objects.
+        -   `'D'`: **ModeDelete** - Request specific file deletion.
+        -   `'G'`: **ModeGet** - Request file payload retrieval (Download).
 3.  **Validation**: The server validates the AuthToken using constant-time comparison.
 4.  **Negotiation**: 
     - If it's a new client connection, the server selects the mode based on polymorphic metrics.
@@ -68,11 +68,11 @@ The metadata consists of three fixed-size fields:
 2.  **`1` (MetadataStatusSendPayload)**: Server does not have the content. Client must stream the payload.
 3.  **`2` (MetadataStatusSkipPayload)**: Server already has the content (**CAS Hit**). Client skips the payload phase and waits for the final ACK.
 
-### Native Directory Listing (LIST - `'4'`)
+### Native Directory Listing (LIST - `'L'`)
 
-When `RequestedMode` is `ModeList` (`'4'`), the client queries the list of all file metadata stored on the server.
+When `RequestedMode` is `ModeList` (`'L'`), the client queries the list of all file metadata stored on the server.
 
-1.  **Handshake:** Completed with `'4'`.
+1.  **Handshake:** Completed with `'L'`.
 2.  **Server Response (File Count):** Server writes a 4-byte big-endian integer representing the number of files:
     ```
     |-----------------|
@@ -89,19 +89,19 @@ When `RequestedMode` is `ModeList` (`'4'`), the client queries the list of all f
     |-----------------|------------------|-----------------|
     ```
 
-### Native File Deletion (DELETE - `'5'`)
+### Native File Deletion (DELETE - `'D'`)
 
-When `RequestedMode` is `ModeDelete` (`'5'`), the client requests the deletion of a specific file.
+When `RequestedMode` is `ModeDelete` (`'D'`), the client requests the deletion of a specific file.
 
-1.  **Handshake:** Completed with `'5'`.
+1.  **Handshake:** Completed with `'D'`.
 2.  **Target Name (Client sends):** Client sends the 64-byte null-padded name of the file to delete.
 3.  **Server Response (ACK):** Server deletes the mapping on BoltDB and responds with a 1-byte status code (`'0'` for success, `'1'` for error).
 
-### Native File Retrieval (GET - `'6'`)
+### Native File Retrieval (GET - `'G'`)
 
-When `RequestedMode` is `ModeGet` (`'6'`), the client requests the raw binary payload download of a specific file.
+When `RequestedMode` is `ModeGet` (`'G'`), the client requests the raw binary payload download of a specific file.
 
-1.  **Handshake:** Completed with `'6'`.
+1.  **Handshake:** Completed with `'G'`.
 2.  **Target Name (Client sends):** Client sends the 64-byte null-padded name of the file to retrieve.
 3.  **Server Response (ACK/Payload):**
     -   If the file does not exist, the server writes a 1-byte `'1'` (Not Found) code and closes.

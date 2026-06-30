@@ -198,7 +198,7 @@ func runNativeTCPTest(t *testing.T, requestedMode int, clientFn func(net.Conn), 
 	var handshakeBuf [common.AuthTokenLength + common.TimestampLength + 1]byte
 	copy(handshakeBuf[0:common.AuthTokenLength], common.PadString(authToken, common.AuthTokenLength))
 	copy(handshakeBuf[common.AuthTokenLength:], common.PadString("1557906926566451195", common.TimestampLength))
-	handshakeBuf[common.AuthTokenLength+common.TimestampLength] = byte(requestedMode + '0')
+	handshakeBuf[common.AuthTokenLength+common.TimestampLength] = byte(requestedMode)
 
 	if _, err := conn.Write(handshakeBuf[:]); err != nil {
 		t.Fatalf("Failed to write client handshake: %v", err)

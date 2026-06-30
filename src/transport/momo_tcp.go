@@ -108,9 +108,15 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 		return 0, 0, fmt.Errorf("failed to parse timestamp: %v: %w", err, syscall.EBADMSG)
 	}
 
-	requestedMode = int(requestedModeByte - '0')
-	if requestedMode < 0 || requestedMode > 9 {
-		return 0, 0, fmt.Errorf("invalid requested mode: %d: %w", requestedMode, syscall.EBADMSG)
+	// Decode requestedModeByte polymorphically: characters 'L', 'D', 'G' represent file actions
+	// while numeric bytes '0'-'9' represent replication strategies, separating namespaces.
+	if requestedModeByte == 'L' || requestedModeByte == 'D' || requestedModeByte == 'G' {
+		requestedMode = int(requestedModeByte)
+	} else {
+		requestedMode = int(requestedModeByte - '0')
+		if requestedMode < 0 || requestedMode > 9 {
+			return 0, 0, fmt.Errorf("invalid requested mode: %d: %w", requestedMode, syscall.EBADMSG)
+		}
 	}
 
 	// 🛡️ Sentinel: Handle non-replication API queries (LIST, DELETE, GET) natively on Momo-TCP.
