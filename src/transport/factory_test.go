@@ -1,12 +1,17 @@
 package transport
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
+	"strconv"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/storage"
 )
 
 func TestProtocolFactory_Listen_TCP(t *testing.T) {
@@ -276,4 +281,192 @@ func TestMomoQUICCommunicator_EdgeCases(t *testing.T) {
 	if err == nil {
 		t.Errorf("Expected ReceiveACK on nilComm to fail")
 	}
+}
+
+func runNativeQUICTest(t *testing.T, requestedMode int, clientFn func(Communicator), mock *mockStore) {
+	authToken := "test-token"
+	expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
+	addr := "127.0.0.1:0"
+
+	cfg := common.Configuration{
+		Global: common.ConfigurationGlobal{
+			AuthToken: authToken,
+			Protocol:  "momo-quic",
+		},
+	}
+	factory := NewProtocolFactory(cfg)
+
+	l, err := factory.Listen(addr)
+	if err != nil {
+		t.Fatalf("Server failed to listen: %v", err)
+	}
+	defer l.Close()
+
+	actualAddr := l.Addr().String()
+	errChan := make(chan error, 1)
+
+	// Server side
+	go func() {
+		comm, err := l.Accept()
+		if err != nil {
+			errChan <- err
+			return
+		}
+		defer comm.Close()
+
+		if s3Comm, ok := comm.(interface{ SetStore(storage.Store) }); ok {
+			s3Comm.SetStore(mock)
+		}
+
+		_, _, err = comm.HandshakeServer(expectedAuthToken)
+		errChan <- err
+	}()
+
+	// Client side
+	clientComm, err := factory.Dial(actualAddr)
+	if err != nil {
+		t.Fatalf("Client failed to dial: %v", err)
+	}
+	defer clientComm.Close()
+
+	// Write Handshake manually to bypass HandshakeClient's ACK expectation
+	var handshakeBuf [common.AuthTokenLength + common.TimestampLength + 1]byte
+	copy(handshakeBuf[0:common.AuthTokenLength], common.PadString(authToken, common.AuthTokenLength))
+	copy(handshakeBuf[common.AuthTokenLength:], common.PadString("1557906926566451195", common.TimestampLength))
+	handshakeBuf[common.AuthTokenLength+common.TimestampLength] = byte(requestedMode)
+
+	if _, err := clientComm.Write(handshakeBuf[:]); err != nil {
+		t.Fatalf("Failed to write client handshake: %v", err)
+	}
+
+	clientFn(clientComm)
+
+	serverErr := <-errChan
+	if serverErr != ErrRequestHandled {
+		t.Fatalf("Server expected ErrRequestHandled, got: %v", serverErr)
+	}
+}
+
+func TestMomoQUICCommunicator_NativeList(t *testing.T) {
+	mock := &mockStore{
+		listFunc: func() ([]common.FileMetadata, error) {
+			return []common.FileMetadata{
+				{Name: "native-quic-file.txt", Hash: "quichash456", Size: 800},
+			}, nil
+		},
+	}
+
+	clientFn := func(comm Communicator) {
+		// Read 4-byte big-endian file count
+		var fileCount int32
+		if err := binary.Read(comm, binary.BigEndian, &fileCount); err != nil {
+			t.Fatalf("Failed to read file count: %v", err)
+		}
+		if fileCount != 1 {
+			t.Fatalf("Expected file count 1, got %d", fileCount)
+		}
+
+		// Read 192-byte file metadata packet
+		var packet [192]byte
+		if _, err := io.ReadFull(comm, packet[:]); err != nil {
+			t.Fatalf("Failed to read metadata packet: %v", err)
+		}
+		hash := string(bytes.TrimRight(packet[0:64], "\x00"))
+		name := string(bytes.TrimRight(packet[64:128], "\x00"))
+		sizeStr := string(bytes.TrimRight(packet[128:192], "\x00"))
+
+		if hash != "quichash456" {
+			t.Errorf("Expected hash 'quichash456', got %q", hash)
+		}
+		if name != "native-quic-file.txt" {
+			t.Errorf("Expected name 'native-quic-file.txt', got %q", name)
+		}
+		if sizeStr != "800" {
+			t.Errorf("Expected size '800', got %q", sizeStr)
+		}
+	}
+
+	runNativeQUICTest(t, common.ModeList, clientFn, mock)
+}
+
+func TestMomoQUICCommunicator_NativeDelete(t *testing.T) {
+	deletedKey := ""
+	mock := &mockStore{
+		deleteFunc: func(name string) error {
+			deletedKey = name
+			return nil
+		},
+	}
+
+	clientFn := func(comm Communicator) {
+		// Write target delete file (64 bytes padded)
+		target := common.PadString("target-to-delete-quic.txt", 64)
+		if _, err := comm.Write([]byte(target)); err != nil {
+			t.Fatalf("Failed to write target: %v", err)
+		}
+
+		// Read 1-byte status
+		var resp [1]byte
+		if _, err := io.ReadFull(comm, resp[:]); err != nil {
+			t.Fatalf("Failed to read status: %v", err)
+		}
+		if resp[0] != '0' {
+			t.Errorf("Expected status '0' (success), got %q", resp[0])
+		}
+	}
+
+	runNativeQUICTest(t, common.ModeDelete, clientFn, mock)
+
+	if deletedKey != "target-to-delete-quic.txt" {
+		t.Errorf("Expected store.Delete to be called with 'target-to-delete-quic.txt', got %q", deletedKey)
+	}
+}
+
+func TestMomoQUICCommunicator_NativeGet(t *testing.T) {
+	fileContent := []byte("download native quic payload!")
+	mock := &mockStore{
+		getFunc: func(name string) (io.ReadCloser, common.FileMetadata, error) {
+			if name != "native-quic-get.txt" {
+				return nil, common.FileMetadata{}, syscall.ENOENT
+			}
+			return io.NopCloser(bytes.NewReader(fileContent)), common.FileMetadata{
+				Name: "native-quic-get.txt",
+				Size: int64(len(fileContent)),
+			}, nil
+		},
+	}
+
+	clientFn := func(comm Communicator) {
+		// Write target get file (64 bytes padded)
+		target := common.PadString("native-quic-get.txt", 64)
+		if _, err := comm.Write([]byte(target)); err != nil {
+			t.Fatalf("Failed to write target: %v", err)
+		}
+
+		// Read 1-byte status + 64-byte size
+		var respBuf [65]byte
+		if _, err := io.ReadFull(comm, respBuf[:]); err != nil {
+			t.Fatalf("Failed to read header: %v", err)
+		}
+		if respBuf[0] != '0' {
+			t.Fatalf("Expected status '0' (success), got %q", respBuf[0])
+		}
+
+		sizeStr := string(bytes.TrimRight(respBuf[1:65], "\x00"))
+		size, _ := strconv.ParseInt(sizeStr, 10, 64)
+		if size != int64(len(fileContent)) {
+			t.Errorf("Expected size %d, got %d", len(fileContent), size)
+		}
+
+		// Read payload
+		payloadBuf := make([]byte, size)
+		if _, err := io.ReadFull(comm, payloadBuf); err != nil {
+			t.Fatalf("Failed to read payload: %v", err)
+		}
+		if string(payloadBuf) != "download native quic payload!" {
+			t.Errorf("Expected content 'download native quic payload!', got %q", string(payloadBuf))
+		}
+	}
+
+	runNativeQUICTest(t, common.ModeGet, clientFn, mock)
 }

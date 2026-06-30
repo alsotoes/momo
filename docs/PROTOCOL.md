@@ -20,7 +20,14 @@ The handshake is initiated by the client and is used to authenticate the connect
 2.  **Handshake Packet**: The client sends a combined authentication, timestamp, and mode packet (84 bytes):
     -   **AuthToken:** 64-byte string, null-padded.
     -   **Timestamp:** 19-byte ASCII string (e.g., `UnixNano`).
-    -   **RequestedMode:** 1-byte ASCII integer (e.g. `0` for auto-select, `1` for Chain).
+    -   **RequestedMode:** 1-byte ASCII integer representing the transaction type or replication strategy:
+        -   `'0'`: **ReplicationNone** - Upload without replication.
+        -   `'1'`: **ReplicationChain** - Upload using chain replication.
+        -   `'2'`: **ReplicationSplay** - Upload using splay replication.
+        -   `'3'`: **ReplicationPrimarySplay** - Upload using primary-splay replication.
+        -   `'L'`: **ModeList** - Query directory list of stored file objects.
+        -   `'D'`: **ModeDelete** - Request specific file deletion.
+        -   `'G'`: **ModeGet** - Request file payload retrieval (Download).
 3.  **Validation**: The server validates the AuthToken using constant-time comparison.
 4.  **Negotiation**: 
     - If it's a new client connection, the server selects the mode based on polymorphic metrics.
@@ -60,6 +67,45 @@ The metadata consists of three fixed-size fields:
 1.  After sending the metadata, the client waits for a **1-byte Status Code**.
 2.  **`1` (MetadataStatusSendPayload)**: Server does not have the content. Client must stream the payload.
 3.  **`2` (MetadataStatusSkipPayload)**: Server already has the content (**CAS Hit**). Client skips the payload phase and waits for the final ACK.
+
+### Native Directory Listing (LIST - `'L'`)
+
+When `RequestedMode` is `ModeList` (`'L'`), the client queries the list of all file metadata stored on the server.
+
+1.  **Handshake:** Completed with `'L'`.
+2.  **Server Response (File Count):** Server writes a 4-byte big-endian integer representing the number of files:
+    ```
+    |-----------------|
+    | File Count (4)  |
+    |-----------------|
+    ```
+3.  **Metadata Stream:** For each file, the server streams a 192-byte metadata packet containing:
+    -   **SHA-256 Checksum:** 64-byte hexadecimal string, null-padded.
+    -   **File Name:** 64-byte ASCII string (including subfolders), null-padded.
+    -   **File Size:** 64-byte ASCII decimal size string, null-padded.
+    ```
+    |-----------------|------------------|-----------------|
+    |   Hash (64)     | File Name (64)   | File Size (64)  |
+    |-----------------|------------------|-----------------|
+    ```
+
+### Native File Deletion (DELETE - `'D'`)
+
+When `RequestedMode` is `ModeDelete` (`'D'`), the client requests the deletion of a specific file.
+
+1.  **Handshake:** Completed with `'D'`.
+2.  **Target Name (Client sends):** Client sends the 64-byte null-padded name of the file to delete.
+3.  **Server Response (ACK):** Server deletes the mapping on BoltDB and responds with a 1-byte status code (`'0'` for success, `'1'` for error).
+
+### Native File Retrieval (GET - `'G'`)
+
+When `RequestedMode` is `ModeGet` (`'G'`), the client requests the raw binary payload download of a specific file.
+
+1.  **Handshake:** Completed with `'G'`.
+2.  **Target Name (Client sends):** Client sends the 64-byte null-padded name of the file to retrieve.
+3.  **Server Response (ACK/Payload):**
+    -   If the file does not exist, the server writes a 1-byte `'1'` (Not Found) code and closes.
+    -   If the file exists, the server writes a 1-byte `'0'` (Success) code, followed by a 64-byte null-padded `FileSize` string, followed by the raw binary stream of the file until EOF.
 
 ### Payload
 
@@ -127,6 +173,22 @@ The client sends the file to all servers in the placement list concurrently.
 To provide absolute cloud-native interoperability, Momo implements an S3-compatible REST protocol gateway over the same connection port. To achieve this without breaking Momo's custom distributed replication engine or introducing bloated third-party dependencies, Momo utilizes a **Strict Gateway Interceptor Pattern** within its communication layer.
 
 Depending on the incoming network request, the server polymorphically routes traffic under two distinct scenarios:
+
+### Polymorphic S3 PUT Operation Versions
+
+While a standard S3 client (such as `aws-cli`) always issues a standard, monolithic HTTP `PUT` request, Momo's S3 gateway processes this operation polymorphically under **three distinct distributed versions** depending on the active cluster replication strategy:
+
+1. **PUT-Chain (Chain Replication):**
+   - **Behavior:** Pipelined replication chain. The client uploads the file payload to the Primary node, which saves the copy and forwards it to the next node in the chain, which continues down the replication order ring sequentially.
+   - **Advantage:** Zero concurrent client upload network overhead.
+2. **PUT-Splay (Splay Replication):**
+   - **Behavior:** Server-side splaying. The client uploads a single file payload to the Primary node. The Primary node saves this first copy and then splays (transmits) the data concurrently to all other replica nodes in the cluster in parallel.
+   - **Advantage:** Client only performs a single upload stream, offloading concurrent transfers to the Primary server.
+3. **PUT-PrimarySplay (Primary-Splay Replication / Client-Splay):**
+   - **Behavior:** Client-side splaying. This method moves the replication logic entirely to the client. The client uses the Sage Weil CRUSH placement algorithm to connect directly to all replica nodes and copies/splays the file payload to all of them concurrently in parallel.
+   - **Advantage:** Offloads the concurrent transmission workload completely from the Primary server to the client, preserving server CPU/network resources under heavy load.
+
+These versions are swapped completely on-the-fly by Momo's polymorphic metric-monitoring engine with **zero configuration changes on the S3 client side** and **zero downtime**.
 
 ### Scenario A: Standard S3 Client (e.g., aws-cli, boto3)
 
