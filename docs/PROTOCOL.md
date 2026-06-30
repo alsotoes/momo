@@ -179,14 +179,14 @@ Depending on the incoming network request, the server polymorphically routes tra
 While a standard S3 client (such as `aws-cli`) always issues a standard, monolithic HTTP `PUT` request, Momo's S3 gateway processes this operation polymorphically under **three distinct distributed versions** depending on the active cluster replication strategy:
 
 1. **PUT-Chain (Chain Replication):**
-   - **Behavior:** The primary node writes the file locally, then streams the payload sequentially to the next node in the replication ring (`Node A -> Node B -> Node C`).
-   - **Advantage:** Minimal Primary CPU and concurrent network output overhead.
+   - **Behavior:** Pipelined replication chain. The client uploads the file payload to the Primary node, which saves the copy and forwards it to the next node in the chain, which continues down the replication order ring sequentially.
+   - **Advantage:** Zero concurrent client upload network overhead.
 2. **PUT-Splay (Splay Replication):**
-   - **Behavior:** The primary node parallelizes the write, concurrently splaying the file payload to all replica nodes in the cluster simultaneously.
-   - **Advantage:** Minimum replication latency across the cluster.
-3. **PUT-PrimarySplay (Primary-Splay Replication):**
-   - **Behavior:** The primary node writes the payload locally and delegates splaying asynchronously to other designated cluster nodes.
-   - **Advantage:** Extremely balanced performance and high durability under heavy load.
+   - **Behavior:** Server-side splaying. The client uploads a single file payload to the Primary node. The Primary node saves this first copy and then splays (transmits) the data concurrently to all other replica nodes in the cluster in parallel.
+   - **Advantage:** Client only performs a single upload stream, offloading concurrent transfers to the Primary server.
+3. **PUT-PrimarySplay (Primary-Splay Replication / Client-Splay):**
+   - **Behavior:** Client-side splaying. This method moves the replication logic entirely to the client. The client uses the Sage Weil CRUSH placement algorithm to connect directly to all replica nodes and copies/splays the file payload to all of them concurrently in parallel.
+   - **Advantage:** Offloads the concurrent transmission workload completely from the Primary server to the client, preserving server CPU/network resources under heavy load.
 
 These versions are swapped completely on-the-fly by Momo's polymorphic metric-monitoring engine with **zero configuration changes on the S3 client side** and **zero downtime**.
 
