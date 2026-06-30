@@ -19,6 +19,7 @@ This document outlines the high-level roadmap for the Momo project, tracking maj
 | **Replication ID Shift** | [#158](https://github.com/alsotoes/momo/issues/158) | ✅ Merged | Re-indexed constants to set ReplicationNone as ID 0 (Internal use only). |
 | **S3 Listing/Deletion** | [#225](https://github.com/alsotoes/momo/issues/225) | ✅ Merged | Implemented S3 ListObjectsV2, GetObject, and DeleteObject endpoints with progressive deadlines and bounds validation. |
 | **Protocol Parity** | [#237](https://github.com/alsotoes/momo/issues/237) | ✅ Merged | Enforced Rule 33 by implementing native binary LIST, DELETE, and GET queries over both Momo-TCP and Momo-QUIC. |
+| **Panic Observability** | [#245](https://github.com/alsotoes/momo/issues/245) | ✅ Merged | Aligned all 18 silent recovery blocks across TCP, QUIC, and CRUSH layers to explicitly log warnings before error propagation. |
 
 ## 🟡 In Progress / Upcoming
 
