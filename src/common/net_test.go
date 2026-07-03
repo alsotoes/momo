@@ -10,6 +10,7 @@ type mockConn struct {
 	net.Conn
 	readDeadlineSet  bool
 	writeDeadlineSet bool
+	readError        error
 }
 
 func (m *mockConn) SetReadDeadline(t time.Time) error {
@@ -23,6 +24,9 @@ func (m *mockConn) SetWriteDeadline(t time.Time) error {
 }
 
 func (m *mockConn) Read(b []byte) (n int, err error) {
+	if m.readError != nil {
+		return 0, m.readError
+	}
 	return len(b), nil
 }
 
@@ -44,6 +48,23 @@ func TestIdleTimeoutConn(t *testing.T) {
 	idleConn.Write([]byte("test"))
 	if !mc.writeDeadlineSet {
 		t.Error("Expected Write to set write deadline")
+	}
+}
+
+func TestIdleTimeoutConn_ReadError(t *testing.T) {
+	mc := &mockConn{readError: net.ErrClosed}
+	idleConn := NewIdleTimeoutConn(mc, 30*time.Second)
+
+	// Test Read still sets deadline even if underlying read fails
+	n, err := idleConn.Read([]byte("test"))
+	if !mc.readDeadlineSet {
+		t.Error("Expected Read to set read deadline before returning error")
+	}
+	if err != net.ErrClosed {
+		t.Errorf("Expected err to be %v, got %v", net.ErrClosed, err)
+	}
+	if n != 0 {
+		t.Errorf("Expected n to be 0, got %d", n)
 	}
 }
 
