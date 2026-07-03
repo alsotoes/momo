@@ -25,10 +25,10 @@ func TestRun_Subprocess(t *testing.T) {
 	}
 
 	tests := []struct {
-		name        string
-		args        string
-		wantExit    bool
-		wantOutput  string
+		name       string
+		args       string
+		wantExit   bool
+		wantOutput string
 	}{
 		{
 			name:       "unknown impersonation",
