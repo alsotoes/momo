@@ -47,6 +47,39 @@ func TestIdleTimeoutConn(t *testing.T) {
 	}
 }
 
+func TestIdleTimeoutConn_WriteTimeoutEdgeCase(t *testing.T) {
+	// The only way to trigger a timeout on Write is if the underlying
+	// connection blocks because the reading end is not consuming data,
+	// causing the write to exceed the deadline set by IdleTimeoutConn.
+
+	client, server := net.Pipe()
+	defer client.Close()
+	defer server.Close()
+
+	// Set a very short timeout
+	idleConn := NewIdleTimeoutConn(client, 20*time.Millisecond)
+
+	errCh := make(chan error, 1)
+	go func() {
+		// Because no one is reading from `server`, this write will block.
+		// `IdleTimeoutConn.Write` will extend the deadline by 20ms right before writing,
+		// but since it blocks, it will time out after 20ms.
+		_, err := idleConn.Write([]byte("this_will_block"))
+		errCh <- err
+	}()
+
+	select {
+	case err := <-errCh:
+		if err == nil {
+			t.Fatal("Expected timeout error on blocking write, got nil")
+		} else if netErr, ok := err.(net.Error); !ok || !netErr.Timeout() {
+			t.Fatalf("Expected timeout error, got: %v", err)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("Test timed out waiting for Write to fail with a deadline timeout")
+	}
+}
+
 func TestDialSocket(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
