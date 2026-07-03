@@ -61,7 +61,7 @@ func handleReplicationChange(t *testing.T, authToken string, connection net.Conn
 // TestChangeReplicationModeServerLogic verifies that the server correctly
 // updates its replication mode based on data from a client connection.
 func TestChangeReplicationModeServerLogic(t *testing.T) {
-	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // not a real token
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
 
 	// Arrange: Set initial state and create a network pipe to simulate a client-server connection.
 	SetReplicationState(common.ReplicationNone, 0) // Initial mode
@@ -105,7 +105,7 @@ func TestChangeReplicationModeServerLogic(t *testing.T) {
 // TestChangeReplicationModeClient verifies that the client function correctly sends the
 // replication mode JSON payload to a listening server.
 func TestChangeReplicationModeClient(t *testing.T) {
-	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // not a real token
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
 
 	// Arrange: Set up a listener to act as a mock server.
 	listener, err := net.Listen("tcp", "127.0.0.1:0")

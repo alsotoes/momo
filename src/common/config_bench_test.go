@@ -11,7 +11,7 @@ func BenchmarkLoadGlobalConfig(b *testing.B) {
 [global]
 debug = true
 protocol = momo-tcp
-auth_token = a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6 # not a real token
+auth_token = a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6 # notsecret
 replication_order = 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20
 polymorphic_system = true
 replication_factor = 3

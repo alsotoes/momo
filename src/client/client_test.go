@@ -125,7 +125,7 @@ func startDummyServer(t *testing.T, authToken string) (string, net.Listener) {
 }
 
 func TestConnect(t *testing.T) {
-	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // not a real token
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
 
 	// Create a temp file to send
 	file, err := os.CreateTemp("", "test_connect_*.txt")
@@ -223,7 +223,7 @@ func TestConnect(t *testing.T) {
 }
 
 func TestSendFile(t *testing.T) {
-	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // not a real token
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
 
 	file, err := os.CreateTemp("", "test_sendfile_*.txt")
 	if err != nil {
