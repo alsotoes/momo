@@ -231,8 +231,10 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			var respBuf bytes.Buffer
 			respBuf.WriteString("HTTP/1.1 200 OK\r\n")
 			respBuf.WriteString("Content-Type: application/xml\r\n")
-			respBuf.WriteString("Content-Length: " + strconv.Itoa(len(xmlBytes)) + "\r\n")
-			respBuf.WriteString("Connection: close\r\n\r\n")
+			respBuf.WriteString("Content-Length: ")
+			var lenBuf [32]byte
+			respBuf.Write(strconv.AppendInt(lenBuf[:0], int64(len(xmlBytes)), 10))
+			respBuf.WriteString("\r\nConnection: close\r\n\r\n")
 			respBuf.Write(xmlBytes)
 
 			if _, err := m.conn.Write(respBuf.Bytes()); err != nil {
@@ -554,12 +556,13 @@ func (m *S3Communicator) SendACK(serverId int) (err error) {
 	b = append(b, "HTTP/1.1 200 OK\r\nContent-Length: "...)
 
 	// serverId string length calculation
-	idStr := strconv.Itoa(serverId)
-	bodyLength := 3 + len(idStr)
+	var idBuf [32]byte
+	idBytes := strconv.AppendInt(idBuf[:0], int64(serverId), 10)
+	bodyLength := 3 + len(idBytes)
 
 	b = strconv.AppendInt(b, int64(bodyLength), 10)
 	b = append(b, "\r\nConnection: keep-alive\r\n\r\nACK"...)
-	b = append(b, idStr...)
+	b = append(b, idBytes...)
 
 	// 🛡️ Zero-Crash: Defensive bounds check to verify the formatted content fits safely within the stack buffer
 	if len(b) > 256 {
@@ -669,7 +672,8 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, f
 	}
 
 	buf.WriteString(`<MaxKeys>`)
-	buf.WriteString(strconv.Itoa(maxKeys))
+	var maxKeysBuf [32]byte
+	buf.Write(strconv.AppendInt(maxKeysBuf[:0], int64(maxKeys), 10))
 	buf.WriteString(`</MaxKeys>`)
 
 	buf.WriteString(`<IsTruncated>false</IsTruncated>`)
@@ -736,7 +740,8 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, f
 	}
 
 	buf.WriteString(`<KeyCount>`)
-	buf.WriteString(strconv.Itoa(keyCount))
+	var keyCountBuf [32]byte
+	buf.Write(strconv.AppendInt(keyCountBuf[:0], int64(keyCount), 10))
 	buf.WriteString(`</KeyCount>`)
 
 	buf.WriteString(`</ListBucketResult>`)
