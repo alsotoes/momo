@@ -321,6 +321,10 @@ func (m *MomoTCPCommunicator) ReceiveMetadata() (meta common.FileMetadata, err e
 	}
 
 	metadata.Hash = common.SanitizeLog(string(bytesTrimNull(buffer[:hashLength])))
+	// 🛡️ Sentinel: Sanitize hash immediately to prevent path traversal in all downstream consumers.
+	if common.HasPathTraversalChars(metadata.Hash) {
+		return common.FileMetadata{}, fmt.Errorf("invalid hash: %s: %w", metadata.Hash, syscall.EBADMSG)
+	}
 	metadata.Name = string(bytesTrimNull(buffer[hashLength : hashLength+common.FileInfoLength]))
 
 	size, err := common.SafeParseInt(buffer[hashLength+common.FileInfoLength:])
