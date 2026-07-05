@@ -49,6 +49,11 @@ func getMetadata(r io.Reader) (common.FileMetadata, error) {
 
 	fileHash := common.SanitizeLog(trimNull(bufferFileHash))
 
+	// 🛡️ Sentinel: Sanitize Hash immediately to prevent path traversal in all downstream consumers.
+	if fileHash == "" || strings.Contains(fileHash, ".") || strings.Contains(fileHash, "/") || strings.Contains(fileHash, "\\") {
+		return metadata, fmt.Errorf("invalid hash received: %s: %w", fileHash, syscall.EBADMSG)
+	}
+
 	// 🛡️ Sentinel: Sanitize and normalize fileName to prevent path traversal attacks (Rule 4).
 	rawFileName := trimNull(bufferFileName)
 	if rawFileName == "." || rawFileName == ".." || strings.Contains(rawFileName, "../") || strings.Contains(rawFileName, "\\") {
