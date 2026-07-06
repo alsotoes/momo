@@ -156,34 +156,42 @@ func runServer(ctx context.Context, cfg common.Configuration, serverId int) (err
 
 	errChan := make(chan error, 3)
 
-	go func() {
+	go func() (err error) {
 		defer func() {
 			if r := recover(); r != nil {
 				log.Printf("CRITICAL: Panic recovered in Metrics Loop: %v", r)
-				errChan <- fmt.Errorf("metrics loop panic: %w", syscall.EIO)
+				err = fmt.Errorf("metrics loop panic: %w", syscall.EIO)
+				errChan <- err
 			}
 		}()
 		metrics.GetMetrics(ctx, cfg, serverId)
+		return nil
 	}()
 
-	go func() {
+	go func() (err error) {
 		defer func() {
 			if r := recover(); r != nil {
 				log.Printf("CRITICAL: Panic recovered in Replication Server: %v", r)
-				errChan <- fmt.Errorf("replication server panic: %w", syscall.EIO)
+				err = fmt.Errorf("replication server panic: %w", syscall.EIO)
+				errChan <- err
 			}
 		}()
-		errChan <- server.ChangeReplicationModeServer(ctx, cfg, serverId, timestamp)
+		err = server.ChangeReplicationModeServer(ctx, cfg, serverId, timestamp)
+		errChan <- err
+		return err
 	}()
 
-	go func() {
+	go func() (err error) {
 		defer func() {
 			if r := recover(); r != nil {
 				log.Printf("CRITICAL: Panic recovered in Main Daemon: %v", r)
-				errChan <- fmt.Errorf("main daemon panic: %w", syscall.EIO)
+				err = fmt.Errorf("main daemon panic: %w", syscall.EIO)
+				errChan <- err
 			}
 		}()
-		errChan <- server.Daemon(ctx, cfg, serverId)
+		err = server.Daemon(ctx, cfg, serverId)
+		errChan <- err
+		return err
 	}()
 
 	// Wait for any component to return an error or for the program to be interrupted

@@ -8,14 +8,14 @@ This section is automatically updated by our GitHub Actions workflow.
 ```
                       │ /tmp/old_bench_filtered.txt │      /tmp/new_bench_filtered.txt      │
                       │           sec/op            │    sec/op      vs base                │
-CrushOriginal-8                        389.4n ± ∞ ¹    395.0n ± ∞ ¹       ~ (p=1.000 n=1) ²
-CrushOptimized-8                       277.9n ± ∞ ¹    281.2n ± ∞ ¹       ~ (p=1.000 n=1) ²
-LoadGlobalConfig-8                     691.4n ± ∞ ¹    715.3n ± ∞ ¹       ~ (p=1.000 n=1) ²
-PadString-8                            1.904n ± ∞ ¹    1.866n ± ∞ ¹       ~ (p=1.000 n=1) ²
-CheckMetricsAndSwap-8                  6.615n ± ∞ ¹    6.761n ± ∞ ¹       ~ (p=1.000 n=1) ²
-IndexSearch-8                          1.386n ± ∞ ¹    1.428n ± ∞ ¹       ~ (p=1.000 n=1) ²
-IndexDirectTracking-8                 0.3058n ± ∞ ¹   0.3039n ± ∞ ¹       ~ (p=1.000 n=1) ²
-geomean                                16.93n          17.14n        +1.23%
+CrushOriginal-8                        395.0n ± ∞ ¹    388.1n ± ∞ ¹       ~ (p=1.000 n=1) ²
+CrushOptimized-8                       281.2n ± ∞ ¹    285.6n ± ∞ ¹       ~ (p=1.000 n=1) ²
+LoadGlobalConfig-8                     715.3n ± ∞ ¹    687.1n ± ∞ ¹       ~ (p=1.000 n=1) ²
+PadString-8                            1.866n ± ∞ ¹    1.793n ± ∞ ¹       ~ (p=1.000 n=1) ²
+CheckMetricsAndSwap-8                  6.761n ± ∞ ¹    6.635n ± ∞ ¹       ~ (p=1.000 n=1) ²
+IndexSearch-8                          1.428n ± ∞ ¹    1.468n ± ∞ ¹       ~ (p=1.000 n=1) ²
+IndexDirectTracking-8                 0.3039n ± ∞ ¹   0.3042n ± ∞ ¹       ~ (p=1.000 n=1) ²
+geomean                                17.14n          16.97n        -1.03%
 ¹ need >= 6 samples for confidence interval at level 0.95
 ² need >= 4 samples to detect a difference at alpha level 0.05
 
@@ -53,13 +53,13 @@ geomean                                           ³                +0.00%      
 
 | Benchmark | Avg. Time/Op | Avg. Bytes/Op | Avg. Allocs/Op |
 |-----------|--------------|---------------|----------------|
-| BenchmarkCheckMetricsAndSwap-8 | 6.76 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkCrushOptimized-8 | 281.20 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkCrushOriginal-8 | 395.00 ns/op | 164.00 B/op | 3.00 allocs/op |
+| BenchmarkCheckMetricsAndSwap-8 | 6.63 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkCrushOptimized-8 | 285.60 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkCrushOriginal-8 | 388.10 ns/op | 164.00 B/op | 3.00 allocs/op |
 | BenchmarkIndexDirectTracking-8 | 0.30 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkIndexSearch-8 | 1.43 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkLoadGlobalConfig-8 | 715.30 ns/op | 160.00 B/op | 1.00 allocs/op |
-| BenchmarkPadString-8 | 1.87 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkIndexSearch-8 | 1.47 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkLoadGlobalConfig-8 | 687.10 ns/op | 160.00 B/op | 1.00 allocs/op |
+| BenchmarkPadString-8 | 1.79 ns/op | 0.00 B/op | 0.00 allocs/op |
 
 
 ### Performance History
@@ -83,12 +83,12 @@ xychart-beta
     x-axis "Commit"
     y-axis "Avg. Time (ns/op)"
     x-axis [17fa,0ba6,0b1a,83df,f015,9a0d,ca06,d431,f59b,loca]
-    line "CheckMetricsAndSwap" [6,6,6,7,8,6,6,7,7,7]
-    line "CrushOptimized" [270,248,260,265,260,273,268,287,278,281]
-    line "CrushOriginal" [371,354,366,372,387,371,381,389,389,395]
+    line "CheckMetricsAndSwap" [6,6,7,8,6,6,7,7,7,7]
+    line "CrushOptimized" [248,260,265,260,273,268,287,278,281,286]
+    line "CrushOriginal" [354,366,372,387,371,381,389,389,395,388]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
-    line "IndexSearch" [1,1,1,2,2,1,1,2,1,1]
-    line "LoadGlobalConfig" [634,598,611,605,652,605,608,684,691,715]
+    line "IndexSearch" [1,1,2,2,1,1,2,1,1,1]
+    line "LoadGlobalConfig" [598,611,605,652,605,608,684,691,715,687]
     line "PadString" [2,2,2,2,2,2,2,2,2,2]
     line "ParseReplicationOrder_NoPrealloc" [350,349,357,354,345,225,229,165,232,234]
     line "ParseReplicationOrder_Prealloc" [229,231,237,234,229,108,107,80,110,109]

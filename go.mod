@@ -8,6 +8,7 @@ require (
 	github.com/alsotoes/momo/src/metrics v0.0.0-20260610224110-df9547453bcd
 	github.com/alsotoes/momo/src/server v0.0.0-20260610224110-df9547453bcd
 	github.com/alsotoes/momo/src/transport v0.0.0-20260610224110-df9547453bcd
+	go.uber.org/goleak v1.3.0
 )
 
 require (
