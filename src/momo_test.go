@@ -156,7 +156,7 @@ func TestRunServer_Error(t *testing.T) {
 
 	cfg := common.Configuration{
 		Daemons: []*common.Daemon{
-			{Host: "127.0.0.1:0", Data: "/tmp/momo", Drive: "nvme"},
+			{Host: "127.0.0.1:-1", Data: "/tmp/momo", Drive: "nvme"},
 		},
 		Global: common.ConfigurationGlobal{
 			Protocol:          "momo-tcp",
@@ -173,8 +173,12 @@ func TestRunServer_Error(t *testing.T) {
 	}()
 
 	select {
-	case <-errChan:
+	case err := <-errChan:
+		if err == nil {
+			t.Errorf("expected error, got nil")
+		}
 	case <-time.After(50 * time.Millisecond):
+		t.Errorf("expected server to exit with error, but it timed out")
 	}
 }
 
@@ -253,7 +257,11 @@ func TestRunServer_InvalidDaemonId(t *testing.T) {
 		errChan <- runServer(ctx, cfg, 1)
 	}()
 	select {
-	case <-errChan:
+	case err := <-errChan:
+		if err == nil {
+			t.Errorf("expected error, got nil")
+		}
 	case <-time.After(50 * time.Millisecond):
+		t.Errorf("expected server to exit with error, but it timed out")
 	}
 }
