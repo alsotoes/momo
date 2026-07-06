@@ -136,6 +136,40 @@ func Run() {
 	}
 }
 
+// runMetricsLoop runs the metrics loop with panic recovery.
+func runMetricsLoop(ctx context.Context, cfg common.Configuration, serverId int) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in Metrics Loop: %v", r)
+			err = fmt.Errorf("metrics loop panic: %w", syscall.EINVAL)
+		}
+	}()
+	metrics.GetMetrics(ctx, cfg, serverId)
+	return nil
+}
+
+// runReplicationServer runs the replication server with panic recovery.
+func runReplicationServer(ctx context.Context, cfg common.Configuration, serverId int, timestamp int64) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in Replication Server: %v", r)
+			err = fmt.Errorf("replication server panic: %w", syscall.ENETDOWN)
+		}
+	}()
+	return server.ChangeReplicationModeServer(ctx, cfg, serverId, timestamp)
+}
+
+// runMainDaemon runs the main server daemon with panic recovery.
+func runMainDaemon(ctx context.Context, cfg common.Configuration, serverId int) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in Main Daemon: %v", r)
+			err = fmt.Errorf("main daemon panic: %w", syscall.EIO)
+		}
+	}()
+	return server.Daemon(ctx, cfg, serverId)
+}
+
 // runServer starts the momo server.
 // It initializes the metrics collector, the replication mode change listener, and the main daemon.
 // It waits for all three components to finish before shutting down.
@@ -156,42 +190,18 @@ func runServer(ctx context.Context, cfg common.Configuration, serverId int) (err
 
 	errChan := make(chan error, 3)
 
-	go func() (err error) {
-		defer func() {
-			if r := recover(); r != nil {
-				log.Printf("CRITICAL: Panic recovered in Metrics Loop: %v", r)
-				err = fmt.Errorf("metrics loop panic: %w", syscall.EIO)
-				errChan <- err
-			}
-		}()
-		metrics.GetMetrics(ctx, cfg, serverId)
-		return nil
+	go func() {
+		if e := runMetricsLoop(ctx, cfg, serverId); e != nil {
+			errChan <- e
+		}
 	}()
 
-	go func() (err error) {
-		defer func() {
-			if r := recover(); r != nil {
-				log.Printf("CRITICAL: Panic recovered in Replication Server: %v", r)
-				err = fmt.Errorf("replication server panic: %w", syscall.EIO)
-				errChan <- err
-			}
-		}()
-		err = server.ChangeReplicationModeServer(ctx, cfg, serverId, timestamp)
-		errChan <- err
-		return err
+	go func() {
+		errChan <- runReplicationServer(ctx, cfg, serverId, timestamp)
 	}()
 
-	go func() (err error) {
-		defer func() {
-			if r := recover(); r != nil {
-				log.Printf("CRITICAL: Panic recovered in Main Daemon: %v", r)
-				err = fmt.Errorf("main daemon panic: %w", syscall.EIO)
-				errChan <- err
-			}
-		}()
-		err = server.Daemon(ctx, cfg, serverId)
-		errChan <- err
-		return err
+	go func() {
+		errChan <- runMainDaemon(ctx, cfg, serverId)
 	}()
 
 	// Wait for any component to return an error or for the program to be interrupted

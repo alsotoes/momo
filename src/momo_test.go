@@ -211,7 +211,7 @@ func TestRunServer_ContextCancel(t *testing.T) {
 
 	cfg := common.Configuration{
 		Daemons: []*common.Daemon{
-			{Host: "127.0.0.1:10000", Data: "/tmp/momo", Drive: "nvme"},
+			{Host: "127.0.0.1:0", Data: "/tmp/momo", Drive: "nvme"},
 		},
 		Global: common.ConfigurationGlobal{
 			Protocol:          "momo-tcp",
