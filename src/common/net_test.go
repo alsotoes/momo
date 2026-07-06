@@ -71,6 +71,9 @@ func TestIdleTimeoutConn_ReadError(t *testing.T) {
 	if !errors.Is(err, syscall.ECONNABORTED) {
 		t.Errorf("Expected err to wrap %v, got %v", syscall.ECONNABORTED, err)
 	}
+	if !errors.Is(err, net.ErrClosed) {
+		t.Errorf("Expected err to also wrap %v, got %v", net.ErrClosed, err)
+	}
 	if n != 0 {
 		t.Errorf("Expected n to be 0, got %d", n)
 	}

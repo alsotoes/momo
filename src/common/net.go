@@ -86,7 +86,7 @@ func (c *IdleTimeoutConn) Read(b []byte) (n int, err error) {
 	c.applyDeadlines(true)
 	n, err = c.Conn.Read(b)
 	if err != nil {
-		err = fmt.Errorf("%v: %w", err, syscall.ECONNABORTED)
+		err = fmt.Errorf("%w: %w", err, syscall.ECONNABORTED)
 	}
 	return n, err
 }
@@ -103,7 +103,7 @@ func (c *IdleTimeoutConn) Write(b []byte) (n int, err error) {
 	c.applyDeadlines(false)
 	n, err = c.Conn.Write(b)
 	if err != nil {
-		err = fmt.Errorf("%v: %w", err, syscall.EIO)
+		err = fmt.Errorf("%w: %w", err, syscall.EIO)
 	}
 	return n, err
 }
