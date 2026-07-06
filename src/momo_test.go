@@ -4,22 +4,63 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/alsotoes/momo/src/common"
+	"go.uber.org/goleak"
 )
 
+const testConfig = `[global]
+auth_token=super_secret_token
+debug=true
+auth_token=a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6 # notsecret
+replication_order=3,2,1
+polymorphic_system=false
+
+[metrics]
+interval=1000
+min_threshold=0.1
+max_threshold=0.9
+fallback_interval=30
+
+[daemon.0]
+host=localhost:8080
+change_replication=localhost:9090
+data=/data/0
+drive=/dev/sda1
+
+[daemon.1]
+host=localhost:8081
+change_replication=localhost:9091
+data=/data/1
+drive=/dev/sdb1
+
+[daemon.2]
+host=localhost:8082
+change_replication=localhost:9092
+data=/data/2
+drive=/dev/sdc1
+`
+
 func TestRun_Subprocess(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpfile := filepath.Join(tmpDir, "momo.conf")
+	if err := os.WriteFile(tmpfile, []byte(testConfig), 0666); err != nil {
+		t.Fatalf("Failed to write temporary config file: %v", err)
+	}
+
 	if os.Getenv("TEST_RUN_MAIN") == "1" {
 		// Replace os.Args so that flag.Parse() within Run() parses our intended args
 		argsStr := os.Getenv("TEST_MAIN_ARGS")
-		if argsStr == "" {
-			os.Args = []string{"momo"}
-		} else {
-			os.Args = append([]string{"momo"}, strings.Split(argsStr, " ")...)
+		var args []string
+		if argsStr != "" {
+			args = strings.Split(argsStr, " ")
 		}
+		os.Args = append([]string{"momo"}, args...)
 		Run()
 		return
 	}
@@ -88,8 +129,9 @@ func TestRun_Subprocess(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			resolvedArgs := strings.ReplaceAll(tc.args, "../conf/momo.conf", tmpfile)
 			cmd := exec.Command(os.Args[0], "-test.run=TestRun_Subprocess")
-			cmd.Env = append(os.Environ(), "TEST_RUN_MAIN=1", "TEST_MAIN_ARGS="+tc.args)
+			cmd.Env = append(os.Environ(), "TEST_RUN_MAIN=1", "TEST_MAIN_ARGS="+resolvedArgs)
 			out, err := cmd.CombinedOutput()
 			outStr := string(out)
 
@@ -101,10 +143,6 @@ func TestRun_Subprocess(t *testing.T) {
 					t.Errorf("expected output to contain %q, got: %s", tc.wantOutput, outStr)
 				}
 			} else {
-				if err != nil {
-					// We might get an exit error if repl tries to dial bad addresses, so we accept any failure as long as it isn't an unhandled panic
-					// t.Fatalf("expected success, got err %v, output: %s", err, outStr)
-				}
 				if tc.wantOutput != "" && !strings.Contains(outStr, tc.wantOutput) {
 					t.Errorf("expected output to contain %q, got: %s", tc.wantOutput, outStr)
 				}
@@ -114,6 +152,8 @@ func TestRun_Subprocess(t *testing.T) {
 }
 
 func TestRunServer_Error(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
 	cfg := common.Configuration{
 		Daemons: []*common.Daemon{
 			{Host: "127.0.0.1:0", Data: "/tmp/momo", Drive: "nvme"},
@@ -124,9 +164,12 @@ func TestRunServer_Error(t *testing.T) {
 		},
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	errChan := make(chan error, 1)
 	go func() {
-		errChan <- runServer(cfg, 0)
+		errChan <- runServer(ctx, cfg, 0)
 	}()
 
 	select {
@@ -136,14 +179,21 @@ func TestRunServer_Error(t *testing.T) {
 }
 
 func TestMain_Subprocess(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpfile := filepath.Join(tmpDir, "momo.conf")
+	if err := os.WriteFile(tmpfile, []byte(testConfig), 0666); err != nil {
+		t.Fatalf("Failed to write temporary config file: %v", err)
+	}
+
 	if os.Getenv("TEST_MAIN_FUNC") == "1" {
-		os.Args = []string{"momo", "-imp", "unknown", "-config", "../conf/momo.conf"}
+		configPath := os.Getenv("TEST_CONFIG_PATH")
+		os.Args = []string{"momo", "-imp", "unknown", "-config", configPath}
 		main()
 		return
 	}
 
 	cmd := exec.Command(os.Args[0], "-test.run=TestMain_Subprocess")
-	cmd.Env = append(os.Environ(), "TEST_MAIN_FUNC=1")
+	cmd.Env = append(os.Environ(), "TEST_MAIN_FUNC=1", "TEST_CONFIG_PATH="+tmpfile)
 	out, err := cmd.CombinedOutput()
 
 	if e, ok := err.(*exec.ExitError); ok && !e.Success() {
@@ -157,6 +207,8 @@ func TestMain_Subprocess(t *testing.T) {
 }
 
 func TestRunServer_ContextCancel(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
 	cfg := common.Configuration{
 		Daemons: []*common.Daemon{
 			{Host: "127.0.0.1:10000", Data: "/tmp/momo", Drive: "nvme"},
@@ -166,15 +218,23 @@ func TestRunServer_ContextCancel(t *testing.T) {
 			ReplicationFactor: 1,
 		},
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
-	defer cancel()
+	ctx, cancel := context.WithCancel(context.Background())
 
-	_ = ctx
-	go runServer(cfg, 0)
-	time.Sleep(50 * time.Millisecond)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_ = runServer(ctx, cfg, 0)
+	}()
+
+	time.Sleep(10 * time.Millisecond)
+	cancel()
+	wg.Wait()
 }
 
 func TestRunServer_InvalidDaemonId(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
 	cfg := common.Configuration{
 		Daemons: []*common.Daemon{
 			{Host: "127.0.0.1:0", Data: "/tmp/momo", Drive: "nvme"},
@@ -185,9 +245,12 @@ func TestRunServer_InvalidDaemonId(t *testing.T) {
 		},
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	errChan := make(chan error, 1)
 	go func() {
-		errChan <- runServer(cfg, 1)
+		errChan <- runServer(ctx, cfg, 1)
 	}()
 	select {
 	case <-errChan:
