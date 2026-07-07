@@ -32,6 +32,12 @@ func NewIdleTimeoutConn(conn net.Conn, timeout time.Duration) *IdleTimeoutConn {
 // SetAbsoluteDeadline sets an absolute hard deadline for the connection.
 // If the absolute deadline is reached, reads and writes will fail regardless of idle activity.
 func (c *IdleTimeoutConn) SetAbsoluteDeadline(t time.Time) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in IdleTimeoutConn.SetAbsoluteDeadline: %v", r)
+		}
+	}()
+
 	c.absoluteDeadline = t
 
 	// 🛡️ Sentinel: Immediately apply the new deadline to the underlying connection.
@@ -47,6 +53,12 @@ func (c *IdleTimeoutConn) SetAbsoluteDeadline(t time.Time) {
 }
 
 func (c *IdleTimeoutConn) applyDeadlines(isRead bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in IdleTimeoutConn.applyDeadlines: %v", r)
+		}
+	}()
+
 	var calls *atomic.Uint32
 	if isRead {
 		calls = &c.readCalls
@@ -120,7 +132,14 @@ func (c *IdleTimeoutConn) Write(b []byte) (n int, err error) {
 
 // DialSocket connects to the given address.
 // It returns a net.Conn or an error.
-func DialSocket(servAddr string) (net.Conn, error) {
+func DialSocket(servAddr string) (conn net.Conn, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in DialSocket: %v", r)
+			err = fmt.Errorf("dial panic: %w", syscall.EIO)
+		}
+	}()
+
 	connection, err := net.DialTimeout("tcp", servAddr, 10*time.Second)
 	if err != nil {
 		return nil, errors.New("Dial failed: " + err.Error())
