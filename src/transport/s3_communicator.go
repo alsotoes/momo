@@ -229,9 +229,12 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			var respBuf bytes.Buffer
+			var intBuf [32]byte
 			respBuf.WriteString("HTTP/1.1 200 OK\r\n")
 			respBuf.WriteString("Content-Type: application/xml\r\n")
-			respBuf.WriteString("Content-Length: " + strconv.Itoa(len(xmlBytes)) + "\r\n")
+			respBuf.WriteString("Content-Length: ")
+			respBuf.Write(strconv.AppendInt(intBuf[:0], int64(len(xmlBytes)), 10))
+			respBuf.WriteString("\r\n")
 			respBuf.WriteString("Connection: close\r\n\r\n")
 			respBuf.Write(xmlBytes)
 
@@ -265,8 +268,11 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		m.conn.SetWriteDeadline(time.Now().Add(copyTimeout))
 
 		var respBuf bytes.Buffer
+		var intBuf [32]byte
 		respBuf.WriteString("HTTP/1.1 200 OK\r\n")
-		respBuf.WriteString("Content-Length: " + strconv.FormatInt(meta.Size, 10) + "\r\n")
+		respBuf.WriteString("Content-Length: ")
+		respBuf.Write(strconv.AppendInt(intBuf[:0], meta.Size, 10))
+		respBuf.WriteString("\r\n")
 		respBuf.WriteString("Content-Type: application/octet-stream\r\n")
 		respBuf.WriteString("Connection: close\r\n\r\n")
 
@@ -651,6 +657,7 @@ func extractS3BucketAndKey(req *http.Request) (bucket string, key string) {
 // using a pre-allocated bytes.Buffer to avoid excessive heap allocations (⚡ Bolt pattern).
 func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, files []common.FileMetadata) []byte {
 	var buf bytes.Buffer
+	var intBuf [32]byte
 	buf.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)
 	buf.WriteString(`<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">`)
 
@@ -669,7 +676,7 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, f
 	}
 
 	buf.WriteString(`<MaxKeys>`)
-	buf.WriteString(strconv.Itoa(maxKeys))
+	buf.Write(strconv.AppendInt(intBuf[:0], int64(maxKeys), 10))
 	buf.WriteString(`</MaxKeys>`)
 
 	buf.WriteString(`<IsTruncated>false</IsTruncated>`)
@@ -715,7 +722,7 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, f
 		xmlEscape(&buf, file.Hash)
 		buf.WriteString(`"</ETag>`)
 		buf.WriteString(`<Size>`)
-		buf.WriteString(strconv.FormatInt(file.Size, 10))
+		buf.Write(strconv.AppendInt(intBuf[:0], file.Size, 10))
 		buf.WriteString(`</Size>`)
 		buf.WriteString(`<StorageClass>STANDARD</StorageClass>`)
 		buf.WriteString(`</Contents>`)
@@ -736,7 +743,7 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, f
 	}
 
 	buf.WriteString(`<KeyCount>`)
-	buf.WriteString(strconv.Itoa(keyCount))
+	buf.Write(strconv.AppendInt(intBuf[:0], int64(keyCount), 10))
 	buf.WriteString(`</KeyCount>`)
 
 	buf.WriteString(`</ListBucketResult>`)
