@@ -3,6 +3,7 @@ package common
 import (
 	"errors"
 	"net"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -65,19 +66,30 @@ func TestIdleTimeoutConn_WriteTimeoutEdgeCase(t *testing.T) {
 	// causing the write to exceed the deadline set by IdleTimeoutConn.
 
 	client, server := net.Pipe()
-	defer client.Close()
-	defer server.Close()
 
 	// Set a very short timeout
 	idleConn := NewIdleTimeoutConn(client, 20*time.Millisecond)
 
+	var wg sync.WaitGroup
+	wg.Add(1)
+
 	errCh := make(chan error, 1)
 	go func() {
+		defer wg.Done()
 		// Because no one is reading from `server`, this write will block.
 		// `IdleTimeoutConn.Write` will extend the deadline by 20ms right before writing,
 		// but since it blocks, it will time out after 20ms.
 		_, err := idleConn.Write([]byte("this_will_block"))
-		errCh <- err
+		select {
+		case errCh <- err:
+		default:
+		}
+	}()
+
+	defer func() {
+		client.Close()
+		server.Close()
+		wg.Wait()
 	}()
 
 	select {
