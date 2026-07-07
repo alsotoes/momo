@@ -8,6 +8,7 @@ require (
 	github.com/alsotoes/momo/src/metrics v0.0.0-20260610224110-df9547453bcd
 	github.com/alsotoes/momo/src/server v0.0.0-20260610224110-df9547453bcd
 	github.com/alsotoes/momo/src/transport v0.0.0-20260610224110-df9547453bcd
+	go.uber.org/goleak v1.3.0
 )
 
 require (
@@ -20,7 +21,6 @@ require (
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	go.etcd.io/bbolt v1.5.0 // indirect
 	golang.org/x/crypto v0.51.0 // indirect
 	golang.org/x/net v0.55.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
