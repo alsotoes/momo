@@ -2,8 +2,13 @@ package common
 
 import (
 	"errors"
+	"fmt"
+	"log"
 	"net"
+	"os"
+	"strings"
 	"sync/atomic"
+	"syscall"
 	"time"
 )
 
@@ -73,15 +78,43 @@ func (c *IdleTimeoutConn) applyDeadlines(isRead bool) {
 
 // Read reads data from the connection and resets the read deadline.
 func (c *IdleTimeoutConn) Read(b []byte) (n int, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in IdleTimeoutConn.Read: %v", r)
+			err = fmt.Errorf("read panic: %w", syscall.EIO)
+		}
+	}()
+
 	c.applyDeadlines(true)
 	n, err = c.Conn.Read(b)
+	if err != nil {
+		if isTimeout(err) {
+			err = fmt.Errorf("%w: %w", err, syscall.ETIMEDOUT)
+		} else {
+			err = fmt.Errorf("%w: %w", err, syscall.ECONNABORTED)
+		}
+	}
 	return n, err
 }
 
 // Write writes data to the connection and resets the write deadline.
 func (c *IdleTimeoutConn) Write(b []byte) (n int, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in IdleTimeoutConn.Write: %v", r)
+			err = fmt.Errorf("write panic: %w", syscall.EIO)
+		}
+	}()
+
 	c.applyDeadlines(false)
 	n, err = c.Conn.Write(b)
+	if err != nil {
+		if isTimeout(err) {
+			err = fmt.Errorf("%w: %w", err, syscall.ETIMEDOUT)
+		} else {
+			err = fmt.Errorf("%w: %w", err, syscall.EIO)
+		}
+	}
 	return n, err
 }
 
@@ -96,4 +129,19 @@ func DialSocket(servAddr string) (net.Conn, error) {
 	// 🛡️ Sentinel: Wrap outbound connections with an idle timeout to prevent goroutine leaks
 	// and Denial of Service (DoS) from malicious or unresponsive peers.
 	return NewIdleTimeoutConn(connection, 30*time.Second), nil
+}
+
+func isTimeout(err error) bool {
+	if err == nil {
+		return false
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+	if errors.Is(err, os.ErrDeadlineExceeded) {
+		return true
+	}
+	errStr := err.Error()
+	return strings.Contains(errStr, "timeout") || strings.Contains(errStr, "deadline")
 }
