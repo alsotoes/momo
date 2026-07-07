@@ -21,6 +21,7 @@ type IdleTimeoutConn struct {
 	absoluteDeadline time.Time
 	readCalls        atomic.Uint32
 	writeCalls       atomic.Uint32
+	broken           atomic.Bool
 }
 
 // NewIdleTimeoutConn creates a new IdleTimeoutConn.
@@ -34,6 +35,7 @@ func (c *IdleTimeoutConn) SetAbsoluteDeadline(t time.Time) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Panic recovered in IdleTimeoutConn.SetAbsoluteDeadline: %v", r)
+			c.broken.Store(true)
 		}
 	}()
 
@@ -55,6 +57,7 @@ func (c *IdleTimeoutConn) applyDeadlines(isRead bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Panic recovered in IdleTimeoutConn.applyDeadlines: %v", r)
+			c.broken.Store(true)
 		}
 	}()
 
@@ -96,6 +99,10 @@ func (c *IdleTimeoutConn) Read(b []byte) (n int, err error) {
 		}
 	}()
 
+	if c.broken.Load() {
+		return 0, fmt.Errorf("connection broken: %w", syscall.EIO)
+	}
+
 	c.applyDeadlines(true)
 	n, err = c.Conn.Read(b)
 	if err != nil {
@@ -116,6 +123,10 @@ func (c *IdleTimeoutConn) Write(b []byte) (n int, err error) {
 			err = fmt.Errorf("write panic: %w", syscall.EIO)
 		}
 	}()
+
+	if c.broken.Load() {
+		return 0, fmt.Errorf("connection broken: %w", syscall.EIO)
+	}
 
 	c.applyDeadlines(false)
 	n, err = c.Conn.Write(b)

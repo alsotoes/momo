@@ -153,3 +153,25 @@ func TestDialSocket(t *testing.T) {
 		t.Error("Expected error for invalid address, got nil")
 	}
 }
+
+func TestIdleTimeoutConn_BrokenFlagAfterPanic(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	// Create an IdleTimeoutConn with a nil underlying connection.
+	// This will guarantee a panic when SetAbsoluteDeadline attempts to set a deadline.
+	idleConn := NewIdleTimeoutConn(nil, 30*time.Second)
+
+	// SetAbsoluteDeadline should recover from the panic and set the broken flag.
+	idleConn.SetAbsoluteDeadline(time.Now())
+
+	// Read and Write should now fail immediately with syscall.EIO.
+	_, err := idleConn.Read(make([]byte, 10))
+	if !errors.Is(err, syscall.EIO) {
+		t.Errorf("Expected err to wrap %v, got %v", syscall.EIO, err)
+	}
+
+	_, err = idleConn.Write([]byte("test"))
+	if !errors.Is(err, syscall.EIO) {
+		t.Errorf("Expected err to wrap %v, got %v", syscall.EIO, err)
+	}
+}
