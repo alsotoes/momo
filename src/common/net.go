@@ -2,11 +2,8 @@ package common
 
 import (
 	"errors"
-	"fmt"
-	"log"
 	"net"
 	"sync/atomic"
-	"syscall"
 	"time"
 )
 
@@ -76,35 +73,15 @@ func (c *IdleTimeoutConn) applyDeadlines(isRead bool) {
 
 // Read reads data from the connection and resets the read deadline.
 func (c *IdleTimeoutConn) Read(b []byte) (n int, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in IdleTimeoutConn.Read: %v", r)
-			err = fmt.Errorf("read panic: %w", syscall.EIO)
-		}
-	}()
-
 	c.applyDeadlines(true)
 	n, err = c.Conn.Read(b)
-	if err != nil {
-		err = fmt.Errorf("%w: %w", err, syscall.ECONNABORTED)
-	}
 	return n, err
 }
 
 // Write writes data to the connection and resets the write deadline.
 func (c *IdleTimeoutConn) Write(b []byte) (n int, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in IdleTimeoutConn.Write: %v", r)
-			err = fmt.Errorf("write panic: %w", syscall.EIO)
-		}
-	}()
-
 	c.applyDeadlines(false)
 	n, err = c.Conn.Write(b)
-	if err != nil {
-		err = fmt.Errorf("%w: %w", err, syscall.EIO)
-	}
 	return n, err
 }
 
