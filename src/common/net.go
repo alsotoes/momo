@@ -6,7 +6,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -140,14 +139,18 @@ func DialSocket(servAddr string) (conn net.Conn, err error) {
 		}
 	}()
 
-	connection, err := net.DialTimeout("tcp", servAddr, 10*time.Second)
-	if err != nil {
-		return nil, errors.New("Dial failed: " + err.Error())
+	connection, dErr := net.DialTimeout("tcp", servAddr, 10*time.Second)
+	if dErr != nil {
+		conn = nil
+		err = fmt.Errorf("Dial failed: %v: %w", dErr, syscall.ECONNREFUSED)
+		return conn, err
 	}
 
 	// 🛡️ Sentinel: Wrap outbound connections with an idle timeout to prevent goroutine leaks
 	// and Denial of Service (DoS) from malicious or unresponsive peers.
-	return NewIdleTimeoutConn(connection, 30*time.Second), nil
+	conn = NewIdleTimeoutConn(connection, 30*time.Second)
+	err = nil
+	return conn, err
 }
 
 func isTimeout(err error) bool {
@@ -161,6 +164,5 @@ func isTimeout(err error) bool {
 	if errors.Is(err, os.ErrDeadlineExceeded) {
 		return true
 	}
-	errStr := err.Error()
-	return strings.Contains(errStr, "timeout") || strings.Contains(errStr, "deadline")
+	return false
 }
