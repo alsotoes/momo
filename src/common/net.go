@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -36,6 +37,9 @@ func (c *IdleTimeoutConn) SetAbsoluteDeadline(t time.Time) {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Panic recovered in IdleTimeoutConn.SetAbsoluteDeadline: %v", r)
 			c.broken.Store(true)
+			if c.Conn != nil {
+				c.Conn.Close()
+			}
 		}
 	}()
 
@@ -58,6 +62,9 @@ func (c *IdleTimeoutConn) applyDeadlines(isRead bool) {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Panic recovered in IdleTimeoutConn.applyDeadlines: %v", r)
 			c.broken.Store(true)
+			if c.Conn != nil {
+				c.Conn.Close()
+			}
 		}
 	}()
 
@@ -153,7 +160,18 @@ func DialSocket(servAddr string) (conn net.Conn, err error) {
 	connection, dErr := net.DialTimeout("tcp", servAddr, 10*time.Second)
 	if dErr != nil {
 		conn = nil
-		err = fmt.Errorf("Dial failed: %v: %w", dErr, syscall.ECONNREFUSED)
+		if isTimeout(dErr) {
+			err = fmt.Errorf("Dial timeout: %v: %w", dErr, syscall.ETIMEDOUT)
+		} else {
+			errStr := dErr.Error()
+			if strings.Contains(errStr, "connection refused") || errors.Is(dErr, syscall.ECONNREFUSED) {
+				err = fmt.Errorf("Dial refused: %v: %w", dErr, syscall.ECONNREFUSED)
+			} else if strings.Contains(errStr, "no route to host") || errors.Is(dErr, syscall.EHOSTUNREACH) {
+				err = fmt.Errorf("Dial host unreachable: %v: %w", dErr, syscall.EHOSTUNREACH)
+			} else {
+				err = fmt.Errorf("Dial aborted: %v: %w", dErr, syscall.ECONNABORTED)
+			}
+		}
 		return conn, err
 	}
 

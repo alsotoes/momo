@@ -154,15 +154,32 @@ func TestDialSocket(t *testing.T) {
 	}
 }
 
+type panicConn struct {
+	net.Conn
+	closed bool
+}
+
+func (p *panicConn) SetDeadline(t time.Time) error {
+	panic("simulated deadline panic")
+}
+
+func (p *panicConn) Close() error {
+	p.closed = true
+	return nil
+}
+
 func TestIdleTimeoutConn_BrokenFlagAfterPanic(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
-	// Create an IdleTimeoutConn with a nil underlying connection.
-	// This will guarantee a panic when SetAbsoluteDeadline attempts to set a deadline.
-	idleConn := NewIdleTimeoutConn(nil, 30*time.Second)
+	mock := &panicConn{}
+	idleConn := NewIdleTimeoutConn(mock, 30*time.Second)
 
-	// SetAbsoluteDeadline should recover from the panic and set the broken flag.
+	// SetAbsoluteDeadline should recover from the panic, set the broken flag, and close the connection.
 	idleConn.SetAbsoluteDeadline(time.Now())
+
+	if !mock.closed {
+		t.Error("Expected connection to be closed after panic recovery, but it was not")
+	}
 
 	// Read and Write should now fail immediately with syscall.EIO.
 	_, err := idleConn.Read(make([]byte, 10))
