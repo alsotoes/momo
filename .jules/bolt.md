@@ -128,3 +128,6 @@
 ## 2024-06-12 - Eliminate fmt.Sprintf and fmt.Sscanf in metadata DB queries
 **Learning:** `fmt.Sprintf` and `fmt.Sscanf` involve runtime reflection and result in memory allocations when converting integers to strings or strings to integers. Using `fmt.Sscanf` to read the size out of bbolt takes ~810 ns/op and causes 4 allocations. `strconv.ParseInt` with `unsafe.String` takes ~31.81 ns/op and 0 allocations, making it >25x faster.
 **Action:** When saving integer metadata to bytes or parsing them, always use `strconv.AppendInt` onto a stack array and `strconv.ParseInt` with `unsafe.String`, to avoid heap escapes, save CPU time, and reduce GC pressure.
+## 2026-07-08 - [Avoid memory allocations in S3 FormatListObjectsV2XML string building]
+**Learning:** `strconv.Itoa` and `strconv.FormatInt` inside loops cause string heap allocations which create GC pressure.
+**Action:** Use `strconv.AppendInt` writing to a `var intBuf [32]byte` stack-allocated array for generating text formats like XML loops without heap allocation.
