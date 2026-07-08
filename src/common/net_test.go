@@ -3,6 +3,7 @@ package common
 import (
 	"errors"
 	"net"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -57,6 +58,53 @@ func TestIdleTimeoutConn(t *testing.T) {
 	}
 }
 
+func TestIdleTimeoutConn_WriteTimeoutEdgeCase(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	// The only way to trigger a timeout on Write is if the underlying
+	// connection blocks because the reading end is not consuming data,
+	// causing the write to exceed the deadline set by IdleTimeoutConn.
+
+	client, server := net.Pipe()
+
+	// Set a very short timeout
+	idleConn := NewIdleTimeoutConn(client, 20*time.Millisecond)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	errCh := make(chan error, 1)
+	go func() {
+		defer wg.Done()
+		// Because no one is reading from `server`, this write will block.
+		// `IdleTimeoutConn.Write` will extend the deadline by 20ms right before writing,
+		// but since it blocks, it will time out after 20ms.
+		_, err := idleConn.Write([]byte("this_will_block"))
+		select {
+		case errCh <- err:
+		default:
+		}
+	}()
+
+	defer func() {
+		client.Close()
+		server.Close()
+		wg.Wait()
+	}()
+
+	select {
+	case err := <-errCh:
+		if err == nil {
+			t.Fatal("Expected timeout error on blocking write, got nil")
+		}
+		if !errors.Is(err, syscall.ETIMEDOUT) {
+			t.Fatalf("Expected err to wrap %v, got %v", syscall.ETIMEDOUT, err)
+		}
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("Test timed out waiting for Write to fail with a deadline timeout")
+	}
+}
+
 func TestIdleTimeoutConn_ReadError(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
@@ -103,5 +151,44 @@ func TestDialSocket(t *testing.T) {
 	_, err = DialSocket("invalid_address")
 	if err == nil {
 		t.Error("Expected error for invalid address, got nil")
+	}
+}
+
+type panicConn struct {
+	net.Conn
+	closed bool
+}
+
+func (p *panicConn) SetDeadline(t time.Time) error {
+	panic("simulated deadline panic")
+}
+
+func (p *panicConn) Close() error {
+	p.closed = true
+	return nil
+}
+
+func TestIdleTimeoutConn_BrokenFlagAfterPanic(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	mock := &panicConn{}
+	idleConn := NewIdleTimeoutConn(mock, 30*time.Second)
+
+	// SetAbsoluteDeadline should recover from the panic, set the broken flag, and close the connection.
+	idleConn.SetAbsoluteDeadline(time.Now())
+
+	if !mock.closed {
+		t.Error("Expected connection to be closed after panic recovery, but it was not")
+	}
+
+	// Read and Write should now fail immediately with syscall.EIO.
+	_, err := idleConn.Read(make([]byte, 10))
+	if !errors.Is(err, syscall.EIO) {
+		t.Errorf("Expected err to wrap %v, got %v", syscall.EIO, err)
+	}
+
+	_, err = idleConn.Write([]byte("test"))
+	if !errors.Is(err, syscall.EIO) {
+		t.Errorf("Expected err to wrap %v, got %v", syscall.EIO, err)
 	}
 }
