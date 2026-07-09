@@ -458,7 +458,10 @@ func TestS3Communicator_XMLFormatting(t *testing.T) {
 	}
 
 	// 1. Root listing (prefix: "", delimiter: "")
-	xmlBytes := FormatListObjectsV2XML("mybucket", "", "", 1000, files)
+	xmlBytes, err := FormatListObjectsV2XML("mybucket", "", "", 1000, files)
+	if err != nil {
+		t.Fatalf("FormatListObjectsV2XML failed: %v", err)
+	}
 	xmlStr := string(xmlBytes)
 
 	if !strings.Contains(xmlStr, "<Name>mybucket</Name>") {
@@ -484,7 +487,10 @@ func TestS3Communicator_XMLFormatting(t *testing.T) {
 	}
 
 	// 2. Prefix and delimiter grouping
-	xmlBytesDelim := FormatListObjectsV2XML("mybucket", "", "/", 1000, files)
+	xmlBytesDelim, err := FormatListObjectsV2XML("mybucket", "", "/", 1000, files)
+	if err != nil {
+		t.Fatalf("FormatListObjectsV2XML failed: %v", err)
+	}
 	xmlStrDelim := string(xmlBytesDelim)
 
 	if !strings.Contains(xmlStrDelim, "<Key>file1.txt</Key>") {
@@ -495,6 +501,12 @@ func TestS3Communicator_XMLFormatting(t *testing.T) {
 	}
 	if !strings.Contains(xmlStrDelim, "<Prefix>docs/</Prefix>") {
 		t.Errorf("Expected docs/ as CommonPrefix")
+	}
+
+	// 3. Reject input exceeding 64 bytes (Rule 35)
+	_, err = FormatListObjectsV2XML("my-very-long-bucket-name-that-exceeds-sixty-four-characters-limit-completely", "", "", 1000, files)
+	if !errors.Is(err, syscall.EINVAL) {
+		t.Errorf("Expected syscall.EINVAL for oversized bucket name, got %v", err)
 	}
 }
 
