@@ -2,10 +2,23 @@ package common
 
 import (
 	"path"
+	"strconv"
 	"strings"
 	"syscall"
 	"unsafe"
 )
+
+// AppendPaddedInt appends the string representation of val to dst and pads it to width with null bytes.
+// It assumes dst is large enough to hold at least width bytes and that the int representation
+// is less than or equal to width bytes. If len(dst) < width, it will panic.
+func AppendPaddedInt(dst []byte, val int64, width int) {
+	var numBuf [32]byte
+	b := strconv.AppendInt(numBuf[:0], val, 10)
+	copy(dst, b)
+	for i := len(b); i < width; i++ {
+		dst[i] = 0
+	}
+}
 
 // PadString pads or truncates a string to the given length.
 func PadString(input string, length int) string {
