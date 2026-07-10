@@ -394,7 +394,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		}
 
 		// 🛡️ Sentinel: Sanitize S3 hash to prevent directory traversal via malicious metadata.
-		if m.meta.Hash != "" && hasPathTraversalChars(m.meta.Hash) {
+		if m.meta.Hash != "" && common.HasPathTraversalChars(m.meta.Hash) {
 			return 0, 0, fmt.Errorf("invalid hash: %s: %w", m.meta.Hash, syscall.EBADMSG)
 		}
 	}
@@ -542,7 +542,7 @@ func (m *S3Communicator) ReceiveMetadata() (meta common.FileMetadata, err error)
 		}
 
 		// 🛡️ Sentinel: Sanitize S3 hash to prevent directory traversal via malicious metadata.
-		if hash != "" && hasPathTraversalChars(hash) {
+		if hash != "" && common.HasPathTraversalChars(hash) {
 			return common.FileMetadata{}, fmt.Errorf("invalid hash: %s: %w", hash, syscall.EBADMSG)
 		}
 		m.meta.Hash = hash
@@ -640,18 +640,6 @@ func (m *S3Communicator) ReceiveACK() (err error) {
 
 func (m *S3Communicator) RemoteAddr() net.Addr {
 	return m.remoteAddr
-}
-
-// hasPathTraversalChars returns true if the string contains '.', '/' or '\'.
-// It is inlineable and operates directly on the string bytes without any heap allocation (Rule 19).
-func hasPathTraversalChars(s string) bool {
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c == '.' || c == '/' || c == '\\' {
-			return true
-		}
-	}
-	return false
 }
 
 // extractS3BucketAndKey parses the bucket name and key path from an S3 HTTP request.
