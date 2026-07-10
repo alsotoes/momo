@@ -306,8 +306,10 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 
 		var respBuf bytes.Buffer
 		respBuf.WriteString("HTTP/1.1 200 OK\r\n")
-		respBuf.WriteString("Content-Length: " + strconv.FormatInt(meta.Size, 10) + "\r\n")
-		respBuf.WriteString("Content-Type: application/octet-stream\r\n")
+		respBuf.WriteString("Content-Length: ")
+		var sizeBuf [32]byte
+		respBuf.Write(strconv.AppendInt(sizeBuf[:0], meta.Size, 10))
+		respBuf.WriteString("\r\nContent-Type: application/octet-stream\r\n")
 		respBuf.WriteString("Connection: close\r\n\r\n")
 
 		if _, err := m.conn.Write(respBuf.Bytes()); err != nil {
@@ -764,7 +766,8 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, f
 		xmlEscape(&buf, file.Hash)
 		buf.WriteString(`"</ETag>`)
 		buf.WriteString(`<Size>`)
-		buf.WriteString(strconv.FormatInt(file.Size, 10))
+		var sizeBuf [32]byte
+		buf.Write(strconv.AppendInt(sizeBuf[:0], file.Size, 10))
 		buf.WriteString(`</Size>`)
 		buf.WriteString(`<StorageClass>STANDARD</StorageClass>`)
 		buf.WriteString(`</Contents>`)

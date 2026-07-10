@@ -132,3 +132,7 @@
 ## 2026-07-04 - Eliminate strconv.Itoa Allocations
 **Learning:** Using `strconv.Itoa` forces a memory allocation as it creates and returns a new string. In performance-critical network paths, this causes unnecessary garbage collection overhead.
 **Action:** Replace `strconv.Itoa(val)` and string concatenations with `strconv.AppendInt` using a fixed-size stack-allocated array (e.g., `var buf [32]byte`) to safely eliminate heap allocations.
+## 2026-07-10 - Eliminate strconv.FormatInt Allocations
+**Learning:** Using `strconv.FormatInt` creates a dynamic allocation and copies the string, leading to unnecessary heap escapes, especially when padding the string.
+**Action:** Replace `strconv.FormatInt` and  with `strconv.AppendInt` onto a stack-allocated buffer.
+**Action:** Replace strconv.FormatInt with strconv.AppendInt onto a stack-allocated buffer.

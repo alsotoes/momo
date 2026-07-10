@@ -2,10 +2,25 @@ package common
 
 import (
 	"path"
+	"strconv"
 	"strings"
 	"syscall"
 	"unsafe"
 )
+
+// AppendPaddedInt formats an integer into dst with null padding up to width.
+// ⚡ Bolt: Centralized helper to encapsulate stack-allocated strconv.AppendInt with manual null-byte padding,
+// eliminating strconv.FormatInt and string allocations across multiple hot paths.
+func AppendPaddedInt(dst []byte, val int64, width int) {
+	var buf [32]byte
+	b := strconv.AppendInt(buf[:0], val, 10)
+	n := copy(dst, b)
+	if n < width {
+		for i := n; i < width && i < len(dst); i++ {
+			dst[i] = 0
+		}
+	}
+}
 
 // PadString pads or truncates a string to the given length.
 func PadString(input string, length int) string {

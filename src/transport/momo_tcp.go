@@ -64,7 +64,7 @@ func (m *MomoTCPCommunicator) HandshakeClient(authToken string, timestamp int64,
 	copy(handshakeBuf[0:common.AuthTokenLength], common.PadString(authToken, common.AuthTokenLength))
 
 	// ⚡ Bolt: Use PadString to ensure the timestamp is exactly 19 bytes and correctly placed.
-	copy(handshakeBuf[common.AuthTokenLength:], common.PadString(strconv.FormatInt(timestamp, 10), common.TimestampLength))
+	common.AppendPaddedInt(handshakeBuf[common.AuthTokenLength:], timestamp, common.TimestampLength)
 	
 	// Write the requested mode (1 byte) at the end
 	handshakeBuf[common.AuthTokenLength+common.TimestampLength] = byte(requestedMode + '0')
@@ -152,7 +152,7 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 				wireName = file.RemotePath + "/" + file.Name
 			}
 			copy(packet[64:128], common.PadString(wireName, 64))
-			copy(packet[128:192], common.PadString(strconv.FormatInt(file.Size, 10), 64))
+			common.AppendPaddedInt(packet[128:192], file.Size, 64)
 
 			if _, err := m.Write(packet[:]); err != nil {
 				return 0, 0, fmt.Errorf("failed to write metadata packet: %w", err)
@@ -226,7 +226,7 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 		// Write '0' (success status) + 64-byte size string
 		var respBuf [65]byte
 		respBuf[0] = '0'
-		copy(respBuf[1:65], common.PadString(strconv.FormatInt(meta.Size, 10), 64))
+		common.AppendPaddedInt(respBuf[1:65], meta.Size, 64)
 		if _, err := m.Write(respBuf[:]); err != nil {
 			return 0, 0, fmt.Errorf("failed to send get ACK: %w", err)
 		}
