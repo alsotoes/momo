@@ -99,6 +99,11 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 		return 0, 0, fmt.Errorf("failed to read handshake: %v: %w", err, syscall.EBADMSG)
 	}
 
+	// 🛡️ Zero-Crash: Verify handshake buffer length bounds before slicing (Rule 4)
+	if len(handshakeBuf) < common.AuthTokenLength+common.TimestampLength+1 {
+		return 0, 0, fmt.Errorf("handshake buffer too small: %w", syscall.EBADMSG)
+	}
+
 	bufferAuthToken := handshakeBuf[:common.AuthTokenLength]
 	bufferTimestamp := handshakeBuf[common.AuthTokenLength : common.AuthTokenLength+common.TimestampLength]
 	requestedModeByte := handshakeBuf[common.AuthTokenLength+common.TimestampLength]
@@ -318,6 +323,11 @@ func (m *MomoTCPCommunicator) ReceiveMetadata() (meta common.FileMetadata, err e
 
 	if _, err := io.ReadFull(io.LimitReader(m, hashLength+common.FileInfoLength+common.FileInfoLength), buffer[:]); err != nil {
 		return metadata, err
+	}
+
+	// 🛡️ Zero-Crash: Verify metadata buffer length bounds before slicing (Rule 4)
+	if len(buffer) < hashLength+common.FileInfoLength+common.FileInfoLength {
+		return metadata, fmt.Errorf("metadata buffer too small: %w", syscall.EBADMSG)
 	}
 
 	metadata.Hash = common.SanitizeLog(string(bytesTrimNull(buffer[:hashLength])))
