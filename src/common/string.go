@@ -7,6 +7,18 @@ import (
 	"unsafe"
 )
 
+// HasPathTraversalChars returns true if the string contains '.', '/' or '\'.
+// It is inlineable and operates directly on the string bytes without any heap allocation (Rule 19).
+func HasPathTraversalChars(s string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == '.' || c == '/' || c == '\\' {
+			return true
+		}
+	}
+	return false
+}
+
 // PadString pads or truncates a string to the given length.
 func PadString(input string, length int) string {
         if len(input) >= length {
