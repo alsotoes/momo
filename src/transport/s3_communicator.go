@@ -20,8 +20,37 @@ import (
 	"github.com/alsotoes/momo/src/storage"
 )
 
+type LimitedConnReader struct {
+	r     net.Conn
+	limit int64
+	read  int64
+}
+
+func (l *LimitedConnReader) Read(p []byte) (n int, err error) {
+	if l.limit > 0 && l.read >= l.limit {
+		return 0, fmt.Errorf("read limit exceeded: %w", syscall.ENOBUFS)
+	}
+	if l.limit > 0 && int64(len(p)) > (l.limit-l.read) {
+		p = p[:l.limit-l.read]
+	}
+	n, err = l.r.Read(p)
+	l.read += int64(n)
+	return n, err
+}
+
+func (l *LimitedConnReader) SetLimit(limit int64) {
+	l.limit = limit
+	l.read = 0
+}
+
+func (l *LimitedConnReader) ClearLimit() {
+	l.limit = 0
+	l.read = 0
+}
+
 type S3Communicator struct {
 	conn       net.Conn
+	connReader *LimitedConnReader
 	reader     *bufio.Reader
 	remoteAddr net.Addr
 
@@ -37,9 +66,11 @@ type S3Communicator struct {
 }
 
 func NewS3Communicator(conn net.Conn) *S3Communicator {
+	connReader := &LimitedConnReader{r: conn}
 	return &S3Communicator{
 		conn:       conn,
-		reader:     bufio.NewReader(conn),
+		connReader: connReader,
+		reader:     bufio.NewReader(connReader),
 		remoteAddr: conn.RemoteAddr(),
 	}
 }
@@ -162,7 +193,9 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		}
 	}()
 
+	m.connReader.SetLimit(65536) // 🛡️ Bounded Network Loop/Read (Rule 24)
 	req, err := http.ReadRequest(m.reader)
+	m.connReader.ClearLimit()
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to read handshake request: %v: %w", err, syscall.EBADMSG)
 	}
@@ -225,14 +258,21 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 				}
 			}
 
-			xmlBytes := FormatListObjectsV2XML(bucket, prefix, delimiter, maxKeys, files)
+			xmlBytes, formatErr := FormatListObjectsV2XML(bucket, prefix, delimiter, maxKeys, files)
+			if formatErr != nil {
+				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				m.conn.Write([]byte("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
+				return 0, 0, formatErr
+			}
 
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			var respBuf bytes.Buffer
 			respBuf.WriteString("HTTP/1.1 200 OK\r\n")
 			respBuf.WriteString("Content-Type: application/xml\r\n")
-			respBuf.WriteString("Content-Length: " + strconv.Itoa(len(xmlBytes)) + "\r\n")
-			respBuf.WriteString("Connection: close\r\n\r\n")
+			respBuf.WriteString("Content-Length: ")
+			var lenBuf [32]byte
+			respBuf.Write(strconv.AppendInt(lenBuf[:0], int64(len(xmlBytes)), 10))
+			respBuf.WriteString("\r\nConnection: close\r\n\r\n")
 			respBuf.Write(xmlBytes)
 
 			if _, err := m.conn.Write(respBuf.Bytes()); err != nil {
@@ -480,7 +520,9 @@ func (m *S3Communicator) ReceiveMetadata() (meta common.FileMetadata, err error)
 	// is the NEXT HTTP request on the same connection!
 	// Let's read the next request if we haven't got metadata yet.
 	if m.meta.Name == "" {
+		m.connReader.SetLimit(65536) // 🛡️ Bounded Network Loop/Read (Rule 24)
 		req, err := http.ReadRequest(m.reader)
+		m.connReader.ClearLimit()
 		if err != nil {
 			return common.FileMetadata{}, fmt.Errorf("ReceiveMetadata ReadRequest failed: %v: %w", err, syscall.EBADMSG)
 		}
@@ -554,12 +596,13 @@ func (m *S3Communicator) SendACK(serverId int) (err error) {
 	b = append(b, "HTTP/1.1 200 OK\r\nContent-Length: "...)
 
 	// serverId string length calculation
-	idStr := strconv.Itoa(serverId)
-	bodyLength := 3 + len(idStr)
+	var idBuf [32]byte
+	idBytes := strconv.AppendInt(idBuf[:0], int64(serverId), 10)
+	bodyLength := 3 + len(idBytes)
 
 	b = strconv.AppendInt(b, int64(bodyLength), 10)
 	b = append(b, "\r\nConnection: keep-alive\r\n\r\nACK"...)
-	b = append(b, idStr...)
+	b = append(b, idBytes...)
 
 	// 🛡️ Zero-Crash: Defensive bounds check to verify the formatted content fits safely within the stack buffer
 	if len(b) > 256 {
@@ -637,7 +680,12 @@ func extractS3BucketAndKey(req *http.Request) (bucket string, key string) {
 
 // FormatListObjectsV2XML constructs an S3-compliant ListObjectsV2 XML response
 // using a pre-allocated bytes.Buffer to avoid excessive heap allocations (⚡ Bolt pattern).
-func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, files []common.FileMetadata) []byte {
+func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, files []common.FileMetadata) ([]byte, error) {
+	// 🛡️ Rule 35: Validate input strings for length limits (64 bytes) before writing to the bytes.Buffer.
+	if len(bucketName) > 64 || len(prefix) > 64 || len(delimiter) > 64 {
+		return nil, fmt.Errorf("FormatListObjectsV2XML input length exceeds limit: %w", syscall.EINVAL)
+	}
+
 	var buf bytes.Buffer
 	buf.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)
 	buf.WriteString(`<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">`)
@@ -657,7 +705,8 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, f
 	}
 
 	buf.WriteString(`<MaxKeys>`)
-	buf.WriteString(strconv.Itoa(maxKeys))
+	var maxKeysBuf [32]byte
+	buf.Write(strconv.AppendInt(maxKeysBuf[:0], int64(maxKeys), 10))
 	buf.WriteString(`</MaxKeys>`)
 
 	buf.WriteString(`<IsTruncated>false</IsTruncated>`)
@@ -724,11 +773,12 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, f
 	}
 
 	buf.WriteString(`<KeyCount>`)
-	buf.WriteString(strconv.Itoa(keyCount))
+	var keyCountBuf [32]byte
+	buf.Write(strconv.AppendInt(keyCountBuf[:0], int64(keyCount), 10))
 	buf.WriteString(`</KeyCount>`)
 
 	buf.WriteString(`</ListBucketResult>`)
-	return buf.Bytes()
+	return buf.Bytes(), nil
 }
 
 func xmlEscape(buf *bytes.Buffer, s string) {
