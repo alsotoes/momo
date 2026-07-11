@@ -99,6 +99,11 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 		return 0, 0, fmt.Errorf("failed to read handshake: %v: %w", err, syscall.EBADMSG)
 	}
 
+	// 🛡️ Zero-Crash: Verify handshake buffer length bounds before slicing (Rule 4)
+	if len(handshakeBuf) < common.AuthTokenLength+common.TimestampLength+1 {
+		return 0, 0, fmt.Errorf("handshake buffer too small: %w", syscall.EBADMSG)
+	}
+
 	bufferAuthToken := handshakeBuf[:common.AuthTokenLength]
 	bufferTimestamp := handshakeBuf[common.AuthTokenLength : common.AuthTokenLength+common.TimestampLength]
 	requestedModeByte := handshakeBuf[common.AuthTokenLength+common.TimestampLength]
@@ -320,7 +325,16 @@ func (m *MomoTCPCommunicator) ReceiveMetadata() (meta common.FileMetadata, err e
 		return metadata, err
 	}
 
+	// 🛡️ Zero-Crash: Verify metadata buffer length bounds before slicing (Rule 4)
+	if len(buffer) < hashLength+common.FileInfoLength+common.FileInfoLength {
+		return metadata, fmt.Errorf("metadata buffer too small: %w", syscall.EBADMSG)
+	}
+
 	metadata.Hash = common.SanitizeLog(string(bytesTrimNull(buffer[:hashLength])))
+	// 🛡️ Sentinel: Sanitize hash immediately to prevent path traversal in all downstream consumers.
+	if metadata.Hash == "" || common.HasPathTraversalChars(metadata.Hash) {
+		return common.FileMetadata{}, fmt.Errorf("invalid hash: %s: %w", metadata.Hash, syscall.EBADMSG)
+	}
 	metadata.Name = string(bytesTrimNull(buffer[hashLength : hashLength+common.FileInfoLength]))
 
 	size, err := common.SafeParseInt(buffer[hashLength+common.FileInfoLength:])

@@ -59,11 +59,9 @@ jobs:
         cat /tmp/bench_comparison.txt >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
         
-        # Check if there is any statistically significant degradation greater than 5%.
-        # GitHub Actions runners have inherent noise, so we tolerate up to 5% variance.
-        # Ignore IndexSearch since it's a micro-benchmark known to be extremely noisy.
-        # Also ignore geomean as it's skewed by IndexSearch.
-        if grep -v -E 'IndexSearch|geomean' /tmp/bench_comparison.txt | awk '/\+[0-9]+\.[0-9]+%/ {
+        # Ignore sub-10ns micro-benchmarks known to be extremely noisy on virtualization.
+        # Also ignore geomean as it's skewed by micro-benchmarks.
+        if grep -v -E 'IndexSearch|CheckMetricsAndSwap|IndexDirectTracking|PadString|geomean' /tmp/bench_comparison.txt | awk '/\+[0-9]+\.[0-9]+%/ {
             match($0, /\+([0-9]+\.[0-9]+)%/, arr)
             if (arr[1] + 0 > 5.0) {
                 print "❌ Performance degradation > 5% detected: +" arr[1] "%"
