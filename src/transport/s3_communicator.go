@@ -683,7 +683,14 @@ func extractS3BucketAndKey(req *http.Request) (bucket string, key string) {
 
 // FormatListObjectsV2XML constructs an S3-compliant ListObjectsV2 XML response
 // using a pre-allocated bytes.Buffer to avoid excessive heap allocations (⚡ Bolt pattern).
-func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, files []common.FileMetadata) ([]byte, error) {
+func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, files []common.FileMetadata) (xmlBytes []byte, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in FormatListObjectsV2XML: %v", r)
+			err = fmt.Errorf("panic in FormatListObjectsV2XML: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	// 🛡️ Rule 35: Validate input strings for length limits (64 bytes) before writing to the bytes.Buffer.
 	if len(bucketName) > 64 || len(prefix) > 64 || len(delimiter) > 64 {
 		return nil, fmt.Errorf("FormatListObjectsV2XML input length exceeds limit: %w", syscall.EINVAL)
