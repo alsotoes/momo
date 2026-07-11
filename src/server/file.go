@@ -22,8 +22,13 @@ import (
 // It reads the Hash string, file name, and file size from the connection, trims any null characters,
 // and returns a FileMetadata struct.
 // Null characters are trimmed because the buffers are fixed size, and the actual data may be smaller.
-func getMetadata(r io.Reader) (common.FileMetadata, error) {
-	var metadata common.FileMetadata
+func getMetadata(r io.Reader) (metadata common.FileMetadata, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in getMetadata: %v", r)
+			err = fmt.Errorf("panic in getMetadata: %v: %w", r, syscall.EIO)
+		}
+	}()
 
 	// ⚡ Bolt: Use a single stack-allocated buffer and single io.ReadFull call to reduce system calls and eliminate heap allocations.
 	var buffer [64 + common.FileInfoLength + common.FileInfoLength]byte
@@ -48,6 +53,11 @@ func getMetadata(r io.Reader) (common.FileMetadata, error) {
 	}
 
 	fileHash := common.SanitizeLog(trimNull(bufferFileHash))
+
+	// 🛡️ Sentinel: Sanitize Hash immediately to prevent path traversal in all downstream consumers.
+	if fileHash == "" || common.HasPathTraversalChars(fileHash) {
+		return metadata, fmt.Errorf("invalid hash received: %s: %w", fileHash, syscall.EBADMSG)
+	}
 
 	// 🛡️ Sentinel: Sanitize and normalize fileName to prevent path traversal attacks (Rule 4).
 	rawFileName := trimNull(bufferFileName)

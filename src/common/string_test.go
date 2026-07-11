@@ -26,6 +26,30 @@ func TestSanitizeLog(t *testing.T) {
 	}
 }
 
+func TestHasPathTraversalChars(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected bool
+	}{
+		{"No special characters", "helloworld", false},
+		{"Contains dot", "hello.world", true},
+		{"Contains slash", "hello/world", true},
+		{"Contains backslash", "hello\\world", true},
+		{"Path traversal", "../etc/passwd", true},
+		{"Just dots", "..", true},
+		{"Empty string", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := HasPathTraversalChars(tt.input); got != tt.expected {
+				t.Errorf("HasPathTraversalChars(%q) = %v, want %v", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestSafeParseInt(t *testing.T) {
 	tests := []struct {
 		name    string

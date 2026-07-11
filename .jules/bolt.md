@@ -128,3 +128,10 @@
 ## 2024-06-12 - Eliminate fmt.Sprintf and fmt.Sscanf in metadata DB queries
 **Learning:** `fmt.Sprintf` and `fmt.Sscanf` involve runtime reflection and result in memory allocations when converting integers to strings or strings to integers. Using `fmt.Sscanf` to read the size out of bbolt takes ~810 ns/op and causes 4 allocations. `strconv.ParseInt` with `unsafe.String` takes ~31.81 ns/op and 0 allocations, making it >25x faster.
 **Action:** When saving integer metadata to bytes or parsing them, always use `strconv.AppendInt` onto a stack array and `strconv.ParseInt` with `unsafe.String`, to avoid heap escapes, save CPU time, and reduce GC pressure.
+## 2026-07-04 - Eliminate strconv.Itoa Allocations
+**Learning:** Using `strconv.Itoa` forces a memory allocation as it creates and returns a new string. In performance-critical network paths, this causes unnecessary garbage collection overhead.
+**Action:** Replace `strconv.Itoa(val)` and string concatenations with `strconv.AppendInt` using a fixed-size stack-allocated array (e.g., `var buf [32]byte`) to safely eliminate heap allocations.
+
+## 2026-07-07 - Eliminate heap allocations for multiple integer fields in network payloads
+**Learning:** Using `strconv.Itoa` and `strconv.FormatInt` combined with `bytes.Buffer.WriteString` inside functions generating network payloads causes dynamic string allocations. The string concatenation or `FormatInt` call allocates memory on the heap before the data is written to the buffer.
+**Action:** When a function formats and writes multiple integers sequentially to a `bytes.Buffer` (e.g., when constructing XML or HTTP headers), define a single stack-allocated buffer (e.g., `var intBuf [32]byte`) at the top of the function. Use `strconv.AppendInt(intBuf[:0], val, 10)` and `buf.Write()` to format integers and write them without triggering heap allocations.
