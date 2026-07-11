@@ -65,6 +65,9 @@ func (m *MomoQUICCommunicator) HandshakeClient(authToken string, timestamp int64
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Recovered from panic in HandshakeClient: %v", r)
+			if m != nil {
+				m.Close()
+			}
 			err = fmt.Errorf("panic in HandshakeClient: %v: %w", r, syscall.EIO)
 		}
 	}()
@@ -102,6 +105,9 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Recovered from panic in HandshakeServer: %v", r)
+			if m != nil {
+				m.Close()
+			}
 			err = fmt.Errorf("panic in HandshakeServer: %v: %w", r, syscall.EIO)
 		}
 	}()
