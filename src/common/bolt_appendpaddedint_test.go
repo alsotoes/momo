@@ -7,7 +7,9 @@ import (
 
 func TestAppendPaddedInt(t *testing.T) {
 	var buf [64]byte
-	AppendPaddedInt(buf[:], 12345, 64)
+	if err := AppendPaddedInt(buf[:], 12345, 64); err != nil {
+		t.Fatalf("AppendPaddedInt failed: %v", err)
+	}
 
 	expected := make([]byte, 64)
 	copy(expected, "12345")
