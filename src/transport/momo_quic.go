@@ -148,8 +148,11 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 		}
 
 		// Send file count (4 bytes big-endian)
+		// ⚡ Bolt: Eliminate heap allocation and reflection overhead from binary.Write using a stack-allocated buffer
 		m.Stream.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		if err := binary.Write(m, binary.BigEndian, int32(len(files))); err != nil {
+		var countBuf [4]byte
+		binary.BigEndian.PutUint32(countBuf[:], uint32(len(files)))
+		if _, err := m.Write(countBuf[:]); err != nil {
 			return 0, 0, fmt.Errorf("failed to send file count: %w", err)
 		}
 
