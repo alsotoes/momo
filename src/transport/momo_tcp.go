@@ -144,7 +144,7 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 		var countBuf [4]byte
 		binary.BigEndian.PutUint32(countBuf[:], uint32(len(files)))
 		if _, err := m.Write(countBuf[:]); err != nil {
-			return 0, 0, fmt.Errorf("failed to send file count: %w", err)
+			return 0, 0, fmt.Errorf("failed to send file count: %v: %w", err, syscall.EIO)
 		}
 
 		// Send metadata packets (192 bytes each)
