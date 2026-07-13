@@ -1,13 +1,16 @@
-1. **Optimize S3 Communicator XML Formatting:**
-   - In `src/transport/s3_communicator.go`, replace `strconv.Itoa` and `strconv.FormatInt` inside `FormatListObjectsV2XML` with `strconv.AppendInt` to eliminate string heap allocations during serialization. Use a small pre-allocated byte slice buffer (e.g. `var numBuf [32]byte`) for appending integers.
-2. **Optimize Momo-TCP & QUIC Packet Serialization:**
-   - In `src/transport/momo_tcp.go` and `src/transport/momo_quic.go`, replace `.PadString(strconv.FormatInt(...))` with `strconv.AppendInt` for `timestamp` during `HandshakeClient` / `HandshakeServer` and `file.Size` inside list files padding blocks, in order to avoid heap-allocated padding buffers.
-3. **Verify Functionality:**
-   - Run `git diff` to ensure changes align with expected improvements.
-   - Run the complete testing suite utilizing `make test` or `go test ./...`.
-4. **Complete pre-commit steps:**
+1. **Optimize S3 GET headers (Lines 307-316 in `src/transport/s3_communicator.go`)**
+   - Replace `var respBuf bytes.Buffer` and subsequent `WriteString` calls with a fixed-size stack array `var buf [256]byte` and `strconv.AppendInt`.
+   - This eliminates heap allocation of `bytes.Buffer` and its internal slice.
+
+2. **Optimize S3 ListObjects headers (Lines 269-276 in `src/transport/s3_communicator.go`)**
+   - Replace `var respBuf bytes.Buffer` with a fixed-size stack array `var buf [256]byte` and `strconv.AppendInt`.
+
+3. **Verify functionality and performance**
+   - Run tests to make sure everything works correctly (`make test`).
+   - Note the memory allocations in comments before and after implementation.
+
+4. **Complete pre-commit steps**
    - Complete pre-commit steps to ensure proper testing, verification, review, and reflection are done.
-5. **Create a Pull Request:**
-   - Submit the branch naming it something short and descriptive.
-   - PR Title: `⚡ Bolt: [performance improvement] Optimize network packet serialization and eliminate strconv heap allocations`
-   - Provide What, Why, Impact, and Measurement in the PR description as per instructions.
+
+5. **Create a pull request**
+   - Submit the PR with the performance improvements.

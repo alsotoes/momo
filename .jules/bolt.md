@@ -140,3 +140,7 @@
 ## 2024-05-18 - Centralize Optimization Logic for Readability
 **Learning:** Optimizing performance by eliminating heap allocations using stack-allocated buffers and `strconv.AppendInt` is highly effective. However, directly inlining the byte-copying and null-padding loops across multiple locations reduces code readability and encapsulation. Replacing one clean line with six lines of manual slice manipulation violates the principle of not sacrificing readability for micro-optimizations.
 **Action:** When repeatedly applying manual padding or formatting optimizations, encapsulate the verbose logic into a centralized helper function (like `common.AppendPaddedInt`) and reuse it across call sites to maintain clean, readable code while achieving the desired performance gains.
+
+## 2024-07-13 - Eliminate bytes.Buffer overhead for small HTTP responses
+**Learning:** Using `bytes.Buffer` and `WriteString` / `Write` to construct HTTP response headers triggers a heap allocation and slice growth that causes CPU overhead, especially on highly concurrent network applications handling many small requests like ListObjects or GET operations.
+**Action:** When constructing small HTTP response headers, avoid `bytes.Buffer`. Instead, define a fixed-size stack array (e.g. `var buf [256]byte`), slice it (`b := buf[:0]`), use `append` for string constants, and `strconv.AppendInt` for integers, then write `b` directly to the network connection. Write the actual payload in a separate call to avoid merging payload allocations into the header array.
