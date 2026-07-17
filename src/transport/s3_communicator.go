@@ -254,7 +254,12 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			maxKeys := 1000
 			if maxKeysStr := q.Get("max-keys"); maxKeysStr != "" {
 				if mk, err := strconv.Atoi(maxKeysStr); err == nil && mk > 0 {
-					maxKeys = mk
+					// 🛡️ Sentinel: Clamp max-keys to 1000 to prevent DoS via memory exhaustion in XML generation
+					if mk > 1000 {
+						maxKeys = 1000
+					} else {
+						maxKeys = mk
+					}
 				}
 			}
 
