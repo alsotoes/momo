@@ -791,9 +791,16 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, f
 }
 
 func xmlEscape(buf *bytes.Buffer, s string) {
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		switch c {
+	// ⚡ Bolt: Heavily optimize string escaping by replacing byte-by-byte loops
+	// with strings.IndexAny and bulk string writing.
+	for {
+		idx := strings.IndexAny(s, "&<>\"'")
+		if idx == -1 {
+			buf.WriteString(s)
+			break
+		}
+		buf.WriteString(s[:idx])
+		switch s[idx] {
 		case '&':
 			buf.WriteString("&amp;")
 		case '<':
@@ -804,8 +811,7 @@ func xmlEscape(buf *bytes.Buffer, s string) {
 			buf.WriteString("&quot;")
 		case '\'':
 			buf.WriteString("&apos;")
-		default:
-			buf.WriteByte(c)
 		}
+		s = s[idx+1:]
 	}
 }
