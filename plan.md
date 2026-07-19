@@ -1,13 +1,16 @@
-1. **Optimize S3 Communicator XML Formatting:**
-   - In `src/transport/s3_communicator.go`, replace `strconv.Itoa` and `strconv.FormatInt` inside `FormatListObjectsV2XML` with `strconv.AppendInt` to eliminate string heap allocations during serialization. Use a small pre-allocated byte slice buffer (e.g. `var numBuf [32]byte`) for appending integers.
-2. **Optimize Momo-TCP & QUIC Packet Serialization:**
-   - In `src/transport/momo_tcp.go` and `src/transport/momo_quic.go`, replace `.PadString(strconv.FormatInt(...))` with `strconv.AppendInt` for `timestamp` during `HandshakeClient` / `HandshakeServer` and `file.Size` inside list files padding blocks, in order to avoid heap-allocated padding buffers.
-3. **Verify Functionality:**
-   - Run `git diff` to ensure changes align with expected improvements.
-   - Run the complete testing suite utilizing `make test` or `go test ./...`.
-4. **Complete pre-commit steps:**
-   - Complete pre-commit steps to ensure proper testing, verification, review, and reflection are done.
-5. **Create a Pull Request:**
-   - Submit the branch naming it something short and descriptive.
-   - PR Title: `⚡ Bolt: [performance improvement] Optimize network packet serialization and eliminate strconv heap allocations`
-   - Provide What, Why, Impact, and Measurement in the PR description as per instructions.
+1. Add a highly optimized string extraction function `TrimNullBytesString(b []byte) string` to `src/common/string.go`.
+   - The logic will use `bytes.IndexByte(b, 0)` to find the first null byte. If found, it returns `unsafe.String(unsafe.SliceData(b), idx)`. Otherwise, it returns the whole slice `unsafe.String(unsafe.SliceData(b), len(b))`. This eliminates string allocation overhead.
+2. Replace all instances of `string(bytes.TrimRight(fileBuf[:], "\x00"))` in `src/transport/momo_tcp.go` and `src/transport/momo_quic.go` with `common.TrimNullBytesString(fileBuf[:])`.
+3. Update corresponding unit tests in `src/transport/momo_tcp_test.go` and `src/transport/factory_test.go`.
+   - Replace instances like `string(bytes.TrimRight(packet[0:64], "\x00"))` with `common.TrimNullBytesString(packet[0:64])`.
+   - Replace `string(bytes.TrimRight(respBuf[1:65], "\x00"))` with `common.TrimNullBytesString(respBuf[1:65])`.
+4. Use `git diff` to confirm the changes across all modified files were applied correctly.
+5. Record the learning in `.jules/bolt.md`.
+   - Add a new entry with Title: `[Zero-Allocation String Trimming]`.
+   - Learning: Using `bytes.TrimRight` recursively checks both ends and requires casting to string, which causes heap allocations. `bytes.IndexByte` followed by `unsafe.String` eliminates allocations and reduces CPU overhead.
+   - Action: When trimming padding (e.g. null bytes) from fixed-size byte slices, prefer `bytes.IndexByte` and `unsafe.String` to avoid allocation overhead.
+6. Run the full test suite (`cd src && go test ./common ./transport`) to ensure the changes are correct and have not introduced regressions.
+7. Complete pre-commit steps to ensure proper testing, verification, review, and reflection are done.
+8. Submit a Pull Request.
+   - Title: "⚡ Bolt: Zero-Allocation String Trimming"
+   - Description must contain What, Why, Impact, and Measurement.

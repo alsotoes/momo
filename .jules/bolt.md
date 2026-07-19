@@ -140,3 +140,6 @@
 ## 2024-05-18 - Centralize Optimization Logic for Readability
 **Learning:** Optimizing performance by eliminating heap allocations using stack-allocated buffers and `strconv.AppendInt` is highly effective. However, directly inlining the byte-copying and null-padding loops across multiple locations reduces code readability and encapsulation. Replacing one clean line with six lines of manual slice manipulation violates the principle of not sacrificing readability for micro-optimizations.
 **Action:** When repeatedly applying manual padding or formatting optimizations, encapsulate the verbose logic into a centralized helper function (like `common.AppendPaddedInt`) and reuse it across call sites to maintain clean, readable code while achieving the desired performance gains.
+## 2026-07-19 - [Zero-Allocation String Trimming]
+**Learning:** Using `bytes.TrimRight` recursively checks both ends and requires casting to string, which causes heap allocations. `bytes.IndexByte` followed by `unsafe.String` eliminates allocations and reduces CPU overhead.
+**Action:** When trimming padding (e.g. null bytes) from fixed-size byte slices, prefer `bytes.IndexByte` and `unsafe.String` to avoid allocation overhead.
