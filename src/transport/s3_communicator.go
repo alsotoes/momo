@@ -266,17 +266,18 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			}
 
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			var respBuf bytes.Buffer
-			var intBuf [32]byte
-			respBuf.WriteString("HTTP/1.1 200 OK\r\n")
-			respBuf.WriteString("Content-Type: application/xml\r\n")
-			respBuf.WriteString("Content-Length: ")
-			respBuf.Write(strconv.AppendInt(intBuf[:0], int64(len(xmlBytes)), 10))
-			respBuf.WriteString("\r\nConnection: close\r\n\r\n")
-			respBuf.Write(xmlBytes)
+			// ⚡ Bolt: Eliminate bytes.Buffer heap allocations by using a stack-allocated byte array and append.
+			var headerBuf [128]byte
+			b := headerBuf[:0]
+			b = append(b, "HTTP/1.1 200 OK\r\nContent-Type: application/xml\r\nContent-Length: "...)
+			b = strconv.AppendInt(b, int64(len(xmlBytes)), 10)
+			b = append(b, "\r\nConnection: close\r\n\r\n"...)
 
-			if _, err := m.conn.Write(respBuf.Bytes()); err != nil {
-				return 0, 0, fmt.Errorf("failed to write XML list response: %w", err)
+			if _, err := m.conn.Write(b); err != nil {
+				return 0, 0, fmt.Errorf("failed to write XML list headers: %v: %w", err, syscall.EPIPE)
+			}
+			if _, err := m.conn.Write(xmlBytes); err != nil {
+				return 0, 0, fmt.Errorf("failed to write XML list response: %v: %w", err, syscall.EPIPE)
 			}
 
 			return 0, 0, ErrRequestHandled
@@ -304,17 +305,15 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		}
 		m.conn.SetWriteDeadline(time.Now().Add(copyTimeout))
 
-		var respBuf bytes.Buffer
-		var intBuf [32]byte
-		respBuf.WriteString("HTTP/1.1 200 OK\r\n")
-		respBuf.WriteString("Content-Length: ")
-		respBuf.Write(strconv.AppendInt(intBuf[:0], meta.Size, 10))
-		respBuf.WriteString("\r\n")
-		respBuf.WriteString("Content-Type: application/octet-stream\r\n")
-		respBuf.WriteString("Connection: close\r\n\r\n")
+		// ⚡ Bolt: Eliminate bytes.Buffer heap allocations by using a stack-allocated byte array and append.
+		var headerBuf [128]byte
+		b := headerBuf[:0]
+		b = append(b, "HTTP/1.1 200 OK\r\nContent-Length: "...)
+		b = strconv.AppendInt(b, meta.Size, 10)
+		b = append(b, "\r\nContent-Type: application/octet-stream\r\nConnection: close\r\n\r\n"...)
 
-		if _, err := m.conn.Write(respBuf.Bytes()); err != nil {
-			return 0, 0, fmt.Errorf("failed to write GET headers: %w", err)
+		if _, err := m.conn.Write(b); err != nil {
+			return 0, 0, fmt.Errorf("failed to write GET headers: %v: %w", err, syscall.EPIPE)
 		}
 
 		if _, err := io.Copy(m.conn, rc); err != nil {
