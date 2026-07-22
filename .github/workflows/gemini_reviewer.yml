@@ -2,7 +2,7 @@ name: Gemini AI Reviewer
 
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'src/**/*.go'
       - 'go.mod'
@@ -26,11 +26,14 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Use PERSONAL_ACCESS_TOKEN (PAT) if defined so comments are posted under your personal account
+          # (e.g. @alsotoes) allowing Jules to automatically recognize and fix them, falling back to standard.
+          GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
           # Fetch origin/master for comparison
           git fetch origin master

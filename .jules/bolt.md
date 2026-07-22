@@ -132,7 +132,15 @@
 ## 2026-07-04 - Eliminate strconv.Itoa Allocations
 **Learning:** Using `strconv.Itoa` forces a memory allocation as it creates and returns a new string. In performance-critical network paths, this causes unnecessary garbage collection overhead.
 **Action:** Replace `strconv.Itoa(val)` and string concatenations with `strconv.AppendInt` using a fixed-size stack-allocated array (e.g., `var buf [32]byte`) to safely eliminate heap allocations.
+
+## 2026-07-07 - Eliminate heap allocations for multiple integer fields in network payloads
+**Learning:** Using `strconv.Itoa` and `strconv.FormatInt` combined with `bytes.Buffer.WriteString` inside functions generating network payloads causes dynamic string allocations. The string concatenation or `FormatInt` call allocates memory on the heap before the data is written to the buffer.
+**Action:** When a function formats and writes multiple integers sequentially to a `bytes.Buffer` (e.g., when constructing XML or HTTP headers), define a single stack-allocated buffer (e.g., `var intBuf [32]byte`) at the top of the function. Use `strconv.AppendInt(intBuf[:0], val, 10)` and `buf.Write()` to format integers and write them without triggering heap allocations.
+
 ## 2026-07-10 - Eliminate strconv.FormatInt Allocations
 **Learning:** Using `strconv.FormatInt` creates a dynamic allocation and copies the string, leading to unnecessary heap escapes, especially when padding the string.
-**Action:** Replace `strconv.FormatInt` and  with `strconv.AppendInt` onto a stack-allocated buffer.
-**Action:** Replace strconv.FormatInt with strconv.AppendInt onto a stack-allocated buffer.
+**Action:** Replace `strconv.FormatInt` with `strconv.AppendInt` onto a stack-allocated buffer.
+
+## 2024-05-18 - Centralize Optimization Logic for Readability
+**Learning:** Optimizing performance by eliminating heap allocations using stack-allocated buffers and `strconv.AppendInt` is highly effective. However, directly inlining the byte-copying and null-padding loops across multiple locations reduces code readability and encapsulation. Replacing one clean line with six lines of manual slice manipulation violates the principle of not sacrificing readability for micro-optimizations.
+**Action:** When repeatedly applying manual padding or formatting optimizations, encapsulate the verbose logic into a centralized helper function (like `common.AppendPaddedInt`) and reuse it across call sites to maintain clean, readable code while achieving the desired performance gains.

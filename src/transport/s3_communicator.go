@@ -267,11 +267,11 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			var respBuf bytes.Buffer
+			var intBuf [32]byte
 			respBuf.WriteString("HTTP/1.1 200 OK\r\n")
 			respBuf.WriteString("Content-Type: application/xml\r\n")
 			respBuf.WriteString("Content-Length: ")
-			var lenBuf [32]byte
-			respBuf.Write(strconv.AppendInt(lenBuf[:0], int64(len(xmlBytes)), 10))
+			respBuf.Write(strconv.AppendInt(intBuf[:0], int64(len(xmlBytes)), 10))
 			respBuf.WriteString("\r\nConnection: close\r\n\r\n")
 			respBuf.Write(xmlBytes)
 
@@ -305,19 +305,20 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		m.conn.SetWriteDeadline(time.Now().Add(copyTimeout))
 
 		var respBuf bytes.Buffer
+		var intBuf [32]byte
 		respBuf.WriteString("HTTP/1.1 200 OK\r\n")
 		respBuf.WriteString("Content-Length: ")
-		var sizeBuf [32]byte
-		respBuf.Write(strconv.AppendInt(sizeBuf[:0], meta.Size, 10))
-		respBuf.WriteString("\r\nContent-Type: application/octet-stream\r\n")
+		respBuf.Write(strconv.AppendInt(intBuf[:0], meta.Size, 10))
+		respBuf.WriteString("\r\n")
+		respBuf.WriteString("Content-Type: application/octet-stream\r\n")
 		respBuf.WriteString("Connection: close\r\n\r\n")
 
 		if _, err := m.conn.Write(respBuf.Bytes()); err != nil {
-			return 0, 0, fmt.Errorf("failed to write GET headers: %w", err)
+			return 0, 0, fmt.Errorf("failed to write GET headers: %v: %w", err, syscall.EIO)
 		}
 
 		if _, err := io.Copy(m.conn, rc); err != nil {
-			return 0, 0, fmt.Errorf("failed to stream GET body: %w", err)
+			return 0, 0, fmt.Errorf("failed to stream GET body: %v: %w", err, syscall.EIO)
 		}
 
 		return 0, 0, ErrRequestHandled
@@ -396,7 +397,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		}
 
 		// 🛡️ Sentinel: Sanitize S3 hash to prevent directory traversal via malicious metadata.
-		if m.meta.Hash != "" && hasPathTraversalChars(m.meta.Hash) {
+		if m.meta.Hash != "" && common.HasPathTraversalChars(m.meta.Hash) {
 			return 0, 0, fmt.Errorf("invalid hash: %s: %w", m.meta.Hash, syscall.EBADMSG)
 		}
 	}
@@ -544,7 +545,7 @@ func (m *S3Communicator) ReceiveMetadata() (meta common.FileMetadata, err error)
 		}
 
 		// 🛡️ Sentinel: Sanitize S3 hash to prevent directory traversal via malicious metadata.
-		if hash != "" && hasPathTraversalChars(hash) {
+		if hash != "" && common.HasPathTraversalChars(hash) {
 			return common.FileMetadata{}, fmt.Errorf("invalid hash: %s: %w", hash, syscall.EBADMSG)
 		}
 		m.meta.Hash = hash
@@ -644,18 +645,6 @@ func (m *S3Communicator) RemoteAddr() net.Addr {
 	return m.remoteAddr
 }
 
-// hasPathTraversalChars returns true if the string contains '.', '/' or '\'.
-// It is inlineable and operates directly on the string bytes without any heap allocation (Rule 19).
-func hasPathTraversalChars(s string) bool {
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c == '.' || c == '/' || c == '\\' {
-			return true
-		}
-	}
-	return false
-}
-
 // extractS3BucketAndKey parses the bucket name and key path from an S3 HTTP request.
 // It supports both virtual-host style and path-style S3 URL schemas.
 func extractS3BucketAndKey(req *http.Request) (bucket string, key string) {
@@ -694,13 +683,21 @@ func extractS3BucketAndKey(req *http.Request) (bucket string, key string) {
 
 // FormatListObjectsV2XML constructs an S3-compliant ListObjectsV2 XML response
 // using a pre-allocated bytes.Buffer to avoid excessive heap allocations (⚡ Bolt pattern).
-func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, files []common.FileMetadata) ([]byte, error) {
+func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, files []common.FileMetadata) (xmlBytes []byte, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in FormatListObjectsV2XML: %v", r)
+			err = fmt.Errorf("panic in FormatListObjectsV2XML: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	// 🛡️ Rule 35: Validate input strings for length limits (64 bytes) before writing to the bytes.Buffer.
 	if len(bucketName) > 64 || len(prefix) > 64 || len(delimiter) > 64 {
 		return nil, fmt.Errorf("FormatListObjectsV2XML input length exceeds limit: %w", syscall.EINVAL)
 	}
 
 	var buf bytes.Buffer
+	var intBuf [32]byte
 	buf.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)
 	buf.WriteString(`<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">`)
 
@@ -719,8 +716,7 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, f
 	}
 
 	buf.WriteString(`<MaxKeys>`)
-	var maxKeysBuf [32]byte
-	buf.Write(strconv.AppendInt(maxKeysBuf[:0], int64(maxKeys), 10))
+	buf.Write(strconv.AppendInt(intBuf[:0], int64(maxKeys), 10))
 	buf.WriteString(`</MaxKeys>`)
 
 	buf.WriteString(`<IsTruncated>false</IsTruncated>`)
@@ -766,8 +762,7 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, f
 		xmlEscape(&buf, file.Hash)
 		buf.WriteString(`"</ETag>`)
 		buf.WriteString(`<Size>`)
-		var sizeBuf [32]byte
-		buf.Write(strconv.AppendInt(sizeBuf[:0], file.Size, 10))
+		buf.Write(strconv.AppendInt(intBuf[:0], file.Size, 10))
 		buf.WriteString(`</Size>`)
 		buf.WriteString(`<StorageClass>STANDARD</StorageClass>`)
 		buf.WriteString(`</Contents>`)
@@ -788,8 +783,7 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, f
 	}
 
 	buf.WriteString(`<KeyCount>`)
-	var keyCountBuf [32]byte
-	buf.Write(strconv.AppendInt(keyCountBuf[:0], int64(keyCount), 10))
+	buf.Write(strconv.AppendInt(intBuf[:0], int64(keyCount), 10))
 	buf.WriteString(`</KeyCount>`)
 
 	buf.WriteString(`</ListBucketResult>`)

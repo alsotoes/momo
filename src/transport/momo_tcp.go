@@ -56,6 +56,9 @@ func (m *MomoTCPCommunicator) HandshakeClient(authToken string, timestamp int64,
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Recovered from panic in HandshakeClient: %v", r)
+			if m != nil {
+				m.Close()
+			}
 			err = fmt.Errorf("panic in HandshakeClient: %v: %w", r, syscall.EIO)
 		}
 	}()
@@ -64,7 +67,10 @@ func (m *MomoTCPCommunicator) HandshakeClient(authToken string, timestamp int64,
 	copy(handshakeBuf[0:common.AuthTokenLength], common.PadString(authToken, common.AuthTokenLength))
 
 	// ⚡ Bolt: Use PadString to ensure the timestamp is exactly 19 bytes and correctly placed.
-	common.AppendPaddedInt(handshakeBuf[common.AuthTokenLength:], timestamp, common.TimestampLength)
+	// We optimize this using a common helper to avoid intermediate string allocations.
+	if err := common.AppendPaddedInt(handshakeBuf[common.AuthTokenLength:], timestamp, common.TimestampLength); err != nil {
+		return 0, fmt.Errorf("failed to format handshake timestamp: %w", err)
+	}
 	
 	// Write the requested mode (1 byte) at the end
 	handshakeBuf[common.AuthTokenLength+common.TimestampLength] = byte(requestedMode + '0')
@@ -90,6 +96,9 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Recovered from panic in HandshakeServer: %v", r)
+			if m != nil {
+				m.Close()
+			}
 			err = fmt.Errorf("panic in HandshakeServer: %v: %w", r, syscall.EIO)
 		}
 	}()
@@ -97,6 +106,11 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 	var handshakeBuf [common.AuthTokenLength + common.TimestampLength + 1]byte
 	if _, err := io.ReadFull(io.LimitReader(m, common.AuthTokenLength+common.TimestampLength+1), handshakeBuf[:]); err != nil {
 		return 0, 0, fmt.Errorf("failed to read handshake: %v: %w", err, syscall.EBADMSG)
+	}
+
+	// 🛡️ Zero-Crash: Verify handshake buffer length bounds before slicing (Rule 4)
+	if len(handshakeBuf) < common.AuthTokenLength+common.TimestampLength+1 {
+		return 0, 0, fmt.Errorf("handshake buffer too small: %w", syscall.EBADMSG)
 	}
 
 	bufferAuthToken := handshakeBuf[:common.AuthTokenLength]
@@ -152,10 +166,12 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 				wireName = file.RemotePath + "/" + file.Name
 			}
 			copy(packet[64:128], common.PadString(wireName, 64))
-			common.AppendPaddedInt(packet[128:192], file.Size, 64)
+			if err := common.AppendPaddedInt(packet[128:], file.Size, 64); err != nil {
+				return 0, 0, fmt.Errorf("failed to format file size: %v: %w", err, syscall.EINVAL)
+			}
 
 			if _, err := m.Write(packet[:]); err != nil {
-				return 0, 0, fmt.Errorf("failed to write metadata packet: %w", err)
+				return 0, 0, fmt.Errorf("failed to write metadata packet: %v: %w", err, syscall.EIO)
 			}
 		}
 
@@ -226,9 +242,11 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 		// Write '0' (success status) + 64-byte size string
 		var respBuf [65]byte
 		respBuf[0] = '0'
-		common.AppendPaddedInt(respBuf[1:65], meta.Size, 64)
+		if err := common.AppendPaddedInt(respBuf[1:], meta.Size, 64); err != nil {
+			return 0, 0, fmt.Errorf("failed to format GET file size: %v: %w", err, syscall.EINVAL)
+		}
 		if _, err := m.Write(respBuf[:]); err != nil {
-			return 0, 0, fmt.Errorf("failed to send get ACK: %w", err)
+			return 0, 0, fmt.Errorf("failed to send get ACK: %v: %w", err, syscall.EIO)
 		}
 
 		// Progressive write deadline for payload copying (5s floor + 1s per MB)
@@ -320,7 +338,16 @@ func (m *MomoTCPCommunicator) ReceiveMetadata() (meta common.FileMetadata, err e
 		return metadata, err
 	}
 
+	// 🛡️ Zero-Crash: Verify metadata buffer length bounds before slicing (Rule 4)
+	if len(buffer) < hashLength+common.FileInfoLength+common.FileInfoLength {
+		return metadata, fmt.Errorf("metadata buffer too small: %w", syscall.EBADMSG)
+	}
+
 	metadata.Hash = common.SanitizeLog(string(bytesTrimNull(buffer[:hashLength])))
+	// 🛡️ Sentinel: Sanitize hash immediately to prevent path traversal in all downstream consumers.
+	if metadata.Hash == "" || common.HasPathTraversalChars(metadata.Hash) {
+		return common.FileMetadata{}, fmt.Errorf("invalid hash: %s: %w", metadata.Hash, syscall.EBADMSG)
+	}
 	metadata.Name = string(bytesTrimNull(buffer[hashLength : hashLength+common.FileInfoLength]))
 
 	size, err := common.SafeParseInt(buffer[hashLength+common.FileInfoLength:])
