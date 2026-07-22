@@ -8,14 +8,14 @@ This section is automatically updated by our GitHub Actions workflow.
 ```
                       │ /tmp/old_bench_filtered.txt │      /tmp/new_bench_filtered.txt       │
                       │           sec/op            │    sec/op      vs base                 │
-CrushOriginal-8                        370.1n ± ∞ ¹    375.8n ± ∞ ¹        ~ (p=1.000 n=1) ²
-CrushOptimized-8                       277.7n ± ∞ ¹    290.3n ± ∞ ¹        ~ (p=1.000 n=1) ²
-LoadGlobalConfig-8                     686.4n ± ∞ ¹    711.0n ± ∞ ¹        ~ (p=1.000 n=1) ²
-PadString-8                            1.818n ± ∞ ¹    2.354n ± ∞ ¹        ~ (p=1.000 n=1) ²
-CheckMetricsAndSwap-8                  6.168n ± ∞ ¹   10.410n ± ∞ ¹        ~ (p=1.000 n=1) ²
-IndexSearch-8                          2.591n ± ∞ ¹    2.916n ± ∞ ¹        ~ (p=1.000 n=1) ²
-IndexDirectTracking-8                 0.2762n ± ∞ ¹   0.5138n ± ∞ ¹        ~ (p=1.000 n=1) ²
-geomean                                17.80n          22.42n        +25.96%
+CrushOriginal-8                        445.9n ± ∞ ¹    409.6n ± ∞ ¹        ~ (p=1.000 n=1) ²
+CrushOptimized-8                       349.2n ± ∞ ¹    327.6n ± ∞ ¹        ~ (p=1.000 n=1) ²
+LoadGlobalConfig-8                    1159.0n ± ∞ ¹    746.8n ± ∞ ¹        ~ (p=1.000 n=1) ²
+PadString-8                            2.151n ± ∞ ¹    2.024n ± ∞ ¹        ~ (p=1.000 n=1) ²
+CheckMetricsAndSwap-8                  8.157n ± ∞ ¹    7.001n ± ∞ ¹        ~ (p=1.000 n=1) ²
+IndexSearch-8                          2.806n ± ∞ ¹    2.768n ± ∞ ¹        ~ (p=1.000 n=1) ²
+IndexDirectTracking-8                 0.4145n ± ∞ ¹   0.3715n ± ∞ ¹        ~ (p=1.000 n=1) ²
+geomean                                23.26n          20.38n        -12.38%
 ¹ need >= 6 samples for confidence interval at level 0.95
 ² need >= 4 samples to detect a difference at alpha level 0.05
 
@@ -53,13 +53,13 @@ geomean                                           ³                +0.00%      
 
 | Benchmark | Avg. Time/Op | Avg. Bytes/Op | Avg. Allocs/Op |
 |-----------|--------------|---------------|----------------|
-| BenchmarkCheckMetricsAndSwap-8 | 10.41 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkCrushOptimized-8 | 290.30 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkCrushOriginal-8 | 375.80 ns/op | 164.00 B/op | 3.00 allocs/op |
-| BenchmarkIndexDirectTracking-8 | 0.51 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkIndexSearch-8 | 2.92 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkLoadGlobalConfig-8 | 711.00 ns/op | 160.00 B/op | 1.00 allocs/op |
-| BenchmarkPadString-8 | 2.35 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkCheckMetricsAndSwap-8 | 7.00 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkCrushOptimized-8 | 327.60 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkCrushOriginal-8 | 409.60 ns/op | 164.00 B/op | 3.00 allocs/op |
+| BenchmarkIndexDirectTracking-8 | 0.37 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkIndexSearch-8 | 2.77 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkLoadGlobalConfig-8 | 746.80 ns/op | 160.00 B/op | 1.00 allocs/op |
+| BenchmarkPadString-8 | 2.02 ns/op | 0.00 B/op | 0.00 allocs/op |
 
 
 ### Performance History
@@ -83,13 +83,13 @@ xychart-beta
     x-axis "Commit"
     y-axis "Avg. Time (ns/op)"
     x-axis [loca]
-    line "CheckMetricsAndSwap" [6,7,14,7,6,6,7,7,6,10]
-    line "CrushOptimized" [265,295,618,264,255,245,263,280,255,290]
-    line "CrushOriginal" [399,426,831,362,367,368,359,367,362,376]
-    line "IndexDirectTracking" [0,0,1,0,0,0,0,0,0,1]
-    line "IndexSearch" [3,3,4,3,3,3,3,3,3,3]
-    line "LoadGlobalConfig" [619,815,1442,632,613,599,626,637,616,711]
-    line "PadString" [2,2,3,2,2,2,2,2,2,2]
+    line "CheckMetricsAndSwap" [14,7,6,6,7,7,6,8,6,7]
+    line "CrushOptimized" [618,264,255,245,263,280,255,293,317,328]
+    line "CrushOriginal" [831,362,367,368,359,367,362,401,371,410]
+    line "IndexDirectTracking" [1,0,0,0,0,0,0,0,0,0]
+    line "IndexSearch" [4,3,3,3,3,3,3,3,3,3]
+    line "LoadGlobalConfig" [1442,632,613,599,626,637,616,649,706,747]
+    line "PadString" [3,2,2,2,2,2,2,2,2,2]
     line "ParseReplicationOrder_NoPrealloc" [350,349,357,354,345,225,229,165,232,234]
     line "ParseReplicationOrder_Prealloc" [229,231,237,234,229,108,107,80,110,109]
 ```
