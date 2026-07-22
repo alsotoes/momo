@@ -267,18 +267,17 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			}
 
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			// ⚡ Bolt: Eliminate http.Response allocation and bytes.Buffer using stack buffer direct write
-			var buf [256]byte
-			b := buf[:0]
-			b = append(b, "HTTP/1.1 200 OK\r\nContent-Type: application/xml\r\nContent-Length: "...)
-			b = strconv.AppendInt(b, int64(len(xmlBytes)), 10)
-			b = append(b, "\r\nConnection: close\r\n\r\n"...)
+			var respBuf bytes.Buffer
+			var intBuf [32]byte
+			respBuf.WriteString("HTTP/1.1 200 OK\r\n")
+			respBuf.WriteString("Content-Type: application/xml\r\n")
+			respBuf.WriteString("Content-Length: ")
+			respBuf.Write(strconv.AppendInt(intBuf[:0], int64(len(xmlBytes)), 10))
+			respBuf.WriteString("\r\nConnection: close\r\n\r\n")
+			respBuf.Write(xmlBytes)
 
-			if _, err := m.conn.Write(b); err != nil {
-				return 0, 0, fmt.Errorf("failed to write XML list response headers: %v: %w", err, syscall.EPIPE)
-			}
-			if _, err := m.conn.Write(xmlBytes); err != nil {
-				return 0, 0, fmt.Errorf("failed to write XML list response: %v: %w", err, syscall.EPIPE)
+			if _, err := m.conn.Write(respBuf.Bytes()); err != nil {
+				return 0, 0, fmt.Errorf("failed to write XML list response: %w", err)
 			}
 
 			return 0, 0, ErrRequestHandled
@@ -306,19 +305,21 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		}
 		m.conn.SetWriteDeadline(time.Now().Add(copyTimeout))
 
-		// ⚡ Bolt: Eliminate http.Response allocation and bytes.Buffer using stack buffer direct write
-		var buf [256]byte
-		b := buf[:0]
-		b = append(b, "HTTP/1.1 200 OK\r\nContent-Length: "...)
-		b = strconv.AppendInt(b, meta.Size, 10)
-		b = append(b, "\r\nContent-Type: application/octet-stream\r\nConnection: close\r\n\r\n"...)
+		var respBuf bytes.Buffer
+		var intBuf [32]byte
+		respBuf.WriteString("HTTP/1.1 200 OK\r\n")
+		respBuf.WriteString("Content-Length: ")
+		respBuf.Write(strconv.AppendInt(intBuf[:0], meta.Size, 10))
+		respBuf.WriteString("\r\n")
+		respBuf.WriteString("Content-Type: application/octet-stream\r\n")
+		respBuf.WriteString("Connection: close\r\n\r\n")
 
-		if _, err := m.conn.Write(b); err != nil {
-			return 0, 0, fmt.Errorf("failed to write GET headers: %v: %w", err, syscall.EPIPE)
+		if _, err := m.conn.Write(respBuf.Bytes()); err != nil {
+			return 0, 0, fmt.Errorf("failed to write GET headers: %w", err)
 		}
 
 		if _, err := io.Copy(m.conn, rc); err != nil {
-			return 0, 0, fmt.Errorf("failed to stream GET body: %v: %w", err, syscall.EPIPE)
+			return 0, 0, fmt.Errorf("failed to stream GET body: %w", err)
 		}
 
 		return 0, 0, ErrRequestHandled
@@ -790,18 +791,10 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, f
 	return buf.Bytes(), nil
 }
 
-// ⚡ Bolt: Optimize XML escaping by replacing byte-by-byte iteration with fast-path
-// block writes using strings.IndexAny. This reduces loop overhead and leverages
-// optimized standard library routines for finding target characters, improving performance.
 func xmlEscape(buf *bytes.Buffer, s string) {
-	for len(s) > 0 {
-		i := strings.IndexAny(s, "&<>\"'")
-		if i == -1 {
-			buf.WriteString(s)
-			break
-		}
-		buf.WriteString(s[:i])
-		switch s[i] {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch c {
 		case '&':
 			buf.WriteString("&amp;")
 		case '<':
@@ -812,7 +805,8 @@ func xmlEscape(buf *bytes.Buffer, s string) {
 			buf.WriteString("&quot;")
 		case '\'':
 			buf.WriteString("&apos;")
+		default:
+			buf.WriteByte(c)
 		}
-		s = s[i+1:]
 	}
 }
