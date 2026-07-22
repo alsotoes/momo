@@ -140,3 +140,6 @@
 ## 2024-05-18 - Centralize Optimization Logic for Readability
 **Learning:** Optimizing performance by eliminating heap allocations using stack-allocated buffers and `strconv.AppendInt` is highly effective. However, directly inlining the byte-copying and null-padding loops across multiple locations reduces code readability and encapsulation. Replacing one clean line with six lines of manual slice manipulation violates the principle of not sacrificing readability for micro-optimizations.
 **Action:** When repeatedly applying manual padding or formatting optimizations, encapsulate the verbose logic into a centralized helper function (like `common.AppendPaddedInt`) and reuse it across call sites to maintain clean, readable code while achieving the desired performance gains.
+## 2026-07-10 - Acknowledge obsolete work
+**Learning:** When a code change or optimization is flagged as redundant or already implemented in a pull request review, acknowledge the comment, revert the local changes, and find a new optimization rather than attempting to merge or update the obsolete code.
+**Action:** Use `git reset --hard` to drop the obsolete changes.
