@@ -274,10 +274,10 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			b = append(b, "\r\nConnection: close\r\n\r\n"...)
 
 			if _, err := m.conn.Write(b); err != nil {
-				return 0, 0, fmt.Errorf("failed to write XML list response headers: %w", err)
+				return 0, 0, fmt.Errorf("failed to write XML list response headers: %v: %w", err, syscall.EPIPE)
 			}
 			if _, err := m.conn.Write(xmlBytes); err != nil {
-				return 0, 0, fmt.Errorf("failed to write XML list response: %w", err)
+				return 0, 0, fmt.Errorf("failed to write XML list response: %v: %w", err, syscall.EPIPE)
 			}
 
 			return 0, 0, ErrRequestHandled
@@ -313,11 +313,11 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		b = append(b, "\r\nContent-Type: application/octet-stream\r\nConnection: close\r\n\r\n"...)
 
 		if _, err := m.conn.Write(b); err != nil {
-			return 0, 0, fmt.Errorf("failed to write GET headers: %w", err)
+			return 0, 0, fmt.Errorf("failed to write GET headers: %v: %w", err, syscall.EPIPE)
 		}
 
 		if _, err := io.Copy(m.conn, rc); err != nil {
-			return 0, 0, fmt.Errorf("failed to stream GET body: %w", err)
+			return 0, 0, fmt.Errorf("failed to stream GET body: %v: %w", err, syscall.EPIPE)
 		}
 
 		return 0, 0, ErrRequestHandled
