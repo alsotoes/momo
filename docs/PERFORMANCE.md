@@ -6,16 +6,16 @@ This section is automatically updated by our GitHub Actions workflow.
 ### Comparison with previous commit
 
 ```
-                      │ /tmp/old_bench_filtered.txt │      /tmp/new_bench_filtered.txt      │
-                      │           sec/op            │    sec/op      vs base                │
-CrushOriginal-8                        424.1n ± ∞ ¹    423.1n ± ∞ ¹       ~ (p=1.000 n=1) ²
-CrushOptimized-8                       307.7n ± ∞ ¹    304.5n ± ∞ ¹       ~ (p=1.000 n=1) ²
-LoadGlobalConfig-8                     694.3n ± ∞ ¹    725.5n ± ∞ ¹       ~ (p=1.000 n=1) ²
-PadString-8                            1.880n ± ∞ ¹    1.888n ± ∞ ¹       ~ (p=1.000 n=1) ²
-CheckMetricsAndSwap-8                  7.065n ± ∞ ¹    6.977n ± ∞ ¹       ~ (p=1.000 n=1) ²
-IndexSearch-8                          2.843n ± ∞ ¹    2.721n ± ∞ ¹       ~ (p=1.000 n=1) ²
-IndexDirectTracking-8                 0.3494n ± ∞ ¹   0.3254n ± ∞ ¹       ~ (p=1.000 n=1) ²
-geomean                                19.81n          19.55n        -1.31%
+                      │ /tmp/old_bench_filtered.txt │      /tmp/new_bench_filtered.txt       │
+                      │           sec/op            │    sec/op      vs base                 │
+CrushOriginal-8                        440.0n ± ∞ ¹    775.1n ± ∞ ¹        ~ (p=1.000 n=1) ²
+CrushOptimized-8                       365.2n ± ∞ ¹    399.5n ± ∞ ¹        ~ (p=1.000 n=1) ²
+LoadGlobalConfig-8                    1044.0n ± ∞ ¹    953.3n ± ∞ ¹        ~ (p=1.000 n=1) ²
+PadString-8                            2.046n ± ∞ ¹    2.367n ± ∞ ¹        ~ (p=1.000 n=1) ²
+CheckMetricsAndSwap-8                  8.356n ± ∞ ¹   12.120n ± ∞ ¹        ~ (p=1.000 n=1) ²
+IndexSearch-8                          3.197n ± ∞ ¹    3.548n ± ∞ ¹        ~ (p=1.000 n=1) ²
+IndexDirectTracking-8                 0.4266n ± ∞ ¹   0.4039n ± ∞ ¹        ~ (p=1.000 n=1) ²
+geomean                                23.46n          27.58n        +17.56%
 ¹ need >= 6 samples for confidence interval at level 0.95
 ² need >= 4 samples to detect a difference at alpha level 0.05
 
@@ -53,13 +53,13 @@ geomean                                           ³                +0.00%      
 
 | Benchmark | Avg. Time/Op | Avg. Bytes/Op | Avg. Allocs/Op |
 |-----------|--------------|---------------|----------------|
-| BenchmarkCheckMetricsAndSwap-8 | 6.98 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkCrushOptimized-8 | 304.50 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkCrushOriginal-8 | 423.10 ns/op | 164.00 B/op | 3.00 allocs/op |
-| BenchmarkIndexDirectTracking-8 | 0.33 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkIndexSearch-8 | 2.72 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkLoadGlobalConfig-8 | 725.50 ns/op | 160.00 B/op | 1.00 allocs/op |
-| BenchmarkPadString-8 | 1.89 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkCheckMetricsAndSwap-8 | 12.12 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkCrushOptimized-8 | 399.50 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkCrushOriginal-8 | 775.10 ns/op | 164.00 B/op | 3.00 allocs/op |
+| BenchmarkIndexDirectTracking-8 | 0.40 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkIndexSearch-8 | 3.55 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkLoadGlobalConfig-8 | 953.30 ns/op | 160.00 B/op | 1.00 allocs/op |
+| BenchmarkPadString-8 | 2.37 ns/op | 0.00 B/op | 0.00 allocs/op |
 
 
 ### Performance History
@@ -83,13 +83,13 @@ xychart-beta
     x-axis "Commit"
     y-axis "Avg. Time (ns/op)"
     x-axis [loca]
-    line "CheckMetricsAndSwap" [6,7,14,7,6,6,7,7,6,7]
-    line "CrushOptimized" [265,295,618,264,255,245,263,280,255,304]
-    line "CrushOriginal" [399,426,831,362,367,368,359,367,362,423]
-    line "IndexDirectTracking" [0,0,1,0,0,0,0,0,0,0]
-    line "IndexSearch" [3,3,4,3,3,3,3,3,3,3]
-    line "LoadGlobalConfig" [619,815,1442,632,613,599,626,637,616,726]
-    line "PadString" [2,2,3,2,2,2,2,2,2,2]
+    line "CheckMetricsAndSwap" [7,14,7,6,6,7,7,6,7,12]
+    line "CrushOptimized" [295,618,264,255,245,263,280,255,304,400]
+    line "CrushOriginal" [426,831,362,367,368,359,367,362,423,775]
+    line "IndexDirectTracking" [0,1,0,0,0,0,0,0,0,0]
+    line "IndexSearch" [3,4,3,3,3,3,3,3,3,4]
+    line "LoadGlobalConfig" [815,1442,632,613,599,626,637,616,726,953]
+    line "PadString" [2,3,2,2,2,2,2,2,2,2]
     line "ParseReplicationOrder_NoPrealloc" [350,349,357,354,345,225,229,165,232,234]
     line "ParseReplicationOrder_Prealloc" [229,231,237,234,229,108,107,80,110,109]
 ```
