@@ -8,6 +8,12 @@ on:
       - 'go.mod'
       - 'go.sum'
       - 'Makefile'
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to review (manual trigger)'
+        required: true
+        type: string
 
 jobs:
   review:
@@ -35,9 +41,20 @@ jobs:
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
           PR_BRANCH: ${{ github.event.pull_request.head.ref }}
         run: |
+          # For workflow_dispatch, fetch PR metadata not available from the event payload
+          if [[ -z "$PR_BRANCH" && -n "$PR_NUMBER" ]]; then
+            gh pr view "$PR_NUMBER" --json headRefName,author,body,title > /tmp/pr.json
+            export PR_BRANCH=$(jq -r .headRefName /tmp/pr.json)
+            export PR_AUTHOR=$(jq -r .author.login /tmp/pr.json)
+            export PR_BODY=$(jq -r .body /tmp/pr.json)
+            export PR_TITLE=$(jq -r .title /tmp/pr.json)
+            git fetch origin "$PR_BRANCH"
+            git checkout "$PR_BRANCH"
+          fi
+
           # Fetch origin/master for comparison
           git fetch origin master
 
@@ -49,5 +66,5 @@ jobs:
             echo "$REVIEW_OUTPUT" > review_comment.txt
 
             # Post the review as @github-actions[bot] (using the workflow GITHUB_TOKEN)
-            GH_TOKEN="$BOT_TOKEN" gh pr review ${{ github.event.pull_request.number }} --comment --body-file review_comment.txt
+            GH_TOKEN="$BOT_TOKEN" gh pr review "$PR_NUMBER" --comment --body-file review_comment.txt
           fi
