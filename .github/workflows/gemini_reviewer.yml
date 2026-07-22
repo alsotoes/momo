@@ -8,6 +8,12 @@ on:
       - 'go.mod'
       - 'go.sum'
       - 'Makefile'
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to review'
+        required: true
+        type: string
 
 jobs:
   review:
@@ -26,14 +32,23 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
-          # Use PERSONAL_ACCESS_TOKEN (PAT) if defined so comments are posted under your personal account
-          # (e.g. @alsotoes) allowing Jules to automatically recognize and fix them, falling back to standard.
+          # Use PERSONAL_ACCESS_TOKEN (PAT) for issue/PR management (Jules self-healing)
           GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
+          # Use BOT_TOKEN (secrets.GITHUB_TOKEN) to post reviews as github-actions[bot]
+          BOT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          DISPATCH_PR_NUMBER: ${{ github.event.inputs.pr_number }}
         run: |
+          # Use workflow_dispatch PR number if provided
+          EFFECTIVE_PR_NUMBER="${PR_NUMBER:-$DISPATCH_PR_NUMBER}"
+          if [[ -z "$EFFECTIVE_PR_NUMBER" || "$EFFECTIVE_PR_NUMBER" == "null" ]]; then
+            EFFECTIVE_PR_NUMBER="$DISPATCH_PR_NUMBER"
+          fi
+          echo "Reviewing PR #$EFFECTIVE_PR_NUMBER"
+
           # Fetch origin/master for comparison
           git fetch origin master
 
@@ -44,5 +59,6 @@ jobs:
           if [[ -n "$REVIEW_OUTPUT" && "$REVIEW_OUTPUT" != "No relevant changes to review." ]]; then
             echo "$REVIEW_OUTPUT" > review_comment.txt
 
-            gh pr review ${{ github.event.pull_request.number }} --comment --body-file review_comment.txt
+            # Post review as github-actions[bot] using BOT_TOKEN
+            GH_TOKEN="$BOT_TOKEN" gh pr review "$EFFECTIVE_PR_NUMBER" --comment --body-file review_comment.txt
           fi
