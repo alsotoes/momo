@@ -708,3 +708,10 @@ local-commit,BenchmarkIndexDirectTracking-8,0.71,0.00,0.00
 local-commit,BenchmarkIndexSearch-8,4.13,0.00,0.00
 local-commit,BenchmarkLoadGlobalConfig-8,1644.00,160.00,1.00
 local-commit,BenchmarkPadString-8,3.78,0.00,0.00
+local-commit,BenchmarkCheckMetricsAndSwap-8,8.61,0.00,0.00
+local-commit,BenchmarkCrushOptimized-8,386.30,0.00,0.00
+local-commit,BenchmarkCrushOriginal-8,532.50,164.00,3.00
+local-commit,BenchmarkIndexDirectTracking-8,0.36,0.00,0.00
+local-commit,BenchmarkIndexSearch-8,3.33,0.00,0.00
+local-commit,BenchmarkLoadGlobalConfig-8,936.10,160.00,1.00
+local-commit,BenchmarkPadString-8,2.19,0.00,0.00
