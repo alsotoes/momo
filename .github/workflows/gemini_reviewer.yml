@@ -43,7 +43,6 @@ jobs:
           # If output is not empty and not just "No relevant changes...", post it as a formal review
           if [[ -n "$REVIEW_OUTPUT" && "$REVIEW_OUTPUT" != "No relevant changes to review." ]]; then
             echo "$REVIEW_OUTPUT" > review_comment.txt
-            
+
             gh pr review ${{ github.event.pull_request.number }} --comment --body-file review_comment.txt
           fi
-
