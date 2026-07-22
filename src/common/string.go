@@ -2,10 +2,30 @@ package common
 
 import (
 	"path"
+	"strconv"
 	"strings"
 	"syscall"
 	"unsafe"
 )
+
+// AppendPaddedInt appends the string representation of val to dst and pads it to width with null bytes.
+// It assumes dst is large enough to hold at least width bytes and that the int representation
+// is less than or equal to width bytes. If len(dst) < width, it returns syscall.EINVAL.
+func AppendPaddedInt(dst []byte, val int64, width int) error {
+	if len(dst) < width {
+		return syscall.EINVAL
+	}
+	var numBuf [32]byte
+	b := strconv.AppendInt(numBuf[:0], val, 10)
+	if len(b) > width {
+		return syscall.EINVAL
+	}
+	copy(dst, b)
+	for i := len(b); i < width; i++ {
+		dst[i] = 0
+	}
+	return nil
+}
 
 // HasPathTraversalChars returns true if the string contains '.', '/' or '\'.
 // It is inlineable and operates directly on the string bytes without any heap allocation (Rule 19).
