@@ -72,7 +72,7 @@ def create_missing_issue(pr_number, pr_title, pr_body):
         issue_body = f"This issue was created autonomously to satisfy Rule 11 (Traceability) for PR #{pr_number}.\n\n### Original PR Description:\n{pr_body}"
         
         # Create the issue
-        cmd = ["gh", "issue", "create", "--title", issue_title, "--body", issue_body, "--label", "enhancement"]
+        cmd = ["gh", "issue", "create", "--title", issue_title, "--body", issue_body, "--label", "enhancement", "--label", "automation", "--assignee", "alsotoes"]
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         issue_url = result.stdout.strip()
         
@@ -143,8 +143,8 @@ def main():
             elif "bolt" in pr_title.lower():
                 subprocess.run(["gh", "pr", "edit", pr_number, "--add-label", "enhancement"])
         
-        # 2. Assignment for alsotoes PRs
-        if pr_author.lower() == "alsotoes":
+        # 2. Assignment: assign alsotoes to own PRs and Jules-bot PRs (alsotoes is owner/co-author)
+        if pr_author.lower() == "alsotoes" or is_jules_pr:
             subprocess.run(["gh", "pr", "edit", pr_number, "--add-assignee", "alsotoes"])
 
     jules_commits = get_jules_commit_count()
