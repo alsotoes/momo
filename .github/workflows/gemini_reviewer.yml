@@ -26,9 +26,12 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
-          # Use PERSONAL_ACCESS_TOKEN (PAT) if defined so comments are posted under your personal account
-          # (e.g. @alsotoes) allowing Jules to automatically recognize and fix them, falling back to standard.
+          # PAT (if defined) is used for issue/PR management (tracking issues, labels, assignees, merge)
+          # so Jules self-healing continues to work under @alsotoes.
           GITHUB_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
+          # The workflow's own GITHUB_TOKEN posts the review so it appears under @github-actions[bot],
+          # making the bot the reviewer on every PR (as intended before the PAT change).
+          BOT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_TITLE: ${{ github.event.pull_request.title }}
@@ -44,7 +47,7 @@ jobs:
           # If output is not empty and not just "No relevant changes...", post it as a formal review
           if [[ -n "$REVIEW_OUTPUT" && "$REVIEW_OUTPUT" != "No relevant changes to review." ]]; then
             echo "$REVIEW_OUTPUT" > review_comment.txt
-            
-            gh pr review ${{ github.event.pull_request.number }} --comment --body-file review_comment.txt
-          fi
 
+            # Post the review as @github-actions[bot] (using the workflow GITHUB_TOKEN)
+            GH_TOKEN="$BOT_TOKEN" gh pr review ${{ github.event.pull_request.number }} --comment --body-file review_comment.txt
+          fi
