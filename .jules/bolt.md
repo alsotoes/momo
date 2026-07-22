@@ -137,10 +137,9 @@
 **Learning:** Using `strconv.Itoa` and `strconv.FormatInt` combined with `bytes.Buffer.WriteString` inside functions generating network payloads causes dynamic string allocations. The string concatenation or `FormatInt` call allocates memory on the heap before the data is written to the buffer.
 **Action:** When a function formats and writes multiple integers sequentially to a `bytes.Buffer` (e.g., when constructing XML or HTTP headers), define a single stack-allocated buffer (e.g., `var intBuf [32]byte`) at the top of the function. Use `strconv.AppendInt(intBuf[:0], val, 10)` and `buf.Write()` to format integers and write them without triggering heap allocations.
 
-## 2026-07-10 - Eliminate strconv.FormatInt Allocations
-**Learning:** Using `strconv.FormatInt` creates a dynamic allocation and copies the string, leading to unnecessary heap escapes, especially when padding the string.
-**Action:** Replace `strconv.FormatInt` with `strconv.AppendInt` onto a stack-allocated buffer.
-
 ## 2024-05-18 - Centralize Optimization Logic for Readability
 **Learning:** Optimizing performance by eliminating heap allocations using stack-allocated buffers and `strconv.AppendInt` is highly effective. However, directly inlining the byte-copying and null-padding loops across multiple locations reduces code readability and encapsulation. Replacing one clean line with six lines of manual slice manipulation violates the principle of not sacrificing readability for micro-optimizations.
 **Action:** When repeatedly applying manual padding or formatting optimizations, encapsulate the verbose logic into a centralized helper function (like `common.AppendPaddedInt`) and reuse it across call sites to maintain clean, readable code while achieving the desired performance gains.
+## 2026-07-10 - Acknowledge obsolete work
+**Learning:** When a code change or optimization is flagged as redundant or already implemented in a pull request review, acknowledge the comment, revert the local changes, and find a new optimization rather than attempting to merge or update the obsolete code.
+**Action:** Use `git reset --hard` to drop the obsolete changes.

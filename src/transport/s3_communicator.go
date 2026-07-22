@@ -314,11 +314,11 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		respBuf.WriteString("Connection: close\r\n\r\n")
 
 		if _, err := m.conn.Write(respBuf.Bytes()); err != nil {
-			return 0, 0, fmt.Errorf("failed to write GET headers: %v: %w", err, syscall.EIO)
+			return 0, 0, fmt.Errorf("failed to write GET headers: %w", err)
 		}
 
 		if _, err := io.Copy(m.conn, rc); err != nil {
-			return 0, 0, fmt.Errorf("failed to stream GET body: %v: %w", err, syscall.EIO)
+			return 0, 0, fmt.Errorf("failed to stream GET body: %w", err)
 		}
 
 		return 0, 0, ErrRequestHandled
