@@ -9,6 +9,7 @@ This document describes every test suite and validation step that runs in the Mo
 | Go | `go.yml` | push to master, PRs | Build, unit tests, benchmarks, E2E, coverage |
 | Smoke Test | `smoke_test.yml` | push to master, PRs | Multi-protocol file replication verification |
 | Scale & CAS E2E | `scale_cas_test.yml` | push to master, PRs | CAS storage scale testing |
+| P2P Gossip E2E | `p2p_test.yml` | push to master, PRs | P2P gossip convergence + failure detection |
 | Performance Comparison | `benchmark_compare.yml` | PRs, push to master | Benchmark regression detection (>5% threshold) |
 | Go Version Consistency | `verify_go_version.yml` | PRs, push to master | Go version sync across all config files |
 | Gemini AI Reviewer | `gemini_reviewer.yml` | PRs | AI code review (security, performance, architecture) |
@@ -31,7 +32,6 @@ The primary CI pipeline. Runs on every push to `master` and every PR targeting `
 | **Test** | `make test` | `go test -v -race -cover` across all modules |
 | **Benchmark** | `make benchmark` | `go test -bench=. -benchmem` across all modules |
 | **E2E Integration Tests** | `make test-e2e` | 3-node cluster: file upload + replication consistency |
-| **E2E P2P Gossip Tests** | `make test-e2e-p2p` | 3-node cluster with P2P enabled: gossip convergence + failure detection |
 | **Coverage** | `make coverage` | Generates HTML coverage report |
 | **Upload Coverage** | `upload-artifact` | Stores `coverage.out` as CI artifact |
 
@@ -71,6 +71,22 @@ Each smoke test:
 ## Scale & CAS E2E Test (`scale_cas_test.yml`)
 
 Runs `.github/scripts/test-scale-cas.sh` — exercises the CAS (Content-Addressable Storage) engine at scale, verifying CRUSH placement, deduplication, and metadata consistency.
+
+---
+
+## P2P Gossip E2E Test (`p2p_test.yml`)
+
+Runs `.github/scripts/test-e2e-p2p.sh` — tests P2P gossip membership and failure detection across 3 separate momo server processes.
+
+1. Builds momo binary
+2. Creates a 3-daemon config with `[p2p] enabled=true`
+3. Starts 3 server processes with P2P gossip enabled
+4. Waits for gossip convergence (8 seconds)
+5. Verifies all nodes started P2P gossip
+6. Verifies nodes discovered each other via gossip heartbeats
+7. **Kills node 2** to simulate failure
+8. Waits for suspicion timeout (12 seconds)
+9. Verifies surviving nodes marked the dead node as SUSPECT or OFFLINE
 
 ---
 
@@ -124,20 +140,6 @@ Tests file replication across 3 separate momo server processes.
 6. Verifies the file content exists on all 3 nodes
 
 **Protocols tested:** `momo-tcp`, `momo-quic`, `s3-tcp`, `s3-quic`
-
-### P2P Gossip E2E (`test-e2e-p2p.sh`)
-
-Tests P2P gossip membership and failure detection across 3 separate momo server processes.
-
-1. Builds momo binary
-2. Creates a 3-daemon config with `[p2p] enabled=true`
-3. Starts 3 server processes with P2P gossip enabled
-4. Waits for gossip convergence (8 seconds)
-5. Verifies all nodes started P2P gossip
-6. Verifies nodes discovered each other via gossip heartbeats
-7. **Kills node 2** to simulate failure
-8. Waits for suspicion timeout (12 seconds)
-9. Verifies surviving nodes marked the dead node as SUSPECT or OFFLINE
 
 ---
 
