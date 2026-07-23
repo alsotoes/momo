@@ -157,6 +157,10 @@
 **Learning:** In Go, iterating over a string byte-by-byte using a standard `for` loop and calling `buf.WriteByte` or `buf.WriteString` for every character (like when escaping XML entities) involves high loop and function call overhead. Using `strings.IndexAny` from the standard library to find the next target character allows for writing safe chunks of the string in bulk using `buf.WriteString`, significantly improving performance.
 **Action:** When escaping characters in long strings, prefer bulk search and copy operations (`strings.IndexAny` + `buf.WriteString(s[:idx])`) over character-by-character processing to reduce CPU overhead.
 
+## 2026-07-19 - [Zero-Allocation String Trimming]
+**Learning:** Using `bytes.TrimRight` recursively checks both ends and requires casting to string, which causes heap allocations. `bytes.IndexByte` followed by `unsafe.String` eliminates allocations and reduces CPU overhead.
+**Action:** When trimming padding (e.g. null bytes) from fixed-size byte slices, prefer `bytes.IndexByte` and `unsafe.String` to avoid allocation overhead.
+
 ## 2026-07-22 - Eliminate binary.Write Reflection Overhead
 **Learning:** In Go, using `binary.Write` with generic types (like `int32`) involves runtime reflection to inspect the type of the argument and dynamically allocate memory to write it. This creates unnecessary CPU overhead and heap escapes in performance-critical paths.
 **Action:** Replace `binary.Write` with direct serialization using `binary.LittleEndian` or `binary.BigEndian` methods (e.g., `PutUint32`) into a pre-allocated stack byte array. This eliminates reflection and dynamic allocations entirely.
