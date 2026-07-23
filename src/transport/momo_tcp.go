@@ -23,9 +23,10 @@ const hashLength = 64
 // MomoTCPCommunicator implements the Communicator interface for the legacy Momo TCP protocol.
 type MomoTCPCommunicator struct {
 	*common.IdleTimeoutConn
-	store         storage.Store
-	globalLister  GlobalLister
-	leaseAcquirer LeaseAcquirer
+	store            storage.Store
+	globalLister     GlobalLister
+	leaseAcquirer    LeaseAcquirer
+	deletePropagator DeletePropagator
 }
 
 // NewMomoTCPCommunicator creates a new MomoTCPCommunicator wrapping a net.Conn.
@@ -47,6 +48,11 @@ func (m *MomoTCPCommunicator) SetGlobalLister(gl GlobalLister) {
 // SetLeaseAcquirer sets the lease-based consensus capability.
 func (m *MomoTCPCommunicator) SetLeaseAcquirer(la LeaseAcquirer) {
 	m.leaseAcquirer = la
+}
+
+// SetDeletePropagator sets the P2P delete propagation capability.
+func (m *MomoTCPCommunicator) SetDeletePropagator(dp DeletePropagator) {
+	m.deletePropagator = dp
 }
 
 func (m *MomoTCPCommunicator) SetAbsoluteDeadline(t interface{}) (err error) {
@@ -231,6 +237,10 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 		if err != nil {
 			m.Write([]byte{'1'}) // error status
 			return 0, 0, fmt.Errorf("failed to delete file: %w", err)
+		}
+
+		if m.deletePropagator != nil {
+			_ = m.deletePropagator.PropagateDelete(fileName, 5*time.Second)
 		}
 
 		m.Write([]byte{'0'}) // success status

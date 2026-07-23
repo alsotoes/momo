@@ -163,7 +163,7 @@ func TestCASStore_EdgeCases(t *testing.T) {
 
 	// 4. Panic recovery tests (Rule 4) via nil database
 	nilStore := &CASStore{}
-	
+
 	_, _, err = nilStore.Get("test.txt")
 	if err == nil {
 		t.Errorf("Expected Get on nilStore to fail")

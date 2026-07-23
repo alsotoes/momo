@@ -68,6 +68,8 @@ type S3Communicator struct {
 	globalLister GlobalLister
 	// LeaseAcquirer for lease-based consensus on deletes (optional)
 	leaseAcquirer LeaseAcquirer
+	// DeletePropagator for P2P delete fan-out (optional)
+	deletePropagator DeletePropagator
 }
 
 func NewS3Communicator(conn net.Conn) *S3Communicator {
@@ -92,6 +94,11 @@ func (m *S3Communicator) SetGlobalLister(gl GlobalLister) {
 // SetLeaseAcquirer sets the lease-based consensus capability.
 func (m *S3Communicator) SetLeaseAcquirer(la LeaseAcquirer) {
 	m.leaseAcquirer = la
+}
+
+// SetDeletePropagator sets the P2P delete propagation capability.
+func (m *S3Communicator) SetDeletePropagator(dp DeletePropagator) {
+	m.deletePropagator = dp
 }
 
 func (m *S3Communicator) Read(p []byte) (n int, err error) {
@@ -372,6 +379,11 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			m.conn.Write([]byte("HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
 			return 0, 0, fmt.Errorf("failed to delete file %q: %w", key, err)
+		}
+
+		// Propagate delete to all peers via scatter-gather (best-effort).
+		if m.deletePropagator != nil {
+			_ = m.deletePropagator.PropagateDelete(key, 5*time.Second)
 		}
 
 		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))

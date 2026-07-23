@@ -72,3 +72,23 @@ func (l *LeaseAcquirerAdapter) ReleaseLease(key string) error {
 	}
 	return l.lm.ReleaseByKey(key)
 }
+
+// ScatterGatherDeleter adapts p2p.ScatterGather to the transport.DeletePropagator interface.
+type ScatterGatherDeleter struct {
+	sg      *p2p.ScatterGather
+	timeout time.Duration
+}
+
+// NewScatterGatherDeleter creates a new ScatterGatherDeleter adapter.
+func NewScatterGatherDeleter(sg *p2p.ScatterGather, timeout time.Duration) *ScatterGatherDeleter {
+	return &ScatterGatherDeleter{sg: sg, timeout: timeout}
+}
+
+// PropagateDelete fans out a delete operation to all peers via scatter-gather.
+func (d *ScatterGatherDeleter) PropagateDelete(key string, timeout time.Duration) error {
+	if d.sg == nil {
+		return nil
+	}
+	d.sg.Query(p2p.QueryDelete, []byte(key), timeout)
+	return nil
+}
