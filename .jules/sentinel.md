@@ -108,3 +108,8 @@
 **Vulnerability:** The S3-compatible `HandshakeServer` parsed the `max-keys` query parameter from user input and used it to iterate through metadata elements, generating a potentially massive XML string in a `bytes.Buffer` without enforcing any upper limit on `max-keys`.
 **Learning:** Even if `FormatListObjectsV2XML` stops when `keyCount >= maxKeys`, allowing `maxKeys` to be arbitrarily large (e.g., 1 billion) means an attacker can force the server to allocate massive amounts of memory if the database contains millions of objects, leading to OOM crashes.
 **Prevention:** To prevent Denial of Service (DoS) via memory or CPU exhaustion, always proactively clamp user-provided limit parameters like `max-keys` to a safe upper bound (e.g., 1000) before loading data or constructing large XML responses.
+
+## 2026-07-22 - HTTP Request Smuggling (CRLF Injection) in S3 metadata requests
+**Vulnerability:** HTTP Request Smuggling (CRLF Injection) in `S3Communicator.SendMetadata`.
+**Learning:** When manually constructing raw HTTP requests using byte buffers (e.g., to avoid standard library allocation overhead), you bypass the automatic header and path sanitization provided by `net/http`. If user-controlled input (like a file path or name) is injected directly into the raw request string without validation, an attacker can embed carriage returns (`\r`) and line feeds (`\n`) to inject malicious HTTP headers or forge entirely new requests on the same connection.
+**Prevention:** Always explicitly validate that user-controlled inputs do not contain `\r` or `\n` (`strings.ContainsAny(input, "\r\n")`) before appending them to manually constructed raw HTTP request buffers.
