@@ -236,9 +236,9 @@ func TestMomoTCPCommunicator_NativeList(t *testing.T) {
 		if _, err := io.ReadFull(conn, packet[:]); err != nil {
 			t.Fatalf("Failed to read metadata packet: %v", err)
 		}
-		hash := string(bytes.TrimRight(packet[0:64], "\x00"))
-		name := string(bytes.TrimRight(packet[64:128], "\x00"))
-		sizeStr := string(bytes.TrimRight(packet[128:192], "\x00"))
+		hash := common.TrimNullBytesString(packet[0:64])
+		name := common.TrimNullBytesString(packet[64:128])
+		sizeStr := common.TrimNullBytesString(packet[128:192])
 
 		if hash != "hash456" {
 			t.Errorf("Expected hash 'hash456', got %q", hash)
@@ -317,7 +317,7 @@ func TestMomoTCPCommunicator_NativeGet(t *testing.T) {
 			t.Fatalf("Expected status '0' (success), got %q", respBuf[0])
 		}
 
-		sizeStr := string(bytes.TrimRight(respBuf[1:65], "\x00"))
+		sizeStr := common.TrimNullBytesString(respBuf[1:65])
 		size, _ := strconv.ParseInt(sizeStr, 10, 64)
 		if size != int64(len(fileContent)) {
 			t.Errorf("Expected size %d, got %d", len(fileContent), size)

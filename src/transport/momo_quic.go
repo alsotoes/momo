@@ -200,7 +200,7 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 		if _, err := io.ReadFull(m, fileBuf[:]); err != nil {
 			return 0, 0, fmt.Errorf("failed to read delete target: %w", err)
 		}
-		fileName := string(bytes.TrimRight(fileBuf[:], "\x00"))
+		fileName := common.TrimNullBytesString(fileBuf[:])
 
 		// 🛡️ Sentinel: Block path traversal
 		if strings.Contains(fileName, "..") || strings.Contains(fileName, "\\") {
@@ -230,7 +230,7 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 		if _, err := io.ReadFull(m, fileBuf[:]); err != nil {
 			return 0, 0, fmt.Errorf("failed to read get target: %w", err)
 		}
-		fileName := string(bytes.TrimRight(fileBuf[:], "\x00"))
+		fileName := common.TrimNullBytesString(fileBuf[:])
 
 		// 🛡️ Sentinel: Block path traversal
 		if strings.Contains(fileName, "..") || strings.Contains(fileName, "\\") {

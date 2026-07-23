@@ -1,6 +1,7 @@
 package common
 
 import (
+	"bytes"
 	"path"
 	"strconv"
 	"strings"
@@ -84,4 +85,16 @@ func NormalizeVirtualPath(p string) (string, error) {
 	}
 
 	return strings.Join(validSegments, "/"), nil
+}
+
+// TrimNullBytesString finds the first null byte and returns a string up to that byte
+// using unsafe.String to eliminate string allocation overhead.
+func TrimNullBytesString(b []byte) string {
+	if idx := bytes.IndexByte(b, 0); idx != -1 {
+		return unsafe.String(unsafe.SliceData(b), idx)
+	}
+	if len(b) == 0 {
+		return ""
+	}
+	return unsafe.String(unsafe.SliceData(b), len(b))
 }
