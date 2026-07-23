@@ -330,7 +330,7 @@ func (m *MomoQUICCommunicator) SendMetadata(meta *common.FileMetadata) (status i
 
 	var metadataBuffer [hashLength + common.FileInfoLength + common.FileInfoLength]byte
 	copy(metadataBuffer[0:hashLength], meta.Hash)
-	
+
 	wireName := meta.Name
 	if meta.RemotePath != "" {
 		normalized, normErr := common.NormalizeVirtualPath(meta.RemotePath)

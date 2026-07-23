@@ -33,13 +33,13 @@ func TestGossiper_HeartbeatExchange(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	cfg1 := GossipConfig{
-		LocalID:          1,
+		LocalID:           1,
 		HeartbeatInterval: 50 * time.Millisecond,
 		SuspicionTimeout:  500 * time.Millisecond,
 		Fanout:            3,
 	}
 	cfg2 := GossipConfig{
-		LocalID:          2,
+		LocalID:           2,
 		HeartbeatInterval: 50 * time.Millisecond,
 		SuspicionTimeout:  500 * time.Millisecond,
 		Fanout:            3,
@@ -138,7 +138,7 @@ func TestGossiper_SuspicionTimeout(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	cfg1 := GossipConfig{
-		LocalID:          1,
+		LocalID:           1,
 		HeartbeatInterval: 50 * time.Millisecond,
 		SuspicionTimeout:  150 * time.Millisecond,
 		Fanout:            3,

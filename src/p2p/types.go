@@ -15,19 +15,23 @@ import (
 type PeerState int32
 
 const (
-	PeerStateAlive    PeerState = 0
-	PeerStateSuspect  PeerState = 1
-	PeerStateOffline  PeerState = 2
+	PeerStateAlive   PeerState = 0
+	PeerStateSuspect PeerState = 1
+	PeerStateOffline PeerState = 2
 )
+
+// maxPayloadSize is the maximum allowed size for a single decoded payload (1 MiB).
+// This prevents unbounded allocations from malformed or malicious peers.
+const maxPayloadSize = 1 << 20
 
 // Peer represents a remote node in the P2P network.
 type Peer struct {
-	ID        int32
-	Addr      string
-	state     atomic.Int32
-	lastSeen  atomic.Int64
-	conn      net.Conn
-	mu        sync.Mutex
+	ID       int32
+	Addr     string
+	state    atomic.Int32
+	lastSeen atomic.Int64
+	conn     net.Conn
+	mu       sync.Mutex
 }
 
 // NewPeer creates a new Peer with the given ID and address.
@@ -79,10 +83,10 @@ func (p *Peer) Conn() net.Conn {
 type MessageType uint8
 
 const (
-	MsgHeartbeat    MessageType = 1
-	MsgMembership   MessageType = 2
-	MsgSuspect      MessageType = 3
-	MsgQuery        MessageType = 4
+	MsgHeartbeat     MessageType = 1
+	MsgMembership    MessageType = 2
+	MsgSuspect       MessageType = 3
+	MsgQuery         MessageType = 4
 	MsgQueryResponse MessageType = 5
 	MsgLeaseRequest  MessageType = 6
 	MsgLeaseGrant    MessageType = 7
@@ -224,6 +228,9 @@ func (q *QueryPayload) Encode() []byte {
 
 // DecodeQueryPayload deserializes a QueryPayload from binary.
 func DecodeQueryPayload(data []byte) (*QueryPayload, error) {
+	if len(data) > maxPayloadSize {
+		return nil, fmt.Errorf("query payload too large: %d (errno=%d)", len(data), syscall.EFBIG)
+	}
 	if len(data) < 9 {
 		return nil, fmt.Errorf("query payload too short: %w", syscall.EBADMSG)
 	}
@@ -258,6 +265,9 @@ func (q *QueryResponsePayload) Encode() []byte {
 
 // DecodeQueryResponsePayload deserializes a QueryResponsePayload from binary.
 func DecodeQueryResponsePayload(data []byte) (*QueryResponsePayload, error) {
+	if len(data) > maxPayloadSize {
+		return nil, fmt.Errorf("query response payload too large: %d (errno=%d)", len(data), syscall.EFBIG)
+	}
 	if len(data) < 14 {
 		return nil, fmt.Errorf("query response payload too short: %w", syscall.EBADMSG)
 	}
@@ -284,9 +294,9 @@ func DecodeQueryResponsePayload(data []byte) (*QueryResponsePayload, error) {
 // LeasePayload is the payload for lease request/grant/release RPCs.
 // Wire format: [8 bytes: lease ID] [4 bytes: key len] [N bytes: key] [8 bytes: expiry unixnano]
 type LeasePayload struct {
-	LeaseID  uint64
-	Key      string
-	Expiry   int64
+	LeaseID uint64
+	Key     string
+	Expiry  int64
 }
 
 // Encode serializes a LeasePayload into binary.
@@ -303,6 +313,9 @@ func (l *LeasePayload) Encode() []byte {
 
 // DecodeLeasePayload deserializes a LeasePayload from binary.
 func DecodeLeasePayload(data []byte) (*LeasePayload, error) {
+	if len(data) > maxPayloadSize {
+		return nil, fmt.Errorf("lease payload too large: %d (errno=%d)", len(data), syscall.EFBIG)
+	}
 	if len(data) < 20 {
 		return nil, fmt.Errorf("lease payload too short: %w", syscall.EBADMSG)
 	}

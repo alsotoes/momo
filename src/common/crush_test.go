@@ -44,7 +44,7 @@ func TestClusterMap_Placement(t *testing.T) {
 	}
 
 	t.Logf("Load distribution over 1000 objects: %v", distribution)
-	
+
 	// Ensure all nodes got some load
 	for _, node := range nodes {
 		if distribution[node.ID] == 0 {

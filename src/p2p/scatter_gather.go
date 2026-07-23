@@ -44,6 +44,11 @@ func NewScatterGather(localID int32, transport Transport, handler QueryHandler) 
 
 // HandleRPC dispatches query-related RPCs. Called by the Gossiper's consumer loop.
 func (sg *ScatterGather) HandleRPC(rpc *RPC) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("ScatterGather HandleRPC panic recovered: %v (errno=%d)", r, syscall.EIO)
+		}
+	}()
 	switch rpc.Type {
 	case MsgQuery:
 		sg.handleQuery(rpc)

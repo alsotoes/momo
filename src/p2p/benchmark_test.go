@@ -6,8 +6,8 @@ import (
 
 func BenchmarkRPC_Encode(b *testing.B) {
 	rpc := &RPC{
-		From:    1,
-		Type:    MsgHeartbeat,
+		From: 1,
+		Type: MsgHeartbeat,
 		Payload: (&HeartbeatPayload{
 			Peers: []PeerInfo{
 				{ID: 1, Addr: "127.0.0.1:4450"},

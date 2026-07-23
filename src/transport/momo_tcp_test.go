@@ -105,7 +105,7 @@ func TestMomoTCPCommunicator_Deadline(t *testing.T) {
 	conn, _ := net.Pipe()
 	defer conn.Close()
 	comm := NewMomoTCPCommunicator(conn)
-	
+
 	err := comm.SetAbsoluteDeadline(time.Now().Add(time.Second))
 	if err != nil {
 		t.Errorf("SetAbsoluteDeadline failed: %v", err)
@@ -115,7 +115,7 @@ func TestMomoTCPCommunicator_Deadline(t *testing.T) {
 func TestMomoTCPCommunicator_EdgeCases(t *testing.T) {
 	// 1. Panic recovery tests (Rule 4) via nil communicator
 	var nilComm *MomoTCPCommunicator
-	
+
 	_, _, err := nilComm.HandshakeServer([]byte("token"))
 	if err == nil {
 		t.Errorf("Expected HandshakeServer on nilComm to fail")

@@ -23,8 +23,8 @@ const hashLength = 64
 // MomoTCPCommunicator implements the Communicator interface for the legacy Momo TCP protocol.
 type MomoTCPCommunicator struct {
 	*common.IdleTimeoutConn
-	store        storage.Store
-	globalLister GlobalLister
+	store         storage.Store
+	globalLister  GlobalLister
 	leaseAcquirer LeaseAcquirer
 }
 
@@ -83,7 +83,7 @@ func (m *MomoTCPCommunicator) HandshakeClient(authToken string, timestamp int64,
 	if err := common.AppendPaddedInt(handshakeBuf[common.AuthTokenLength:], timestamp, common.TimestampLength); err != nil {
 		return 0, fmt.Errorf("failed to format handshake timestamp: %w", err)
 	}
-	
+
 	// Write the requested mode (1 byte) at the end
 	handshakeBuf[common.AuthTokenLength+common.TimestampLength] = byte(requestedMode + '0')
 
@@ -322,7 +322,7 @@ func (m *MomoTCPCommunicator) SendMetadata(meta *common.FileMetadata) (status in
 
 	var metadataBuffer [hashLength + common.FileInfoLength + common.FileInfoLength]byte
 	copy(metadataBuffer[0:hashLength], meta.Hash)
-	
+
 	wireName := meta.Name
 	if meta.RemotePath != "" {
 		normalized, normErr := common.NormalizeVirtualPath(meta.RemotePath)

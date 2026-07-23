@@ -53,7 +53,6 @@ type Communicator interface {
 	// validates the token, and returns the timestamp and requested mode.
 	HandshakeServer(expectedAuthToken []byte) (replicationMode int, timestamp int64, err error)
 
-
 	// SendReplicationMode sends the chosen replication mode back to the client.
 	SendReplicationMode(mode int) error
 

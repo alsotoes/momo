@@ -49,7 +49,7 @@ func TestChangeReplicationModeServerReal(t *testing.T) {
 			io.ReadFull(conn, authBuf)
 			// Send back a replication mode to complete handshake
 			conn.Write([]byte("0"))
-			
+
 			// ⚡ Bolt: Consume the JSON payload and send OK
 			buf := make([]byte, 1024)
 			conn.Read(buf)
@@ -77,7 +77,7 @@ func TestChangeReplicationModeServerReal(t *testing.T) {
 	}()
 
 	go ChangeReplicationModeServer(ctx, cfg, 0, time.Now().UnixNano())
-	
+
 	// 🛡️ Zero-Crash: Use a retry loop to wait for the replication server to bind.
 	var conn net.Conn
 	var err error
@@ -133,7 +133,7 @@ func TestDaemonReal(t *testing.T) {
 	defer cancel()
 
 	go Daemon(ctx, cfg, 0)
-	
+
 	// 🛡️ Zero-Crash: Use a robust retry loop instead of a fixed sleep to wait for the daemon to bind.
 	var conn net.Conn
 	var err error

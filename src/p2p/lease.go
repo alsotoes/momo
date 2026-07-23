@@ -109,6 +109,11 @@ func (lm *LeaseManager) cleanupExpired() {
 // HandleLeaseRPC processes incoming lease RPCs from remote peers.
 // Called by the Gossiper's consumer loop.
 func (lm *LeaseManager) HandleLeaseRPC(rpc *RPC) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("LeaseManager HandleLeaseRPC panic recovered: %v (errno=%d)", r, syscall.EIO)
+		}
+	}()
 	switch rpc.Type {
 	case MsgLeaseRequest:
 		lm.handleLeaseRequest(rpc)

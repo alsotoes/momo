@@ -219,7 +219,6 @@ func ChangeReplicationModeClient(factory *transport.ProtocolFactory, replication
 		return
 	}
 
-
 	// ⚡ Bolt: Use sync.Pool to minimize allocations during cluster-wide broadcasts.
 	payload := payloadPool.Get().([]byte)
 	payload = payload[:0]

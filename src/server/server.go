@@ -343,7 +343,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 					nextHop := placement[myPos+1]
 					blobPath, _ := store.GetBlobPath(fileName)
 					log.Printf("AUDIT: Chain forwarding from Node %d to Node %d", serverId, nextHop.ID)
-					
+
 					// 🛡️ Zero-Crash: Wrap Chain forwarding in a goroutine with recovery for consistency and safety.
 					go func(id int, path string) {
 						defer func() {
@@ -443,7 +443,7 @@ func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, d
 	}
 
 	gossipCfg := p2p.GossipConfig{
-		LocalID:          int32(serverId),
+		LocalID:           int32(serverId),
 		HeartbeatInterval: time.Duration(cfg.P2P.GossipInterval) * time.Second,
 		SuspicionTimeout:  time.Duration(cfg.P2P.SuspicionTimeout) * time.Second,
 		Fanout:            cfg.P2P.Fanout,

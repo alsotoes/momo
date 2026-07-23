@@ -13,18 +13,18 @@ import (
 // It maintains a pool of peer connections and a background goroutine
 // that reads RPCs from all peers and delivers them via Consume().
 type TCPTransport struct {
-	cfg     TCPTransportConfig
-	ln      net.Listener
+	cfg        TCPTransportConfig
+	ln         net.Listener
 	listenAddr string
 
 	peerMap *PeerMap
 	conns   map[net.Conn]struct{}
 
-	rpcCh   chan RPC
-	done    chan struct{}
-	closed  bool
-	mu      sync.Mutex
-	wg      sync.WaitGroup
+	rpcCh  chan RPC
+	done   chan struct{}
+	closed bool
+	mu     sync.Mutex
+	wg     sync.WaitGroup
 }
 
 // NewTCPTransport creates a new TCPTransport with the given configuration.
