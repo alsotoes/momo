@@ -111,7 +111,6 @@ func (t *TCPTransport) handleConn(conn net.Conn) {
 			default:
 			}
 			if peerID >= 0 {
-				t.peerMap.Remove(peerID)
 				log.Printf("P2P peer %d disconnected: %v (errno=%d)", peerID, err, syscall.ECONNRESET)
 			}
 			return
@@ -166,7 +165,6 @@ func (t *TCPTransport) Dial(id int32, addr string) (*Peer, error) {
 func (t *TCPTransport) readLoop(peerID int32, conn net.Conn) {
 	defer t.wg.Done()
 	defer conn.Close()
-	defer t.peerMap.Remove(peerID)
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("P2P readLoop panic recovered for peer %d: %v (errno=%d)", peerID, r, syscall.EIO)
