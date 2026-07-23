@@ -18,6 +18,7 @@ type TCPTransport struct {
 	listenAddr string
 
 	peerMap *PeerMap
+	conns   map[net.Conn]struct{}
 
 	rpcCh   chan RPC
 	done    chan struct{}
@@ -31,6 +32,7 @@ func NewTCPTransport(cfg TCPTransportConfig) *TCPTransport {
 	return &TCPTransport{
 		cfg:     cfg,
 		peerMap: NewPeerMap(),
+		conns:   make(map[net.Conn]struct{}),
 		rpcCh:   make(chan RPC, 256),
 		done:    make(chan struct{}),
 	}
@@ -71,6 +73,10 @@ func (t *TCPTransport) acceptLoop() {
 				continue
 			}
 		}
+
+		t.mu.Lock()
+		t.conns[conn] = struct{}{}
+		t.mu.Unlock()
 
 		t.wg.Add(1)
 		go t.handleConn(conn)
@@ -130,6 +136,10 @@ func (t *TCPTransport) Dial(id int32, addr string) (*Peer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("p2p dial %s failed: %v: %w", addr, err, syscall.ECONNREFUSED)
 	}
+
+	t.mu.Lock()
+	t.conns[conn] = struct{}{}
+	t.mu.Unlock()
 
 	peer := NewPeer(id, addr)
 	peer.SetConn(conn)
@@ -242,6 +252,12 @@ func (t *TCPTransport) Close() error {
 	if t.ln != nil {
 		t.ln.Close()
 	}
+
+	t.mu.Lock()
+	for conn := range t.conns {
+		conn.Close()
+	}
+	t.mu.Unlock()
 
 	for _, p := range t.peerMap.All() {
 		if conn := p.Conn(); conn != nil {
