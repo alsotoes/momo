@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -407,7 +408,13 @@ func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, d
 	if err != nil {
 		host = "0.0.0.0"
 	}
-	gossipAddr = net.JoinHostPort(host, cfg.P2P.GossipPort)
+
+	basePort, err := strconv.Atoi(cfg.P2P.GossipPort)
+	if err != nil {
+		basePort = 4450
+	}
+	gossipPort := basePort + serverId
+	gossipAddr = net.JoinHostPort(host, strconv.Itoa(gossipPort))
 
 	transport := p2p.NewTCPTransport(p2p.TCPTransportConfig{
 		LocalID: int32(serverId),
@@ -438,7 +445,8 @@ func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, d
 			continue
 		}
 		dHost, _, _ := net.SplitHostPort(d.Host)
-		peerAddr := net.JoinHostPort(dHost, cfg.P2P.GossipPort)
+		peerPort := basePort + i
+		peerAddr := net.JoinHostPort(dHost, strconv.Itoa(peerPort))
 		if _, err := transport.Dial(int32(i), peerAddr); err != nil {
 			log.Printf("P2P: failed to dial bootstrap peer %d at %s: %v", i, peerAddr, err)
 		}
