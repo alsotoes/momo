@@ -15,6 +15,8 @@ const (
 	sectionGlobal = "global"
 	// sectionMetrics is the name of the [metrics] section in the configuration file.
 	sectionMetrics = "metrics"
+	// sectionP2P is the name of the [p2p] section in the configuration file.
+	sectionP2P = "p2p"
 	// prefixDaemon is the prefix for daemon sections in the configuration file (e.g., [daemon.0]).
 	prefixDaemon = "daemon."
 )
@@ -52,6 +54,15 @@ func GetConfig(path string) (Configuration, error) {
 	config.Daemons, err = loadDaemons(cfg)
 	if err != nil {
 		return Configuration{}, err
+	}
+
+	// Load [p2p] section (optional, defaults to disabled)
+	p2pSec, err := cfg.GetSection(sectionP2P)
+	if err == nil {
+		config.P2P, err = loadP2PConfig(p2pSec)
+		if err != nil {
+			return Configuration{}, fmt.Errorf("failed to load [%s] section: %w", sectionP2P, err)
+		}
 	}
 
 	return config, nil
@@ -177,6 +188,39 @@ func loadMetricsConfig(section *ini.Section) (ConfigurationMetrics, error) {
 	}
 
 	return metricsCfg, nil
+}
+
+// loadP2PConfig loads the [p2p] section from the configuration.
+func loadP2PConfig(section *ini.Section) (ConfigurationP2P, error) {
+	var p2pCfg ConfigurationP2P
+	var err error
+
+	p2pCfg.Enabled, err = section.Key("enabled").Bool()
+	if err != nil {
+		p2pCfg.Enabled = false
+	}
+
+	p2pCfg.GossipPort = section.Key("gossip_port").String()
+	if p2pCfg.GossipPort == "" {
+		p2pCfg.GossipPort = "4450"
+	}
+
+	p2pCfg.GossipInterval, err = section.Key("gossip_interval").Int()
+	if err != nil || p2pCfg.GossipInterval <= 0 {
+		p2pCfg.GossipInterval = 1
+	}
+
+	p2pCfg.SuspicionTimeout, err = section.Key("suspicion_timeout").Int()
+	if err != nil || p2pCfg.SuspicionTimeout <= 0 {
+		p2pCfg.SuspicionTimeout = 5
+	}
+
+	p2pCfg.Fanout, err = section.Key("fanout").Int()
+	if err != nil || p2pCfg.Fanout <= 0 {
+		p2pCfg.Fanout = 3
+	}
+
+	return p2pCfg, nil
 }
 
 // loadDaemons loads all [daemon.*] sections from the configuration.

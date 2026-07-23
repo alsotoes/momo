@@ -5,7 +5,9 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/alsotoes/momo/src/client"
 	"github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/p2p"
 	"github.com/alsotoes/momo/src/storage"
 	"github.com/alsotoes/momo/src/transport"
 )
@@ -80,6 +83,11 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 		nodes[i] = &common.Node{ID: i, Weight: 1, Addr: d.Host}
 	}
 	cmap := &common.ClusterMap{Nodes: nodes}
+
+	// P2P Transport & Gossip (coexists with existing listener when enabled)
+	if cfg.P2P.Enabled {
+		bootstrapP2P(ctx, cfg, serverId, daemons)
+	}
 
 	// 🛡️ Sentinel: Enforce a limit on concurrent connections to prevent resource exhaustion (DoS).
 	const maxConcurrentConnections = 1000
@@ -389,4 +397,70 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 			success = true
 		}(connection)
 	}
+}
+
+// bootstrapP2P starts the P2P transport and gossip protocol alongside the main daemon.
+// It connects to all configured daemon peers as bootstrap seeds and begins
+// exchanging heartbeats for dynamic membership discovery.
+func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, daemons []*common.Daemon) *p2p.Gossiper {
+	gossipAddr := daemons[serverId].Host
+	host, _, err := net.SplitHostPort(gossipAddr)
+	if err != nil {
+		host = "0.0.0.0"
+	}
+
+	basePort, err := strconv.Atoi(cfg.P2P.GossipPort)
+	if err != nil {
+		basePort = 4450
+	}
+	gossipPort := basePort + serverId
+	gossipAddr = net.JoinHostPort(host, strconv.Itoa(gossipPort))
+
+	transport := p2p.NewTCPTransport(p2p.TCPTransportConfig{
+		LocalID: int32(serverId),
+	})
+
+	if err := transport.Listen(gossipAddr); err != nil {
+		log.Printf("P2P: failed to listen on %s: %v", gossipAddr, err)
+		return nil
+	}
+
+	gossipCfg := p2p.GossipConfig{
+		LocalID:          int32(serverId),
+		HeartbeatInterval: time.Duration(cfg.P2P.GossipInterval) * time.Second,
+		SuspicionTimeout:  time.Duration(cfg.P2P.SuspicionTimeout) * time.Second,
+		Fanout:            cfg.P2P.Fanout,
+	}
+
+	gossip := p2p.NewGossiper(gossipCfg, transport)
+	gossip.OnJoin(func(peer *p2p.Peer) {
+		log.Printf("P2P: peer %d joined cluster from %s", peer.ID, peer.Addr)
+	})
+	gossip.OnLeave(func(peerID int32) {
+		log.Printf("P2P: peer %d left cluster", peerID)
+	})
+
+	for i, d := range daemons {
+		if i == serverId {
+			continue
+		}
+		dHost, _, _ := net.SplitHostPort(d.Host)
+		peerPort := basePort + i
+		peerAddr := net.JoinHostPort(dHost, strconv.Itoa(peerPort))
+		if _, err := transport.Dial(int32(i), peerAddr); err != nil {
+			log.Printf("P2P: failed to dial bootstrap peer %d at %s: %v", i, peerAddr, err)
+		}
+	}
+
+	gossip.Run()
+
+	log.Printf("P2P: gossip started, node %d, %d peers connected", serverId, transport.Peers().Count())
+
+	go func() {
+		<-ctx.Done()
+		gossip.Close()
+		transport.Close()
+	}()
+
+	return gossip
 }

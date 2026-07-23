@@ -5,6 +5,7 @@ use (
 	./src/client
 	./src/common
 	./src/metrics
+	./src/p2p
 	./src/server
 	./src/storage
 	./src/transport

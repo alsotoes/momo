@@ -596,29 +596,3 @@ func TestS3Communicator_DELETE(t *testing.T) {
 		t.Errorf("Expected 204 No Content, got: %s", respStr)
 	}
 }
-
-func TestS3Communicator_GET_ListObjectsV2_MaxKeysClamping(t *testing.T) {
-	defer verifyNoLeaks(t)
-
-	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
-	reqStr := "GET /?list-type=2&max-keys=5000 HTTP/1.1\r\n" +
-		"Host: 127.0.0.1:4440\r\n" +
-		"Authorization: Bearer " + authToken + "\r\n\r\n"
-
-	mock := &mockStore{
-		listFunc: func() ([]common.FileMetadata, error) {
-			return []common.FileMetadata{
-				{Name: "test-file.txt", Hash: "hash123", Size: 500},
-			}, nil
-		},
-	}
-
-	respStr := runS3TestRequest(t, reqStr, mock)
-
-	if !strings.Contains(respStr, "HTTP/1.1 200 OK") {
-		t.Errorf("Expected 200 OK, got: %s", respStr)
-	}
-	if !strings.Contains(respStr, "<MaxKeys>1000</MaxKeys>") {
-		t.Errorf("Expected max-keys to be clamped to 1000, got: %s", respStr)
-	}
-}

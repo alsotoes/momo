@@ -62,6 +62,20 @@ type ConfigurationMetrics struct {
 	FallbackInterval int
 }
 
+// ConfigurationP2P holds the P2P transport and gossip configuration.
+type ConfigurationP2P struct {
+	// Enabled controls whether the P2P transport starts alongside the main listener.
+	Enabled bool
+	// GossipPort is the port for P2P gossip communication.
+	GossipPort string
+	// GossipInterval is the heartbeat interval in seconds.
+	GossipInterval int
+	// SuspicionTimeout is the timeout before a peer is marked suspect, in seconds.
+	SuspicionTimeout int
+	// Fanout is the number of random peers to gossip to per heartbeat.
+	Fanout int
+}
+
 // Configuration holds the overall configuration for the application.
 type Configuration struct {
 	// Daemons is a list of daemons in the system.
@@ -70,4 +84,6 @@ type Configuration struct {
 	Global ConfigurationGlobal
 	// Metrics is the metrics configuration.
 	Metrics ConfigurationMetrics
+	// P2P is the P2P transport configuration.
+	P2P ConfigurationP2P
 }

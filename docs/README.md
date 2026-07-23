@@ -43,6 +43,12 @@ This document explains the architecture, configuration, wire protocol, replicati
   - `replication.go`: Dynamic replication mode control server.
 - `src/storage/`: Content-Addressable Storage (CAS) engine.
   - `storage.go`: Bbolt-backed object store with tiered directory layout.
+- `src/p2p/`: P2P transport layer with gossip membership protocol.
+  - `types.go`: Peer, RPC, HeartbeatPayload with binary length-prefixed encoding.
+  - `transport.go`: Transport interface (Listen, Dial, Consume, Broadcast, Send).
+  - `tcp_transport.go`: TCPTransport implementation with connection tracking.
+  - `peer_map.go`: Thread-safe PeerMap with RandomPeers for gossip fanout.
+  - `gossip.go`: Gossiper with heartbeat, membership dissemination, suspicion.
 - `src/metrics/`: Performance monitoring and polymorphic control loop.
 - `conf/momo.conf`: Secure configuration example.
 

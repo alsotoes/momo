@@ -34,10 +34,14 @@ To satisfy **Steering Rule #11**, the Gemini AI Reviewer is authorized to autono
 
 ## CI/CD Pipeline
 
-Every Pull Request must pass the full suite of validations before merging:
-- **Unit & Fuzz Tests**: All tests in `src/` must pass with `-race` enabled.
-- **Benchmark Gate**: Geomean performance must not degrade by more than 5%.
-- **Smoke Tests**: Physical file replication verified across 5 suites (**TCP, QUIC, S3-TCP, S3-QUIC, and Scale/CAS**).
+Every Pull Request must pass the full suite of validations before merging. See **[docs/TESTING.md](TESTING.md)** for a complete breakdown of every workflow, test suite, and step.
+
+Summary:
+- **Unit Tests**: All tests in `src/` (including `src/p2p/`) must pass with `-race` enabled.
+- **Benchmark Gate**: Performance must not degrade by more than 5% (via `benchstat` comparison).
+- **E2E Tests**: File replication across 3 nodes (all protocols) + P2P gossip convergence and failure detection.
+- **Smoke Tests**: Physical file replication verified across 4 suites (**TCP, QUIC, S3-TCP, S3-QUIC**).
+- **Scale & CAS**: Content-addressable storage scale testing with CRUSH placement.
 - **Version Consistency**: Go versions must be synchronized across all config files.
 
 ---
