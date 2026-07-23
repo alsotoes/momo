@@ -15,19 +15,23 @@ import (
 type PeerState int32
 
 const (
-	PeerStateAlive    PeerState = 0
-	PeerStateSuspect  PeerState = 1
-	PeerStateOffline  PeerState = 2
+	PeerStateAlive   PeerState = 0
+	PeerStateSuspect PeerState = 1
+	PeerStateOffline PeerState = 2
 )
+
+// maxPayloadSize is the maximum allowed size for a single decoded payload (1 MiB).
+// This prevents unbounded allocations from malformed or malicious peers.
+const maxPayloadSize = 1 << 20
 
 // Peer represents a remote node in the P2P network.
 type Peer struct {
-	ID        int32
-	Addr      string
-	state     atomic.Int32
-	lastSeen  atomic.Int64
-	conn      net.Conn
-	mu        sync.Mutex
+	ID       int32
+	Addr     string
+	state    atomic.Int32
+	lastSeen atomic.Int64
+	conn     net.Conn
+	mu       sync.Mutex
 }
 
 // NewPeer creates a new Peer with the given ID and address.
@@ -79,9 +83,14 @@ func (p *Peer) Conn() net.Conn {
 type MessageType uint8
 
 const (
-	MsgHeartbeat  MessageType = 1
-	MsgMembership MessageType = 2
-	MsgSuspect    MessageType = 3
+	MsgHeartbeat     MessageType = 1
+	MsgMembership    MessageType = 2
+	MsgSuspect       MessageType = 3
+	MsgQuery         MessageType = 4
+	MsgQueryResponse MessageType = 5
+	MsgLeaseRequest  MessageType = 6
+	MsgLeaseGrant    MessageType = 7
+	MsgLeaseRelease  MessageType = 8
 )
 
 // RPC is a remote procedure call exchanged between peers.
@@ -189,4 +198,138 @@ func DecodeHeartbeatPayload(data []byte) (*HeartbeatPayload, error) {
 		peers = append(peers, PeerInfo{ID: id, Addr: addr})
 	}
 	return &HeartbeatPayload{Peers: peers}, nil
+}
+
+// QueryType identifies the kind of scatter-gather query.
+type QueryType uint8
+
+const (
+	QueryList QueryType = 1
+	QueryGet  QueryType = 2
+	QueryHas  QueryType = 3
+)
+
+// QueryPayload is the payload of a MsgQuery RPC.
+// Wire format: [1 byte: query type] [8 bytes: request ID] [N bytes: data]
+type QueryPayload struct {
+	Type      QueryType
+	RequestID uint64
+	Data      []byte
+}
+
+// Encode serializes a QueryPayload into binary.
+func (q *QueryPayload) Encode() []byte {
+	buf := make([]byte, 1+8+len(q.Data))
+	buf[0] = byte(q.Type)
+	binary.BigEndian.PutUint64(buf[1:9], q.RequestID)
+	copy(buf[9:], q.Data)
+	return buf
+}
+
+// DecodeQueryPayload deserializes a QueryPayload from binary.
+func DecodeQueryPayload(data []byte) (*QueryPayload, error) {
+	if len(data) > maxPayloadSize {
+		return nil, fmt.Errorf("query payload too large: %d (errno=%d)", len(data), syscall.EFBIG)
+	}
+	if len(data) < 9 {
+		return nil, fmt.Errorf("query payload too short: %w", syscall.EBADMSG)
+	}
+	return &QueryPayload{
+		Type:      QueryType(data[0]),
+		RequestID: binary.BigEndian.Uint64(data[1:9]),
+		Data:      data[9:],
+	}, nil
+}
+
+// QueryResponsePayload is the payload of a MsgQueryResponse RPC.
+// Wire format: [8 bytes: request ID] [4 bytes: data len] [N bytes: data] [2 bytes: err len] [M bytes: err]
+type QueryResponsePayload struct {
+	RequestID uint64
+	Data      []byte
+	Error     string
+}
+
+// Encode serializes a QueryResponsePayload into binary.
+func (q *QueryResponsePayload) Encode() []byte {
+	errLen := len(q.Error)
+	buf := make([]byte, 8+4+len(q.Data)+2+errLen)
+	binary.BigEndian.PutUint64(buf[0:8], q.RequestID)
+	binary.BigEndian.PutUint32(buf[8:12], uint32(len(q.Data)))
+	copy(buf[12:], q.Data)
+	off := 12 + len(q.Data)
+	binary.BigEndian.PutUint16(buf[off:off+2], uint16(errLen))
+	off += 2
+	copy(buf[off:], q.Error)
+	return buf
+}
+
+// DecodeQueryResponsePayload deserializes a QueryResponsePayload from binary.
+func DecodeQueryResponsePayload(data []byte) (*QueryResponsePayload, error) {
+	if len(data) > maxPayloadSize {
+		return nil, fmt.Errorf("query response payload too large: %d (errno=%d)", len(data), syscall.EFBIG)
+	}
+	if len(data) < 14 {
+		return nil, fmt.Errorf("query response payload too short: %w", syscall.EBADMSG)
+	}
+	reqID := binary.BigEndian.Uint64(data[0:8])
+	dataLen := int(binary.BigEndian.Uint32(data[8:12]))
+	if 12+dataLen+2 > len(data) {
+		return nil, fmt.Errorf("truncated query response data: %w", syscall.EBADMSG)
+	}
+	respData := make([]byte, dataLen)
+	copy(respData, data[12:12+dataLen])
+	off := 12 + dataLen
+	errLen := int(binary.BigEndian.Uint16(data[off : off+2]))
+	off += 2
+	if off+errLen > len(data) {
+		return nil, fmt.Errorf("truncated query response error: %w", syscall.EBADMSG)
+	}
+	return &QueryResponsePayload{
+		RequestID: reqID,
+		Data:      respData,
+		Error:     string(data[off : off+errLen]),
+	}, nil
+}
+
+// LeasePayload is the payload for lease request/grant/release RPCs.
+// Wire format: [8 bytes: lease ID] [4 bytes: key len] [N bytes: key] [8 bytes: expiry unixnano]
+type LeasePayload struct {
+	LeaseID uint64
+	Key     string
+	Expiry  int64
+}
+
+// Encode serializes a LeasePayload into binary.
+func (l *LeasePayload) Encode() []byte {
+	keyLen := len(l.Key)
+	buf := make([]byte, 8+4+keyLen+8)
+	binary.BigEndian.PutUint64(buf[0:8], l.LeaseID)
+	binary.BigEndian.PutUint32(buf[8:12], uint32(keyLen))
+	copy(buf[12:], l.Key)
+	off := 12 + keyLen
+	binary.BigEndian.PutUint64(buf[off:off+8], uint64(l.Expiry))
+	return buf
+}
+
+// DecodeLeasePayload deserializes a LeasePayload from binary.
+func DecodeLeasePayload(data []byte) (*LeasePayload, error) {
+	if len(data) > maxPayloadSize {
+		return nil, fmt.Errorf("lease payload too large: %d (errno=%d)", len(data), syscall.EFBIG)
+	}
+	if len(data) < 20 {
+		return nil, fmt.Errorf("lease payload too short: %w", syscall.EBADMSG)
+	}
+	leaseID := binary.BigEndian.Uint64(data[0:8])
+	keyLen := int(binary.BigEndian.Uint32(data[8:12]))
+	if 12+keyLen+8 > len(data) {
+		return nil, fmt.Errorf("truncated lease payload key: %w", syscall.EBADMSG)
+	}
+	key := string(data[12 : 12+keyLen])
+	off := 12 + keyLen
+	expiry := int64(binary.BigEndian.Uint64(data[off : off+8]))
+	return &LeasePayload{
+		LeaseID: leaseID,
+		Key:     key,
+		Expiry:  expiry,
+	}, nil
 }

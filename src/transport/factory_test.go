@@ -241,7 +241,7 @@ func TestMomoQUICCommunicator_Metadata_And_Payload(t *testing.T) {
 func TestMomoQUICCommunicator_EdgeCases(t *testing.T) {
 	// 1. Panic recovery tests (Rule 4) via nil communicator
 	var nilComm *MomoQUICCommunicator
-	
+
 	_, _, err := nilComm.HandshakeServer([]byte("token"))
 	if err == nil {
 		t.Errorf("Expected HandshakeServer on nilComm to fail")

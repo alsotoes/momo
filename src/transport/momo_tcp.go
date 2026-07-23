@@ -23,7 +23,9 @@ const hashLength = 64
 // MomoTCPCommunicator implements the Communicator interface for the legacy Momo TCP protocol.
 type MomoTCPCommunicator struct {
 	*common.IdleTimeoutConn
-	store storage.Store
+	store         storage.Store
+	globalLister  GlobalLister
+	leaseAcquirer LeaseAcquirer
 }
 
 // NewMomoTCPCommunicator creates a new MomoTCPCommunicator wrapping a net.Conn.
@@ -35,6 +37,16 @@ func NewMomoTCPCommunicator(conn net.Conn) *MomoTCPCommunicator {
 
 func (m *MomoTCPCommunicator) SetStore(store storage.Store) {
 	m.store = store
+}
+
+// SetGlobalLister sets the scatter-gather list capability.
+func (m *MomoTCPCommunicator) SetGlobalLister(gl GlobalLister) {
+	m.globalLister = gl
+}
+
+// SetLeaseAcquirer sets the lease-based consensus capability.
+func (m *MomoTCPCommunicator) SetLeaseAcquirer(la LeaseAcquirer) {
+	m.leaseAcquirer = la
 }
 
 func (m *MomoTCPCommunicator) SetAbsoluteDeadline(t interface{}) (err error) {
@@ -71,7 +83,7 @@ func (m *MomoTCPCommunicator) HandshakeClient(authToken string, timestamp int64,
 	if err := common.AppendPaddedInt(handshakeBuf[common.AuthTokenLength:], timestamp, common.TimestampLength); err != nil {
 		return 0, fmt.Errorf("failed to format handshake timestamp: %w", err)
 	}
-	
+
 	// Write the requested mode (1 byte) at the end
 	handshakeBuf[common.AuthTokenLength+common.TimestampLength] = byte(requestedMode + '0')
 
@@ -142,7 +154,12 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 		if m.store == nil {
 			return 0, 0, fmt.Errorf("storage store not initialized")
 		}
-		files, err := m.store.List()
+		var files []common.FileMetadata
+		if m.globalLister != nil {
+			files, err = m.globalLister.GlobalList(5 * time.Second)
+		} else {
+			files, err = m.store.List()
+		}
 		if err != nil {
 			return 0, 0, fmt.Errorf("failed to list files: %w", err)
 		}
@@ -198,6 +215,15 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 			m.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			m.Write([]byte{'1'}) // error status
 			return 0, 0, fmt.Errorf("invalid delete target traversal: %s: %w", fileName, syscall.EBADMSG)
+		}
+
+		if m.leaseAcquirer != nil {
+			if err := m.leaseAcquirer.AcquireLease(fileName, 10*time.Second); err != nil {
+				m.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				m.Write([]byte{'1'}) // error status
+				return 0, 0, fmt.Errorf("failed to acquire lease for delete: %w", err)
+			}
+			defer m.leaseAcquirer.ReleaseLease(fileName)
 		}
 
 		err = m.store.Delete(fileName)
@@ -296,7 +322,7 @@ func (m *MomoTCPCommunicator) SendMetadata(meta *common.FileMetadata) (status in
 
 	var metadataBuffer [hashLength + common.FileInfoLength + common.FileInfoLength]byte
 	copy(metadataBuffer[0:hashLength], meta.Hash)
-	
+
 	wireName := meta.Name
 	if meta.RemotePath != "" {
 		normalized, normErr := common.NormalizeVirtualPath(meta.RemotePath)

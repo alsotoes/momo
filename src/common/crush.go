@@ -72,7 +72,7 @@ func (m *ClusterMap) Placement(objectHash string, replicationFactor int) (nodes 
 		// ⚡ Bolt: Eliminate heap allocation of hash.Sum by using stack-allocated slice
 		var sumBuf [sha256.Size]byte
 		sum := h.Sum(sumBuf[:0])
-		
+
 		val := binary.LittleEndian.Uint64(sum[:8])
 		floatVal := float64(val) / float64(math.MaxUint64)
 

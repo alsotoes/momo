@@ -42,17 +42,17 @@ func HasPathTraversalChars(s string) bool {
 
 // PadString pads or truncates a string to the given length.
 func PadString(input string, length int) string {
-        if len(input) >= length {
-                return input[:length]
-        }
-        b := make([]byte, length)
-        copy(b, input)
-        // ⚡ Bolt: Eliminate string allocation overhead by using unsafe.String.
-        return unsafe.String(unsafe.SliceData(b), length)
+	if len(input) >= length {
+		return input[:length]
+	}
+	b := make([]byte, length)
+	copy(b, input)
+	// ⚡ Bolt: Eliminate string allocation overhead by using unsafe.String.
+	return unsafe.String(unsafe.SliceData(b), length)
 }
 
 // NormalizeVirtualPath cleans and validates virtual remote paths.
-// It trims whitespace, resolves parent directory references via path.Clean, 
+// It trims whitespace, resolves parent directory references via path.Clean,
 // and strictly rejects any directory traversal (..) sequences to prevent security escalation.
 func NormalizeVirtualPath(p string) (string, error) {
 	p = strings.TrimSpace(p)

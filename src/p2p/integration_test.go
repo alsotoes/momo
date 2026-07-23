@@ -22,7 +22,7 @@ func TestIntegration_ThreeNodeCluster(t *testing.T) {
 		}
 
 		cfg := GossipConfig{
-			LocalID:          int32(i),
+			LocalID:           int32(i),
 			HeartbeatInterval: 50 * time.Millisecond,
 			SuspicionTimeout:  300 * time.Millisecond,
 			Fanout:            3,

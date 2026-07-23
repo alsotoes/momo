@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"time"
 
 	"github.com/alsotoes/momo/src/common"
 	"github.com/quic-go/quic-go"
@@ -23,6 +24,19 @@ const (
 	MetadataStatusSkipPayload = 2
 )
 
+// GlobalLister enables scatter-gather list queries across the cluster.
+// When set on a Communicator, list operations aggregate results from all peers.
+type GlobalLister interface {
+	GlobalList(timeout time.Duration) ([]common.FileMetadata, error)
+}
+
+// LeaseAcquirer enables lease-based consensus for destructive operations.
+// When set on a Communicator, delete operations acquire a lease before proceeding.
+type LeaseAcquirer interface {
+	AcquireLease(key string, timeout time.Duration) error
+	ReleaseLease(key string) error
+}
+
 // Communicator defines a transport-agnostic interface for Momo protocol operations.
 // It encapsulates the handshake, metadata exchange, and file transfer logic.
 type Communicator interface {
@@ -38,7 +52,6 @@ type Communicator interface {
 	// HandshakeServer performs the server-side handshake: receives AuthToken + Timestamp + RequestedMode,
 	// validates the token, and returns the timestamp and requested mode.
 	HandshakeServer(expectedAuthToken []byte) (replicationMode int, timestamp int64, err error)
-
 
 	// SendReplicationMode sends the chosen replication mode back to the client.
 	SendReplicationMode(mode int) error

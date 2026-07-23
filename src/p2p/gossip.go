@@ -13,7 +13,7 @@ const MaxPeersInHeartbeat = 256
 
 // GossipConfig holds configuration for the Gossiper.
 type GossipConfig struct {
-	LocalID         int32
+	LocalID           int32
 	HeartbeatInterval time.Duration
 	SuspicionTimeout  time.Duration
 	Fanout            int
@@ -22,7 +22,7 @@ type GossipConfig struct {
 // DefaultGossipConfig returns sensible defaults for gossip.
 func DefaultGossipConfig(localID int32) GossipConfig {
 	return GossipConfig{
-		LocalID:         localID,
+		LocalID:           localID,
 		HeartbeatInterval: 1 * time.Second,
 		SuspicionTimeout:  5 * time.Second,
 		Fanout:            3,
@@ -33,23 +33,26 @@ func DefaultGossipConfig(localID int32) GossipConfig {
 // It periodically sends heartbeats to random peers, merges membership
 // information from received heartbeats, and marks unreachable peers as suspect/offline.
 type Gossiper struct {
-	cfg     GossipConfig
+	cfg       GossipConfig
 	transport Transport
-	done    chan struct{}
-	closed  bool
-	mu      sync.Mutex
-	wg      sync.WaitGroup
+	done      chan struct{}
+	closed    bool
+	mu        sync.Mutex
+	wg        sync.WaitGroup
 
 	onJoin  func(peer *Peer)
 	onLeave func(peerID int32)
+
+	scatterGather *ScatterGather
+	leaseManager  *LeaseManager
 }
 
 // NewGossiper creates a new Gossiper.
 func NewGossiper(cfg GossipConfig, transport Transport) *Gossiper {
 	return &Gossiper{
-		cfg:      cfg,
+		cfg:       cfg,
 		transport: transport,
-		done:     make(chan struct{}),
+		done:      make(chan struct{}),
 	}
 }
 
@@ -61,6 +64,18 @@ func (g *Gossiper) OnJoin(fn func(peer *Peer)) {
 // OnLeave sets a callback invoked when a peer leaves the cluster.
 func (g *Gossiper) OnLeave(fn func(peerID int32)) {
 	g.onLeave = fn
+}
+
+// SetScatterGather attaches a ScatterGather instance whose query RPCs will be
+// routed by the gossiper's consumer loop.
+func (g *Gossiper) SetScatterGather(sg *ScatterGather) {
+	g.scatterGather = sg
+}
+
+// SetLeaseManager attaches a LeaseManager instance whose lease RPCs will be
+// routed by the gossiper's consumer loop.
+func (g *Gossiper) SetLeaseManager(lm *LeaseManager) {
+	g.leaseManager = lm
 }
 
 // Start launches the heartbeat and suspicion loops.
@@ -184,6 +199,11 @@ func (g *Gossiper) checkSuspicion() {
 // HandleRPC processes an incoming gossip RPC. It should be called for each
 // RPC received from the transport's Consume() channel.
 func (g *Gossiper) HandleRPC(rpc *RPC) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("Gossip HandleRPC panic recovered: %v (errno=%d)", r, syscall.EIO)
+		}
+	}()
 	switch rpc.Type {
 	case MsgHeartbeat:
 		g.handleHeartbeat(rpc)
@@ -191,6 +211,14 @@ func (g *Gossiper) HandleRPC(rpc *RPC) {
 		g.handleMembership(rpc)
 	case MsgSuspect:
 		g.handleSuspect(rpc)
+	case MsgQuery, MsgQueryResponse:
+		if g.scatterGather != nil {
+			g.scatterGather.HandleRPC(rpc)
+		}
+	case MsgLeaseRequest, MsgLeaseGrant, MsgLeaseRelease:
+		if g.leaseManager != nil {
+			g.leaseManager.HandleLeaseRPC(rpc)
+		}
 	}
 }
 

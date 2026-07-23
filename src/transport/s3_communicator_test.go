@@ -44,7 +44,7 @@ func TestS3Communicator_HandshakeServer(t *testing.T) {
 
 	go func() {
 		clientConn.Write([]byte(reqBody))
-		// ⚡ Bolt: Read in a loop to avoid deadlock on net.Pipe. 
+		// ⚡ Bolt: Read in a loop to avoid deadlock on net.Pipe.
 		// http.Response.Write performs multiple writes which will block if not fully consumed.
 		buf := make([]byte, 1024)
 		for {
@@ -105,7 +105,7 @@ func TestS3Communicator_AWSV4Auth(t *testing.T) {
 
 	go func() {
 		clientConn.Write([]byte(reqBody))
-		// ⚡ Bolt: Read in a loop to avoid deadlock on net.Pipe. 
+		// ⚡ Bolt: Read in a loop to avoid deadlock on net.Pipe.
 		// http.Response.Write performs multiple writes which will block if not fully consumed.
 		buf := make([]byte, 1024)
 		for {
@@ -181,7 +181,7 @@ func TestS3Communicator_EdgeCases(t *testing.T) {
 
 	// 1. Panic recovery tests (Rule 4) via nil communicator
 	var nilComm *S3Communicator
-	
+
 	_, err := nilComm.Read(make([]byte, 10))
 	if err == nil {
 		t.Errorf("Expected Read on nilComm to fail")

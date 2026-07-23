@@ -74,6 +74,10 @@ type ConfigurationP2P struct {
 	SuspicionTimeout int
 	// Fanout is the number of random peers to gossip to per heartbeat.
 	Fanout int
+	// ScatterGatherTimeout is the timeout for scatter-gather queries, in seconds.
+	ScatterGatherTimeout int
+	// LeaseTimeout is the default lease duration for consensus operations, in seconds.
+	LeaseTimeout int
 }
 
 // Configuration holds the overall configuration for the application.

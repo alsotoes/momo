@@ -63,6 +63,11 @@ type S3Communicator struct {
 
 	// Storage store for list, get, and delete operations
 	store storage.Store
+
+	// GlobalLister for scatter-gather list queries (optional)
+	globalLister GlobalLister
+	// LeaseAcquirer for lease-based consensus on deletes (optional)
+	leaseAcquirer LeaseAcquirer
 }
 
 func NewS3Communicator(conn net.Conn) *S3Communicator {
@@ -77,6 +82,16 @@ func NewS3Communicator(conn net.Conn) *S3Communicator {
 
 func (m *S3Communicator) SetStore(store storage.Store) {
 	m.store = store
+}
+
+// SetGlobalLister sets the scatter-gather list capability.
+func (m *S3Communicator) SetGlobalLister(gl GlobalLister) {
+	m.globalLister = gl
+}
+
+// SetLeaseAcquirer sets the lease-based consensus capability.
+func (m *S3Communicator) SetLeaseAcquirer(la LeaseAcquirer) {
+	m.leaseAcquirer = la
 }
 
 func (m *S3Communicator) Read(p []byte) (n int, err error) {
@@ -242,7 +257,12 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		isList := (key == "") || (q.Get("list-type") == "2")
 
 		if isList {
-			files, err := m.store.List()
+			var files []common.FileMetadata
+			if m.globalLister != nil {
+				files, err = m.globalLister.GlobalList(5 * time.Second)
+			} else {
+				files, err = m.store.List()
+			}
 			if err != nil {
 				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 				m.conn.Write([]byte("HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
@@ -336,6 +356,15 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			m.conn.Write([]byte("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
 			return 0, 0, fmt.Errorf("missing key in DELETE request")
+		}
+
+		if m.leaseAcquirer != nil {
+			if err := m.leaseAcquirer.AcquireLease(key, 10*time.Second); err != nil {
+				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				m.conn.Write([]byte("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
+				return 0, 0, fmt.Errorf("failed to acquire lease for delete %q: %w", key, err)
+			}
+			defer m.leaseAcquirer.ReleaseLease(key)
 		}
 
 		err := m.store.Delete(key)
