@@ -127,9 +127,85 @@ make test-e2e-p2p
 
 ## Future Work
 
-This transport layer enables:
-- **Issue #248**: Scatter-gather queries over the cluster
-- **Issue #248**: Lease-based consensus for coordinated operations
-- SWIM-style suspicion mechanism refinement
+- SWIM-style suspicion mechanism refinement (indirect ping, RTT tuning)
 - Compression for large heartbeat payloads
+- CAS garbage collection via decentralized refcounting
+
+---
+
+## Scatter-Gather Queries
+
+### Overview
+
+The `ScatterGather` struct enables distributed queries across the cluster. When a node receives a list request, it broadcasts a `MsgQuery` RPC to all alive peers, collects their responses within a timeout, and merges/deduplicates the results.
+
+### Message Types
+
+| Type | Value | Description |
+|------|-------|-------------|
+| `MsgQuery` | 4 | Scatter-gather query request |
+| `MsgQueryResponse` | 5 | Scatter-gather query response |
+
+### Query Types
+
+| Query | Description |
+|-------|-------------|
+| `QueryList` | List all local files |
+| `QueryGet` | Get metadata for a specific file |
+| `QueryHas` | Check if a hash exists locally |
+
+### RPC Routing
+
+Query RPCs are multiplexed on the existing `transport.Consume()` channel alongside gossip heartbeats. The `Gossiper.HandleRPC` routes `MsgQuery` and `MsgQueryResponse` to the `ScatterGather.HandleRPC` method.
+
+### Server Integration
+
+- `StorageQueryHandler` (in `src/server/query_handler.go`) implements `p2p.QueryHandler` over the local CAS store
+- `ScatterGatherLister` adapts `ScatterGather` to the `transport.GlobalLister` interface
+- When P2P is enabled, S3 `ListObjectsV2` and native list operations use scatter-gather to return a unified global directory
+- Results are merged and deduplicated by content hash
+
+### Configuration
+
+```ini
+[p2p]
+scatter_gather_timeout = 5  # seconds
+```
+
+---
+
+## Lease-Based Consensus
+
+### Overview
+
+The `LeaseManager` provides time-bound, self-expiring leases for destructive operations (deletes). A lease must be granted by a majority quorum of alive peers before the operation proceeds. Leases are kept in-memory and expire automatically.
+
+### Message Types
+
+| Type | Value | Description |
+|------|-------|-------------|
+| `MsgLeaseRequest` | 6 | Request a lease for a resource key |
+| `MsgLeaseGrant` | 7 | Grant or deny a lease request |
+| `MsgLeaseRelease` | 8 | Release a held lease |
+
+### Protocol
+
+1. **Acquire**: Node broadcasts `MsgLeaseRequest` to all alive peers
+2. **Grant**: Each peer checks if the key is available (no active lease) and responds with `MsgLeaseGrant` (expiry > 0 = granted, expiry = 0 = denied)
+3. **Quorum**: Acquirer needs majority (N/2 + 1) grants within timeout/2
+4. **Release**: After operation completes, broadcasts `MsgLeaseRelease`
+5. **Expiry**: Background loop cleans up expired leases every 500ms
+
+### Server Integration
+
+- `LeaseAcquirerAdapter` adapts `LeaseManager` to the `transport.LeaseAcquirer` interface
+- When P2P is enabled, S3 `DELETE` and native delete operations acquire a lease before proceeding
+- If lease acquisition fails (quorum not reached), returns 503 Service Unavailable (S3) or error status (native)
+
+### Configuration
+
+```ini
+[p2p]
+lease_timeout = 10  # seconds
+```
 ```

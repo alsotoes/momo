@@ -29,8 +29,10 @@ import (
 // MomoQUICCommunicator implements the Communicator interface for the Momo protocol over QUIC.
 type MomoQUICCommunicator struct {
 	*quic.Stream
-	conn  *quic.Conn
-	store storage.Store
+	conn          *quic.Conn
+	store         storage.Store
+	globalLister  GlobalLister
+	leaseAcquirer LeaseAcquirer
 }
 
 // NewMomoQUICCommunicator creates a new MomoQUICCommunicator.
@@ -43,6 +45,16 @@ func NewMomoQUICCommunicator(stream *quic.Stream, conn *quic.Conn) *MomoQUICComm
 
 func (m *MomoQUICCommunicator) SetStore(store storage.Store) {
 	m.store = store
+}
+
+// SetGlobalLister sets the scatter-gather list capability.
+func (m *MomoQUICCommunicator) SetGlobalLister(gl GlobalLister) {
+	m.globalLister = gl
+}
+
+// SetLeaseAcquirer sets the lease-based consensus capability.
+func (m *MomoQUICCommunicator) SetLeaseAcquirer(la LeaseAcquirer) {
+	m.leaseAcquirer = la
 }
 
 func (m *MomoQUICCommunicator) SetAbsoluteDeadline(t interface{}) (err error) {
@@ -151,7 +163,12 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 		if m.store == nil {
 			return 0, 0, fmt.Errorf("storage store not initialized")
 		}
-		files, err := m.store.List()
+		var files []common.FileMetadata
+		if m.globalLister != nil {
+			files, err = m.globalLister.GlobalList(5 * time.Second)
+		} else {
+			files, err = m.store.List()
+		}
 		if err != nil {
 			return 0, 0, fmt.Errorf("failed to list files: %w", err)
 		}
@@ -207,6 +224,15 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 			m.Stream.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			m.Write([]byte{'1'}) // error status
 			return 0, 0, fmt.Errorf("invalid delete target traversal: %s: %w", fileName, syscall.EBADMSG)
+		}
+
+		if m.leaseAcquirer != nil {
+			if err := m.leaseAcquirer.AcquireLease(fileName, 10*time.Second); err != nil {
+				m.Stream.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				m.Write([]byte{'1'}) // error status
+				return 0, 0, fmt.Errorf("failed to acquire lease for delete: %w", err)
+			}
+			defer m.leaseAcquirer.ReleaseLease(fileName)
 		}
 
 		err = m.store.Delete(fileName)

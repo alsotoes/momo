@@ -85,8 +85,10 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 	cmap := &common.ClusterMap{Nodes: nodes}
 
 	// P2P Transport & Gossip (coexists with existing listener when enabled)
+	var scatterGather *p2p.ScatterGather
+	var leaseManager *p2p.LeaseManager
 	if cfg.P2P.Enabled {
-		bootstrapP2P(ctx, cfg, serverId, daemons)
+		scatterGather, leaseManager = bootstrapP2P(ctx, cfg, serverId, daemons, store)
 	}
 
 	// 🛡️ Sentinel: Enforce a limit on concurrent connections to prevent resource exhaustion (DoS).
@@ -129,6 +131,20 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 			// Inject storage store if the communicator supports it (e.g. S3 for list/delete)
 			if s3Comm, ok := comm.(interface{ SetStore(storage.Store) }); ok {
 				s3Comm.SetStore(store)
+			}
+
+			// Inject scatter-gather and lease capabilities if P2P is enabled
+			if scatterGather != nil {
+				if glComm, ok := comm.(interface{ SetGlobalLister(transport.GlobalLister) }); ok {
+					glComm.SetGlobalLister(NewScatterGatherLister(scatterGather,
+						time.Duration(cfg.P2P.ScatterGatherTimeout)*time.Second))
+				}
+			}
+			if leaseManager != nil {
+				if laComm, ok := comm.(interface{ SetLeaseAcquirer(transport.LeaseAcquirer) }); ok {
+					laComm.SetLeaseAcquirer(NewLeaseAcquirerAdapter(leaseManager,
+						time.Duration(cfg.P2P.LeaseTimeout)*time.Second))
+				}
 			}
 
 			// 🛡️ Sentinel: Apply a strict absolute deadline for the handshake phase to prevent Slowloris trickle attacks.
@@ -402,7 +418,8 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 // bootstrapP2P starts the P2P transport and gossip protocol alongside the main daemon.
 // It connects to all configured daemon peers as bootstrap seeds and begins
 // exchanging heartbeats for dynamic membership discovery.
-func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, daemons []*common.Daemon) *p2p.Gossiper {
+// Returns the ScatterGather and LeaseManager instances for use by the server.
+func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, daemons []*common.Daemon, store storage.Store) (*p2p.ScatterGather, *p2p.LeaseManager) {
 	gossipAddr := daemons[serverId].Host
 	host, _, err := net.SplitHostPort(gossipAddr)
 	if err != nil {
@@ -422,7 +439,7 @@ func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, d
 
 	if err := transport.Listen(gossipAddr); err != nil {
 		log.Printf("P2P: failed to listen on %s: %v", gossipAddr, err)
-		return nil
+		return nil, nil
 	}
 
 	gossipCfg := p2p.GossipConfig{
@@ -440,6 +457,13 @@ func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, d
 		log.Printf("P2P: peer %d left cluster", peerID)
 	})
 
+	queryHandler := NewStorageQueryHandler(store)
+	scatterGather := p2p.NewScatterGather(int32(serverId), transport, queryHandler)
+	leaseManager := p2p.NewLeaseManager(int32(serverId), transport)
+
+	gossip.SetScatterGather(scatterGather)
+	gossip.SetLeaseManager(leaseManager)
+
 	for i, d := range daemons {
 		if i == serverId {
 			continue
@@ -452,15 +476,17 @@ func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, d
 		}
 	}
 
+	leaseManager.Start()
 	gossip.Run()
 
 	log.Printf("P2P: gossip started, node %d, %d peers connected", serverId, transport.Peers().Count())
 
 	go func() {
 		<-ctx.Done()
+		leaseManager.Stop()
 		gossip.Close()
 		transport.Close()
 	}()
 
-	return gossip
+	return scatterGather, leaseManager
 }

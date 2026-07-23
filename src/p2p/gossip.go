@@ -33,7 +33,7 @@ func DefaultGossipConfig(localID int32) GossipConfig {
 // It periodically sends heartbeats to random peers, merges membership
 // information from received heartbeats, and marks unreachable peers as suspect/offline.
 type Gossiper struct {
-	cfg     GossipConfig
+	cfg      GossipConfig
 	transport Transport
 	done    chan struct{}
 	closed  bool
@@ -42,6 +42,9 @@ type Gossiper struct {
 
 	onJoin  func(peer *Peer)
 	onLeave func(peerID int32)
+
+	scatterGather *ScatterGather
+	leaseManager  *LeaseManager
 }
 
 // NewGossiper creates a new Gossiper.
@@ -61,6 +64,18 @@ func (g *Gossiper) OnJoin(fn func(peer *Peer)) {
 // OnLeave sets a callback invoked when a peer leaves the cluster.
 func (g *Gossiper) OnLeave(fn func(peerID int32)) {
 	g.onLeave = fn
+}
+
+// SetScatterGather attaches a ScatterGather instance whose query RPCs will be
+// routed by the gossiper's consumer loop.
+func (g *Gossiper) SetScatterGather(sg *ScatterGather) {
+	g.scatterGather = sg
+}
+
+// SetLeaseManager attaches a LeaseManager instance whose lease RPCs will be
+// routed by the gossiper's consumer loop.
+func (g *Gossiper) SetLeaseManager(lm *LeaseManager) {
+	g.leaseManager = lm
 }
 
 // Start launches the heartbeat and suspicion loops.
@@ -191,6 +206,14 @@ func (g *Gossiper) HandleRPC(rpc *RPC) {
 		g.handleMembership(rpc)
 	case MsgSuspect:
 		g.handleSuspect(rpc)
+	case MsgQuery, MsgQueryResponse:
+		if g.scatterGather != nil {
+			g.scatterGather.HandleRPC(rpc)
+		}
+	case MsgLeaseRequest, MsgLeaseGrant, MsgLeaseRelease:
+		if g.leaseManager != nil {
+			g.leaseManager.HandleLeaseRPC(rpc)
+		}
 	}
 }
 

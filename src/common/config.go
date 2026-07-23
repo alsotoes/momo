@@ -220,6 +220,16 @@ func loadP2PConfig(section *ini.Section) (ConfigurationP2P, error) {
 		p2pCfg.Fanout = 3
 	}
 
+	p2pCfg.ScatterGatherTimeout, err = section.Key("scatter_gather_timeout").Int()
+	if err != nil || p2pCfg.ScatterGatherTimeout <= 0 {
+		p2pCfg.ScatterGatherTimeout = 5
+	}
+
+	p2pCfg.LeaseTimeout, err = section.Key("lease_timeout").Int()
+	if err != nil || p2pCfg.LeaseTimeout <= 0 {
+		p2pCfg.LeaseTimeout = 10
+	}
+
 	return p2pCfg, nil
 }
 
