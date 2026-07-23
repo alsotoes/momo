@@ -73,7 +73,7 @@ func (t *TCPTransport) acceptLoop() {
 			case <-t.done:
 				return
 			default:
-				log.Printf("P2P accept error: %v", err)
+				log.Printf("P2P accept error: %v (errno=%d)", err, syscall.EIO)
 				time.Sleep(10 * time.Millisecond)
 				continue
 			}
@@ -112,7 +112,7 @@ func (t *TCPTransport) handleConn(conn net.Conn) {
 			}
 			if peerID >= 0 {
 				t.peerMap.Remove(peerID)
-				log.Printf("P2P peer %d disconnected: %v", peerID, err)
+				log.Printf("P2P peer %d disconnected: %v (errno=%d)", peerID, err, syscall.ECONNRESET)
 			}
 			return
 		}
@@ -181,7 +181,7 @@ func (t *TCPTransport) readLoop(peerID int32, conn net.Conn) {
 				return
 			default:
 			}
-			log.Printf("P2P peer %d read error: %v", peerID, err)
+			log.Printf("P2P peer %d read error: %v (errno=%d)", peerID, err, syscall.ECONNRESET)
 			return
 		}
 
@@ -216,7 +216,7 @@ func (t *TCPTransport) Broadcast(rpc *RPC) int {
 			continue
 		}
 		if _, err := conn.Write(encoded); err != nil {
-			log.Printf("P2P broadcast to peer %d failed: %v", p.ID, err)
+			log.Printf("P2P broadcast to peer %d failed: %v (errno=%d)", p.ID, err, syscall.EPIPE)
 			continue
 		}
 		sent++

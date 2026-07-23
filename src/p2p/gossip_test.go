@@ -4,7 +4,13 @@ import (
 	"net"
 	"testing"
 	"time"
+
+	"go.uber.org/goleak"
 )
+
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 func TestGossiper_HeartbeatExchange(t *testing.T) {
 	tr1 := NewTCPTransport(TCPTransportConfig{LocalID: 1})
