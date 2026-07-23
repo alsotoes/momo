@@ -72,7 +72,7 @@ def create_missing_issue(pr_number, pr_title, pr_body):
         issue_body = f"This issue was created autonomously to satisfy Rule 11 (Traceability) for PR #{pr_number}.\n\n### Original PR Description:\n{pr_body}"
         
         # Create the issue
-        cmd = ["gh", "issue", "create", "--title", issue_title, "--body", issue_body, "--label", "enhancement"]
+        cmd = ["gh", "issue", "create", "--title", issue_title, "--body", issue_body, "--label", "enhancement", "--label", "automation", "--assignee", "alsotoes"]
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         issue_url = result.stdout.strip()
         
@@ -121,8 +121,7 @@ def main():
     pr_body = os.environ.get("PR_BODY", "")
     pr_title = os.environ.get("PR_TITLE", "")
     pr_number = os.environ.get("PR_NUMBER", "")
-    pr_branch = os.environ.get("PR_BRANCH", "")
-    is_jules_pr = "jules" in pr_author.lower() or "jules" in pr_body.lower() or "jules" in pr_branch.lower()
+    is_jules_pr = "jules" in pr_author.lower() or "jules" in pr_body.lower()
     
     # 🛡️ Rule 11: Check for Issue-Spec Traceability
     has_issue_link = "github.com/alsotoes/momo/issues/" in pr_body
