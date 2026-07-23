@@ -175,7 +175,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 			// 🛡️ Sentinel: Ensure the replicationMode is within valid bounds.
 			// If it's 0 (the uninitialized value of the enum) or otherwise invalid,
 			// default to ReplicationNone to ensure the server processes the file.
-			if replicationMode == 0 {
+			if replicationMode <= 0 || replicationMode > common.ReplicationSplay {
 				replicationMode = common.ReplicationNone
 			}
 
@@ -319,7 +319,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 					nextHop := placement[myPos+1]
 					blobPath, _ := store.GetBlobPath(fileName)
 					log.Printf("AUDIT: Chain forwarding from Node %d to Node %d", serverId, nextHop.ID)
-					
+
 					// 🛡️ Zero-Crash: Wrap Chain forwarding in a goroutine with recovery for consistency and safety.
 					go func(id int, path string) {
 						defer func() {
