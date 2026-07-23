@@ -7,6 +7,10 @@ import (
 	"time"
 )
 
+// MaxPeersInHeartbeat is the upper bound on peers processed from a single
+// heartbeat or membership RPC to prevent CPU exhaustion via malicious packets.
+const MaxPeersInHeartbeat = 256
+
 // GossipConfig holds configuration for the Gossiper.
 type GossipConfig struct {
 	LocalID         int32
@@ -82,6 +86,11 @@ func (g *Gossiper) Stop() {
 // heartbeatLoop periodically sends heartbeats to random peers.
 func (g *Gossiper) heartbeatLoop() {
 	defer g.wg.Done()
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("Gossip heartbeatLoop panic recovered: %v (errno=%d)", r, syscall.EIO)
+		}
+	}()
 
 	ticker := time.NewTicker(g.cfg.HeartbeatInterval)
 	defer ticker.Stop()
@@ -98,12 +107,13 @@ func (g *Gossiper) heartbeatLoop() {
 
 // sendHeartbeat sends a heartbeat RPC with the current peer list to k random peers.
 func (g *Gossiper) sendHeartbeat() {
-	peers := g.transport.Peers().RandomPeers(g.cfg.Fanout, g.cfg.LocalID)
+	pm := g.transport.Peers()
+	peers := pm.RandomPeers(g.cfg.Fanout, g.cfg.LocalID)
 	if len(peers) == 0 {
 		return
 	}
 
-	peerInfos := g.transport.Peers().PeerInfos()
+	peerInfos := pm.PeerInfos()
 	payload := &HeartbeatPayload{Peers: peerInfos}
 	encoded := payload.Encode()
 
@@ -115,7 +125,7 @@ func (g *Gossiper) sendHeartbeat() {
 
 	for _, peer := range peers {
 		if err := g.transport.Send(peer.ID, rpc); err != nil {
-			log.Printf("Gossip heartbeat to peer %d failed: %v", peer.ID, err)
+			log.Printf("Gossip heartbeat to peer %d failed: %v (errno=%d)", peer.ID, err, syscall.EHOSTUNREACH)
 		}
 	}
 }
@@ -124,6 +134,11 @@ func (g *Gossiper) sendHeartbeat() {
 // within the suspicion timeout window and marks them suspect or offline.
 func (g *Gossiper) suspicionLoop() {
 	defer g.wg.Done()
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("Gossip suspicionLoop panic recovered: %v (errno=%d)", r, syscall.EIO)
+		}
+	}()
 
 	ticker := time.NewTicker(g.cfg.HeartbeatInterval)
 	defer ticker.Stop()
@@ -183,8 +198,14 @@ func (g *Gossiper) HandleRPC(rpc *RPC) {
 func (g *Gossiper) handleHeartbeat(rpc *RPC) {
 	payload, err := DecodeHeartbeatPayload(rpc.Payload)
 	if err != nil {
-		log.Printf("Gossip: failed to decode heartbeat from peer %d: %v", rpc.From, err)
+		log.Printf("Gossip: failed to decode heartbeat from peer %d: %v (errno=%d)", rpc.From, err, syscall.EBADMSG)
 		return
+	}
+
+	if len(payload.Peers) > MaxPeersInHeartbeat {
+		log.Printf("Gossip: heartbeat from peer %d contains %d peers, truncating to %d (errno=%d)",
+			rpc.From, len(payload.Peers), MaxPeersInHeartbeat, syscall.E2BIG)
+		payload.Peers = payload.Peers[:MaxPeersInHeartbeat]
 	}
 
 	for _, pi := range payload.Peers {
@@ -206,8 +227,14 @@ func (g *Gossiper) handleHeartbeat(rpc *RPC) {
 func (g *Gossiper) handleMembership(rpc *RPC) {
 	payload, err := DecodeHeartbeatPayload(rpc.Payload)
 	if err != nil {
-		log.Printf("Gossip: failed to decode membership from peer %d: %v", rpc.From, err)
+		log.Printf("Gossip: failed to decode membership from peer %d: %v (errno=%d)", rpc.From, err, syscall.EBADMSG)
 		return
+	}
+
+	if len(payload.Peers) > MaxPeersInHeartbeat {
+		log.Printf("Gossip: membership from peer %d contains %d peers, truncating to %d (errno=%d)",
+			rpc.From, len(payload.Peers), MaxPeersInHeartbeat, syscall.E2BIG)
+		payload.Peers = payload.Peers[:MaxPeersInHeartbeat]
 	}
 
 	for _, pi := range payload.Peers {
@@ -228,6 +255,8 @@ func (g *Gossiper) handleMembership(rpc *RPC) {
 // handleSuspect processes a suspicion announcement about a peer.
 func (g *Gossiper) handleSuspect(rpc *RPC) {
 	if len(rpc.Payload) < 4 {
+		log.Printf("Gossip: suspect RPC from peer %d has short payload (len=%d, errno=%d)",
+			rpc.From, len(rpc.Payload), syscall.EBADMSG)
 		return
 	}
 	suspectID := int32(0)
@@ -285,6 +314,11 @@ func (g *Gossiper) Run() {
 	g.wg.Add(1)
 	go func() {
 		defer g.wg.Done()
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("Gossip consumer loop panic recovered: %v (errno=%d)", r, syscall.EIO)
+			}
+		}()
 		for {
 			select {
 			case <-g.done:

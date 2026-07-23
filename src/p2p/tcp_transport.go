@@ -60,6 +60,11 @@ func (t *TCPTransport) Listen(addr string) error {
 // acceptLoop accepts incoming connections and spawns a read goroutine for each.
 func (t *TCPTransport) acceptLoop() {
 	defer t.wg.Done()
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("P2P acceptLoop panic recovered: %v (errno=%d)", r, syscall.EIO)
+		}
+	}()
 
 	for {
 		conn, err := t.ln.Accept()
@@ -88,6 +93,11 @@ func (t *TCPTransport) acceptLoop() {
 func (t *TCPTransport) handleConn(conn net.Conn) {
 	defer t.wg.Done()
 	defer conn.Close()
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("P2P handleConn panic recovered: %v (errno=%d)", r, syscall.EIO)
+		}
+	}()
 
 	var peer *Peer
 	var peerID int32 = -1
@@ -157,6 +167,11 @@ func (t *TCPTransport) readLoop(peerID int32, conn net.Conn) {
 	defer t.wg.Done()
 	defer conn.Close()
 	defer t.peerMap.Remove(peerID)
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("P2P readLoop panic recovered for peer %d: %v (errno=%d)", peerID, r, syscall.EIO)
+		}
+	}()
 
 	for {
 		rpc, err := DecodeRPC(conn)
