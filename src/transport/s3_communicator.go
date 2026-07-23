@@ -463,6 +463,11 @@ func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (status int, er
 		return 0, fmt.Errorf("joined remote path exceeds maximum length of %d: %w", common.FileInfoLength, syscall.ENAMETOOLONG)
 	}
 
+	// 🛡️ Sentinel: Reject carriage returns or line feeds in the path to prevent HTTP Request Smuggling (CRLF Injection).
+	if strings.ContainsAny(wireName, "\r\n") {
+		return 0, fmt.Errorf("invalid characters in path: %w", syscall.EBADMSG)
+	}
+
 	// ⚡ Bolt: Eliminate fmt.Sprintf and string allocations using stack-allocated buffer
 	var buf [512]byte
 	b := buf[:0]
