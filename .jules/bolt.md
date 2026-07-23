@@ -140,3 +140,6 @@
 ## 2024-05-18 - Centralize Optimization Logic for Readability
 **Learning:** Optimizing performance by eliminating heap allocations using stack-allocated buffers and `strconv.AppendInt` is highly effective. However, directly inlining the byte-copying and null-padding loops across multiple locations reduces code readability and encapsulation. Replacing one clean line with six lines of manual slice manipulation violates the principle of not sacrificing readability for micro-optimizations.
 **Action:** When repeatedly applying manual padding or formatting optimizations, encapsulate the verbose logic into a centralized helper function (like `common.AppendPaddedInt`) and reuse it across call sites to maintain clean, readable code while achieving the desired performance gains.
+## 2026-07-23 - [Eliminate reflection overhead in binary.Write]
+**Learning:** Using `binary.Write` for simple primitive types involves reflection and heap allocation overhead to determine the type and serialize it. In hot network paths, this translates to unnecessary memory allocations and CPU cycles.
+**Action:** Replace `binary.Write` with fixed-size stack-allocated byte arrays and direct serialization methods like `binary.BigEndian.PutUint32` before writing to `net.Conn`. This bypasses reflection and completely eliminates the heap allocations.
