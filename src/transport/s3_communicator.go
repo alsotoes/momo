@@ -254,11 +254,8 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			maxKeys := 1000
 			if maxKeysStr := q.Get("max-keys"); maxKeysStr != "" {
 				if mk, err := strconv.Atoi(maxKeysStr); err == nil && mk > 0 {
-					if mk > 1000 {
-						maxKeys = 1000
-					} else {
-						maxKeys = mk
-					}
+					// 🛡️ Sentinel: Clamp max-keys to 1000 to prevent DoS via memory exhaustion in XML generation
+					maxKeys = min(mk, 1000)
 				}
 			}
 
@@ -793,10 +790,18 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, f
 	return buf.Bytes(), nil
 }
 
+// ⚡ Bolt: Optimize XML escaping by replacing byte-by-byte iteration with fast-path
+// block writes using strings.IndexAny. This reduces loop overhead and leverages
+// optimized standard library routines for finding target characters, improving performance.
 func xmlEscape(buf *bytes.Buffer, s string) {
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		switch c {
+	for len(s) > 0 {
+		i := strings.IndexAny(s, "&<>\"'")
+		if i == -1 {
+			buf.WriteString(s)
+			break
+		}
+		buf.WriteString(s[:i])
+		switch s[i] {
 		case '&':
 			buf.WriteString("&amp;")
 		case '<':
@@ -807,8 +812,7 @@ func xmlEscape(buf *bytes.Buffer, s string) {
 			buf.WriteString("&quot;")
 		case '\'':
 			buf.WriteString("&apos;")
-		default:
-			buf.WriteByte(c)
 		}
+		s = s[i+1:]
 	}
 }
