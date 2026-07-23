@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"log"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/alsotoes/momo/src/client"
@@ -39,6 +41,7 @@ func Run() {
 	filePathPtr := flag.String("file", "/tmp/momo", "File path to upload")
 	configPathPtr := flag.String("config", "conf/momo.conf", "Path to the configuration file")
 	modePtr := flag.Int("mode", -1, "Replication mode to set (used with -imp repl)")
+	remotePathPtr := flag.String("remote-path", "", "Remote virtual directory path to upload the file to")
 	flag.Parse()
 
 	cfg, err := common.GetConfig(*configPathPtr)
@@ -59,21 +62,21 @@ func Run() {
 	switch *impersonationPtr {
 	case "client":
 		serverId := *serverIdPtr
-		
+
 		// ⚡ Bolt: Implement dynamic load balancing if no serverId is specified.
 		if serverId == -1 {
 			fileHash, err := common.HashFile(*filePathPtr)
 			if err != nil {
 				log.Fatalf("Failed to hash file: %v", err)
 			}
-			
+
 			// Build ClusterMap
 			nodes := make([]*common.Node, len(cfg.Daemons))
 			for i, d := range cfg.Daemons {
 				nodes[i] = &common.Node{ID: i, Weight: 1, Addr: d.Host}
 			}
 			cmap := &common.ClusterMap{Nodes: nodes}
-			
+
 			// Calculate Primary using CRUSH
 			placement, err := cmap.Placement(fileHash, 1)
 			if err != nil {
@@ -88,10 +91,10 @@ func Run() {
 		}
 		var wg sync.WaitGroup
 		wg.Add(1)
-		client.Connect(&wg, cfg, *filePathPtr, serverId, common.DummyEpoch, 0, cfg.Global.ReplicationFactor)
+		client.Connect(&wg, cfg, *filePathPtr, *remotePathPtr, serverId, common.DummyEpoch, 0, cfg.Global.ReplicationFactor)
 		wg.Wait()
 	case "server":
-		if err := runServer(cfg, *serverIdPtr); err != nil {
+		if err := runServer(context.Background(), cfg, *serverIdPtr); err != nil {
 			log.Fatalf("Server error: %v", common.SanitizeLog(err.Error()))
 		}
 	case "repl":
@@ -107,7 +110,7 @@ func Run() {
 			log.Fatalf("Failed to marshal replication data: %v", err)
 		}
 		factory := transport.NewProtocolFactory(cfg)
-		
+
 		// ⚡ Bolt: Broadcast replication change to all nodes to ensure cluster-wide consistency.
 		// In a balanced primary model, every node needs to know the latest intended mode.
 		if *serverIdPtr == -1 {
@@ -133,53 +136,81 @@ func Run() {
 	}
 }
 
+// runMetricsLoop runs the metrics loop with panic recovery.
+func runMetricsLoop(ctx context.Context, cfg common.Configuration, serverId int) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in Metrics Loop: %v", r)
+			err = fmt.Errorf("metrics loop panic: %w", syscall.EINVAL)
+		}
+	}()
+	metrics.GetMetrics(ctx, cfg, serverId)
+	return nil
+}
+
+// runReplicationServer runs the replication server with panic recovery.
+func runReplicationServer(ctx context.Context, cfg common.Configuration, serverId int, timestamp int64) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in Replication Server: %v", r)
+			err = fmt.Errorf("replication server panic: %w", syscall.ENETDOWN)
+		}
+	}()
+	return server.ChangeReplicationModeServer(ctx, cfg, serverId, timestamp)
+}
+
+// runMainDaemon runs the main server daemon with panic recovery.
+func runMainDaemon(ctx context.Context, cfg common.Configuration, serverId int) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in Main Daemon: %v", r)
+			err = fmt.Errorf("main daemon panic: %w", syscall.EIO)
+		}
+	}()
+	return server.Daemon(ctx, cfg, serverId)
+}
+
 // runServer starts the momo server.
 // It initializes the metrics collector, the replication mode change listener, and the main daemon.
 // It waits for all three components to finish before shutting down.
-func runServer(cfg common.Configuration, serverId int) error {
+func runServer(ctx context.Context, cfg common.Configuration, serverId int) (err error) {
 	log.Printf("*** SERVER CODE")
 	now := time.Now()
 	timestamp := now.UnixNano()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in runServer: %v", r)
+			err = fmt.Errorf("runServer panic: %w", syscall.EIO)
+		}
+	}()
 
 	errChan := make(chan error, 3)
 
 	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				log.Printf("CRITICAL: Panic recovered in Metrics Loop: %v", r)
-			}
-		}()
-		metrics.GetMetrics(ctx, cfg, serverId)
+		if e := runMetricsLoop(ctx, cfg, serverId); e != nil {
+			errChan <- e
+		}
 	}()
 
 	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				log.Printf("CRITICAL: Panic recovered in Replication Server: %v", r)
-			}
-		}()
-		errChan <- server.ChangeReplicationModeServer(ctx, cfg, serverId, timestamp)
+		errChan <- runReplicationServer(ctx, cfg, serverId, timestamp)
 	}()
 
 	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				log.Printf("CRITICAL: Panic recovered in Main Daemon: %v", r)
-			}
-		}()
-		errChan <- server.Daemon(ctx, cfg, serverId)
+		errChan <- runMainDaemon(ctx, cfg, serverId)
 	}()
 
 	// Wait for any component to return an error or for the program to be interrupted
 	// In a real application, we might want to catch SIGINT/SIGTERM here.
 	select {
-	case err := <-errChan:
-		if err != nil {
+	case e := <-errChan:
+		if e != nil {
 			cancel() // Shut down other components
-			return err
+			return e
 		}
 	}
 

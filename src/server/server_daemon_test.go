@@ -26,7 +26,7 @@ func TestChangeReplicationModeServerReal(t *testing.T) {
 		{ChangeReplication: "127.0.0.1:45679"},
 		{ChangeReplication: "127.0.0.1:45680"},
 	}
-	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
 	cfg := common.Configuration{
 		Daemons: daemons,
 		Global: common.ConfigurationGlobal{
@@ -120,7 +120,7 @@ func TestDaemonReal(t *testing.T) {
 		os.MkdirAll(d.Data, 0755)
 	}
 
-	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
 	cfg := common.Configuration{
 		Daemons: daemons,
 		Global: common.ConfigurationGlobal{

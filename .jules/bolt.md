@@ -121,6 +121,42 @@
 ## 2026-06-07 - Optimization Trap: bytes.IndexByte vs manual loop
 **Learning:** For extremely small, stack-allocated byte arrays (like 64-byte padding buffers), standard library functions like `bytes.IndexByte` can be slower than a simple manual inline `for` loop due to standard library overheads and function calls. Benchmark testing proved that a manual loop to find the first null byte is ~2x faster (~4 ns/op vs ~8 ns/op) on small arrays.
 **Action:** When working with very small, stack-allocated fixed-size buffers, consider replacing standard library searches like `bytes.IndexByte` with a simple inline loop, but always benchmark to confirm the performance gain.
+
+## 2026-06-14 - Optimize fixed-size stack buffer searching with standard library
+**Learning:** For typical fixed-size stack buffers in hot loops (e.g. 64-128 bytes), the standard library `bytes.IndexByte` is significantly faster (in modern Go versions) than manual byte-searching loops. Older code may have avoided standard library calls assuming function-call overhead was too high, but Go's assembly optimizations and inlining now make `bytes.IndexByte` the optimal choice for fixed-length byte slices.
+**Action:** Replace custom inline `for` loops designed to find a specific byte (e.g. trimming null characters in fixed-size buffers) with `bytes.IndexByte` for both cleaner code and better performance.
 ## 2024-06-12 - Eliminate fmt.Sprintf and fmt.Sscanf in metadata DB queries
 **Learning:** `fmt.Sprintf` and `fmt.Sscanf` involve runtime reflection and result in memory allocations when converting integers to strings or strings to integers. Using `fmt.Sscanf` to read the size out of bbolt takes ~810 ns/op and causes 4 allocations. `strconv.ParseInt` with `unsafe.String` takes ~31.81 ns/op and 0 allocations, making it >25x faster.
 **Action:** When saving integer metadata to bytes or parsing them, always use `strconv.AppendInt` onto a stack array and `strconv.ParseInt` with `unsafe.String`, to avoid heap escapes, save CPU time, and reduce GC pressure.
+
+## 2026-07-04 - Eliminate strconv.Itoa Allocations
+**Learning:** Using `strconv.Itoa` forces a memory allocation as it creates and returns a new string. In performance-critical network paths, this causes unnecessary garbage collection overhead.
+**Action:** Replace `strconv.Itoa(val)` and string concatenations with `strconv.AppendInt` using a fixed-size stack-allocated array (e.g., `var buf [32]byte`) to safely eliminate heap allocations.
+
+## 2026-07-07 - Eliminate heap allocations for multiple integer fields in network payloads
+**Learning:** Using `strconv.Itoa` and `strconv.FormatInt` combined with `bytes.Buffer.WriteString` inside functions generating network payloads causes dynamic string allocations. The string concatenation or `FormatInt` call allocates memory on the heap before the data is written to the buffer.
+**Action:** When a function formats and writes multiple integers sequentially to a `bytes.Buffer` (e.g., when constructing XML or HTTP headers), define a single stack-allocated buffer (e.g., `var intBuf [32]byte`) at the top of the function. Use `strconv.AppendInt(intBuf[:0], val, 10)` and `buf.Write()` to format integers and write them without triggering heap allocations.
+
+## 2024-05-18 - Centralize Optimization Logic for Readability
+**Learning:** Optimizing performance by eliminating heap allocations using stack-allocated buffers and `strconv.AppendInt` is highly effective. However, directly inlining the byte-copying and null-padding loops across multiple locations reduces code readability and encapsulation. Replacing one clean line with six lines of manual slice manipulation violates the principle of not sacrificing readability for micro-optimizations.
+**Action:** When repeatedly applying manual padding or formatting optimizations, encapsulate the verbose logic into a centralized helper function (like `common.AppendPaddedInt`) and reuse it across call sites to maintain clean, readable code while achieving the desired performance gains.
+
+## 2026-07-11 - binary.Write reflection overhead in network handshakes
+**Learning:** Using `binary.Write(m, binary.BigEndian, int32(len(files)))` on the hot path causes reflection overhead and heap allocations because it accepts an `any` interface. Even though this code path is part of the connection handshake and arguably a "cold" path where I/O latency overshadows CPU cycles, replacing it with a stack-allocated buffer (e.g. `var countBuf [4]byte`) and packing it manually using `binary.BigEndian.PutUint32` is a standard, safe Go optimization that completely avoids the heap allocation.
+**Action:** Avoid `binary.Write` in high-throughput data paths or when optimizing for zero-allocations. Instead, manually pack stack-allocated byte arrays using `binary.ByteOrder` methods (like `PutUint32`) and write the resulting slice directly.
+
+## 2024-07-13 - Eliminate bytes.Buffer overhead for small HTTP responses
+**Learning:** Using `bytes.Buffer` and `WriteString` / `Write` to construct HTTP response headers triggers a heap allocation and slice growth that causes CPU overhead, especially on highly concurrent network applications handling many small requests like ListObjects or GET operations.
+**Action:** When constructing small HTTP response headers, avoid `bytes.Buffer`. Instead, define a fixed-size stack array (e.g. `var buf [256]byte`), slice it (`b := buf[:0]`), use `append` for string constants, and `strconv.AppendInt` for integers, then write `b` directly to the network connection. Write the actual payload in a separate call to avoid merging payload allocations into the header array.
+
+## 2026-07-14 - Eliminate bytes.Buffer heap allocations for HTTP responses
+**Learning:** Using `bytes.Buffer` to construct HTTP headers causes unnecessary dynamic memory allocations on the heap. This happens when the underlying slice capacity is exceeded or because the buffer object escapes to the heap in hot paths. Using string concatenation or `bytes.Buffer.WriteString` combined with `strconv.AppendInt` causes extra allocations compared to just appending everything manually.
+**Action:** Replace `bytes.Buffer` and `WriteString` with a stack-allocated byte array (`var buf [128]byte`), use `append` to add strings to the slice, and `strconv.AppendInt` to add integers. This completely eliminates dynamic heap allocations, reducing garbage collection pressure and dramatically speeding up execution time (from ~211ns to ~15ns per operation in benchmarks). For payloads like XML, write the headers first using `conn.Write(buf)`, then write the payload in a separate `conn.Write` call to avoid allocating a massive combined buffer.
+
+## 2026-07-18 - [Optimize string escaping in XML serialization]
+**Learning:** In Go, iterating over a string byte-by-byte using a standard `for` loop and calling `buf.WriteByte` or `buf.WriteString` for every character (like when escaping XML entities) involves high loop and function call overhead. Using `strings.IndexAny` from the standard library to find the next target character allows for writing safe chunks of the string in bulk using `buf.WriteString`, significantly improving performance.
+**Action:** When escaping characters in long strings, prefer bulk search and copy operations (`strings.IndexAny` + `buf.WriteString(s[:idx])`) over character-by-character processing to reduce CPU overhead.
+
+## 2026-07-22 - Eliminate binary.Write Reflection Overhead
+**Learning:** In Go, using `binary.Write` with generic types (like `int32`) involves runtime reflection to inspect the type of the argument and dynamically allocate memory to write it. This creates unnecessary CPU overhead and heap escapes in performance-critical paths.
+**Action:** Replace `binary.Write` with direct serialization using `binary.LittleEndian` or `binary.BigEndian` methods (e.g., `PutUint32`) into a pre-allocated stack byte array. This eliminates reflection and dynamic allocations entirely.

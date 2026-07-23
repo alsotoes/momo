@@ -72,7 +72,7 @@ def create_missing_issue(pr_number, pr_title, pr_body):
         issue_body = f"This issue was created autonomously to satisfy Rule 11 (Traceability) for PR #{pr_number}.\n\n### Original PR Description:\n{pr_body}"
         
         # Create the issue
-        cmd = ["gh", "issue", "create", "--title", issue_title, "--body", issue_body, "--label", "enhancement"]
+        cmd = ["gh", "issue", "create", "--title", issue_title, "--body", issue_body, "--label", "enhancement", "--label", "automation", "--assignee", "alsotoes"]
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         issue_url = result.stdout.strip()
         
@@ -154,11 +154,16 @@ def main():
         print("No relevant changes to review.")
         return
 
-    rules_path = "openspec/project.md"
+    rules_path = "openspec/config.yaml"
     rules = ""
     if os.path.exists(rules_path):
-        with open(rules_path, "r") as f:
-            rules = f.read()
+        try:
+            import yaml
+            with open(rules_path, "r") as f:
+                config = yaml.safe_load(f)
+                rules = config.get("context", "")
+        except Exception as e:
+            print(f"Error reading rules from YAML: {e}", file=sys.stderr)
 
     jules_instruction = ""
     if is_jules_pr:

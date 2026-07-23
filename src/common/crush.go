@@ -4,8 +4,10 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
+	"log"
 	"math"
 	"sort"
+	"syscall"
 )
 
 // CRUSH (Controlled Replication Under Scalable Hashing) was originally conceived by Sage Weil.
@@ -26,9 +28,24 @@ type ClusterMap struct {
 // Placement returns an ordered list of nodes where an object should be stored, based on its hash.
 // It uses a simplified version of the CRUSH algorithm (Weighted Rendezvous Hashing)
 // to ensure perfect load balancing and minimal data movement when nodes are added/removed.
-func (m *ClusterMap) Placement(objectHash string, replicationFactor int) ([]*Node, error) {
+func (m *ClusterMap) Placement(objectHash string, replicationFactor int) (nodes []*Node, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in Placement: %v", r)
+			err = fmt.Errorf("panic in Placement: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	if len(m.Nodes) == 0 {
-		return nil, fmt.Errorf("cluster map has no nodes")
+		return nil, fmt.Errorf("cluster map has no nodes: %w", syscall.EINVAL)
+	}
+
+	if replicationFactor <= 0 {
+		return nil, fmt.Errorf("invalid replication factor: %d: %w", replicationFactor, syscall.EINVAL)
+	}
+
+	if objectHash == "" {
+		return nil, fmt.Errorf("invalid object hash: empty: %w", syscall.EINVAL)
 	}
 
 	if replicationFactor > len(m.Nodes) {
@@ -46,8 +63,15 @@ func (m *ClusterMap) Placement(objectHash string, replicationFactor int) ([]*Nod
 		// Calculate a deterministic float score between 0 and 1 for this node/hash pair.
 		h := sha256.New()
 		h.Write([]byte(objectHash))
-		binary.Write(h, binary.LittleEndian, uint32(node.ID))
-		sum := h.Sum(nil)
+
+		// ⚡ Bolt: Eliminate reflection overhead and allocations by using stack-allocated buffer
+		var idBuf [4]byte
+		binary.LittleEndian.PutUint32(idBuf[:], uint32(node.ID))
+		h.Write(idBuf[:])
+
+		// ⚡ Bolt: Eliminate heap allocation of hash.Sum by using stack-allocated slice
+		var sumBuf [sha256.Size]byte
+		sum := h.Sum(sumBuf[:0])
 		
 		val := binary.LittleEndian.Uint64(sum[:8])
 		floatVal := float64(val) / float64(math.MaxUint64)

@@ -26,6 +26,30 @@ func TestSanitizeLog(t *testing.T) {
 	}
 }
 
+func TestHasPathTraversalChars(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected bool
+	}{
+		{"No special characters", "helloworld", false},
+		{"Contains dot", "hello.world", true},
+		{"Contains slash", "hello/world", true},
+		{"Contains backslash", "hello\\world", true},
+		{"Path traversal", "../etc/passwd", true},
+		{"Just dots", "..", true},
+		{"Empty string", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := HasPathTraversalChars(tt.input); got != tt.expected {
+				t.Errorf("HasPathTraversalChars(%q) = %v, want %v", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestSafeParseInt(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -75,6 +99,39 @@ func TestPadString(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := PadString(tt.input, tt.length); got != tt.expected {
 				t.Errorf("PadString(%q, %d) = %q, want %q", tt.input, tt.length, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestNormalizeVirtualPath(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    string
+		wantErr bool
+	}{
+		{"Simple clean path", "customer01/documents", "customer01/documents", false},
+		{"Trim leading slash", "/customer01/documents", "customer01/documents", false},
+		{"Trim trailing slash", "customer01/documents/", "customer01/documents", false},
+		{"Surrounding whitespace", "  customer01/documents  ", "customer01/documents", false},
+		{"Consecutive slashes", "customer01//documents///invoice.pdf", "customer01/documents/invoice.pdf", false},
+		{"Empty path", "", "", false},
+		{"Spaces and slashes only", "  /  ///  ", "", true},
+		{"Traversal segment", "customer01/../etc", "", true},
+		{"Traversal prefix", "../customer01", "", true},
+		{"Nested traversal", "a/b/../../c", "", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := NormalizeVirtualPath(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NormalizeVirtualPath(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("NormalizeVirtualPath(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
 	}

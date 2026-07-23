@@ -29,6 +29,9 @@ doc:
 	curl -s http://localhost:6060/pkg/github.com/alsotoes/momo/server/ > $(HTML_DOCS)/server.html; \
 	pkill godoc
 
+fmt:
+	$(GO) fmt ./...
+
 tidy:
 	$(GO) work sync
 
@@ -73,3 +76,9 @@ smoke-scale-cas:
 
 pentest:
 	./.github/scripts/run-pentest.sh
+
+install-hooks:
+	@echo "Installing Git pre-commit hook..."
+	@cp hooks/pre-commit .git/hooks/pre-commit
+	@chmod +x .git/hooks/pre-commit
+	@echo "Git hooks installed successfully!"

@@ -2,11 +2,18 @@ package transport
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 
 	"github.com/alsotoes/momo/src/common"
 	"github.com/quic-go/quic-go"
+)
+
+var (
+	// ErrRequestHandled indicates the request was completely handled at the gateway layer
+	// and requires no further replication payload sequence in the server daemon.
+	ErrRequestHandled = errors.New("request handled gracefully")
 )
 
 const (

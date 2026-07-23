@@ -16,14 +16,19 @@ This document outlines the high-level roadmap for the Momo project, tracking maj
 | **CAS Storage** | [#151](https://github.com/alsotoes/momo/issues/151) | ✅ Merged | Content-Addressable Storage with Bbolt metadata and CRUSH-lite placement. |
 | **AI Reviewer 2.0** | [#156](https://github.com/alsotoes/momo/issues/156) | ✅ Merged | Automated PR reviews and autonomous merging via Gemini and GitHub Actions. |
 | **Dynamic Replication** | [#165](https://github.com/alsotoes/momo/issues/165) | ✅ Merged | Configurable replication factor (1, 3, 5, etc.) with degraded mode support. |
+| **Replication ID Shift** | [#158](https://github.com/alsotoes/momo/issues/158) | ✅ Merged | Re-indexed constants to set ReplicationNone as ID 0 (Internal use only). |
+| **S3 Listing/Deletion** | [#225](https://github.com/alsotoes/momo/issues/225) | ✅ Merged | Implemented S3 ListObjectsV2, GetObject, and DeleteObject endpoints with progressive deadlines and bounds validation. |
+| **Protocol Parity** | [#237](https://github.com/alsotoes/momo/issues/237) | ✅ Merged | Enforced Rule 33 by implementing native binary LIST, DELETE, and GET queries over both Momo-TCP and Momo-QUIC. |
+| **Panic Observability** | [#245](https://github.com/alsotoes/momo/issues/245) | ✅ Merged | Aligned all 18 silent recovery blocks across TCP, QUIC, and CRUSH layers to explicitly log warnings before error propagation. |
 
 ## 🟡 In Progress / Upcoming
 
 | Feature | Issue | Spec | Priority | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| **E2E Encryption** | [#152](https://github.com/alsotoes/momo/issues/152) | [E2EE Spec](../openspec/changes/add-e2e-encryption/proposal.md) | High | Application-layer AES-GCM encryption for all file data. |
-| **P2P Transport** | [#153](https://github.com/alsotoes/momo/issues/153) | [P2P Spec](../openspec/changes/add-p2p-transport/proposal.md) | High | Decentralized gossip-based discovery and elastic membership. |
-| **Comprehensive Testing** | [#155](https://github.com/alsotoes/momo/issues/155) | [Testing Spec](../openspec/changes/add-comprehensive-testing/proposal.md) | Medium | Chaos testing, distributed load generation, and observability. |
+| **E2E Encryption** | [#152](https://github.com/alsotoes/momo/issues/152) | [E2EE Spec](../openspec/changes/add-e2e-encryption/specs/security/spec.md) | High | Client-side zero-knowledge AES-GCM-256 encryption for all stored files. |
+| **P2P Transport** | [#153](https://github.com/alsotoes/momo/issues/153) | [P2P Spec](../openspec/changes/add-p2p-transport/specs/networking/spec.md) | High | Decentralized gossip-based discovery, heartbeat liveness, and elastic membership. |
+| **Comprehensive Testing** | [#155](https://github.com/alsotoes/momo/issues/155) | [Testing Spec](../openspec/changes/add-comprehensive-testing/specs/testing/spec.md) | Medium | Chaos testing, distributed load generation, and Jepsen-style network partitions. |
+| **Decentralized P2P Scale** | [#248](https://github.com/alsotoes/momo/issues/248) | [P2P Scale Spec](../openspec/changes/gossip-scatter-lease/specs/decentralized-p2p-scale/spec.md) | High | Gossip node membership, parallel Scatter-Gather queries, and Lease consensus. |
 
 ## 🔴 Future Explorations
 
@@ -32,4 +37,4 @@ This document outlines the high-level roadmap for the Momo project, tracking maj
 - **Client SDKs**: Native SDKs for Python and Rust.
 
 ---
-*Last Updated: 2026-06-11*
+*Last Updated: 2026-06-29*

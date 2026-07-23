@@ -14,9 +14,13 @@ import (
 // It first connects to a specified daemon to determine the replication mode.
 // If splay replication is active, it connects to all other daemons.
 // Finally, it sends the file to all established connections concurrently.
-func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, serverId int, timestamp int64, requestedMode int, replicationFactor int) {
+func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remotePath string, serverId int, timestamp int64, requestedMode int, replicationFactor int) {
 	defer wg.Done()
 	daemons := cfg.Daemons
+	if serverId < 0 || serverId >= len(daemons) {
+		log.Printf("Server ID %d is out of range", serverId)
+		return
+	}
 	authToken := cfg.Global.AuthToken
 	factory := transport.NewProtocolFactory(cfg)
 	var communicators []transport.Communicator
@@ -92,9 +96,25 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, serv
 	}
 
 	meta := &common.FileMetadata{
-		Name: fileInfo.Name(),
-		Hash: fileHash,
-		Size: fileInfo.Size(),
+		Name:       fileInfo.Name(),
+		Hash:       fileHash,
+		Size:       fileInfo.Size(),
+		RemotePath: remotePath,
+	}
+
+	// Validate RemotePath and length limit before transmission
+	wireName := meta.Name
+	if meta.RemotePath != "" {
+		normalized, err := common.NormalizeVirtualPath(meta.RemotePath)
+		if err != nil {
+			log.Printf("Failed to upload %s: invalid remote path %q: %v", common.SanitizeLog(filePath), common.SanitizeLog(meta.RemotePath), err)
+			return
+		}
+		wireName = normalized + "/" + meta.Name
+	}
+	if len(wireName) > common.FileInfoLength {
+		log.Printf("Failed to upload %s: remote path and filename exceed limit of %d characters", common.SanitizeLog(filePath), common.FileInfoLength)
+		return
 	}
 
 	log.Printf("=> Hash:    %s", common.SanitizeLog(meta.Hash))

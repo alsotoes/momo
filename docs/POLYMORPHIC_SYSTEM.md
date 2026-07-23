@@ -1,8 +1,15 @@
-# Momo's Polymorphic System
+# Momo's Dual-Dimensional Polymorphic System
 
-The most unique aspect of Momo is its ability to change replication strategies at runtime. This "polymorphic" nature allows the system to be highly adaptive and resilient.
+The defining feature of Momo is its **Dual-Dimensional Polymorphic Architecture**, which enables the system to adapt dynamically to both local load conditions (Runtime Adaptation) and traffic origins (Chameleon Wire Routing) with **zero manual configuration changes and zero runtime impact**.
 
-## How It Works
+## Overview: The Two Polymorphic Dimensions
+
+Momo operates with dual dimensions of polymorphism:
+
+1. **Dimension 1: Dynamic Replication Polymorphism (Runtime Adaptation):** The system dynamically monitors local CPU and Memory metrics on each node and automatically swaps cluster replication strategies (Chain, Splay, Primary-Splay) on-the-fly to handle load surges without service disruption.
+2. **Dimension 2: Wire Protocol Polymorphism (Chameleon Wire Routing):** The server listens on the exact same port (e.g., `4440`) over TCP or QUIC, and dynamically adapts its wire framing to act as a standard S3 REST gateway (for tools like `aws-cli`) or a transactional replication peer (for inter-node cluster sync) with zero configuration changes.
+
+## How It Works (Dimension 1: Dynamic Replication)
 
 Momo utilizes a decentralized polymorphic engine. The **metrics component** runs on **every node** in the cluster. This component is responsible for the following:
 
@@ -56,12 +63,12 @@ Momo utilizes a decentralized polymorphic engine. The **metrics component** runs
 
 ## Example Scenario
 
-Consider a `replication_order` of `3,2,1,4` which maps to `primary-splay, splay, chain, none`.
+Consider a `replication_order` of `3,2,1` which maps to `primary-splay, splay, chain`.
 
 1.  The system starts in **primary-splay** mode (mode `3`).
 2.  A large number of files are uploaded, causing CPU usage to exceed the `max_threshold`.
 3.  The metrics component detects this and switches the strategy to **splay** (mode `2`), which is less demanding.
-4.  If the load continues to increase and breaches the threshold again, the system will step right again to **chain** (mode `1`).
+4.  If the load continues to increase and breaches the threshold again, the system will switch to **chain** (mode `1`).
 5.  Once the file uploads are complete and the system load remains low (below `min_threshold`) for the duration of the `fallback_interval`, the metrics component will switch the strategy back to **splay** (mode `2`) and, if conditions remain calm, eventually back to **primary-splay** (mode `3`).
 
 ## Benefits of a Polymorphic System

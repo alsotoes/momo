@@ -1,10 +1,10 @@
 package storage
 
 import (
-	"log"
 	"bufio"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -20,16 +20,18 @@ import (
 var (
 	bucketObjects   = []byte("objects")   // Maps ContentHash -> {Metadata JSON}
 	bucketNamespace = []byte("namespace") // Maps FileName -> ContentHash
+	bucketPaths     = []byte("paths")     // Maps FileName -> RemotePath
 )
 
 // Store defines the interface for object storage operations.
 type Store interface {
 	io.Closer
-	Put(name string, hash string, size int64, content io.Reader) error
+	Put(name string, hash string, size int64, remotePath string, content io.Reader) error
 	Get(name string) (io.ReadCloser, common.FileMetadata, error)
 	Has(hash string) (bool, error)
 	Delete(name string) error
 	GetBlobPath(name string) (string, error)
+	List() ([]common.FileMetadata, error)
 }
 
 // CASStore implements Content-Addressable Storage with Bbolt metadata.
@@ -56,7 +58,10 @@ func NewCASStore(dataDir string) (*CASStore, error) {
 		if _, err := tx.CreateBucketIfNotExists(bucketObjects); err != nil {
 			return err
 		}
-		_, err := tx.CreateBucketIfNotExists(bucketNamespace)
+		if _, err := tx.CreateBucketIfNotExists(bucketNamespace); err != nil {
+			return err
+		}
+		_, err := tx.CreateBucketIfNotExists(bucketPaths)
 		return err
 	})
 	if err != nil {
@@ -76,7 +81,7 @@ func (s *CASStore) Close() error {
 
 // Put saves an object to the store.
 // If the hash already exists, it only updates the namespace mapping (deduplication).
-func (s *CASStore) Put(name string, hash string, size int64, content io.Reader) (err error) {
+func (s *CASStore) Put(name string, hash string, size int64, remotePath string, content io.Reader) (err error) {
 	// 🛡️ Zero-Crash: Recover from any unexpected panics in the storage backend.
 	defer func() {
 		if r := recover(); r != nil {
@@ -138,6 +143,21 @@ func (s *CASStore) Put(name string, hash string, size int64, content io.Reader) 
 		var sizeBuf [32]byte
 		if err := obj.Put([]byte(hash), strconv.AppendInt(sizeBuf[:0], size, 10)); err != nil {
 			return fmt.Errorf("metadata error: %w", syscall.EIO)
+		}
+
+		// Store RemotePath
+		if remotePath != "" {
+			normalized, err := common.NormalizeVirtualPath(remotePath)
+			if err != nil {
+				return fmt.Errorf("invalid virtual path %q: %w", remotePath, err)
+			}
+			if len(normalized)+1+len(name) > common.FileInfoLength {
+				return fmt.Errorf("virtual path and name concatenation too long: %w", syscall.ENAMETOOLONG)
+			}
+			paths := tx.Bucket(bucketPaths)
+			if err := paths.Put([]byte(name), []byte(normalized)); err != nil {
+				return fmt.Errorf("metadata error: %w", syscall.EIO)
+			}
 		}
 		return nil
 	})
@@ -208,7 +228,16 @@ func (s *CASStore) Get(name string) (rc io.ReadCloser, meta common.FileMetadata,
 		return nil, common.FileMetadata{}, err
 	}
 
-	return f, common.FileMetadata{Name: name, Hash: hash, Size: size}, nil
+	var remotePath string
+	_ = s.db.View(func(tx *bbolt.Tx) error {
+		p := tx.Bucket(bucketPaths).Get([]byte(name))
+		if p != nil {
+			remotePath = string(p)
+		}
+		return nil
+	})
+
+	return f, common.FileMetadata{Name: name, Hash: hash, Size: size, RemotePath: remotePath}, nil
 }
 
 // Has checks if a content hash exists in the store.
@@ -250,6 +279,65 @@ func (s *CASStore) Delete(name string) (err error) {
 	return s.db.Update(func(tx *bbolt.Tx) error {
 		return tx.Bucket(bucketNamespace).Delete([]byte(name))
 	})
+}
+
+// List retrieves all file metadata entries in the store.
+func (s *CASStore) List() (list []common.FileMetadata, err error) {
+	// 🛡️ Zero-Crash: Recover from any unexpected panics.
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in CASStore.List: %v", r)
+			err = fmt.Errorf("internal storage panic: %w", syscall.EIO)
+		}
+	}()
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	err = s.db.View(func(tx *bbolt.Tx) error {
+		ns := tx.Bucket(bucketNamespace)
+		if ns == nil {
+			return nil
+		}
+		obj := tx.Bucket(bucketObjects)
+		paths := tx.Bucket(bucketPaths)
+
+		c := ns.Cursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			name := string(k)
+			hash := string(v)
+			var size int64 = 0
+			var remotePath string = ""
+
+			if obj != nil {
+				sizeBytes := obj.Get(v)
+				if len(sizeBytes) > 0 {
+					var parseErr error
+					size, parseErr = strconv.ParseInt(unsafe.String(unsafe.SliceData(sizeBytes), len(sizeBytes)), 10, 64)
+					if parseErr != nil {
+						log.Printf("WARNING: metadata corruption for hash %s in List: %v", hash, parseErr)
+					}
+				}
+			}
+
+			if paths != nil {
+				pBytes := paths.Get(k)
+				if pBytes != nil {
+					remotePath = string(pBytes)
+				}
+			}
+
+			list = append(list, common.FileMetadata{
+				Name:       name,
+				Hash:       hash,
+				Size:       size,
+				RemotePath: remotePath,
+			})
+		}
+		return nil
+	})
+
+	return list, err
 }
 
 func (s *CASStore) GetBlobPath(name string) (path string, err error) {

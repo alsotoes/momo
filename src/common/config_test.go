@@ -11,7 +11,7 @@ import (
 const validConfig = `
 [global]
 debug = true
-auth_token = a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6
+auth_token = a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6 # notsecret
 replication_order = 2,3,1
 polymorphic_system = true
 
@@ -102,7 +102,7 @@ func TestGetConfig_Failures(t *testing.T) {
 		},
 		{
 			name:          "Missing auth_token",
-			content:       strings.Replace(validConfig, "auth_token = a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6", "", 1),
+			content:       strings.Replace(validConfig, "auth_token = a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6 # notsecret", "", 1),
 			expectedError: "failed to load [global] section: 'auth_token' is missing or empty",
 		},
 		{
@@ -139,5 +139,20 @@ func TestGetConfig_Failures(t *testing.T) {
 				t.Errorf("Expected error to contain '%s', but got '%s'", tc.expectedError, err.Error())
 			}
 		})
+	}
+}
+
+func TestGetConfig_FileErrors(t *testing.T) {
+	// 1. Non-existent file
+	_, err := GetConfig("nonexistent-config.conf")
+	if err == nil {
+		t.Errorf("Expected error for non-existent file, got nil")
+	}
+
+	// 2. Directory as path
+	tmpDir := t.TempDir()
+	_, err = GetConfig(tmpDir)
+	if err == nil {
+		t.Errorf("Expected error for directory path, got nil")
 	}
 }

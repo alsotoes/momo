@@ -8,6 +8,8 @@ type FileMetadata struct {
 	Hash string
 	// Size is the size of the file in bytes.
 	Size int64
+	// RemotePath is the virtual folder or directory path of the file.
+	RemotePath string
 }
 
 // ReplicationData stores the information about a replication mode change.

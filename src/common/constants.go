@@ -16,16 +16,21 @@ const (
 )
 
 const (
-	// ReplicationType defines the different modes of data replication.
-	ReplicationType int = iota
+	// ReplicationNone indicates that no replication is used.
+	ReplicationNone int = iota
 	// ReplicationChain indicates the use of chain replication.
 	ReplicationChain
 	// ReplicationSplay indicates the use of splay replication.
 	ReplicationSplay
 	// ReplicationPrimarySplay indicates a primary-splay replication strategy.
 	ReplicationPrimarySplay
-	// ReplicationNone indicates that no replication is used.
-	ReplicationNone
+
+	// ModeList indicates a request to list files over Momo protocol.
+	ModeList = int('L')
+	// ModeDelete indicates a request to delete a file over Momo protocol.
+	ModeDelete = int('D')
+	// ModeGet indicates a request to retrieve a file over Momo protocol.
+	ModeGet = int('G')
 
 	// DummyEpoch is a placeholder epoch value for initialization.
 	DummyEpoch = 1557906926566451195

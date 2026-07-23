@@ -15,7 +15,12 @@ This layer handles the physical movement of bytes. It includes the carrier trans
 - **Momo-TCP**: The legacy standard transport.
 - **Momo-QUIC**: The modern, secure-by-default transport using `quic-go`.
 - **S3 Compatibility**: An S3-compatible application layer (over TCP or QUIC) acting as a distributed gateway for cloud-native tools. This leverages the decoupled architecture from [Issue #131](https://github.com/alsotoes/momo/issues/131) and is tracked in [Issue #133](https://github.com/alsotoes/momo/issues/133).
+  - **Custom Lightweight Gateway Design & Rationale (Issue #225)**: Instead of integrating a third-party open-source S3 server engine (such as MinIO or GoFakeS3) which would introduce dozens of heavy dependency packages and violate Momo's performance (**⚡ Bolt**) and security (**🛡️ Sentinel**) paradigms, Momo implements its own zero-dependency S3 REST adapter. This maintains a small binary surface, protects against third-party supply-chain vulnerabilities, and integrates seamlessly with both standard TCP sockets and secure **QUIC streams**.
+  - **REST Query Interception Model**: Standard S3 REST commands like `GET /` (ListObjectsV2), `GET /key` (GetObject), and `DELETE /key` (DeleteObject) are intercepted directly at the HTTP layer inside `S3Communicator.HandshakeServer`.
+  - **Zero-Bypass Control Flow**: Upon receiving a REST command, `S3Communicator` queries or updates our BoltDB storage layer directly and streams the S3-compliant HTTP response straight back to the client socket. It then returns a special `ErrRequestHandled` transport sentinel to the server daemon, allowing the daemon to gracefully close the connection without triggering unnecessary inter-node replication loops or replication acknowledgements (ACKs).
+  - **High-Performance XML Serialization**: S3 XML responses (such as `<ListBucketResult>`) are formatted manually using `bytes.Buffer` and custom character escape sequences rather than slow, reflection-based XML serialization. This ensures sub-millisecond listing responses and conforms perfectly with the low-allocation **⚡ Bolt** standard.
 - All communication is abstracted through a `Communicator` interface provided by the `ProtocolFactory`.
+- **Connection Idle Timeout & POSIX Mapping**: To defend against Slowloris attacks and resource-exhaustion conditions, both inbound and outbound network connections are wrapped with an `IdleTimeoutConn` that enforces a rolling idle deadline. In alignment with POSIX standards, any socket read or write operation that times out is intercepted and wrapped to explicitly propagate a `syscall.ETIMEDOUT` error.
 
 #### 2. Core Replication Logic (Agnostic)
 The core logic defines the data distribution path (e.g., `Chain`, `Splay`). This logic is **completely agnostic** of the communication layer. It executes replication by requesting a connection (`Communicator`) from the factory and doesn't care whether bytes move via TCP or QUIC streams.
@@ -33,7 +38,7 @@ Momo utilizes a **Shared-Nothing Partitioned Architecture** for its object stora
 ### 5. Automated Governance & AI Reviewer
 To maintain high integrity in a single-contributor environment, Momo employs an automated governance layer:
 - **Gemini AI Reviewer**: A GitHub Action that uses the Gemini API to analyze PR diffs. It specifically enforces the **⚡ Bolt** (performance) and **🛡️ Sentinel** (security) patterns.
-- **Project Steering Rules**: Mandatory mandates (Zero-Crash, POSIX Error Mapping) are codified in `openspec/project.md` and automatically validated by the AI Reviewer.
+- **Project Steering Rules**: Mandatory mandates (Zero-Crash, POSIX Error Mapping) are codified in the `context` section of `openspec/config.yaml` and automatically validated by the AI Reviewer.
 
 ### 6. Verification & Quality Assurance
 The system is backed by a multi-stage automated testing pipeline:
@@ -106,35 +111,46 @@ In chain replication, the servers are organized in a chain. The client sends the
 In splay replication, the primary server (Server 0) sends the file to all other servers in the cluster simultaneously.
 
 ```
-                            +------>     Server 1    <------+
-                            /                                 |
-+----------------+      +----------------+      +----------------+
-|                |      |                |      |                |
-|     Client     +------>     Server 0   +------>     Server 2   |
-|                |      |                |      |                |
-+----------------+      +----------------+      +----------------+
-                            \                                 ^
-                            +------>      ...      <------+
+                            +------>     Server 1
+                           /
++----------------+      +----------------+
+|                |      |                |
+|     Client     +------>     Server 0   +------>     Server 2
+|                |      |                |
++----------------+      +----------------+
+                           \
+                            +------>      ...
 ```
 
 ### 4. Primary-Splay Replication
 
-In this mode, the client sends the file to all servers in the cluster simultaneously.
+In this mode, the client sends the file to all servers in the cluster simultaneously, distributing the replication load.
 
 ```
-                 +------>     Server 1    <------+
-                /                                 |
-+----------------+      +----------------+      +----------------+
-|                |      |                |      |                |
-|     Client     +------>     Server 0   <------>     Server 2   |
-|                |      |                |      |                |
-+----------------+      +----------------+      +----------------+
-                \                                 ^
-                 +------>      ...      <------+
+                            +------>     Server 0
+                           /
++----------------+      +---------->     Server 1
+|                |     /
+|     Client     +----+
+|                |     \
++----------------+      +---------->     Server 2
+                           \
+                            +------>      ...
 ```
 
-## Polymorphic System
+## Polymorphic System: Dual-Dimensional Adaptability
 
-The most unique aspect of Momo is its ability to change replication strategies at runtime. Each node monitors its local CPU and memory usage. If a threshold is exceeded, the node triggers a cluster-wide strategy shift. Conversely, when load remains low, the system automatically switches to a more robust replication strategy.
+The defining feature of Momo is its **Dual-Dimensional Polymorphic Architecture**, which enables the system to adapt dynamically to load conditions and traffic origins with **zero manual configuration changes and zero runtime impact**:
 
-This decentralized adaptation allows the cluster to maintain optimal performance and data redundancy without a single point of failure.
+### 📈 Dimension 1: Dynamic Replication Polymorphism (Runtime Adaptation)
+Momo monitors local CPU and Memory metrics continuously on every node. 
+- **Under Surge Load:** If system metrics exceed specified thresholds (e.g., 80% usage), nodes coordinate to dynamically shift the cluster replication mode to a lower-overhead strategy (such as **No Replication** or **Primary-Splay**) to prevent bottleneck queues and protect cluster stability.
+- **Under Low Load:** When resource usage settles below thresholds (e.g., 20% usage), the system automatically promotes the mode to highly consistent, durable strategies (like **Chain** or **Splay**), optimizing data safety.
+- **Decentralized Execution:** This state change is broadcast dynamically to all potential "Primary" nodes via the `ChangeReplication` endpoint, keeping the cluster seamlessly in sync without a single point of failure.
+
+### 🔌 Dimension 2: Wire Protocol Polymorphism (Chameleon Routing)
+Momo servers listen on the exact same port (e.g., `4440`) and accept standard TCP connections or secure QUIC streams, adapting the wire framing dynamically depending on the incoming client structure:
+- **Standard S3 Clients (`aws-cli`, `boto3`):** Momo acts as a pure, standard-compliant S3/Ceph REST gateway. The communicator intercepts REST operations (`GET`, `DELETE`), processes the database operations, and streams standard S3 HTTP/XML data directly back to the client socket, gracefully exiting the session using the `ErrRequestHandled` sentinel without running any custom inter-node replication procedures.
+- **Momo Peer Nodes (Inter-Node Replication):** Momo acts as a highly synchronized, transactional replication engine. It detects custom handshake headers (`X-Momo-Requested-Mode`, `X-Momo-Timestamp`) inside `PUT` writes, executes our multi-stage replication framing (deduplication check, metadata verification, cluster-wide payload streaming), and transmits replication acknowledgements (`ACK` packets).
+
+This dual-dimensional polymorphism permits Momo to simultaneously serve cloud-native clients and peer replication rings over a single port, delivering top-tier performance (**⚡ Bolt**) and robust security (**🛡️ Sentinel**) dynamically.

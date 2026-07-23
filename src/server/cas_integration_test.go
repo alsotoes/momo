@@ -28,7 +28,7 @@ func TestCAS_MultiNode_Integration(t *testing.T) {
 	stores := make([]storage.Store, nodeCount)
 	listeners := make([]net.Listener, nodeCount)
 	
-	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
 	
 	for i := 0; i < nodeCount; i++ {
 		nodeData := filepath.Join(tempDir, fmt.Sprintf("node-%d", i))
@@ -96,10 +96,10 @@ func TestCAS_MultiNode_Integration(t *testing.T) {
 					if exists {
 						comm.SendMetadataStatus(transport.MetadataStatusSkipPayload)
 						// Update metadata only
-						store.Put(meta.Name, meta.Hash, meta.Size, nil)
+						store.Put(meta.Name, meta.Hash, meta.Size, "", nil)
 					} else {
 						comm.SendMetadataStatus(transport.MetadataStatusSendPayload)
-						getFile(comm, store, meta.Name, meta.Hash, meta.Size)
+						getFile(comm, store, meta.Name, meta.Hash, meta.Size, "")
 					}
 					comm.SendACK(id)
 				}(conn)

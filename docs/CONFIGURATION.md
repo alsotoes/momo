@@ -21,15 +21,16 @@ This section contains cluster-wide settings that affect all daemons.
     -   **Type:** Boolean (`true` or `false`)
     -   **Default:** `false`
 
--   **`replication_order`**
+- **`replication_order`**
     -   **Description:** A comma-separated list of integers that defines the sequence of replication strategies the polymorphic system can cycle through. The order determines the path of escalation and de-escalation based on system load.
-    -   **Type:** Comma-separated list of integers (e.g., `1,2,3,4`)
+    -   **Type:** Comma-separated list of integers (e.g., `3,2,1`)
     -   **Possible Values:** Each integer corresponds to a replication strategy:
-        -   `1`: chain
-        -   `2`: splay
-        -   `3`: primary-splay
-        -   `4`: none
-    -   **Default:** `1,2,3,4`
+        -   `1`: Chain Replication (0 -> 1 -> 2)
+        -   `2`: Splay Replication (0 -> 1, 0 -> 2)
+        -   `3`: Primary-Splay Replication (Client -> 0, 1, 2)
+    -   **Default:** `3,2,1`
+    -   **Note:** Mode `0` (No Replication) is used internally by the cluster to signal the end of a replication sequence and should not be included in the configuration.
+
 
 -   **`replication_factor`**
     -   **Description:** Defines the target number of physical copies (replicas) to maintain for every object in the cluster. Momo uses the CRUSH-lite algorithm to select this many distinct nodes for storage.
@@ -111,7 +112,7 @@ The configuration must contain a section for each daemon in the cluster, numbere
 debug = true
 protocol = momo-quic
 replication_factor = 5
-replication_order = 1,2,4
+replication_order = 3,2,1
 polymorphic_system = true
 
 [metrics]
@@ -142,7 +143,7 @@ polymorphic_system = true
 
 ### S3 Compatibility Layer (TCP or QUIC)
 
-To allow standard AWS SDKs (like `aws-cli` or `boto3`) to upload files directly into the Momo replication ring, use the `s3-*` protocols.
+To allow standard AWS SDKs (like `aws-cli` or `boto3`) to upload, list, download, and delete files directly into the Momo replication ring, use the `s3-*` protocols.
 
 ```ini
 [global]
@@ -150,3 +151,22 @@ protocol = s3-tcp # Or use s3-quic for secure deployments
 polymorphic_system = true
 # ... (metrics and daemon blocks remain the same)
 ```
+
+Now, standard S3 client tools can list, download, and delete files directly over Momo's S3 REST gateway.
+
+#### Examples (using aws-cli):
+
+- **List Objects (ListObjectsV2):**
+  ```bash
+  aws s3 ls s3://any-bucket-name/ --endpoint-url http://127.0.0.1:4440
+  ```
+
+- **Download Object (GetObject):**
+  ```bash
+  aws s3 cp s3://any-bucket-name/file.txt ./file.txt --endpoint-url http://127.0.0.1:4440
+  ```
+
+- **Delete Object (DeleteObject):**
+  ```bash
+  aws s3 rm s3://any-bucket-name/file.txt --endpoint-url http://127.0.0.1:4440
+  ```

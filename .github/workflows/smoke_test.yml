@@ -21,9 +21,9 @@ jobs:
     name: Smoke Test (TCP)
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Set up Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
         go-version: '1.25.x'
     - name: Build momo
@@ -35,9 +35,9 @@ jobs:
     name: Smoke Test (QUIC)
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Set up Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
         go-version: '1.25.x'
     - name: Build momo
@@ -49,9 +49,9 @@ jobs:
     name: Smoke Test (S3-TCP)
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Set up Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
         go-version: '1.25.x'
     - name: Build momo
@@ -63,9 +63,9 @@ jobs:
     name: Smoke Test (S3-QUIC)
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - name: Set up Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
         go-version: '1.25.x'
     - name: Build momo

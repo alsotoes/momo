@@ -1,7 +1,7 @@
 // Package server provides the core functionality for the momo server.
 package server
-
 import (
+	"context"
 	"io"
 	"net"
 	"os"
@@ -14,10 +14,10 @@ import (
 	"github.com/alsotoes/momo/src/common"
 	"github.com/alsotoes/momo/src/storage"
 	"github.com/alsotoes/momo/src/transport"
+	"go.uber.org/goleak"
 )
-
 // mockConnect is a mock implementation of Connect for testing.
-func mockConnect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, serverId int, timestamp int64, requestedMode int, replicationFactor int) {
+func mockConnect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remotePath string, serverId int, timestamp int64, requestedMode int, replicationFactor int) {
 	defer wg.Done()
 	// In a real test, you might add more logic here to simulate the client's behavior
 }
@@ -96,19 +96,19 @@ func handleConnection(t *testing.T, connection net.Conn, cfg common.Configuratio
 		if serverId == 1 {
 			wg.Add(1)
 			mockGetFile(comm, store, metadata.Name, metadata.Hash, metadata.Size)
-			connectToPeer(&wg, cfg, daemons[1].Data+"/"+metadata.Name, 2, timestamp, 0, cfg.Global.ReplicationFactor)
+			connectToPeer(&wg, cfg, daemons[1].Data+"/"+metadata.Name, "", 2, timestamp, 0, cfg.Global.ReplicationFactor)
 			wg.Wait()
 		} else {
 			wg.Add(1)
 			mockGetFile(comm, store, metadata.Name, metadata.Hash, metadata.Size)
-			connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 1, timestamp, 0, cfg.Global.ReplicationFactor)
+			connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, "", 1, timestamp, 0, cfg.Global.ReplicationFactor)
 			wg.Wait()
 		}
 	case common.ReplicationSplay:
 		wg.Add(2)
 		mockGetFile(comm, store, metadata.Name, metadata.Hash, metadata.Size)
-		go connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 1, timestamp, 0, cfg.Global.ReplicationFactor)
-		go connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, 2, timestamp, 0, cfg.Global.ReplicationFactor)
+		go connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, "", 1, timestamp, 0, cfg.Global.ReplicationFactor)
+		go connectToPeer(&wg, cfg, daemons[0].Data+"/"+metadata.Name, "", 2, timestamp, 0, cfg.Global.ReplicationFactor)
 		wg.Wait()
 	}
 	success = true
@@ -151,7 +151,7 @@ func TestDaemonLogic(t *testing.T) {
 		{"ReplicationChain", common.ReplicationChain, 1, "ACK1", common.ReplicationChain},
 	}
 
-	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
 	cfg := common.Configuration{
 		Daemons: daemons,
 		Global: common.ConfigurationGlobal{
@@ -229,7 +229,7 @@ func TestDaemonLogic(t *testing.T) {
 
 func TestUnauthenticatedConnection(t *testing.T) {
 	daemons := []*common.Daemon{{Host: "127.0.0.1:0", Data: ""}}
-	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
 	wrongToken := "wrong_token_wrong_token_wrong_token_wrong_token_wrong_token_wro"
 	cfg := common.Configuration{
 		Daemons: daemons,
@@ -258,4 +258,69 @@ func TestUnauthenticatedConnection(t *testing.T) {
 
 	client.Close()
 	<-serverDone
+}
+
+func TestServer_ExtraEdgeCases(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	// 1. Test GetReplicationState, GetCurrentReplicationMode, and SetReplicationState (Rule 4)
+	SetReplicationState(common.ReplicationSplay, 987654321)
+	if GetCurrentReplicationMode() != common.ReplicationSplay {
+		t.Errorf("Expected replication mode ReplicationSplay, got %d", GetCurrentReplicationMode())
+	}
+	state := GetReplicationState()
+	if state.New != common.ReplicationSplay || state.TimeStamp != 987654321 {
+		t.Errorf("GetReplicationState returned incorrect state: %+v", state)
+	}
+
+	// Reset state
+	SetReplicationState(common.ReplicationNone, 0)
+
+	// 2. Test Daemon with out of range server ID
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cfg := common.Configuration{
+		Daemons: []*common.Daemon{
+			{Host: "127.0.0.1:0", Data: ""},
+		},
+	}
+	err := Daemon(ctx, cfg, -1)
+	if err == nil {
+		t.Errorf("Expected error for out of range server ID, got nil")
+	}
+	err = Daemon(ctx, cfg, 5)
+	if err == nil {
+		t.Errorf("Expected error for out of range server ID, got nil")
+	}
+
+	// 3. Test ChangeReplicationModeServer Port Contention
+	// Start a listener on a port
+	ln, errListener := net.Listen("tcp", "127.0.0.1:0")
+	if errListener != nil {
+		t.Fatalf("Failed to listen: %v", errListener)
+	}
+	defer ln.Close()
+	addr := ln.Addr().String()
+
+	cfgConflict := common.Configuration{
+		Global: common.ConfigurationGlobal{AuthToken: "token"},
+		Daemons: []*common.Daemon{
+			{ChangeReplication: addr},
+		},
+	}
+
+	err = ChangeReplicationModeServer(ctx, cfgConflict, 0, 12345)
+	if err == nil {
+		t.Errorf("Expected listening error on port contention, got nil")
+	}
+
+	// 4. Test ChangeReplicationModeClient with unreachable address
+	cfgUnreachable := common.Configuration{
+		Global: common.ConfigurationGlobal{AuthToken: "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"}, // notsecret
+		Daemons: []*common.Daemon{
+			{ChangeReplication: "127.0.0.1:59999"},
+		},
+	}
+	factory := transport.NewProtocolFactory(cfgUnreachable)
+	ChangeReplicationModeClient(factory, []byte("{}"), 0)
 }

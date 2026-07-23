@@ -12,6 +12,7 @@ import (
 
 	"github.com/alsotoes/momo/src/common"
 	"github.com/alsotoes/momo/src/transport"
+	"go.uber.org/goleak"
 )
 
 func TestPadString(t *testing.T) {
@@ -103,7 +104,7 @@ func startDummyServer(t *testing.T, authToken string) (string, net.Listener) {
 
 				buf := make([]byte, common.TimestampLength+1) // Read Timestamp (19) + RequestedMode (1)
 				io.ReadFull(c, buf)
-				c.Write([]byte("4")) // Not Splay
+				c.Write([]byte{byte(strconv.Itoa(common.ReplicationNone)[0])}) // Send as 1-byte ASCII
 
 				// Wait for metadata
 				bufHash := make([]byte, 64)
@@ -124,7 +125,7 @@ func startDummyServer(t *testing.T, authToken string) (string, net.Listener) {
 }
 
 func TestConnect(t *testing.T) {
-	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
 
 	// Create a temp file to send
 	file, err := os.CreateTemp("", "test_connect_*.txt")
@@ -151,7 +152,7 @@ func TestConnect(t *testing.T) {
 
 	var wg sync.WaitGroup
 	wg.Add(1)
-	Connect(&wg, cfg, file.Name(), 0, time.Now().UnixNano(), 0, 3)
+	Connect(&wg, cfg, file.Name(), "", 0, time.Now().UnixNano(), 0, 3)
 	wg.Wait()
 
 	// Splay Connect
@@ -192,7 +193,7 @@ func TestConnect(t *testing.T) {
 
 		buf := make([]byte, common.TimestampLength+1) // Read Timestamp (19) + RequestedMode (1)
 		io.ReadFull(conn, buf)
-		conn.Write([]byte(strconv.Itoa(common.ReplicationPrimarySplay))) // Send 3
+		conn.Write([]byte{byte(strconv.Itoa(common.ReplicationPrimarySplay)[0])}) // Send as 1-byte ASCII
 
 		// Read file metadata
 		bufHash := make([]byte, 64)
@@ -217,12 +218,12 @@ func TestConnect(t *testing.T) {
 	}
 
 	wg.Add(1)
-	Connect(&wg, cfgSplay, file.Name(), 0, time.Now().UnixNano(), 0, 3)
+	Connect(&wg, cfgSplay, file.Name(), "", 0, time.Now().UnixNano(), 0, 3)
 	wg.Wait()
 }
 
 func TestSendFile(t *testing.T) {
-	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
 
 	file, err := os.CreateTemp("", "test_sendfile_*.txt")
 	if err != nil {
@@ -267,5 +268,125 @@ func TestSendFile(t *testing.T) {
 
 	comm := transport.NewMomoTCPCommunicator(conn)
 	sendFile(&wg, comm, file.Name(), meta)
+	wg.Wait()
+}
+
+func TestConnect_Errors(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	cfg := common.Configuration{
+		Global: common.ConfigurationGlobal{AuthToken: "token", Protocol: "momo-tcp"},
+		Daemons: []*common.Daemon{
+			{Host: "127.0.0.1:59999"}, // unreachable
+		},
+	}
+
+	var wg sync.WaitGroup
+
+	// 1. Non-existent file
+	wg.Add(1)
+	Connect(&wg, cfg, "nonexistent-file.txt", "", 0, 0, 0, 3)
+	wg.Wait()
+
+	// 2. Directory as file (will fail os.Stat or HashFile)
+	tmpDir := t.TempDir()
+	wg.Add(1)
+	Connect(&wg, cfg, tmpDir, "", 0, 0, 0, 3)
+	wg.Wait()
+
+	// 3. Dial error (unreachable peer)
+	wg.Add(1)
+	file, err := os.CreateTemp("", "dummy-test-*.txt")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(file.Name())
+	Connect(&wg, cfg, file.Name(), "", 0, 0, 0, 3)
+	wg.Wait()
+
+	// 4. Invalid protocol error
+	cfgInvalidProto := common.Configuration{
+		Global: common.ConfigurationGlobal{AuthToken: "token", Protocol: "invalid-protocol"},
+		Daemons: []*common.Daemon{
+			{Host: "127.0.0.1:59999"},
+		},
+	}
+	wg.Add(1)
+	Connect(&wg, cfgInvalidProto, file.Name(), "", 0, 0, 0, 3)
+	wg.Wait()
+
+	// 5. Out of range server ID (negative)
+	wg.Add(1)
+	Connect(&wg, cfg, file.Name(), "", -5, 0, 0, 3)
+	wg.Wait()
+
+	// 6. Out of range server ID (too high)
+	wg.Add(1)
+	Connect(&wg, cfg, file.Name(), "", 50, 0, 0, 3)
+	wg.Wait()
+}
+
+func TestSendFile_DeduplicationHit(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	file, err := os.CreateTemp("", "test_dedup_*.txt")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(file.Name())
+	file.WriteString("test data")
+	file.Close()
+
+	fileInfo, err := os.Stat(file.Name())
+	if err != nil {
+		t.Fatalf("Failed to stat file: %v", err)
+	}
+	fileHash, err := common.HashFile(file.Name())
+	if err != nil {
+		t.Fatalf("Failed to hash file: %v", err)
+	}
+	meta := &common.FileMetadata{
+		Name: fileInfo.Name(),
+		Hash: fileHash,
+		Size: fileInfo.Size(),
+	}
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		comm := transport.NewMomoTCPCommunicator(clientConn)
+		sendFile(&wg, comm, file.Name(), meta)
+	}()
+
+	// Server side
+	buf := make([]byte, 64 + common.FileInfoLength + common.FileInfoLength)
+	if _, err := io.ReadFull(serverConn, buf); err != nil {
+		t.Fatalf("Server failed to read metadata: %v", err)
+	}
+	// Write SkipPayload status (2)
+	serverConn.Write([]byte{2})
+	// Write ACK
+	serverConn.Write([]byte("ACK"))
+
+	wg.Wait()
+}
+
+func TestSendFile_PanicRecovery(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	file, err := os.CreateTemp("", "dummy-panic-*.txt")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(file.Name())
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	// Passing nil communicator with a valid file will trigger a panic when comm is used
+	sendFile(&wg, nil, file.Name(), &common.FileMetadata{})
 	wg.Wait()
 }

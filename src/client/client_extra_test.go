@@ -14,7 +14,7 @@ import (
 )
 
 func TestConnect_PrimarySplay(t *testing.T) {
-	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
 	
 	file, err := os.CreateTemp("", "test_splay_*.txt")
 	if err != nil {
@@ -43,7 +43,44 @@ func TestConnect_PrimarySplay(t *testing.T) {
 
 	var wg sync.WaitGroup
 	wg.Add(1)
-	Connect(&wg, cfg, file.Name(), 0, time.Now().UnixNano(), 0, 3)
+	Connect(&wg, cfg, file.Name(), "", 0, time.Now().UnixNano(), 0, 3)
+	wg.Wait()
+}
+
+func TestConnect_PrimarySplay_Failures(t *testing.T) {
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	
+	file, err := os.CreateTemp("", "test_splay_fail_*.txt")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(file.Name())
+	file.WriteString("splay data fail")
+	file.Close()
+
+	// Server 0 is primary, returns mode 3 (PrimarySplay)
+	addr0, ln0 := startMockServerS3(t, authToken, common.ReplicationPrimarySplay)
+	defer ln0.Close()
+
+	// Server 1 is offline (we won't start a server on its port, Dial fails)
+	addr1 := "127.0.0.1:59998"
+
+	// Server 2 is active, but we will configure it with a wrong auth token (handshake fails)
+	addr2, ln2 := startMockServerS3(t, "wrong_token_auth_token_wrong_token", common.ReplicationNone)
+	defer ln2.Close()
+
+	cfg := common.Configuration{
+		Global: common.ConfigurationGlobal{AuthToken: authToken, Protocol: "momo-tcp"},
+		Daemons: []*common.Daemon{
+			{Host: addr0},
+			{Host: addr1},
+			{Host: addr2},
+		},
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	Connect(&wg, cfg, file.Name(), "", 0, time.Now().UnixNano(), 0, 3)
 	wg.Wait()
 }
 
