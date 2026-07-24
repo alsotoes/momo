@@ -306,6 +306,11 @@ func (g *Gossiper) sendIndirectPing(targetID int32, pingID uint64, timestamp int
 		wg.Add(1)
 		go func(pid int32) {
 			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("Gossip indirect ping goroutine panic recovered: %v (errno=%d)", r, syscall.EIO)
+				}
+			}()
 			if err := g.transport.Send(pid, rpc); err != nil {
 				log.Printf("Gossip indirect ping via peer %d failed: %v (errno=%d)", pid, err, syscall.EHOSTUNREACH)
 				return
