@@ -400,6 +400,11 @@ func (g *Gossiper) handleAck(rpc *RPC) {
 // handleIndirectPing forwards a ping to the target peer on behalf of the requester.
 // If the target acks, the ack is forwarded back to the original requester.
 func (g *Gossiper) handleIndirectPing(rpc *RPC) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("Gossip handleIndirectPing panic recovered: %v (errno=%d)", r, syscall.EIO)
+		}
+	}()
 	payload, err := DecodePingPayload(rpc.Payload)
 	if err != nil {
 		log.Printf("Gossip: failed to decode indirect ping from peer %d: %v (errno=%d)", rpc.From, err, syscall.EBADMSG)

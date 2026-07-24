@@ -229,6 +229,9 @@ func loadP2PConfig(section *ini.Section) (ConfigurationP2P, error) {
 	if err != nil || p2pCfg.IndirectPingCount <= 0 {
 		p2pCfg.IndirectPingCount = 3
 	}
+	if p2pCfg.IndirectPingCount > 10 {
+		p2pCfg.IndirectPingCount = 10
+	}
 
 	p2pCfg.ScatterGatherTimeout, err = section.Key("scatter_gather_timeout").Int()
 	if err != nil || p2pCfg.ScatterGatherTimeout <= 0 {

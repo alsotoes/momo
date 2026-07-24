@@ -255,3 +255,37 @@ When a Momo cluster node acts as an S3 client to forward and replicate files to 
 -   **Timeouts:** Connections are protected by rolling idle timeouts (30s) and phased absolute deadlines (10s for handshake, 60s for metadata) to prevent Slowloris attacks.
 -   **Sanitization:** All network inputs and error messages are sanitized before logging to prevent CRLF injection.
 -   **Error Handling:** If an error occurs (e.g., hash mismatch, disk full, or connection reset), the connection is closed. Hash mismatches return `EBADMSG`.
+
+## P2P Gossip Protocol
+
+When P2P is enabled, nodes exchange gossip membership and failure detection RPCs over a separate port (default 4450). All RPCs use a binary, length-prefixed frame format:
+
+```
+[4 bytes: total length] [1 byte: msg type] [4 bytes: from ID] [N bytes: payload]
+```
+
+### Message Types
+
+| Type | Value | Description |
+|------|-------|-------------|
+| `MsgHeartbeat` | 1 | Periodic heartbeat with sender's peer list |
+| `MsgMembership` | 2 | Node join/leave announcement |
+| `MsgSuspect` | 3 | Suspicion announcement about a peer |
+| `MsgQuery` | 4 | Scatter-gather query request |
+| `MsgQueryResponse` | 5 | Scatter-gather query response |
+| `MsgLeaseRequest` | 6 | Lease request for consensus |
+| `MsgLeaseGrant` | 7 | Lease grant or deny response |
+| `MsgLeaseRelease` | 8 | Lease release notification |
+| `MsgPing` | 9 | Direct ping for SWIM failure detection |
+| `MsgAck` | 10 | Ack response to a ping |
+| `MsgIndirectPing` | 11 | Indirect ping request via intermediary |
+
+### Ping Payload (MsgPing / MsgAck / MsgIndirectPing)
+
+```
+[8 bytes: ping ID] [4 bytes: target ID] [8 bytes: timestamp unixnano]
+```
+
+- **PingID**: Unique identifier for matching acks to pings
+- **TargetID**: The peer being pinged (for indirect pings, the ultimate target)
+- **Timestamp**: Send time for RTT calculation
