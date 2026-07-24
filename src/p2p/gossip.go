@@ -3,6 +3,7 @@ package p2p
 import (
 	"log"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -17,6 +18,9 @@ type GossipConfig struct {
 	HeartbeatInterval time.Duration
 	SuspicionTimeout  time.Duration
 	Fanout            int
+	PingTimeout       time.Duration
+	IndirectPingCount int
+	RTTAlpha          float64
 }
 
 // DefaultGossipConfig returns sensible defaults for gossip.
@@ -26,7 +30,54 @@ func DefaultGossipConfig(localID int32) GossipConfig {
 		HeartbeatInterval: 1 * time.Second,
 		SuspicionTimeout:  5 * time.Second,
 		Fanout:            3,
+		PingTimeout:       500 * time.Millisecond,
+		IndirectPingCount: 3,
+		RTTAlpha:          0.25,
 	}
+}
+
+// rttTracker tracks round-trip times per peer using an exponentially
+// weighted moving average (EWMA).
+type rttTracker struct {
+	mu    sync.Mutex
+	rtts  map[int32]time.Duration
+	alpha float64
+}
+
+func newRTTTracker(alpha float64) *rttTracker {
+	return &rttTracker{
+		rtts:  make(map[int32]time.Duration),
+		alpha: alpha,
+	}
+}
+
+// Update records a new RTT sample for the given peer and returns the updated EWMA.
+func (r *rttTracker) Update(peerID int32, sample time.Duration) time.Duration {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	prev, ok := r.rtts[peerID]
+	if !ok {
+		r.rtts[peerID] = sample
+		return sample
+	}
+	updated := time.Duration(float64(prev)*(1-r.alpha) + float64(sample)*r.alpha)
+	r.rtts[peerID] = updated
+	return updated
+}
+
+// Get returns the current EWMA RTT for the given peer, or 0 if unknown.
+func (r *rttTracker) Get(peerID int32) time.Duration {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.rtts[peerID]
+}
+
+// pendingPing tracks a ping awaiting an ack.
+type pendingPing struct {
+	pingID   uint64
+	targetID int32
+	sentAt   time.Time
+	ackCh    chan struct{}
 }
 
 // Gossiper runs the gossip protocol on top of a Transport.
@@ -45,14 +96,21 @@ type Gossiper struct {
 
 	scatterGather *ScatterGather
 	leaseManager  *LeaseManager
+
+	rtt         *rttTracker
+	pendingMu   sync.Mutex
+	pendingPings map[uint64]*pendingPing
+	nextPingID  uint64
 }
 
 // NewGossiper creates a new Gossiper.
 func NewGossiper(cfg GossipConfig, transport Transport) *Gossiper {
 	return &Gossiper{
-		cfg:       cfg,
-		transport: transport,
-		done:      make(chan struct{}),
+		cfg:          cfg,
+		transport:    transport,
+		done:         make(chan struct{}),
+		rtt:          newRTTTracker(cfg.RTTAlpha),
+		pendingPings: make(map[uint64]*pendingPing),
 	}
 }
 
@@ -78,10 +136,11 @@ func (g *Gossiper) SetLeaseManager(lm *LeaseManager) {
 	g.leaseManager = lm
 }
 
-// Start launches the heartbeat and suspicion loops.
+// Start launches the heartbeat, ping, and suspicion loops.
 func (g *Gossiper) Start() {
-	g.wg.Add(2)
+	g.wg.Add(3)
 	go g.heartbeatLoop()
+	go g.pingLoop()
 	go g.suspicionLoop()
 }
 
@@ -145,6 +204,249 @@ func (g *Gossiper) sendHeartbeat() {
 	}
 }
 
+// pingLoop periodically sends direct pings to a random peer and waits for acks.
+// If a direct ping times out, it triggers an indirect ping through K other peers.
+func (g *Gossiper) pingLoop() {
+	defer g.wg.Done()
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("Gossip pingLoop panic recovered: %v (errno=%d)", r, syscall.EIO)
+		}
+	}()
+
+	ticker := time.NewTicker(g.cfg.HeartbeatInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-g.done:
+			return
+		case <-ticker.C:
+			g.sendPing()
+		}
+	}
+}
+
+// sendPing sends a direct ping to one random alive peer and waits for an ack.
+// On timeout, it initiates an indirect ping through K other peers.
+func (g *Gossiper) sendPing() {
+	peers := g.transport.Peers().RandomPeers(1, g.cfg.LocalID)
+	if len(peers) == 0 {
+		return
+	}
+	target := peers[0]
+	pingID := atomic.AddUint64(&g.nextPingID, 1)
+	now := time.Now().UnixNano()
+
+	payload := &PingPayload{
+		PingID:    pingID,
+		TargetID:  target.ID,
+		Timestamp: now,
+	}
+	rpc := &RPC{
+		From:    g.cfg.LocalID,
+		Type:    MsgPing,
+		Payload: payload.Encode(),
+	}
+
+	pp := &pendingPing{
+		pingID:   pingID,
+		targetID: target.ID,
+		sentAt:   time.Unix(0, now),
+		ackCh:    make(chan struct{}, 1),
+	}
+	g.pendingMu.Lock()
+	g.pendingPings[pingID] = pp
+	g.pendingMu.Unlock()
+
+	if err := g.transport.Send(target.ID, rpc); err != nil {
+		log.Printf("Gossip ping to peer %d failed: %v (errno=%d)", target.ID, err, syscall.EHOSTUNREACH)
+		g.removePendingPing(pingID)
+		return
+	}
+
+	select {
+	case <-pp.ackCh:
+		rtt := time.Since(pp.sentAt)
+		g.rtt.Update(target.ID, rtt)
+		g.removePendingPing(pingID)
+	case <-time.After(g.cfg.PingTimeout):
+		g.removePendingPing(pingID)
+		g.sendIndirectPing(target.ID, pingID, now)
+	case <-g.done:
+		g.removePendingPing(pingID)
+		return
+	}
+}
+
+// sendIndirectPing asks K random peers to ping the target on our behalf.
+func (g *Gossiper) sendIndirectPing(targetID int32, pingID uint64, timestamp int64) {
+	peers := g.transport.Peers().RandomPeers(g.cfg.IndirectPingCount, g.cfg.LocalID)
+	if len(peers) == 0 {
+		return
+	}
+
+	payload := &PingPayload{
+		PingID:    pingID,
+		TargetID:  targetID,
+		Timestamp: timestamp,
+	}
+	rpc := &RPC{
+		From:    g.cfg.LocalID,
+		Type:    MsgIndirectPing,
+		Payload: payload.Encode(),
+	}
+
+	indirectAck := make(chan struct{}, len(peers))
+	var wg sync.WaitGroup
+	for _, peer := range peers {
+		if peer.ID == targetID {
+			continue
+		}
+		wg.Add(1)
+		go func(pid int32) {
+			defer wg.Done()
+			if err := g.transport.Send(pid, rpc); err != nil {
+				log.Printf("Gossip indirect ping via peer %d failed: %v (errno=%d)", pid, err, syscall.EHOSTUNREACH)
+				return
+			}
+			indirectAck <- struct{}{}
+		}(peer.ID)
+	}
+	wg.Wait()
+
+	if len(indirectAck) == 0 {
+		if peer := g.transport.Peers().Get(targetID); peer != nil {
+			if peer.State() == PeerStateAlive {
+				peer.SetState(PeerStateSuspect)
+				log.Printf("Gossip: peer %d marked SUSPECT (ping + indirect ping failed)", targetID)
+			}
+		}
+	}
+}
+
+// removePendingPing removes a pending ping entry safely.
+func (g *Gossiper) removePendingPing(pingID uint64) {
+	g.pendingMu.Lock()
+	delete(g.pendingPings, pingID)
+	g.pendingMu.Unlock()
+}
+
+// handlePing responds to a direct ping with an ack.
+func (g *Gossiper) handlePing(rpc *RPC) {
+	payload, err := DecodePingPayload(rpc.Payload)
+	if err != nil {
+		log.Printf("Gossip: failed to decode ping from peer %d: %v (errno=%d)", rpc.From, err, syscall.EBADMSG)
+		return
+	}
+
+	ackPayload := &PingPayload{
+		PingID:    payload.PingID,
+		TargetID:  g.cfg.LocalID,
+		Timestamp: payload.Timestamp,
+	}
+	ackRPC := &RPC{
+		From:    g.cfg.LocalID,
+		Type:    MsgAck,
+		Payload: ackPayload.Encode(),
+	}
+	if err := g.transport.Send(rpc.From, ackRPC); err != nil {
+		log.Printf("Gossip ack to peer %d failed: %v (errno=%d)", rpc.From, err, syscall.EHOSTUNREACH)
+	}
+
+	if peer := g.transport.Peers().Get(rpc.From); peer != nil {
+		peer.Touch()
+		if peer.State() == PeerStateSuspect {
+			peer.SetState(PeerStateAlive)
+			log.Printf("Gossip: peer %d restored to ALIVE via ping", rpc.From)
+		}
+	}
+}
+
+// handleAck matches an ack to a pending ping and signals the waiting goroutine.
+func (g *Gossiper) handleAck(rpc *RPC) {
+	payload, err := DecodePingPayload(rpc.Payload)
+	if err != nil {
+		log.Printf("Gossip: failed to decode ack from peer %d: %v (errno=%d)", rpc.From, err, syscall.EBADMSG)
+		return
+	}
+
+	g.pendingMu.Lock()
+	pp, ok := g.pendingPings[payload.PingID]
+	g.pendingMu.Unlock()
+	if !ok {
+		return
+	}
+
+	select {
+	case pp.ackCh <- struct{}{}:
+	default:
+	}
+
+	if peer := g.transport.Peers().Get(rpc.From); peer != nil {
+		peer.Touch()
+		if peer.State() == PeerStateSuspect {
+			peer.SetState(PeerStateAlive)
+			log.Printf("Gossip: peer %d restored to ALIVE via ack", rpc.From)
+		}
+	}
+}
+
+// handleIndirectPing forwards a ping to the target peer on behalf of the requester.
+// If the target acks, the ack is forwarded back to the original requester.
+func (g *Gossiper) handleIndirectPing(rpc *RPC) {
+	payload, err := DecodePingPayload(rpc.Payload)
+	if err != nil {
+		log.Printf("Gossip: failed to decode indirect ping from peer %d: %v (errno=%d)", rpc.From, err, syscall.EBADMSG)
+		return
+	}
+
+	targetPeer := g.transport.Peers().Get(payload.TargetID)
+	if targetPeer == nil {
+		return
+	}
+
+	pingRPC := &RPC{
+		From:    g.cfg.LocalID,
+		Type:    MsgPing,
+		Payload: payload.Encode(),
+	}
+	if err := g.transport.Send(payload.TargetID, pingRPC); err != nil {
+		log.Printf("Gossip indirect ping to target %d failed: %v (errno=%d)", payload.TargetID, err, syscall.EHOSTUNREACH)
+		return
+	}
+
+	indirectPP := &pendingPing{
+		pingID:   payload.PingID,
+		targetID: payload.TargetID,
+		sentAt:   time.Unix(0, payload.Timestamp),
+		ackCh:    make(chan struct{}, 1),
+	}
+	g.pendingMu.Lock()
+	g.pendingPings[payload.PingID] = indirectPP
+	g.pendingMu.Unlock()
+
+	select {
+	case <-indirectPP.ackCh:
+		ackPayload := &PingPayload{
+			PingID:    payload.PingID,
+			TargetID:  payload.TargetID,
+			Timestamp: payload.Timestamp,
+		}
+		ackRPC := &RPC{
+			From:    g.cfg.LocalID,
+			Type:    MsgAck,
+			Payload: ackPayload.Encode(),
+		}
+		g.transport.Send(rpc.From, ackRPC)
+		g.removePendingPing(payload.PingID)
+	case <-time.After(g.cfg.PingTimeout):
+		g.removePendingPing(payload.PingID)
+	case <-g.done:
+		g.removePendingPing(payload.PingID)
+	}
+}
+
 // suspicionLoop periodically checks for peers that haven't sent heartbeats
 // within the suspicion timeout window and marks them suspect or offline.
 func (g *Gossiper) suspicionLoop() {
@@ -169,6 +471,7 @@ func (g *Gossiper) suspicionLoop() {
 }
 
 // checkSuspicion marks peers as suspect or offline based on last seen time.
+// Suspicion timeouts are adapted per-peer using RTT EWMA when available.
 func (g *Gossiper) checkSuspicion() {
 	now := time.Now()
 	peers := g.transport.Peers().All()
@@ -178,22 +481,40 @@ func (g *Gossiper) checkSuspicion() {
 			continue
 		}
 		elapsed := now.Sub(p.LastSeen())
+		timeout := g.adaptiveTimeout(p.ID)
 		switch p.State() {
 		case PeerStateAlive:
-			if elapsed > g.cfg.SuspicionTimeout {
+			if elapsed > timeout {
 				p.SetState(PeerStateSuspect)
-				log.Printf("Gossip: peer %d marked SUSPECT (last seen %v ago)", p.ID, elapsed)
+				log.Printf("Gossip: peer %d marked SUSPECT (last seen %v ago, timeout=%v)", p.ID, elapsed, timeout)
 			}
 		case PeerStateSuspect:
-			if elapsed > 2*g.cfg.SuspicionTimeout {
+			if elapsed > 2*timeout {
 				p.SetState(PeerStateOffline)
-				log.Printf("Gossip: peer %d marked OFFLINE (last seen %v ago)", p.ID, elapsed)
+				log.Printf("Gossip: peer %d marked OFFLINE (last seen %v ago, timeout=%v)", p.ID, elapsed, timeout)
 				if g.onLeave != nil {
 					g.onLeave(p.ID)
 				}
 			}
 		}
 	}
+}
+
+// adaptiveTimeout returns the suspicion timeout for a peer, adjusted by RTT.
+// If no RTT data is available, falls back to the configured SuspicionTimeout.
+func (g *Gossiper) adaptiveTimeout(peerID int32) time.Duration {
+	rtt := g.rtt.Get(peerID)
+	if rtt <= 0 {
+		return g.cfg.SuspicionTimeout
+	}
+	adaptive := rtt * 10
+	if adaptive < g.cfg.SuspicionTimeout {
+		return g.cfg.SuspicionTimeout
+	}
+	if adaptive > 5*g.cfg.SuspicionTimeout {
+		return 5 * g.cfg.SuspicionTimeout
+	}
+	return adaptive
 }
 
 // HandleRPC processes an incoming gossip RPC. It should be called for each
@@ -211,6 +532,12 @@ func (g *Gossiper) HandleRPC(rpc *RPC) {
 		g.handleMembership(rpc)
 	case MsgSuspect:
 		g.handleSuspect(rpc)
+	case MsgPing:
+		g.handlePing(rpc)
+	case MsgAck:
+		g.handleAck(rpc)
+	case MsgIndirectPing:
+		g.handleIndirectPing(rpc)
 	case MsgQuery, MsgQueryResponse:
 		if g.scatterGather != nil {
 			g.scatterGather.HandleRPC(rpc)
@@ -247,6 +574,14 @@ func (g *Gossiper) handleHeartbeat(rpc *RPC) {
 			if g.onJoin != nil {
 				g.onJoin(peer)
 			}
+		}
+	}
+
+	if peer := g.transport.Peers().Get(rpc.From); peer != nil {
+		peer.Touch()
+		if peer.State() == PeerStateSuspect {
+			peer.SetState(PeerStateAlive)
+			log.Printf("Gossip: peer %d restored to ALIVE via heartbeat", rpc.From)
 		}
 	}
 }

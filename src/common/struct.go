@@ -74,6 +74,10 @@ type ConfigurationP2P struct {
 	SuspicionTimeout int
 	// Fanout is the number of random peers to gossip to per heartbeat.
 	Fanout int
+	// PingTimeout is the timeout for a direct ping ack, in milliseconds.
+	PingTimeout int
+	// IndirectPingCount is the number of peers to ask for indirect pings.
+	IndirectPingCount int
 	// ScatterGatherTimeout is the timeout for scatter-gather queries, in seconds.
 	ScatterGatherTimeout int
 	// LeaseTimeout is the default lease duration for consensus operations, in seconds.

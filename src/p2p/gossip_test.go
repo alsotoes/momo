@@ -37,12 +37,18 @@ func TestGossiper_HeartbeatExchange(t *testing.T) {
 		HeartbeatInterval: 50 * time.Millisecond,
 		SuspicionTimeout:  500 * time.Millisecond,
 		Fanout:            3,
+		PingTimeout:       100 * time.Millisecond,
+		IndirectPingCount: 3,
+		RTTAlpha:          0.25,
 	}
 	cfg2 := GossipConfig{
 		LocalID:           2,
 		HeartbeatInterval: 50 * time.Millisecond,
 		SuspicionTimeout:  500 * time.Millisecond,
 		Fanout:            3,
+		PingTimeout:       100 * time.Millisecond,
+		IndirectPingCount: 3,
+		RTTAlpha:          0.25,
 	}
 
 	g1 := NewGossiper(cfg1, tr1)
@@ -93,6 +99,9 @@ func TestGossiper_MembershipDissemination(t *testing.T) {
 		HeartbeatInterval: 50 * time.Millisecond,
 		SuspicionTimeout:  500 * time.Millisecond,
 		Fanout:            3,
+		PingTimeout:       100 * time.Millisecond,
+		IndirectPingCount: 3,
+		RTTAlpha:          0.25,
 	}
 
 	cfg1 := cfg
@@ -142,6 +151,9 @@ func TestGossiper_SuspicionTimeout(t *testing.T) {
 		HeartbeatInterval: 50 * time.Millisecond,
 		SuspicionTimeout:  150 * time.Millisecond,
 		Fanout:            3,
+		PingTimeout:       100 * time.Millisecond,
+		IndirectPingCount: 3,
+		RTTAlpha:          0.25,
 	}
 
 	g1 := NewGossiper(cfg1, tr1)
