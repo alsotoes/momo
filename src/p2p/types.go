@@ -91,6 +91,9 @@ const (
 	MsgLeaseRequest  MessageType = 6
 	MsgLeaseGrant    MessageType = 7
 	MsgLeaseRelease  MessageType = 8
+	MsgPing          MessageType = 9
+	MsgAck           MessageType = 10
+	MsgIndirectPing  MessageType = 11
 )
 
 // RPC is a remote procedure call exchanged between peers.
@@ -332,5 +335,37 @@ func DecodeLeasePayload(data []byte) (*LeasePayload, error) {
 		LeaseID: leaseID,
 		Key:     key,
 		Expiry:  expiry,
+	}, nil
+}
+
+// PingPayload is the payload of MsgPing, MsgAck, and MsgIndirectPing RPCs.
+// Wire format: [8 bytes: ping ID] [4 bytes: target ID] [8 bytes: timestamp unixnano]
+type PingPayload struct {
+	PingID    uint64
+	TargetID  int32
+	Timestamp int64
+}
+
+// Encode serializes a PingPayload into binary.
+func (p *PingPayload) Encode() []byte {
+	buf := make([]byte, 20)
+	binary.BigEndian.PutUint64(buf[0:8], p.PingID)
+	binary.BigEndian.PutUint32(buf[8:12], uint32(p.TargetID))
+	binary.BigEndian.PutUint64(buf[12:20], uint64(p.Timestamp))
+	return buf
+}
+
+// DecodePingPayload deserializes a PingPayload from binary.
+func DecodePingPayload(data []byte) (*PingPayload, error) {
+	if len(data) > maxPayloadSize {
+		return nil, fmt.Errorf("ping payload too large: %d (errno=%d)", len(data), syscall.EFBIG)
+	}
+	if len(data) < 20 {
+		return nil, fmt.Errorf("ping payload too short: %w", syscall.EBADMSG)
+	}
+	return &PingPayload{
+		PingID:    binary.BigEndian.Uint64(data[0:8]),
+		TargetID:  int32(binary.BigEndian.Uint32(data[8:12])),
+		Timestamp: int64(binary.BigEndian.Uint64(data[12:20])),
 	}, nil
 }

@@ -48,6 +48,9 @@ All RPCs use a binary, length-prefixed frame format for zero-allocation encoding
 | `MsgHeartbeat` | 1 | Periodic heartbeat with sender's peer list |
 | `MsgMembership` | 2 | Node join/leave announcement |
 | `MsgSuspect` | 3 | Suspicion announcement about a peer |
+| `MsgPing` | 9 | Direct ping for failure detection |
+| `MsgAck` | 10 | Ack response to a ping |
+| `MsgIndirectPing` | 11 | Indirect ping request via intermediary |
 
 ### Heartbeat Payload
 
@@ -125,9 +128,62 @@ go test -race -count=1 ./src/p2p/
 make test-e2e-p2p
 ```
 
+## SWIM Refinement
+
+The gossip protocol extends the baseline heartbeat mechanism with SWIM-style failure detection: direct ping/ack, indirect pings, adaptive RTT-based timeouts, and suspicion restoration.
+
+### Ping/Ack Protocol
+
+Every `HeartbeatInterval`, the gossiper sends a `MsgPing` to one random alive peer. The peer responds with `MsgAck`. If the ack arrives within `PingTimeout`, the RTT is recorded. If no ack arrives, an indirect ping is initiated.
+
+### Indirect Ping
+
+When a direct ping to peer *T* times out, the gossiper selects up to `IndirectPingCount` random peers and sends each a `MsgIndirectPing` targeting *T*. Each intermediary forwards the ping to *T* and, if it receives an ack, forwards the ack back to the original requester. If no indirect ack is received, *T* is marked `SUSPECT`.
+
+### RTT Tracking & Adaptive Timeouts
+
+Per-peer RTT is tracked using an exponentially weighted moving average (EWMA, alpha=0.25). The suspicion timeout is adapted:
+
+```
+adaptive_timeout = max(SuspicionTimeout, min(RTT * 10, 5 * SuspicionTimeout))
+```
+
+- Falls back to `SuspicionTimeout` when no RTT data is available
+- Scales with RTT for slower peers, capped at 5x the base timeout
+
+### Suspicion Restoration
+
+A peer in `SUSPECT` state is restored to `ALIVE` when any of the following arrives:
+- `MsgHeartbeat` from the peer
+- `MsgPing` from the peer
+- `MsgAck` from the peer
+
+This prevents false positives during transient network partitions.
+
+### Message Types
+
+| Type | Value | Description |
+|------|-------|-------------|
+| `MsgPing` | 9 | Direct ping to a peer |
+| `MsgAck` | 10 | Ack response to a ping |
+| `MsgIndirectPing` | 11 | Request to ping a target on behalf of another node |
+
+### Ping Payload
+
+```
+[8 bytes: ping ID] [4 bytes: target ID] [8 bytes: timestamp unixnano]
+```
+
+### Configuration
+
+```ini
+[p2p]
+ping_timeout = 500          # milliseconds
+indirect_ping_count = 3     # peers to ask for indirect ping
+```
+
 ## Future Work
 
-- SWIM-style suspicion mechanism refinement (indirect ping, RTT tuning)
 - Compression for large heartbeat payloads
 - CAS garbage collection via decentralized refcounting
 

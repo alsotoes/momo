@@ -467,6 +467,9 @@ func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, d
 		HeartbeatInterval: time.Duration(cfg.P2P.GossipInterval) * time.Second,
 		SuspicionTimeout:  time.Duration(cfg.P2P.SuspicionTimeout) * time.Second,
 		Fanout:            cfg.P2P.Fanout,
+		PingTimeout:       time.Duration(cfg.P2P.PingTimeout) * time.Millisecond,
+		IndirectPingCount: cfg.P2P.IndirectPingCount,
+		RTTAlpha:          0.25,
 	}
 
 	gossip := p2p.NewGossiper(gossipCfg, transport)

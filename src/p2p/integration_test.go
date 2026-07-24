@@ -26,6 +26,9 @@ func TestIntegration_ThreeNodeCluster(t *testing.T) {
 			HeartbeatInterval: 50 * time.Millisecond,
 			SuspicionTimeout:  300 * time.Millisecond,
 			Fanout:            3,
+			PingTimeout:       100 * time.Millisecond,
+			IndirectPingCount: 3,
+			RTTAlpha:          0.25,
 		}
 		gossipers[i] = NewGossiper(cfg, transports[i])
 	}
@@ -75,6 +78,9 @@ func TestIntegration_NodeJoinAfterStart(t *testing.T) {
 		HeartbeatInterval: 50 * time.Millisecond,
 		SuspicionTimeout:  300 * time.Millisecond,
 		Fanout:            3,
+		PingTimeout:       100 * time.Millisecond,
+		IndirectPingCount: 3,
+		RTTAlpha:          0.25,
 	}
 	cfg1 := cfg
 	cfg1.LocalID = 1
