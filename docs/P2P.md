@@ -209,3 +209,47 @@ The `LeaseManager` provides time-bound, self-expiring leases for destructive ope
 lease_timeout = 10  # seconds
 ```
 ```
+
+## CAS Garbage Collection
+
+The `src/storage` package implements reference-counted garbage collection for content-addressable blobs, with P2P delete propagation via scatter-gather.
+
+### Reference Counting
+
+- Each blob in the `objects` bucket stores an `ObjectMeta` struct: `{Size, RefCount, DeletedAt}`
+- `Put` increments `RefCount` when the blob already exists (deduplication)
+- `Delete` decrements `RefCount` and writes a tombstone
+- When `RefCount` reaches 0, the blob is eligible for GC
+
+### Tombstones
+
+- A `tombstones` bucket maps `FileName -> deletion timestamp` (unix nano)
+- Tombstoned entries are hidden from `List`, `Get`, and `GetBlobPath`
+- Tombstones support **resurrection**: re-`Put` of a tombstoned name clears the tombstone
+- `GetTombstones()` and `ApplyTombstone()` enable P2P tombstone exchange for eventual consistency
+
+### GC Sweeper
+
+- Background goroutine runs every `gc_interval` seconds (default 300 = 5 minutes)
+- **Sweep orphaned blobs**: removes on-disk blob files and `objects` entries with `RefCount=0`
+- **Sweep expired tombstones**: removes tombstones older than `tombstone_retention` (default 86400 = 24 hours)
+
+### P2P Delete Propagation
+
+- `QueryDelete` (type 4) is sent via scatter-gather to all peers when a delete occurs
+- `ScatterGatherDeleter` adapts `ScatterGather` to the `transport.DeletePropagator` interface
+- S3 `DELETE` and native delete handlers fan out deletes to all peers (best-effort)
+- Each peer applies the delete locally, writing its own tombstone
+
+### Backward Compatibility
+
+- Legacy `objects` bucket entries (ASCII size only) are automatically migrated on read
+- `decodeObjectMeta` detects the 24-byte binary format vs. legacy ASCII and falls back gracefully
+
+### Configuration
+
+```ini
+[storage]
+gc_interval = 300          # seconds (5 minutes)
+tombstone_retention = 86400 # seconds (24 hours)
+```

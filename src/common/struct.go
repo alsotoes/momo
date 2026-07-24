@@ -80,6 +80,14 @@ type ConfigurationP2P struct {
 	LeaseTimeout int
 }
 
+// ConfigurationStorage holds the storage and garbage collection configuration.
+type ConfigurationStorage struct {
+	// GCInterval is how often the garbage collector runs, in seconds.
+	GCInterval int
+	// TombstoneRetention is how long tombstones are kept, in seconds.
+	TombstoneRetention int
+}
+
 // Configuration holds the overall configuration for the application.
 type Configuration struct {
 	// Daemons is a list of daemons in the system.
@@ -90,4 +98,6 @@ type Configuration struct {
 	Metrics ConfigurationMetrics
 	// P2P is the P2P transport configuration.
 	P2P ConfigurationP2P
+	// Storage is the storage and GC configuration.
+	Storage ConfigurationStorage
 }

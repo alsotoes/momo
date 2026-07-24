@@ -29,10 +29,11 @@ import (
 // MomoQUICCommunicator implements the Communicator interface for the Momo protocol over QUIC.
 type MomoQUICCommunicator struct {
 	*quic.Stream
-	conn          *quic.Conn
-	store         storage.Store
-	globalLister  GlobalLister
-	leaseAcquirer LeaseAcquirer
+	conn             *quic.Conn
+	store            storage.Store
+	globalLister     GlobalLister
+	leaseAcquirer    LeaseAcquirer
+	deletePropagator DeletePropagator
 }
 
 // NewMomoQUICCommunicator creates a new MomoQUICCommunicator.
@@ -55,6 +56,11 @@ func (m *MomoQUICCommunicator) SetGlobalLister(gl GlobalLister) {
 // SetLeaseAcquirer sets the lease-based consensus capability.
 func (m *MomoQUICCommunicator) SetLeaseAcquirer(la LeaseAcquirer) {
 	m.leaseAcquirer = la
+}
+
+// SetDeletePropagator sets the P2P delete propagation capability.
+func (m *MomoQUICCommunicator) SetDeletePropagator(dp DeletePropagator) {
+	m.deletePropagator = dp
 }
 
 func (m *MomoQUICCommunicator) SetAbsoluteDeadline(t interface{}) (err error) {
@@ -240,6 +246,10 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 		if err != nil {
 			m.Write([]byte{'1'}) // error status
 			return 0, 0, fmt.Errorf("failed to delete file: %w", err)
+		}
+
+		if m.deletePropagator != nil {
+			_ = m.deletePropagator.PropagateDelete(fileName, 5*time.Second)
 		}
 
 		m.Write([]byte{'0'}) // success status
