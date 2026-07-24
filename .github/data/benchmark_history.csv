@@ -799,3 +799,10 @@ ea712a7,BenchmarkPadString-8,1.97,0.00,0.00
 08da645,BenchmarkIndexSearch-8,3.02,0.00,0.00
 08da645,BenchmarkLoadGlobalConfig-8,724.70,160.00,1.00
 08da645,BenchmarkPadString-8,2.46,0.00,0.00
+260921d,BenchmarkCheckMetricsAndSwap-8,7.92,0.00,0.00
+260921d,BenchmarkCrushOptimized-8,320.90,0.00,0.00
+260921d,BenchmarkCrushOriginal-8,453.40,164.00,3.00
+260921d,BenchmarkIndexDirectTracking-8,0.36,0.00,0.00
+260921d,BenchmarkIndexSearch-8,2.75,0.00,0.00
+260921d,BenchmarkLoadGlobalConfig-8,802.90,160.00,1.00
+260921d,BenchmarkPadString-8,2.05,0.00,0.00

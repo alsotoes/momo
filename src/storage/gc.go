@@ -34,6 +34,11 @@ func (s *CASStore) StartGC(cfg GCConfig) {
 
 func (s *CASStore) gcLoop(cfg GCConfig) {
 	defer s.gcWG.Done()
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CAS GC: gcLoop panic recovered: %v", r)
+		}
+	}()
 
 	ticker := time.NewTicker(cfg.Interval)
 	defer ticker.Stop()
