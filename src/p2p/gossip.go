@@ -339,6 +339,11 @@ func (g *Gossiper) removePendingPing(pingID uint64) {
 
 // handlePing responds to a direct ping with an ack.
 func (g *Gossiper) handlePing(rpc *RPC) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("Gossip handlePing panic recovered: %v (errno=%d)", r, syscall.EIO)
+		}
+	}()
 	payload, err := DecodePingPayload(rpc.Payload)
 	if err != nil {
 		log.Printf("Gossip: failed to decode ping from peer %d: %v (errno=%d)", rpc.From, err, syscall.EBADMSG)
@@ -370,6 +375,11 @@ func (g *Gossiper) handlePing(rpc *RPC) {
 
 // handleAck matches an ack to a pending ping and signals the waiting goroutine.
 func (g *Gossiper) handleAck(rpc *RPC) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("Gossip handleAck panic recovered: %v (errno=%d)", r, syscall.EIO)
+		}
+	}()
 	payload, err := DecodePingPayload(rpc.Payload)
 	if err != nil {
 		log.Printf("Gossip: failed to decode ack from peer %d: %v (errno=%d)", rpc.From, err, syscall.EBADMSG)
