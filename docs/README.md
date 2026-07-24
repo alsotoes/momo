@@ -15,6 +15,7 @@ This document explains the architecture, configuration, wire protocol, replicati
 - **Bitwise Deadline Amortization**: Reduces `SetDeadline` system calls by ~98% in hot paths.
 - **Consolidated Network I/O**: Merges authentication tokens, timestamps, and payloads into unified writes to minimize syscalls and Nagle delays.
 - **Security Hardening**: Mandatory 64-byte AuthToken validation, CRLF log injection protection, and comprehensive `AUDIT:` logging for all sensitive operations.
+- **P2P Cluster Coordination**: Gossip-based membership with SWIM-style failure detection (direct ping/ack, indirect ping, adaptive RTT timeouts), scatter-gather queries, and lease-based consensus for deletes.
 
 ## Repository Layout
 
@@ -44,11 +45,11 @@ This document explains the architecture, configuration, wire protocol, replicati
 - `src/storage/`: Content-Addressable Storage (CAS) engine.
   - `storage.go`: Bbolt-backed object store with tiered directory layout.
 - `src/p2p/`: P2P transport layer with gossip membership protocol.
-  - `types.go`: Peer, RPC, HeartbeatPayload with binary length-prefixed encoding.
+  - `types.go`: Peer, RPC, HeartbeatPayload, PingPayload with binary length-prefixed encoding.
   - `transport.go`: Transport interface (Listen, Dial, Consume, Broadcast, Send).
   - `tcp_transport.go`: TCPTransport implementation with connection tracking.
   - `peer_map.go`: Thread-safe PeerMap with RandomPeers for gossip fanout.
-  - `gossip.go`: Gossiper with heartbeat, membership dissemination, suspicion.
+  - `gossip.go`: Gossiper with heartbeat, SWIM ping/ack, indirect ping, adaptive RTT timeouts, suspicion.
 - `src/metrics/`: Performance monitoring and polymorphic control loop.
 - `conf/momo.conf`: Secure configuration example.
 
