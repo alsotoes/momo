@@ -207,9 +207,10 @@ func DecodeHeartbeatPayload(data []byte) (*HeartbeatPayload, error) {
 type QueryType uint8
 
 const (
-	QueryList QueryType = 1
-	QueryGet  QueryType = 2
-	QueryHas  QueryType = 3
+	QueryList   QueryType = 1
+	QueryGet    QueryType = 2
+	QueryHas    QueryType = 3
+	QueryDelete QueryType = 4
 )
 
 // QueryPayload is the payload of a MsgQuery RPC.

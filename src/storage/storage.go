@@ -2,6 +2,7 @@ package storage
 
 import (
 	"bufio"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"log"
@@ -10,7 +11,7 @@ import (
 	"strconv"
 	"sync"
 	"syscall"
-	"unsafe"
+	"time"
 
 	"github.com/alsotoes/momo/src/common"
 	"go.etcd.io/bbolt"
@@ -18,10 +19,43 @@ import (
 
 // Buckets used in Bbolt
 var (
-	bucketObjects   = []byte("objects")   // Maps ContentHash -> {Metadata JSON}
-	bucketNamespace = []byte("namespace") // Maps FileName -> ContentHash
-	bucketPaths     = []byte("paths")     // Maps FileName -> RemotePath
+	bucketObjects    = []byte("objects")    // Maps ContentHash -> {ObjectMeta binary}
+	bucketNamespace  = []byte("namespace")  // Maps FileName -> ContentHash
+	bucketPaths      = []byte("paths")      // Maps FileName -> RemotePath
+	bucketTombstones = []byte("tombstones") // Maps FileName -> deletion timestamp (unix nano)
 )
+
+// ObjectMeta is the binary metadata stored in the objects bucket.
+// Wire format: [8B size (big-endian)] [8B refCount (big-endian)] [8B deletedAt (big-endian)]
+type ObjectMeta struct {
+	Size      int64
+	RefCount  int64
+	DeletedAt int64 // unix nano; 0 = not deleted
+}
+
+// encodeObjectMeta serializes ObjectMeta into a fixed 24-byte binary slice.
+func (m ObjectMeta) encode() []byte {
+	buf := make([]byte, 24)
+	binary.BigEndian.PutUint64(buf[0:8], uint64(m.Size))
+	binary.BigEndian.PutUint64(buf[8:16], uint64(m.RefCount))
+	binary.BigEndian.PutUint64(buf[16:24], uint64(m.DeletedAt))
+	return buf
+}
+
+// decodeObjectMeta deserializes a 24-byte binary slice into ObjectMeta.
+// Falls back to legacy ASCII size format for backward compatibility.
+func decodeObjectMeta(val []byte) ObjectMeta {
+	if len(val) == 24 {
+		return ObjectMeta{
+			Size:      int64(binary.BigEndian.Uint64(val[0:8])),
+			RefCount:  int64(binary.BigEndian.Uint64(val[8:16])),
+			DeletedAt: int64(binary.BigEndian.Uint64(val[16:24])),
+		}
+	}
+	// Legacy format: ASCII integer = size only, refCount=1, not deleted
+	size, _ := strconv.ParseInt(string(val), 10, 64)
+	return ObjectMeta{Size: size, RefCount: 1}
+}
 
 // Store defines the interface for object storage operations.
 type Store interface {
@@ -39,6 +73,8 @@ type CASStore struct {
 	mu     sync.RWMutex
 	db     *bbolt.DB
 	base   string
+	gcDone chan struct{}
+	gcWG   sync.WaitGroup
 }
 
 // NewCASStore initializes a new CAS storage backend.
@@ -61,7 +97,10 @@ func NewCASStore(dataDir string) (*CASStore, error) {
 		if _, err := tx.CreateBucketIfNotExists(bucketNamespace); err != nil {
 			return err
 		}
-		_, err := tx.CreateBucketIfNotExists(bucketPaths)
+		if _, err := tx.CreateBucketIfNotExists(bucketPaths); err != nil {
+			return err
+		}
+		_, err = tx.CreateBucketIfNotExists(bucketTombstones)
 		return err
 	})
 	if err != nil {
@@ -70,12 +109,17 @@ func NewCASStore(dataDir string) (*CASStore, error) {
 	}
 
 	return &CASStore{
-		db:   db,
-		base: dataDir,
+		db:     db,
+		base:   dataDir,
+		gcDone: make(chan struct{}),
 	}, nil
 }
 
 func (s *CASStore) Close() error {
+	if s.gcDone != nil {
+		close(s.gcDone)
+		s.gcWG.Wait()
+	}
 	return s.db.Close()
 }
 
@@ -115,7 +159,7 @@ func (s *CASStore) Put(name string, hash string, size int64, remotePath string, 
 			os.Remove(tmpPath)
 			return fmt.Errorf("storage error: failed to write blob: %w", syscall.ENOSPC)
 		}
-		
+
 		if err := writer.Flush(); err != nil {
 			tmpFile.Close()
 			os.Remove(tmpPath)
@@ -137,13 +181,20 @@ func (s *CASStore) Put(name string, hash string, size int64, remotePath string, 
 		}
 
 		obj := tx.Bucket(bucketObjects)
-		// ⚡ Bolt: Store size as a simple 8-byte binary value for speed.
-		// In a full implementation, we would store a JSON struct with RefCount.
-		// ⚡ Bolt: Eliminate heap allocation and GC overhead for number to byte slice conversion
-		var sizeBuf [32]byte
-		if err := obj.Put([]byte(hash), strconv.AppendInt(sizeBuf[:0], size, 10)); err != nil {
+		// Update or create object metadata with reference counting.
+		var meta ObjectMeta
+		if existing := obj.Get([]byte(hash)); existing != nil {
+			meta = decodeObjectMeta(existing)
+			meta.RefCount++
+		} else {
+			meta = ObjectMeta{Size: size, RefCount: 1}
+		}
+		if err := obj.Put([]byte(hash), meta.encode()); err != nil {
 			return fmt.Errorf("metadata error: %w", syscall.EIO)
 		}
+
+		// Remove any existing tombstone for this name (resurrection).
+		tx.Bucket(bucketTombstones).Delete([]byte(name))
 
 		// Store RemotePath
 		if remotePath != "" {
@@ -178,6 +229,10 @@ func (s *CASStore) Get(name string) (rc io.ReadCloser, meta common.FileMetadata,
 
 	var hash string
 	err = s.db.View(func(tx *bbolt.Tx) error {
+		// Check tombstone first — deleted names should appear as not found.
+		if ts := tx.Bucket(bucketTombstones).Get([]byte(name)); ts != nil {
+			return syscall.ENOENT
+		}
 		h := tx.Bucket(bucketNamespace).Get([]byte(name))
 		if h == nil {
 			return syscall.ENOENT
@@ -206,19 +261,13 @@ func (s *CASStore) Get(name string) (rc io.ReadCloser, meta common.FileMetadata,
 	var size int64
 	err = s.db.View(func(tx *bbolt.Tx) error {
 		val := tx.Bucket(bucketObjects).Get([]byte(hash))
-		// 🛡️ Zero-Crash: Guard against missing metadata to prevent nil pointer dereference in unsafe.SliceData.
 		if val == nil {
 			return fmt.Errorf("metadata missing for hash %s: %w", hash, syscall.ENOENT)
 		}
 
-		// ⚡ Bolt: Eliminate allocs and overhead of fmt.Sscanf by using strconv.ParseInt with unsafe.String.
-		var parseErr error
-		size, parseErr = strconv.ParseInt(unsafe.String(unsafe.SliceData(val), len(val)), 10, 64)
-		if parseErr != nil {
-			return fmt.Errorf("metadata corruption for hash %s: %w", hash, syscall.EBADMSG)
-		}
+		meta := decodeObjectMeta(val)
+		size = meta.Size
 
-		// 🛡️ Zero-Crash: Ensure size is non-negative to prevent downstream overflows or invalid allocations.
 		if size < 0 {
 			return fmt.Errorf("invalid size %d for hash %s: %w", size, hash, syscall.EBADMSG)
 		}
@@ -274,10 +323,44 @@ func (s *CASStore) Delete(name string) (err error) {
 		}
 	}()
 
-	// Simple deletion of the namespace entry. 
-	// Real CAS would implement reference counting and garbage collection for the blobs.
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now().UnixNano()
 	return s.db.Update(func(tx *bbolt.Tx) error {
-		return tx.Bucket(bucketNamespace).Delete([]byte(name))
+		ns := tx.Bucket(bucketNamespace)
+		obj := tx.Bucket(bucketObjects)
+		paths := tx.Bucket(bucketPaths)
+		ts := tx.Bucket(bucketTombstones)
+
+		// Write tombstone (8-byte unix nano timestamp).
+		var tsBuf [8]byte
+		binary.BigEndian.PutUint64(tsBuf[:], uint64(now))
+		if err := ts.Put([]byte(name), tsBuf[:]); err != nil {
+			return fmt.Errorf("metadata error: %w", syscall.EIO)
+		}
+
+		// Look up the hash for this name to decrement refcount.
+		h := ns.Get([]byte(name))
+		if h != nil {
+			hash := string(h)
+			if val := obj.Get([]byte(hash)); val != nil {
+				meta := decodeObjectMeta(val)
+				meta.RefCount--
+				if meta.RefCount <= 0 {
+					meta.RefCount = 0
+					meta.DeletedAt = now
+				}
+				if err := obj.Put([]byte(hash), meta.encode()); err != nil {
+					return fmt.Errorf("metadata error: %w", syscall.EIO)
+				}
+			}
+		}
+
+		// Remove namespace and paths entries.
+		ns.Delete([]byte(name))
+		paths.Delete([]byte(name))
+		return nil
 	})
 }
 
@@ -301,22 +384,25 @@ func (s *CASStore) List() (list []common.FileMetadata, err error) {
 		}
 		obj := tx.Bucket(bucketObjects)
 		paths := tx.Bucket(bucketPaths)
+		ts := tx.Bucket(bucketTombstones)
 
 		c := ns.Cursor()
 		for k, v := c.First(); k != nil; k, v = c.Next() {
 			name := string(k)
 			hash := string(v)
+
+			// Skip tombstoned entries.
+			if ts != nil && ts.Get(k) != nil {
+				continue
+			}
+
 			var size int64 = 0
 			var remotePath string = ""
 
 			if obj != nil {
 				sizeBytes := obj.Get(v)
 				if len(sizeBytes) > 0 {
-					var parseErr error
-					size, parseErr = strconv.ParseInt(unsafe.String(unsafe.SliceData(sizeBytes), len(sizeBytes)), 10, 64)
-					if parseErr != nil {
-						log.Printf("WARNING: metadata corruption for hash %s in List: %v", hash, parseErr)
-					}
+					size = decodeObjectMeta(sizeBytes).Size
 				}
 			}
 
@@ -354,6 +440,9 @@ func (s *CASStore) GetBlobPath(name string) (path string, err error) {
 
 	var hash string
 	err = s.db.View(func(tx *bbolt.Tx) error {
+		if ts := tx.Bucket(bucketTombstones).Get([]byte(name)); ts != nil {
+			return syscall.ENOENT
+		}
 		h := tx.Bucket(bucketNamespace).Get([]byte(name))
 		if h == nil {
 			return syscall.ENOENT

@@ -17,6 +17,8 @@ const (
 	sectionMetrics = "metrics"
 	// sectionP2P is the name of the [p2p] section in the configuration file.
 	sectionP2P = "p2p"
+	// sectionStorage is the name of the [storage] section in the configuration file.
+	sectionStorage = "storage"
 	// prefixDaemon is the prefix for daemon sections in the configuration file (e.g., [daemon.0]).
 	prefixDaemon = "daemon."
 )
@@ -63,6 +65,17 @@ func GetConfig(path string) (Configuration, error) {
 		if err != nil {
 			return Configuration{}, fmt.Errorf("failed to load [%s] section: %w", sectionP2P, err)
 		}
+	}
+
+	// Load [storage] section (optional, defaults to standard GC settings)
+	storageSec, err := cfg.GetSection(sectionStorage)
+	if err == nil {
+		config.Storage, err = loadStorageConfig(storageSec)
+		if err != nil {
+			return Configuration{}, fmt.Errorf("failed to load [%s] section: %w", sectionStorage, err)
+		}
+	} else {
+		config.Storage = defaultStorageConfig()
 	}
 
 	return config, nil
@@ -244,6 +257,32 @@ func loadP2PConfig(section *ini.Section) (ConfigurationP2P, error) {
 	}
 
 	return p2pCfg, nil
+}
+
+// defaultStorageConfig returns the default storage configuration.
+func defaultStorageConfig() ConfigurationStorage {
+	return ConfigurationStorage{
+		GCInterval:         300,
+		TombstoneRetention: 86400,
+	}
+}
+
+// loadStorageConfig loads the [storage] section from the configuration.
+func loadStorageConfig(section *ini.Section) (ConfigurationStorage, error) {
+	cfg := defaultStorageConfig()
+	var err error
+
+	cfg.GCInterval, err = section.Key("gc_interval").Int()
+	if err != nil || cfg.GCInterval <= 0 {
+		cfg.GCInterval = 300
+	}
+
+	cfg.TombstoneRetention, err = section.Key("tombstone_retention").Int()
+	if err != nil || cfg.TombstoneRetention <= 0 {
+		cfg.TombstoneRetention = 86400
+	}
+
+	return cfg, nil
 }
 
 // loadDaemons loads all [daemon.*] sections from the configuration.

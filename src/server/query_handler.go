@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/binary"
 	"fmt"
+	"syscall"
 
 	"github.com/alsotoes/momo/src/common"
 	"github.com/alsotoes/momo/src/p2p"
@@ -29,6 +30,8 @@ func (h *StorageQueryHandler) HandleQuery(qt p2p.QueryType, data []byte) ([]byte
 		return h.handleGet(data)
 	case p2p.QueryHas:
 		return h.handleHas(data)
+	case p2p.QueryDelete:
+		return h.handleDelete(data)
 	default:
 		return nil, fmt.Errorf("unknown query type: %d", qt)
 	}
@@ -70,6 +73,21 @@ func (h *StorageQueryHandler) handleHas(data []byte) ([]byte, error) {
 	if exists {
 		result[0] = 1
 	}
+	return result, nil
+}
+
+// handleDelete deletes a file by name from the local store.
+// This is invoked by remote peers via scatter-gather to propagate deletes.
+func (h *StorageQueryHandler) handleDelete(data []byte) ([]byte, error) {
+	if len(data) == 0 {
+		return nil, fmt.Errorf("empty file name: %w", syscall.EINVAL)
+	}
+	name := string(data)
+	if err := h.store.Delete(name); err != nil {
+		return nil, err
+	}
+	result := make([]byte, 1)
+	result[0] = 1
 	return result, nil
 }
 

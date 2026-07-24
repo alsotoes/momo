@@ -48,6 +48,20 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 	}
 	defer store.Close()
 
+	// Start garbage collector
+	gcInterval := time.Duration(cfg.Storage.GCInterval) * time.Second
+	if gcInterval <= 0 {
+		gcInterval = 5 * time.Minute
+	}
+	tombstoneRetention := time.Duration(cfg.Storage.TombstoneRetention) * time.Second
+	if tombstoneRetention <= 0 {
+		tombstoneRetention = 24 * time.Hour
+	}
+	store.StartGC(storage.GCConfig{
+		Interval:           gcInterval,
+		TombstoneRetention: tombstoneRetention,
+	})
+
 	server, err := factory.Listen(daemons[serverId].Host)
 	if err != nil {
 		return fmt.Errorf("Error listening: %v", err)
@@ -137,6 +151,12 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 			if scatterGather != nil {
 				if glComm, ok := comm.(interface{ SetGlobalLister(transport.GlobalLister) }); ok {
 					glComm.SetGlobalLister(NewScatterGatherLister(scatterGather,
+						time.Duration(cfg.P2P.ScatterGatherTimeout)*time.Second))
+				}
+				if dpComm, ok := comm.(interface {
+					SetDeletePropagator(transport.DeletePropagator)
+				}); ok {
+					dpComm.SetDeletePropagator(NewScatterGatherDeleter(scatterGather,
 						time.Duration(cfg.P2P.ScatterGatherTimeout)*time.Second))
 				}
 			}

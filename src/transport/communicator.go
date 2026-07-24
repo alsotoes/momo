@@ -37,6 +37,12 @@ type LeaseAcquirer interface {
 	ReleaseLease(key string) error
 }
 
+// DeletePropagator enables P2P propagation of delete operations across the cluster.
+// When set on a Communicator, delete operations fan out to all peers.
+type DeletePropagator interface {
+	PropagateDelete(key string, timeout time.Duration) error
+}
+
 // Communicator defines a transport-agnostic interface for Momo protocol operations.
 // It encapsulates the handshake, metadata exchange, and file transfer logic.
 type Communicator interface {
