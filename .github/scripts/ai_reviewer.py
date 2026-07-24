@@ -125,6 +125,10 @@ def main():
     is_jules_pr = "jules" in pr_author.lower() or "jules" in pr_body.lower()
     
     # 🛡️ Rule 11: Check for Issue-Spec Traceability
+    # Detect both the full URL format (github.com/alsotoes/momo/issues/NNN)
+    # and the GitHub shorthand format (Resolves #NNN, Closes #NNN, Fixes #NNN).
+    # Without the shorthand check, the bot would create duplicate auto-trace
+    # issues on every review cycle when PRs use the #NNN convention.
     has_issue_link = "github.com/alsotoes/momo/issues/" in pr_body or bool(re.search(r'\b(Resolves|Closes|Fixes)\s+#\d+', pr_body, re.IGNORECASE))
     traceability_instruction = ""
     if not has_issue_link and pr_number:
