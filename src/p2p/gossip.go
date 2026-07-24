@@ -97,10 +97,10 @@ type Gossiper struct {
 	scatterGather *ScatterGather
 	leaseManager  *LeaseManager
 
-	rtt         *rttTracker
-	pendingMu   sync.Mutex
+	rtt          *rttTracker
+	pendingMu    sync.Mutex
 	pendingPings map[uint64]*pendingPing
-	nextPingID  uint64
+	nextPingID   uint64
 }
 
 // NewGossiper creates a new Gossiper.
