@@ -3,6 +3,7 @@ import subprocess
 import json
 import http.client
 import sys
+import re
 
 def get_filtered_diff():
     # 🛡️ Rule 15: Strictly limit diff size to prevent token exhaustion.
@@ -124,7 +125,7 @@ def main():
     is_jules_pr = "jules" in pr_author.lower() or "jules" in pr_body.lower()
     
     # 🛡️ Rule 11: Check for Issue-Spec Traceability
-    has_issue_link = "github.com/alsotoes/momo/issues/" in pr_body
+    has_issue_link = "github.com/alsotoes/momo/issues/" in pr_body or bool(re.search(r'\b(Resolves|Closes|Fixes)\s+#\d+', pr_body, re.IGNORECASE))
     traceability_instruction = ""
     if not has_issue_link and pr_number:
         # ⚡ Bolt: Autonomously resolve Rule 11 violation
