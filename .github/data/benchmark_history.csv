@@ -806,3 +806,10 @@ ea712a7,BenchmarkPadString-8,1.97,0.00,0.00
 260921d,BenchmarkIndexSearch-8,2.75,0.00,0.00
 260921d,BenchmarkLoadGlobalConfig-8,802.90,160.00,1.00
 260921d,BenchmarkPadString-8,2.05,0.00,0.00
+d7ca92b,BenchmarkCheckMetricsAndSwap-8,7.72,0.00,0.00
+d7ca92b,BenchmarkCrushOptimized-8,325.20,0.00,0.00
+d7ca92b,BenchmarkCrushOriginal-8,430.50,164.00,3.00
+d7ca92b,BenchmarkIndexDirectTracking-8,0.33,0.00,0.00
+d7ca92b,BenchmarkIndexSearch-8,2.74,0.00,0.00
+d7ca92b,BenchmarkLoadGlobalConfig-8,774.50,160.00,1.00
+d7ca92b,BenchmarkPadString-8,2.05,0.00,0.00

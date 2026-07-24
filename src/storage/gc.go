@@ -2,8 +2,10 @@ package storage
 
 import (
 	"encoding/binary"
+	"fmt"
 	"log"
 	"os"
+	"syscall"
 	"time"
 
 	"go.etcd.io/bbolt"
@@ -55,7 +57,13 @@ func (s *CASStore) gcLoop(cfg GCConfig) {
 	}
 }
 
-func (s *CASStore) runGC(cfg GCConfig) error {
+func (s *CASStore) runGC(cfg GCConfig) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CAS GC: runGC panic recovered: %v", r)
+			err = fmt.Errorf("CAS GC panic: %w", syscall.EIO)
+		}
+	}()
 	if err := s.sweepOrphanedBlobs(); err != nil {
 		return err
 	}

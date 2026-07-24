@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/binary"
 	"fmt"
+	"syscall"
 
 	"github.com/alsotoes/momo/src/common"
 	"github.com/alsotoes/momo/src/p2p"
@@ -79,7 +80,7 @@ func (h *StorageQueryHandler) handleHas(data []byte) ([]byte, error) {
 // This is invoked by remote peers via scatter-gather to propagate deletes.
 func (h *StorageQueryHandler) handleDelete(data []byte) ([]byte, error) {
 	if len(data) == 0 {
-		return nil, fmt.Errorf("empty file name")
+		return nil, fmt.Errorf("empty file name: %w", syscall.EINVAL)
 	}
 	name := string(data)
 	if err := h.store.Delete(name); err != nil {
