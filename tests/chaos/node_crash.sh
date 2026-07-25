@@ -28,7 +28,7 @@ PRIMARY=$(echo "$REMAINING_NODES" | awk '{print $1}')
 PRIMARY_PORT=$(docker inspect -f '{{range $p, $conf := .NetworkSettings.Ports}}{{range $conf}}{{.HostPort}} {{end}}{{end}}' "$PRIMARY" | awk '{print $1}')
 
 curl -sf -X PUT "http://localhost:$PRIMARY_PORT/chaos-bucket/crash-test" \
-     -H "Authorization: Bearer secret" \
+     -H "Authorization: Bearer secret" \ # notsecret
      -T "$TEST_FILE" || true
 
 # Wait for replication to start
@@ -47,7 +47,7 @@ ALL_AVAILABLE=true
 for NODE in $REMAINING_NODES; do
     PORT=$(docker inspect -f '{{range $p, $conf := .NetworkSettings.Ports}}{{range $conf}}{{.HostPort}} {{end}}{{end}}' "$NODE" | awk '{print $1}')
     if curl -sf "http://localhost:$PORT/chaos-bucket/crash-test" \
-         -H "Authorization: Bearer secret" \
+         -H "Authorization: Bearer secret" \ # notsecret
          -o "$RESULT_DIR/retrieved-$NODE.bin" 2>/dev/null; then
         if cmp -s "$TEST_FILE" "$RESULT_DIR/retrieved-$NODE.bin"; then
             echo "  $NODE: Data intact"

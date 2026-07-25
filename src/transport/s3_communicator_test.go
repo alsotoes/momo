@@ -291,7 +291,7 @@ func (m *mockStore) GetBlobPath(name string) (string, error) {
 }
 
 func runS3TestRequest(t *testing.T, reqStr string, mock storage.Store) string {
-	expectedAuthToken := []byte(common.PadString("a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6", common.AuthTokenLength))
+	expectedAuthToken := []byte(common.PadString("a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6", common.AuthTokenLength)) // notsecret
 
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -404,7 +404,7 @@ func TestS3Communicator_URLParsing(t *testing.T) {
 func TestS3Communicator_KeyTraversalValidation(t *testing.T) {
 	defer verifyNoLeaks(t)
 
-	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
 	expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
 
 	maliciousKeys := []string{
@@ -513,7 +513,7 @@ func TestS3Communicator_XMLFormatting(t *testing.T) {
 func TestS3Communicator_GET_ListObjectsV2(t *testing.T) {
 	defer verifyNoLeaks(t)
 
-	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
 	reqStr := "GET /?list-type=2 HTTP/1.1\r\n" +
 		"Host: 127.0.0.1:4440\r\n" +
 		"Authorization: Bearer " + authToken + "\r\n\r\n"
@@ -542,7 +542,7 @@ func TestS3Communicator_GET_ListObjectsV2(t *testing.T) {
 func TestS3Communicator_GET_GetObject(t *testing.T) {
 	defer verifyNoLeaks(t)
 
-	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
 	reqStr := "GET /bucket/hello.txt HTTP/1.1\r\n" +
 		"Host: 127.0.0.1:4440\r\n" +
 		"Authorization: Bearer " + authToken + "\r\n\r\n"
@@ -573,7 +573,7 @@ func TestS3Communicator_GET_GetObject(t *testing.T) {
 func TestS3Communicator_DELETE(t *testing.T) {
 	defer verifyNoLeaks(t)
 
-	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
 	reqStr := "DELETE /bucket/mydeletedfile.txt HTTP/1.1\r\n" +
 		"Host: 127.0.0.1:4440\r\n" +
 		"Authorization: Bearer " + authToken + "\r\n\r\n"

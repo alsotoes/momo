@@ -60,7 +60,7 @@ services:
     command: ["run", "/scripts/load_test.js"]
     environment:
       - MOMO_URL=http://momo-0:3333
-      - AUTH_TOKEN=super_secret_token
+      - AUTH_TOKEN=super_secret_token # notsecret
     volumes:
       - ./../k6:/scripts:ro
     deploy:

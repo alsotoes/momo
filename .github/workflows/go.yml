@@ -47,6 +47,9 @@ jobs:
           exit 1
         fi
 
+    - name: Check Scanner-Safe Secrets (Rule 29)
+      run: .github/scripts/check-notsecret.sh
+
     - name: Test
       run: make test
 

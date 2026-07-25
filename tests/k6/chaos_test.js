@@ -21,7 +21,7 @@ export const options = {
 
 const PRIMARY_URL = __ENV.MOMO_PRIMARY || 'http://localhost:3333';
 const REPLICA_URLS = (__ENV.MOMO_REPLICAS || 'http://localhost:3334,http://localhost:3335').split(',');
-const AUTH_TOKEN = __ENV.AUTH_TOKEN || 'secret';
+const AUTH_TOKEN = __ENV.AUTH_TOKEN || 'secret'; // notsecret
 const BUCKET = __ENV.BUCKET || 'chaos-bucket';
 
 function generatePayload(size) {

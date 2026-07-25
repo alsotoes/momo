@@ -41,7 +41,7 @@ jobs:
           cat << EOF > /tmp/momo-k6-test/k6.conf
           [global]
           debug=false
-          auth_token=secret
+          auth_token=secret # notsecret
           replication_order=3,2,1
           polymorphic_system=false
           protocol=s3-tcp
@@ -120,7 +120,7 @@ jobs:
           cat << EOF > /tmp/momo-chaos-test/chaos.conf
           [global]
           debug=false
-          auth_token=secret
+          auth_token=secret # notsecret
           replication_order=3,2,1
           polymorphic_system=false
           protocol=s3-tcp

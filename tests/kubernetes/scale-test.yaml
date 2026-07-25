@@ -22,7 +22,7 @@ spec:
             - name: MOMO_URL
               value: "http://momo:3333"
             - name: AUTH_TOKEN
-              value: "k8s-momo-token"
+              value: "k8s-momo-token" # notsecret
           volumeMounts:
             - name: scripts
               mountPath: /scripts

@@ -19,7 +19,7 @@ export const options = {
 };
 
 const BASE_URL = __ENV.MOMO_URL || 'http://localhost:3333';
-const AUTH_TOKEN = __ENV.AUTH_TOKEN || 'secret';
+const AUTH_TOKEN = __ENV.AUTH_TOKEN || 'secret'; // notsecret
 const BUCKET = __ENV.BUCKET || 'test-bucket';
 
 function generatePayload(size) {
