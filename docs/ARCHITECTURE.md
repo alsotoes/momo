@@ -45,6 +45,51 @@ The system is backed by a multi-stage automated testing pipeline:
 - **Distributed Simulation**: End-to-end smoke tests simulate various cluster sizes (up to 5 nodes) and protocols.
 - **Placement Validation**: Automated checks verify that the CRUSH algorithm distributes data correctly and respects the `replication_factor`.
 - **Integrity Checks**: Every test suite verifies data consistency and metadata accuracy across all participating nodes.
+- **Contract Tests**: Wire protocol contract tests verify handshake framing (84 bytes), metadata framing (192 bytes), round-trip integrity, and RPC framing.
+- **Prometheus Metrics E2E**: Automated test starts a node, uploads a file, scrapes `/metrics`, and verifies Prometheus format + counter increments.
+
+### 7. Observability (Prometheus Metrics Exporter)
+Momo includes a built-in Prometheus metrics exporter (`src/server/metrics_exporter.go`) that runs as a separate goroutine on a configurable port. No external dependencies — all counters use `sync/atomic` on integer types.
+
+**Architecture:**
+- `MetricsCollector` struct holds `atomic.Uint64`/`atomic.Int64` counters — ~5ns per increment, no locks, no allocations.
+- `MetricsHook` interface (defined in `src/transport/communicator.go`) is injected into each `Communicator` via `SetMetricsHook`, enabling transport-layer instrumentation for downloads, deletes, and errors that are, and GC runs. Computed only at scrape time — zero per-request overhead.
+
+**Currently exported metrics (15):**
+
+| Metric | Type | Description |
+|---|---|---|
+| `momo_connections_total` | counter | Total connections accepted |
+| `momo_active_connections` | gauge | Current active connections |
+| `momo_uploads_total` | counter | Total file uploads |
+| `momo_downloads_total` | counter | Total file downloads |
+| `momo_deletes_total` | counter | Total file deletes |
+| `momo_replication_total` | counter | Total replication operations |
+| `momo_errors_total` | counter | Total errors (all error paths) |
+| `momo_bytes_uploaded_total` | counter | Total bytes uploaded (excludes dedup hits) |
+| `momo_bytes_downloaded_total` | counter | Total bytes downloaded |
+| `momo_uptime_seconds` | gauge | Server uptime in seconds |
+| `momo_goroutines` | gauge | Current goroutine count |
+| `momo_memory_alloc_bytes` | gauge | Allocated memory in bytes |
+| `momo_memory_sys_bytes` | gauge | System memory in bytes |
+| `momo_gc_runs_total` | counter | Total GC runs |
+| `momo_build_info{hostname}` | gauge | Build info with hostname label |
+
+**Metrics not yet implemented (planned for Phase 2-4):**
+
+| Category | Metrics | Phase | Priority |
+|---|---|---|---|
+| **Storage** | `momo_disk_used_bytes`, `momo_disk_free_bytes`, `momo_blob_count`, `momo_stored_bytes_total` | 2 | High |
+| **CAS** | `momo_dedup_hits_total`, `momo_cas_gc_runs_total`, `momo_cas_gc_evicted_bytes` | 2 | Medium |
+| **Replication** | `momo_replication_bytes_total`, `momo_replication_failures_total`, `momo_replication_latency_seconds` | 3 | High |
+| **P2P** | `momo_cluster_peers`, `momo_swim_alive_count`, `momo_swim_suspect_count`, `momo_swim_ping_latency_seconds` | 3 | Medium |
+| **Leases** | `momo_leases_active`, `momo_lease_contentions_total` | 3 | Low |
+| **Scatter/Gather** | `momo_scatter_queries_total`, `momo_scatter_timeout_total` | 3 | Low |
+| **Latency Histograms** | `momo_request_latency_seconds{operation}`, `momo_replication_latency_seconds` | 4 | Medium (opt-in) |
+
+**Configuration:** Add `prometheus_port = 9100` to the `[metrics]` section of `momo.conf`. Set to `0` or omit to disable. The metrics server runs on a separate port from the data plane — it does not share the accept loop, connection pool, or semaphore with the main daemon.
+
+**Overhead guarantees:** All counters use `sync/atomic` (~5ns per op). Heavy operations (`runtime.ReadMemStats`, disk stats) run only at scrape time (every 15-60s). No `prometheus/client_golang` dependency. Target: <1% throughput regression.
 
 ## High-Level Architecture
 

@@ -6,16 +6,17 @@ This document describes every test suite and validation step that runs in the Mo
 
 | Workflow | File | Trigger | Purpose |
 |---|---|---|---|
-| Go | `go.yml` | push to master, PRs | Build, unit tests, benchmarks, E2E, coverage |
+| Go | `go.yml` | push to master, PRs | Build, unit tests, benchmarks, E2E, coverage, scanner-safe secrets |
 | Smoke Test | `smoke_test.yml` | push to master, PRs | Multi-protocol file replication verification |
 | Scale & CAS E2E | `scale_cas_test.yml` | push to master, PRs | CAS storage scale testing |
 | P2P Gossip E2E | `p2p_test.yml` | push to master, PRs | P2P gossip convergence + failure detection |
 | Distributed Testing | `distributed_test.yml` | push to master, PRs | TCP contract, k6 load, chaos node-crash |
+| Metrics Test | `metrics_test.yml` | push to master, PRs | Prometheus metrics endpoint format + counter verification |
 | Performance Comparison | `benchmark_compare.yml` | PRs, push to master | Benchmark regression detection (>5% threshold) |
 | Go Version Consistency | `verify_go_version.yml` | PRs, push to master | Go version sync across all config files |
 | Gemini AI Reviewer | `gemini_reviewer.yml` | PRs | AI code review (security, performance, architecture) |
 | Auto Reviewer | `auto_reviewer.yml` | PR opened/reopened | Initial automated review |
-| Weekly Sanity | `weekly_sanity.yml` | Weekly cron (Sun 00:00 UTC) | Full suite + security audit |
+| Weekly Sanity | `weekly_sanity.yml`9 | Weekly cron (Sun 00:00 UTC) | Full suite + security audit |
 
 ---
 
@@ -35,6 +36,7 @@ The primary CI pipeline. Runs on every push to `master` and every PR targeting `
 | **E2E Integration Tests** | `make test-e2e` | 3-node cluster: file upload + replication consistency |
 | **Coverage** | `make coverage` | Generates HTML coverage report |
 | **Upload Coverage** | `upload-artifact` | Stores `coverage.out` as CI artifact |
+| **Check Scanner-Safe Secrets** | `check-notsecret.sh` | Rule 29: all dummy tokens annotated with `notsecret` |
 
 ### Modules under test
 
@@ -205,6 +207,9 @@ make smoke-s3-quic
 
 # TCP contract tests
 make test-contract
+
+# Prometheus metrics E2E test
+make test-metrics
 
 # k6 load/stress tests (requires server running)
 make test-load
@@ -548,3 +553,69 @@ Runs on every push to `master` and every PR. Three jobs:
 | **TCP Contract Test** | `go test -run TestContract -v -race ./src/server/...` | ~10s |
 | **k6 Load Test** | Starts 3-node `s3-tcp` cluster, installs k6 v0.54.0, runs `load_test.js` | ~1 min |
 | **Chaos - Node crash** | Starts 3-node cluster, uploads 5 MB file via `curl`, kills node 1, verifies nodes 0+2 alive, restarts node 1 | ~30s |
+
+---
+
+## Metrics Test Workflow (`metrics_test.yml`)
+
+Runs on every push to `master` and every PR that touches Go files. Verifies the Prometheus metrics exporter end-to-end.
+
+**Script:** `.github/scripts/test-metrics.sh` (Makefile target: `make test-metrics`)
+
+### Test Steps
+
+| Step | What it verifies |
+|---|---|
+| **Start server** | 1-node cluster with `prometheus_port=9199` |
+| **GET /health** | Returns HTTP 200 with body `OK` |
+| **GET /metrics (before upload)** | Response has `# HELP` and `# TYPE` lines (Prometheus format) |
+| **Metric presence** | All 13 expected metrics are present in the response |
+| **Initial counters** | `momo_connections_total=0` before any traffic |
+| **Upload file** | Client uploads a test file via `momo-tcp` protocol |
+| **GET /metrics (after upload)** | `momo_uploads_total >= 1`, `momo_connections_total >= 1`, `momo_bytes_uploaded_total >= 1` |
+| **Uptime** | `momo_uptime_seconds` is a positive float |
+| **Build info** | `momo_build_info{hostname="..."}` label is present |
+
+### Currently Verified Metrics
+
+| Metric | Verified | Notes |
+|---|---|---|
+| `momo_connections_total` | Yes | 0 before upload, >= 1 after |
+| `momo_uploads_total` | Yes | 0 before upload, >= 1 after |
+| `momo_bytes_uploaded_total` | Yes | >= 1 after upload (excludes dedup hits) |
+| `momo_uptime_seconds` | Yes | Positive float |
+| `momo_build_info` | Yes | Has hostname label |
+| `momo_active_connections` | Present | Not counter-verified |
+| `momo_downloads_total` | Present | Not exercised in this test |
+| `momo_deletes_total` | Present | Not exercised in this test |
+| `momo_replication_total` | Present | Not exercised (1-node cluster) |
+| `momo_errors_total` | Present | Checked to be 0 (clean upload) |
+| `momo_bytes_downloaded_total` | Present | Not exercised in this test |
+| `momo_goroutines` | Present | Runtime gauge |
+| `momo_memory_alloc_bytes` | Present | Runtime gauge |
+| `momo_memory_sys_bytes` | Present | Runtime gauge |
+| `momo_gc_runs_total` | Present | Runtime counter |
+
+### Metrics Not Yet Implemented (Phase 2-4)
+
+These metrics are planned but not yet implemented in the exporter:
+
+| Category | Metrics | Phase | Priority | Overhead |
+|---|---|---|---|---|
+| **Storage** | `momo_disk_used_bytes`, `momo_disk_free_bytes` | 2 | High | Scrape-only (`syscall.Statfs`) |
+| **Storage** | `momo_blob_count`, `momo_stored_bytes_total` | 2 | High | Scrape-only (bbolt read) |
+| **CAS** | `momo_dedup_hits_total` | 2 | Medium | ~5ns per dedup (atomic) |
+| **CAS** | `momo_cas_gc_runs_total`, `momo_cas_gc_evicted_bytes` | 2 | Medium | ~5ns per GC run (atomic) |
+| **Replication** | `momo_replication_bytes_total` | 3 | High | ~5ns per replication (atomic) |
+| **Replication** | `momo_replication_failures_total` | 3 | High | ~5ns per failure (atomic) |
+| **Replication** | `momo_replication_latency_seconds` (histogram) | 3 | High | ~40ns per op (opt-in) |
+| **P2P** | `momo_cluster_peers` | 3 | Medium | Scrape-only (read PeerMap) |
+| **P2P** | `momo_swim_alive_count`, `momo_swim_suspect_count` | 3 | Medium | Scrape-only (read SWIM state) |
+| **P2P** | `momo_swim_ping_latency_seconds` | 3 | Medium | Scrape-only (read EWMA) |
+| **Leases** | `momo_leases_active` | 3 | Low | Scrape-only (read LeaseManager) |
+| **Leases** | `momo_lease_contentions_total` | 3 | Low | ~5ns per contention (atomic) |
+| **Scatter/Gather** | `momo_scatter_queries_total`, `momo_scatter_timeout_total` | 3 | Low | ~5ns per query (atomic) |
+| **Latency** | `momo_request_latency_seconds{operation}` | 4 | Medium | ~40ns per request (opt-in, config-gated) |
+| **Latency** | `momo_replication_latency_seconds` | 4 | Medium | ~40ns per op (opt-in, config-gated) |
+
+**Design principle:** All Phase 2-4 metrics maintain the zero-overhead guarantee — counters use `sync/atomic` (~5ns), gauges are read at scrape time only, and histograms are opt-in via `enable_latency_histograms` config flag (default: false).

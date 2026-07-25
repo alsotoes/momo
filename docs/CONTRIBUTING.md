@@ -42,7 +42,16 @@ Summary:
 - **E2E Tests**: File replication across 3 nodes (all protocols) + P2P gossip convergence and failure detection.
 - **Smoke Tests**: Physical file replication verified across 4 suites (**TCP, QUIC, S3-TCP, S3-QUIC**).
 - **Scale & CAS**: Content-addressable storage scale testing with CRUSH placement.
+- **Contract Tests**: Wire protocol contract verification (handshake, metadata, round-trip, RPC framing).
+- **Metrics E2E**: Prometheus `/metrics` endpoint format and counter increment verification.
+- **Scanner-Safe Secrets (Rule 29)**: All dummy tokens must be annotated with `// notsecret` or `# notsecret`. Enforced by `.github/scripts/check-notsecret.sh` in both the pre-commit hook and CI.
 - **Version Consistency**: Go versions must be synchronized across all config files.
+
+## Pre-Commit Hook
+
+Install the pre-commit hook with `make install-hooks`. It runs:
+1. **Rule 29 check** (`check-notsecret.sh`) — fails if any dummy token lacks the `notsecret` annotation.
+2. **Benchmark sync** — regenerates `docs/PERFORMANCE.md` and `.github/data/benchmark_history.csv` with latest benchmark results.
 
 ---
 *Momo is a collaborative effort between human developers and AI agents (Gemini CLI, @google-labs-jules).*

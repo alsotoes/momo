@@ -20,15 +20,19 @@ This document outlines the high-level roadmap for the Momo project, tracking maj
 | **S3 Listing/Deletion** | [#225](https://github.com/alsotoes/momo/issues/225) | ✅ Merged | Implemented S3 ListObjectsV2, GetObject, and DeleteObject endpoints with progressive deadlines and bounds validation. |
 | **Protocol Parity** | [#237](https://github.com/alsotoes/momo/issues/237) | ✅ Merged | Enforced Rule 33 by implementing native binary LIST, DELETE, and GET queries over both Momo-TCP and Momo-QUIC. |
 | **Panic Observability** | [#245](https://github.com/alsotoes/momo/issues/245) | ✅ Merged | Aligned all 18 silent recovery blocks across TCP, QUIC, and CRUSH layers to explicitly log warnings before error propagation. |
+| **P2P Transport** | [#153](https://github.com/alsotoes/momo/issues/153) | ✅ Merged | Decentralized gossip-based discovery, heartbeat liveness, and elastic membership. |
+| **Decentralized P2P Scale** | [#248](https://github.com/alsotoes/momo/issues/248) | ✅ Merged | Gossip node membership, parallel Scatter-Gather queries, and Lease consensus. |
+| **SWIM Failure Detection** | [#355](https://github.com/alsotoes/momo/issues/355) | ✅ Merged | SWIM-style ping/ack, indirect ping, RTT EWMA, and adaptive timeouts. |
+| **Comprehensive Testing** | [#155](https://github.com/alsotoes/momo/issues/155) | ✅ Merged | k6 load/stress/chaos tests, chaos engineering scripts, Prometheus/Grafana monitoring, K8s scalability, TCP contract tests, context.WithTimeout refactoring. |
+| **Prometheus Metrics Exporter** | [#364](https://github.com/alsotoes/momo/issues/364) | ✅ Merged | Built-in Prometheus `/metrics` endpoint with `sync/atomic` counters, `MetricsHook` interface for transport-layer instrumentation, zero-overhead on hot path. |
+| **Scanner-Safe Secrets (Rule 29)** | [#216](https://github.com/alsotoes/momo/issues/216) | ✅ Merged | `notsecret` annotation enforcement on all dummy tokens via pre-commit hook and CI check. |
 
 ## 🟡 In Progress / Upcoming
 
 | Feature | Issue | Spec | Priority | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| **E2E Encryption** | [#152](https://github.com/alsotoes/momo/issues/152) | [E2EE Spec](../openspec/changes/add-e2e-encryption/specs/security/spec.md) | High | Client-side zero-knowledge AES-GCM-256 encryption for all stored files. |
-| **P2P Transport** | [#153](https://github.com/alsotoes/momo/issues/153) | [P2P Spec](../openspec/changes/add-p2p-transport/specs/networking/spec.md) | High | Decentralized gossip-based discovery, heartbeat liveness, and elastic membership. |
-| **Comprehensive Testing** | [#155](https://github.com/alsotoes/momo/issues/155) | [Testing Spec](../openspec/changes/add-comprehensive-testing/specs/testing/spec.md) | Medium | Chaos testing, distributed load generation, and Jepsen-style network partitions. |
-| **Decentralized P2P Scale** | [#248](https://github.com/alsotoes/momo/issues/248) | [P2P Scale Spec](../openspec/changes/gossip-scatter-lease/specs/decentralized-p2p-scale/spec.md) | High | Gossip node membership, parallel Scatter-Gather queries, and Lease consensus. |
+| **E2E Encryption** | [#152](https://github.com/alsotoes/momo/issues/152) | [E2EE Spec](../openspec/changes/add-e2e-encryption/specs/security/spec.md) | High | Client-side zero-knowledge AES-GCM-256 encryption for all stored files. Options analysis posted in issue — S3 compatibility vs. zero-knowledge tradeoff under review. |
+| **Metrics Exporter Phase 2-4** | [#364](https://github.com/alsotoes/momo/issues/364) | [Metrics Spec](../openspec/changes/add-metrics-exporter/specs/observability/spec.md) | Medium | Storage metrics (disk/CAS), P2P/cluster gauges, opt-in latency histograms. Phase 1 (wiring) complete. |
 
 ## 🔴 Future Explorations
 
@@ -37,4 +41,4 @@ This document outlines the high-level roadmap for the Momo project, tracking maj
 - **Client SDKs**: Native SDKs for Python and Rust.
 
 ---
-*Last Updated: 2026-06-29*
+*Last Updated: 2026-07-24*

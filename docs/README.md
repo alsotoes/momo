@@ -16,16 +16,21 @@ This document explains the architecture, configuration, wire protocol, replicati
 - **Consolidated Network I/O**: Merges authentication tokens, timestamps, and payloads into unified writes to minimize syscalls and Nagle delays.
 - **Security Hardening**: Mandatory 64-byte AuthToken validation, CRLF log injection protection, and comprehensive `AUDIT:` logging for all sensitive operations.
 - **P2P Cluster Coordination**: Gossip-based membership with SWIM-style failure detection (direct ping/ack, indirect ping, adaptive RTT timeouts), scatter-gather queries, and lease-based consensus for deletes.
+- **Prometheus Metrics Exporter**: Built-in `/metrics` and `/health` endpoints with `sync/atomic` counters — zero-overhead on hot path, no external dependencies. All uploads, downloads, deletes, replication, errors, and bytes transferred are instrumented via a `MetricsHook` interface injected into the transport layer.
 
 ## Repository Layout
 
 - `.github/scripts/`: Automation and governance scripts.
   - `ai_reviewer.py`: Python-based Gemini AI code review engine.
   - `test-e2e.sh`: End-to-end integration test runner.
+  - `test-e2e-p2p.sh`: P2P gossip convergence and failure detection E2E test.
+  - `test-scale-cas.sh`: CAS storage scale test with CRUSH placement.
+  - `test-metrics.sh`: Prometheus metrics E2E test (start, upload, scrape, verify).
+  - `check-notsecret.sh`: Rule 29 scanner-safe secrets enforcement.
   - `update_readme_with_benchmarks.sh`: Automated documentation updater.
 - `src/momo.go`: Entry point (client/server runner and metrics bootstrap).
 - `src/transport/`: Pluggable communication layers and protocol implementations.
-  - `communicator.go`: Central `Communicator` and `MomoListener` interfaces.
+  - `communicator.go`: Central `Communicator` and `MomoListener` interfaces, `MetricsHook` interface.
   - `factory.go`: `ProtocolFactory` for instantiating transports.
   - `momo_tcp.go`: Legacy TCP implementation.
   - `momo_quic.go`: Modern QUIC implementation using `quic-go`.
@@ -42,6 +47,8 @@ This document explains the architecture, configuration, wire protocol, replicati
   - `server.go`: Core Daemon loop utilizing pluggable transports.
   - `file.go`: Secure metadata parsing and file writing.
   - `replication.go`: Dynamic replication mode control server.
+  - `metrics_exporter.go`: Prometheus `/metrics` and `/health` endpoint with `MetricsCollector`.
+  - `contract_test.go`: Wire protocol contract tests (handshake, metadata, round-trip, RPC framing).
 - `src/storage/`: Content-Addressable Storage (CAS) engine.
   - `storage.go`: Bbolt-backed object store with tiered directory layout.
 - `src/p2p/`: P2P transport layer with gossip membership protocol.
@@ -50,6 +57,8 @@ This document explains the architecture, configuration, wire protocol, replicati
   - `tcp_transport.go`: TCPTransport implementation with connection tracking.
   - `peer_map.go`: Thread-safe PeerMap with RandomPeers for gossip fanout.
   - `gossip.go`: Gossiper with heartbeat, SWIM ping/ack, indirect ping, adaptive RTT timeouts, suspicion.
+  - `scatter_gather.go`: Parallel scatter-gather query fan-out and response collection.
+  - `lease.go`: Lease-based consensus for destructive operations.
 - `src/metrics/`: Performance monitoring and polymorphic control loop.
 - `conf/momo.conf`: Secure configuration example.
 
@@ -100,6 +109,12 @@ make test
 
 # Run a specific smoke test
 make smoke-scale-cas
+
+# Run Prometheus metrics E2E test
+make test-metrics
+
+# Run contract tests
+make test-contract
 ```
 
 Momo includes a built-in benchmarking suite and performance history tracking. Refer to the [Performance Guide](PERFORMANCE.md) for the latest metrics.
