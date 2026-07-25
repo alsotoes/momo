@@ -179,11 +179,18 @@ func (h *HeartbeatPayload) Encode() []byte {
 
 // DecodeHeartbeatPayload deserializes a HeartbeatPayload from binary.
 func DecodeHeartbeatPayload(data []byte) (*HeartbeatPayload, error) {
+	if len(data) > maxPayloadSize {
+		return nil, fmt.Errorf("heartbeat payload exceeds maxPayloadSize: %w", syscall.EBADMSG)
+	}
 	if len(data) < 4 {
 		return nil, fmt.Errorf("heartbeat payload too short: %w", syscall.EBADMSG)
 	}
 	count := int(binary.BigEndian.Uint32(data[0:4]))
 	off := 4
+	maxCount := (len(data) - 4) / 6
+	if count > maxCount {
+		count = maxCount
+	}
 	peers := make([]PeerInfo, 0, count)
 	for i := 0; i < count; i++ {
 		if off+6 > len(data) {
