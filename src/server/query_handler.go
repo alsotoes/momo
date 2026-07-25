@@ -104,6 +104,9 @@ func (h *StorageQueryHandler) handleDelete(data []byte) ([]byte, error) {
 
 // EncodeFileMetadataList serializes a list of FileMetadata into binary.
 // Format: [4B count] [for each: 4B nameLen + name + 4B hashLen + hash + 8B size + 4B pathLen + path]
+// Uses dynamic length prefixes (not fixed 64-byte buffers), so Rule 35's
+// 64-byte padding limit does not apply here. Buffer is pre-sized exactly
+// and copy() prevents overflow. Metadata comes from trusted local store.
 func EncodeFileMetadataList(files []common.FileMetadata) []byte {
 	size := 4
 	for _, f := range files {
