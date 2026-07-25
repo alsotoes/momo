@@ -1,0 +1,205 @@
+name: Distributed Testing
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  contract-test:
+    name: TCP Contract Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.25.x'
+
+      - name: Run contract tests
+        run: go test -run TestContract -v -race ./src/server/...
+
+  k6-load-test:
+    name: k6 Load Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.25.x'
+
+      - name: Build momo
+        run: make build
+
+      - name: Start 3-node cluster
+        run: |
+          mkdir -p /tmp/momo-k6-test/{0,1,2}
+          cat << EOF > /tmp/momo-k6-test/k6.conf
+          [global]
+          debug=false
+          auth_token=secret
+          replication_order=3,2,1
+          polymorphic_system=false
+          protocol=s3-tcp
+
+          [metrics]
+          interval=10
+          min_threshold=0.1
+          max_threshold=0.9
+          fallback_interval=30
+
+          [daemon.0]
+          host=127.0.0.1:4440
+          change_replication=127.0.0.1:5550
+          data=/tmp/momo-k6-test/0/
+          drive=/dev/sda1
+
+          [daemon.1]
+          host=127.0.0.1:4441
+          change_replication=127.0.0.1:5551
+          data=/tmp/momo-k6-test/1/
+          drive=/dev/sdb1
+
+          [daemon.2]
+          host=127.0.0.1:4442
+          change_replication=127.0.0.1:5552
+          data=/tmp/momo-k6-test/2/
+          drive=/dev/sdc1
+          EOF
+          for i in 0 1 2; do
+            ./bin/momo -imp server -id $i -config /tmp/momo-k6-test/k6.conf > /tmp/momo-k6-test/s$i.log 2>&1 &
+          done
+          sleep 3
+          for i in 0 1 2; do
+            port=$((4440 + i))
+            if ! nc -z 127.0.0.1 $port; then
+              echo "Server $i failed to start"
+              cat /tmp/momo-k6-test/s$i.log
+              exit 1
+            fi
+          done
+
+      - name: Install k6
+        run: |
+          curl -sL https://github.com/grafana/k6/releases/download/v0.54.0/k6-v0.54.0-linux-amd64.tar.gz | tar -xz
+          sudo mv k6-v0.54.0-linux-amd64/k6 /usr/local/bin/
+
+      - name: Run k6 load test
+        env:
+          MOMO_URL: http://127.0.0.1:4440
+          AUTH_TOKEN: secret
+        run: k6 run --quiet tests/k6/load_test.js
+
+      - name: Cleanup
+        if: always()
+        run: |
+          pkill -f "bin/momo" || true
+          rm -rf /tmp/momo-k6-test
+
+  chaos-node-crash:
+    name: Chaos - Node crash
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.25.x'
+
+      - name: Build momo
+        run: make build
+
+      - name: Start 3-node cluster
+        run: |
+          mkdir -p /tmp/momo-chaos-test/{0,1,2}
+          cat << EOF > /tmp/momo-chaos-test/chaos.conf
+          [global]
+          debug=false
+          auth_token=secret
+          replication_order=3,2,1
+          polymorphic_system=false
+          protocol=s3-tcp
+
+          [metrics]
+          interval=10
+          min_threshold=0.1
+          max_threshold=0.9
+          fallback_interval=30
+
+          [daemon.0]
+          host=127.0.0.1:4440
+          change_replication=127.0.0.1:5550
+          data=/tmp/momo-chaos-test/0/
+          drive=/dev/sda1
+
+          [daemon.1]
+          host=127.0.0.1:4441
+          change_replication=127.0.0.1:5551
+          data=/tmp/momo-chaos-test/1/
+          drive=/dev/sdb1
+
+          [daemon.2]
+          host=127.0.0.1:4442
+          change_replication=127.0.0.1:5552
+          data=/tmp/momo-chaos-test/2/
+          drive=/dev/sdc1
+          EOF
+          for i in 0 1 2; do
+            ./bin/momo -imp server -id $i -config /tmp/momo-chaos-test/chaos.conf > /tmp/momo-chaos-test/s$i.log 2>&1 &
+          done
+          sleep 3
+          for i in 0 1 2; do
+            port=$((4440 + i))
+            if ! nc -z 127.0.0.1 $port; then
+              echo "Server $i failed to start"
+              cat /tmp/momo-chaos-test/s$i.log
+              exit 1
+            fi
+          done
+
+      - name: Upload test file via S3 API
+        run: |
+          dd if=/dev/urandom of=/tmp/momo-chaos-test/test.bin bs=1M count=5 2>/dev/null
+          curl -sf -X PUT "http://127.0.0.1:4440/test-bucket/chaos-test" \
+            -H "Authorization: Bearer secret" \
+            -T /tmp/momo-chaos-test/test.bin
+
+      - name: Crash node 1
+        run: |
+          pkill -f "bin/momo.*-id 1" || true
+          sleep 2
+
+      - name: Verify remaining nodes alive
+        run: |
+          for i in 0 2; do
+            port=$((4440 + i))
+            if nc -z 127.0.0.1 $port; then
+              echo "Node $i: ALIVE"
+            else
+              echo "Node $i: DEAD"
+              exit 1
+            fi
+          done
+
+      - name: Restart node 1
+        run: |
+          ./bin/momo -imp server -id 1 -config /tmp/momo-chaos-test/chaos.conf > /tmp/momo-chaos-test/s1-restart.log 2>&1 &
+          sleep 3
+          if nc -z 127.0.0.1 4441; then
+            echo "Node 1: RESTARTED"
+          else
+            echo "Node 1: FAILED TO RESTART"
+            cat /tmp/momo-chaos-test/s1-restart.log
+            exit 1
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: |
+          pkill -f "bin/momo" || true
+          rm -rf /tmp/momo-chaos-test

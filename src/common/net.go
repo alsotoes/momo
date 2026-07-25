@@ -1,6 +1,7 @@
 package common
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -150,14 +151,21 @@ func (c *IdleTimeoutConn) Write(b []byte) (n int, err error) {
 // DialSocket connects to the given address.
 // It returns a net.Conn or an error.
 func DialSocket(servAddr string) (conn net.Conn, err error) {
+	return DialSocketWithContext(context.Background(), servAddr)
+}
+
+// DialSocketWithContext connects to the given address with a context-derived timeout.
+// If the context has a deadline, it is used; otherwise a 10s default is applied.
+func DialSocketWithContext(ctx context.Context, servAddr string) (conn net.Conn, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in DialSocket: %v", r)
+			log.Printf("CRITICAL: Panic recovered in DialSocketWithContext: %v", r)
 			err = fmt.Errorf("dial panic: %w", syscall.EIO)
 		}
 	}()
 
-	connection, dErr := net.DialTimeout("tcp", servAddr, 10*time.Second)
+	dialer := net.Dialer{Timeout: 10 * time.Second}
+	connection, dErr := dialer.DialContext(ctx, "tcp", servAddr)
 	if dErr != nil {
 		conn = nil
 		if isTimeout(dErr) {

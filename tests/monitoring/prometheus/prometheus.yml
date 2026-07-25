@@ -1,0 +1,23 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: 'momo'
+    static_configs:
+      - targets:
+          - 'server0:9100'
+          - 'server1:9100'
+          - 'server2:9100'
+        labels:
+          cluster: 'momo-dev'
+
+  - job_name: 'node_exporter'
+    static_configs:
+      - targets:
+          - 'node-exporter:9101'
+        labels:
+          cluster: 'momo-dev'
+
+rule_files:
+  - 'alerts.yml'

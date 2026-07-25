@@ -109,13 +109,22 @@ type QUICListener struct {
 	factory *ProtocolFactory
 }
 
+const (
+	quicAcceptTimeout = 30 * time.Second
+)
+
 func (l *QUICListener) Accept() (Communicator, error) {
-	conn, err := l.Listener.Accept(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), quicAcceptTimeout)
+	defer cancel()
+	conn, err := l.Listener.Accept(ctx)
 	if err != nil {
 		return nil, err
 	}
-	stream, err := conn.AcceptStream(context.Background())
+	streamCtx, streamCancel := context.WithTimeout(context.Background(), quicAcceptTimeout)
+	defer streamCancel()
+	stream, err := conn.AcceptStream(streamCtx)
 	if err != nil {
+		conn.CloseWithError(0, "accept stream timeout")
 		return nil, err
 	}
 	if l.factory.cfg.Global.Protocol == "s3-quic" {

@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: momo-scale-test
+  labels:
+    app: momo-scale-test
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: momo-scale-test
+  template:
+    metadata:
+      labels:
+        app: momo-scale-test
+    spec:
+      containers:
+        - name: k6
+          image: grafana/k6:latest
+          command: ["k6", "run", "/scripts/load_test.js"]
+          env:
+            - name: MOMO_URL
+              value: "http://momo:3333"
+            - name: AUTH_TOKEN
+              value: "k8s-momo-token"
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+      volumes:
+        - name: scripts
+          configMap:
+            name: k6-scripts
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k6-scripts
+data:
+  load_test.js: |
+    import http from 'k6/http';
+    import { check, sleep } from 'k6';
+    export const options = {
+      vus: 50,
+      duration: '2m',
+    };
+    export default function () {
+      const r = http.put(`${__ENV.MOMO_URL}/bucket/test-${Date.now()}`, 'test-data', {
+        headers: { 'Authorization': `Bearer ${__ENV.AUTH_TOKEN}` },
+      });
+      check(r, { 'status 200': (r) => r.status === 200 });
+      sleep(0.5);
+    }

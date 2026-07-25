@@ -60,6 +60,8 @@ type ConfigurationMetrics struct {
 	MinThreshold float64
 	// FallbackInterval is the interval at which to fall back to a lower replication mode.
 	FallbackInterval int
+	// PrometheusPort is the port for the Prometheus /metrics endpoint (0 = disabled).
+	PrometheusPort int
 }
 
 // ConfigurationP2P holds the P2P transport and gossip configuration.

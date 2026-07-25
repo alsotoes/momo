@@ -1,0 +1,83 @@
+version: "3.8"
+
+services:
+  momo-0:
+    image: momo:latest
+    hostname: momo-0
+    command: ["-imp", "server", "-id", "0"]
+    volumes:
+      - ./../../conf/momo.conf:/app/conf/momo.conf:ro
+      - momo-data-0:/data/0
+    ports:
+      - "3333:3333"
+      - "9100:9100"
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+    networks: [momo-swarm]
+
+  momo-1:
+    image: momo:latest
+    hostname: momo-1
+    command: ["-imp", "server", "-id", "1"]
+    volumes:
+      - ./../../conf/momo.conf:/app/conf/momo.conf:ro
+      - momo-data-1:/data/1
+    ports:
+      - "3334:3333"
+      - "9101:9100"
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+    networks: [momo-swarm]
+
+  momo-2:
+    image: momo:latest
+    hostname: momo-2
+    command: ["-imp", "server", "-id", "2"]
+    volumes:
+      - ./../../conf/momo.conf:/app/conf/momo.conf:ro
+      - momo-data-2:/data/2
+    ports:
+      - "3335:3333"
+      - "9102:9100"
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+    networks: [momo-swarm]
+
+  k6-load:
+    image: grafana/k6:latest
+    command: ["run", "/scripts/load_test.js"]
+    environment:
+      - MOMO_URL=http://momo-0:3333
+      - AUTH_TOKEN=super_secret_token
+    volumes:
+      - ./../k6:/scripts:ro
+    deploy:
+      replicas: 3
+      restart_policy:
+        condition: none
+    depends_on:
+      - momo-0
+      - momo-1
+      - momo-2
+    networks: [momo-swarm]
+
+volumes:
+  momo-data-0:
+  momo-data-1:
+  momo-data-2:
+
+networks:
+  momo-swarm:
+    driver: overlay

@@ -1,0 +1,38 @@
+groups:
+  - name: momo_alerts
+    rules:
+      - alert: MomoHighErrorRate
+        expr: rate(momo_errors_total[1m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Momo error rate is high"
+          description: "Error rate is {{ $value }} per second on {{ $labels.instance }}"
+
+      - alert: MomoNodeDown
+        expr: up{job="momo"} == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Momo node is down"
+          description: "{{ $labels.instance }} has been down for more than 30 seconds"
+
+      - alert: MomoHighGoroutines
+        expr: momo_goroutines > 1000
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High goroutine count"
+          description: "{{ $labels.instance }} has {{ $value }} goroutines"
+
+      - alert: MomoHighMemory
+        expr: momo_memory_alloc_bytes > 1073741824
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage"
+          description: "{{ $labels.instance }} is using {{ $value }} bytes of memory"

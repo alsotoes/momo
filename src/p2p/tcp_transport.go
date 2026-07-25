@@ -9,6 +9,11 @@ import (
 	"time"
 )
 
+const (
+	p2pWriteTimeout = 5 * time.Second
+	p2pReadTimeout  = 30 * time.Second
+)
+
 // TCPTransport implements the Transport interface using TCP sockets.
 // It maintains a pool of peer connections and a background goroutine
 // that reads RPCs from all peers and delivers them via Consume().
@@ -103,6 +108,7 @@ func (t *TCPTransport) handleConn(conn net.Conn) {
 	var peerID int32 = -1
 
 	for {
+		conn.SetReadDeadline(time.Now().Add(p2pReadTimeout))
 		rpc, err := DecodeRPC(conn)
 		if err != nil {
 			select {
@@ -172,6 +178,7 @@ func (t *TCPTransport) readLoop(peerID int32, conn net.Conn) {
 	}()
 
 	for {
+		conn.SetReadDeadline(time.Now().Add(p2pReadTimeout))
 		rpc, err := DecodeRPC(conn)
 		if err != nil {
 			select {
@@ -213,6 +220,7 @@ func (t *TCPTransport) Broadcast(rpc *RPC) int {
 		if conn == nil {
 			continue
 		}
+		conn.SetWriteDeadline(time.Now().Add(p2pWriteTimeout))
 		if _, err := conn.Write(encoded); err != nil {
 			log.Printf("P2P broadcast to peer %d failed: %v (errno=%d)", p.ID, err, syscall.EPIPE)
 			continue
@@ -233,6 +241,7 @@ func (t *TCPTransport) Send(peerID int32, rpc *RPC) error {
 		return fmt.Errorf("peer %d has no connection: %w", peerID, syscall.ENOTCONN)
 	}
 	encoded := rpc.Encode()
+	conn.SetWriteDeadline(time.Now().Add(p2pWriteTimeout))
 	if _, err := conn.Write(encoded); err != nil {
 		return fmt.Errorf("send to peer %d failed: %v: %w", peerID, err, syscall.EPIPE)
 	}

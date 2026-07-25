@@ -1,0 +1,6 @@
+{
+  "id": "k6-load-test",
+  "name": "Momo Load Test",
+  "description": "k6 load testing configuration for Momo distributed storage",
+  "usage": "k6 run tests/k6/load_test.js"
+}
