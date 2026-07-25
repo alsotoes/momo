@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -178,12 +179,26 @@ func (h *HeartbeatPayload) Encode() []byte {
 }
 
 // DecodeHeartbeatPayload deserializes a HeartbeatPayload from binary.
-func DecodeHeartbeatPayload(data []byte) (*HeartbeatPayload, error) {
+func DecodeHeartbeatPayload(data []byte) (result *HeartbeatPayload, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in DecodeHeartbeatPayload: %v", r)
+			err = fmt.Errorf("panic in DecodeHeartbeatPayload: %v: %w", r, syscall.EIO)
+		}
+	}()
+
+	if len(data) > maxPayloadSize {
+		return nil, fmt.Errorf("heartbeat payload exceeds maxPayloadSize: %w", syscall.EBADMSG)
+	}
 	if len(data) < 4 {
 		return nil, fmt.Errorf("heartbeat payload too short: %w", syscall.EBADMSG)
 	}
 	count := int(binary.BigEndian.Uint32(data[0:4]))
 	off := 4
+	maxCount := (len(data) - 4) / 6
+	if count > maxCount {
+		return nil, fmt.Errorf("heartbeat count %d exceeds data capacity %d: %w", count, maxCount, syscall.EINVAL)
+	}
 	peers := make([]PeerInfo, 0, count)
 	for i := 0; i < count; i++ {
 		if off+6 > len(data) {
