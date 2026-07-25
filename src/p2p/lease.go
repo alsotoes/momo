@@ -35,8 +35,10 @@ type LeaseManager struct {
 	pendingMu sync.Mutex
 	pending   map[uint64]chan bool
 
-	done chan struct{}
-	wg   sync.WaitGroup
+	stopMu  sync.Mutex
+	closed  bool
+	done    chan struct{}
+	wg      sync.WaitGroup
 }
 
 // NewLeaseManager creates a new LeaseManager.
@@ -59,7 +61,14 @@ func (lm *LeaseManager) Start() {
 
 // Stop shuts down the lease manager.
 func (lm *LeaseManager) Stop() {
+	lm.stopMu.Lock()
+	if lm.closed {
+		lm.stopMu.Unlock()
+		return
+	}
+	lm.closed = true
 	close(lm.done)
+	lm.stopMu.Unlock()
 	lm.wg.Wait()
 }
 
