@@ -1,6 +1,11 @@
 #!/bin/bash
 set -e
 
+echo "🛡️ Running pre-commit checks..."
+
+# Rule 29: Check for unannotated dummy tokens
+.github/scripts/check-notsecret.sh
+
 echo "📊 Running pre-commit benchmark check and documentation sync..."
 
 # Run benchmarks on current code
