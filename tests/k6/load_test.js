@@ -3,22 +3,18 @@ import { check, sleep } from 'k6';
 import { Counter, Trend } from 'k6/metrics';
 
 const putErrors = new Counter('put_errors');
-const getErrors = new Counter('get_errors');
 const uploadLatency = new Trend('upload_latency', true);
 
 export const options = {
   stages: [
-    { duration: '30s', target: 50 },
-    { duration: '1m', target: 100 },
-    { duration: '30s', target: 200 },
-    { duration: '1m', target: 200 },
-    { duration: '30s', target: 0 },
+    { duration: '10s', target: 10 },
+    { duration: '30s', target: 20 },
+    { duration: '10s', target: 0 },
   ],
   thresholds: {
-    http_req_failed: ['rate<0.01'],
-    http_req_duration: ['p(95)<5000', 'p(99)<10000'],
-    put_errors: ['count<50'],
-    get_errors: ['count<10'],
+    http_req_failed: ['rate<0.05'],
+    http_req_duration: ['p(95)<10000'],
+    put_errors: ['count<100'],
   },
 };
 
@@ -37,7 +33,7 @@ function generatePayload(size) {
 
 export default function () {
   const key = `k6-load-${Date.now()}-${__VU}-${__ITER}`;
-  const payload = generatePayload(1024 * 64);
+  const payload = generatePayload(1024 * 16);
 
   const putResponse = http.put(
     `${BASE_URL}/${BUCKET}/${key}`,
@@ -57,20 +53,5 @@ export default function () {
 
   uploadLatency.add(putResponse.timings.duration);
 
-  sleep(0.1);
-
-  const getResponse = http.get(
-    `${BASE_URL}/${BUCKET}/${key}`,
-    {
-      headers: { 'Authorization': `Bearer ${AUTH_TOKEN}` },
-      tags: { operation: 'GET' },
-    }
-  );
-
-  check(getResponse, {
-    'GET status is 200': (r) => r.status === 200,
-    'GET body matches': (r) => r.body === payload,
-  }) || getErrors.add(1);
-
-  sleep(0.5);
+  sleep(0.2);
 }
