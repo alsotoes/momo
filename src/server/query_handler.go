@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/binary"
 	"fmt"
+	"log"
 	"syscall"
 
 	"github.com/alsotoes/momo/src/common"
@@ -47,14 +48,24 @@ func (h *StorageQueryHandler) handleList() ([]byte, error) {
 }
 
 // handleGet returns metadata for a specific file.
-func (h *StorageQueryHandler) handleGet(data []byte) ([]byte, error) {
+func (h *StorageQueryHandler) handleGet(data []byte) (result []byte, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in handleGet: %v", r)
+			err = fmt.Errorf("panic in handleGet: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	if len(data) == 0 {
-		return nil, fmt.Errorf("empty file name")
+		return nil, fmt.Errorf("empty file name: %w", syscall.EINVAL)
 	}
 	name := string(data)
-	_, meta, err := h.store.Get(name)
+	rc, meta, err := h.store.Get(name)
 	if err != nil {
 		return nil, err
+	}
+	if rc != nil {
+		defer rc.Close()
 	}
 	return EncodeFileMetadataList([]common.FileMetadata{meta}), nil
 }
@@ -93,6 +104,9 @@ func (h *StorageQueryHandler) handleDelete(data []byte) ([]byte, error) {
 
 // EncodeFileMetadataList serializes a list of FileMetadata into binary.
 // Format: [4B count] [for each: 4B nameLen + name + 4B hashLen + hash + 8B size + 4B pathLen + path]
+// Uses dynamic length prefixes (not fixed 64-byte buffers), so Rule 35's
+// 64-byte padding limit does not apply here. Buffer is pre-sized exactly
+// and copy() prevents overflow. Metadata comes from trusted local store.
 func EncodeFileMetadataList(files []common.FileMetadata) []byte {
 	size := 4
 	for _, f := range files {
