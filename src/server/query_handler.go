@@ -52,9 +52,12 @@ func (h *StorageQueryHandler) handleGet(data []byte) ([]byte, error) {
 		return nil, fmt.Errorf("empty file name")
 	}
 	name := string(data)
-	_, meta, err := h.store.Get(name)
+	rc, meta, err := h.store.Get(name)
 	if err != nil {
 		return nil, err
+	}
+	if rc != nil {
+		rc.Close()
 	}
 	return EncodeFileMetadataList([]common.FileMetadata{meta}), nil
 }
