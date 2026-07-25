@@ -5,10 +5,13 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/alsotoes/momo/src/common"
 	"github.com/quic-go/quic-go"
 )
+
+const quicDialTimeout = 10 * time.Second
 
 // ProtocolFactory is responsible for creating Communicator instances based on configuration.
 type ProtocolFactory struct {
@@ -42,7 +45,9 @@ func (f *ProtocolFactory) Dial(address string) (Communicator, error) {
 		}
 		return f.NewCommunicator(conn)
 	case "momo-quic", "s3-quic":
-		conn, stream, err := DialQUIC(context.Background(), address)
+		ctx, cancel := context.WithTimeout(context.Background(), quicDialTimeout)
+		defer cancel()
+		conn, stream, err := DialQUIC(ctx, address)
 		if err != nil {
 			return nil, err
 		}

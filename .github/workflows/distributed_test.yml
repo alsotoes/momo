@@ -1,0 +1,116 @@
+name: Distributed Testing
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  contract-test:
+    name: TCP Contract Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.25.x'
+
+      - name: Run contract tests
+        run: go test -run TestContract -v -race ./src/server/...
+
+  k6-load-test:
+    name: k6 Load Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.25.x'
+
+      - name: Build momo
+        run: make build
+
+      - name: Start 3-node cluster
+        run: |
+          mkdir -p /tmp/momo-k6-test
+          for i in 0 1 2; do
+            port=$((3333 + i))
+            mkdir -p /tmp/momo-k6-test/data-$i
+            ./bin/momo -imp server -id $i &
+          done
+          sleep 3
+
+      - name: Install k6
+        run: |
+          sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3715
+          echo "deb https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update && sudo apt-get install -y k6
+
+      - name: Run k6 load test
+        env:
+          MOMO_URL: http://localhost:3333
+          AUTH_TOKEN: secret
+        run: k6 run --quiet tests/k6/load_test.js
+
+      - name: Cleanup
+        if: always()
+        run: |
+          pkill -f "bin/momo" || true
+          rm -rf /tmp/momo-k6-test
+
+  chaos-node-crash:
+    name: Chaos - Node Crash
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.25.x'
+
+      - name: Build momo
+        run: make build
+
+      - name: Start 3-node cluster
+        run: |
+          mkdir -p /tmp/momo-chaos-test
+          for i in 0 1 2; do
+            port=$((3333 + i))
+            mkdir -p /tmp/momo-chaos-test/data-$i
+            ./bin/momo -imp server -id $i &
+          done
+          sleep 3
+
+      - name: Upload test file
+        run: |
+          dd if=/dev/urandom of=/tmp/momo-chaos-test/test.bin bs=1M count=5 2>/dev/null
+          ./bin/momo -imp client -file /tmp/momo-chaos-test/test.bin -server localhost:3333
+
+      - name: Crash node 1
+        run: |
+          pkill -f "bin/momo.*-id 1" || true
+          sleep 2
+
+      - name: Verify data on remaining nodes
+        run: |
+          for i in 0 2; do
+            port=$((3333 + i))
+            if nc -z localhost $port; then
+              echo "Node $i: ALIVE"
+            else
+              echo "Node $i: DEAD"
+              exit 1
+            fi
+          done
+
+      - name: Cleanup
+        if: always()
+        run: |
+          pkill -f "bin/momo" || true
+          rm -rf /tmp/momo-chaos-test

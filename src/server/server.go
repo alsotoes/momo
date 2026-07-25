@@ -83,6 +83,10 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 	log.Printf("Server primary Daemon started... at %s using %s", daemons[serverId].Host, cfg.Global.Protocol)
 	log.Printf("...Waiting for connections...")
 
+	// Start Prometheus metrics endpoint if configured
+	metricsCollector := NewMetricsCollector()
+	StartMetricsServer(cfg.Metrics.PrometheusPort, metricsCollector)
+
 	// 🛡️ Zero-Crash: Log a warning if the cluster cannot meet the desired durability goal.
 	if cfg.Global.ReplicationFactor > len(daemons) {
 		log.Printf("⚠️ WARNING: Desired replication factor (%d) exceeds available node count (%d). Data will be stored in DEGRADED mode.", cfg.Global.ReplicationFactor, len(daemons))
@@ -133,8 +137,12 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 			defer func() {
 				if r := recover(); r != nil {
 					log.Printf("CRITICAL: Panic recovered in Daemon for %s: %v", comm.RemoteAddr(), r)
+					metricsCollector.IncErrors()
 				}
 			}()
+
+			metricsCollector.IncConnections()
+			defer metricsCollector.DecConnections()
 
 			var replicationMode int
 			var success bool
@@ -426,12 +434,15 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 						}
 					}
 				}
-			default:
-				log.Printf("AUDIT: *** ERROR: Unknown replication type from %s", remoteAddr)
-				return
-			}
-			success = true
-		}(connection)
+		default:
+			log.Printf("AUDIT: *** ERROR: Unknown replication type from %s", remoteAddr)
+			metricsCollector.IncErrors()
+			return
+		}
+		success = true
+		metricsCollector.IncUploads()
+		metricsCollector.AddBytesUploaded(uint64(metadata.Size))
+	}(connection)
 	}
 }
 

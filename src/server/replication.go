@@ -231,8 +231,9 @@ func ChangeReplicationModeClient(factory *transport.ProtocolFactory, replication
 		return
 	}
 
-	// Wait for ACK to prevent premature connection termination, especially over QUIC
-	// ⚡ Bolt: Eliminate heap allocation by using a stack-allocated byte array for io.ReadFull.
+	// Wait for ACK to prevent premature connection termination, especially over QUIC.
+	// Enforce a strict 10s timeout to prevent goroutine leaks from unresponsive peers.
+	comm.SetAbsoluteDeadline(time.Now().Add(10 * time.Second))
 	var ackBuf [2]byte // We expect "OK"
 	if _, err := io.ReadFull(comm, ackBuf[:]); err != nil {
 		log.Printf("Failed to read ACK from %d: %v", serverId, common.SanitizeLog(err.Error()))

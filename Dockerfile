@@ -17,8 +17,8 @@ WORKDIR /app
 COPY --from=build /out/momo /app/momo
 COPY src/conf /app/conf
 
-# Utilities for healthchecks and debugging
-RUN apk add --no-cache netcat-openbsd
+# Utilities for healthchecks, debugging, and chaos testing
+RUN apk add --no-cache netcat-openbsd iproute2 iptables
 
 # Default entrypoint; pass args via docker run/compose command
 ENTRYPOINT ["/app/momo"]

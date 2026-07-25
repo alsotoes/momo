@@ -10,6 +10,7 @@ This document describes every test suite and validation step that runs in the Mo
 | Smoke Test | `smoke_test.yml` | push to master, PRs | Multi-protocol file replication verification |
 | Scale & CAS E2E | `scale_cas_test.yml` | push to master, PRs | CAS storage scale testing |
 | P2P Gossip E2E | `p2p_test.yml` | push to master, PRs | P2P gossip convergence + failure detection |
+| Distributed Testing | `distributed_test.yml` | push to master, PRs | TCP contract, k6 load, chaos node-crash |
 | Performance Comparison | `benchmark_compare.yml` | PRs, push to master | Benchmark regression detection (>5% threshold) |
 | Go Version Consistency | `verify_go_version.yml` | PRs, push to master | Go version sync across all config files |
 | Gemini AI Reviewer | `gemini_reviewer.yml` | PRs | AI code review (security, performance, architecture) |
@@ -202,6 +203,18 @@ make smoke-quic
 make smoke-s3-tcp
 make smoke-s3-quic
 
+# TCP contract tests
+make test-contract
+
+# k6 load/stress tests (requires server running)
+make test-load
+make test-stress
+make test-chaos
+
+# Monitoring stack (Grafana + Prometheus)
+make monitoring-up
+make monitoring-down
+
 # Coverage report
 make coverage
 
@@ -211,3 +224,48 @@ make fmt
 # Vendor sync
 make vendor
 ```
+
+---
+
+## Distributed Testing
+
+### k6 Load Testing (`tests/k6/`)
+
+| Script | Purpose | VUs | Duration |
+|---|---|---|---|
+| `load_test.js` | Basic PUT/GET load with ramping | 50→200→0 | ~3.5 min |
+| `stress_test.js` | High concurrency (1000 VUs) + Slowloris trickle (200 VUs) | 1200 | ~2 min |
+| `chaos_test.js` | Upload + verify replication + delete + verify tombstone | 100 | ~8 min |
+
+Run with: `make test-load`, `make test-stress`, `make test-chaos`
+
+### Chaos Testing (`tests/chaos/`)
+
+| Script | Purpose |
+|---|---|
+| `network_partition.sh` | Simulates netsplit using iptables between containers |
+| `node_crash.sh` | Kills a node (kill -9) during active replication |
+| `slow_network.sh` | Injects delay/loss using tc/netem |
+
+### Monitoring Stack (`tests/monitoring/`)
+
+Prometheus + Grafana + node-exporter via Docker Compose.
+
+```bash
+make monitoring-up   # Start on port 9090 (Prometheus) and 3000 (Grafana)
+make monitoring-down  # Stop
+```
+
+The Momo server exposes a `/metrics` endpoint in Prometheus format when `prometheus_port` is configured in `[metrics]` section of `momo.conf`.
+
+### Scalability Testing (`tests/kubernetes/`)
+
+| File | Purpose |
+|---|---|
+| `momo-statefulset.yaml` | K8s StatefulSet with 3 replicas, headless service, health probes |
+| `scale-test.yaml` | K8s Deployment running k6 load generator against the cluster |
+| `docker-swarm.yml` | Docker Swarm stack with 3 momo nodes + k6 workers |
+
+### TCP Contract Testing (`src/server/contract_test.go`)
+
+Asserts wire protocol byte-level layout (handshake: 84 bytes, metadata: 192 bytes, RPC framing: 4-byte prefix). See `docs/CONTRACT_TESTING.md` for details.
