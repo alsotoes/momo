@@ -6,6 +6,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"gopkg.in/ini.v1"
 )
@@ -133,6 +134,10 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 			return ConfigurationGlobal{}, fmt.Errorf("failed to parse 'replication_order' part %q: %w", trimmedPart, err)
 		}
 		globalCfg.ReplicationOrder = append(globalCfg.ReplicationOrder, order)
+	}
+
+	if len(globalCfg.ReplicationOrder) == 0 {
+		return ConfigurationGlobal{}, fmt.Errorf("'replication_order' contains no valid entries: %w", syscall.EINVAL)
 	}
 
 	globalCfg.PolymorphicSystem, err = section.Key("polymorphic_system").Bool()
