@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/binary"
 	"fmt"
+	"log"
 	"syscall"
 
 	"github.com/alsotoes/momo/src/common"
@@ -47,9 +48,16 @@ func (h *StorageQueryHandler) handleList() ([]byte, error) {
 }
 
 // handleGet returns metadata for a specific file.
-func (h *StorageQueryHandler) handleGet(data []byte) ([]byte, error) {
+func (h *StorageQueryHandler) handleGet(data []byte) (result []byte, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in handleGet: %v", r)
+			err = fmt.Errorf("panic in handleGet: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	if len(data) == 0 {
-		return nil, fmt.Errorf("empty file name")
+		return nil, fmt.Errorf("empty file name: %w", syscall.EINVAL)
 	}
 	name := string(data)
 	rc, meta, err := h.store.Get(name)
@@ -57,7 +65,7 @@ func (h *StorageQueryHandler) handleGet(data []byte) ([]byte, error) {
 		return nil, err
 	}
 	if rc != nil {
-		rc.Close()
+		defer rc.Close()
 	}
 	return EncodeFileMetadataList([]common.FileMetadata{meta}), nil
 }
