@@ -167,7 +167,14 @@ func (s *CASStore) GetTombstones() (map[string]int64, error) {
 
 // ApplyTombstone records a tombstone for a name that was deleted on a remote peer.
 // This is used during P2P tombstone exchange to propagate deletes.
-func (s *CASStore) ApplyTombstone(name string, deletedAt int64) error {
+func (s *CASStore) ApplyTombstone(name string, deletedAt int64) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in ApplyTombstone: %v", r)
+			err = fmt.Errorf("panic in ApplyTombstone: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -175,9 +182,11 @@ func (s *CASStore) ApplyTombstone(name string, deletedAt int64) error {
 		ts := tx.Bucket(bucketTombstones)
 		existing := ts.Get([]byte(name))
 		if existing != nil {
-			existingTs := int64(binary.BigEndian.Uint64(existing[:8]))
-			if existingTs >= deletedAt {
-				return nil
+			if len(existing) >= 8 {
+				existingTs := int64(binary.BigEndian.Uint64(existing[:8]))
+				if existingTs >= deletedAt {
+					return nil
+				}
 			}
 		}
 
@@ -201,7 +210,9 @@ func (s *CASStore) ApplyTombstone(name string, deletedAt int64) error {
 					meta.RefCount = 0
 					meta.DeletedAt = deletedAt
 				}
-				obj.Put([]byte(hash), meta.encode())
+				if err := obj.Put([]byte(hash), meta.encode()); err != nil {
+					return fmt.Errorf("metadata update error: %w", syscall.EIO)
+				}
 			}
 		}
 		ns.Delete([]byte(name))
