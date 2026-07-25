@@ -9,7 +9,7 @@ BIN := $(BIN_DIR)/momo
 MAIN := src/momo.go
 MODULES := ./src/common ./src/transport ./src/client ./src/metrics ./src/p2p ./src/server ./src/storage
 
-.PHONY: all build clean tidy vendor test vet coverage doc doc-live benchmark test-e2e smoke-tcp smoke-quic smoke-scale-cas test-contract test-load test-stress test-chaos monitoring-up monitoring-down
+.PHONY: all build clean tidy vendor test vet coverage doc doc-live benchmark test-e2e smoke-tcp smoke-quic smoke-scale-cas test-contract test-load test-stress test-chaos test-metrics monitoring-up monitoring-down
 
 all: build
 
@@ -97,6 +97,9 @@ test-stress:
 test-chaos:
 	@echo "Running k6 chaos test (requires 3-node momo cluster running)..."
 	k6 run tests/k6/chaos_test.js
+
+test-metrics:
+	./.github/scripts/test-metrics.sh
 
 monitoring-up:
 	@echo "Starting Grafana/Prometheus monitoring stack..."
