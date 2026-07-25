@@ -135,12 +135,23 @@ func EncodeFileMetadataList(files []common.FileMetadata) []byte {
 }
 
 // DecodeFileMetadataList deserializes a binary FileMetadata list.
-func DecodeFileMetadataList(data []byte) ([]common.FileMetadata, error) {
+func DecodeFileMetadataList(data []byte) (result []common.FileMetadata, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in DecodeFileMetadataList: %v", r)
+			err = fmt.Errorf("panic in DecodeFileMetadataList: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	if len(data) < 4 {
-		return nil, fmt.Errorf("file metadata list too short")
+		return nil, fmt.Errorf("file metadata list too short: %w", syscall.EINVAL)
 	}
 	count := int(binary.BigEndian.Uint32(data[0:4]))
 	off := 4
+	maxCount := (len(data) - 4) / 20
+	if count > maxCount {
+		count = maxCount
+	}
 	files := make([]common.FileMetadata, 0, count)
 	for i := 0; i < count; i++ {
 		if off+4 > len(data) {

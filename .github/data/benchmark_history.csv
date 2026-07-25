@@ -946,3 +946,10 @@ d6596ea,BenchmarkPadString-8,2.23,0.00,0.00
 62cb604,BenchmarkIndexSearch-8,2.93,0.00,0.00
 62cb604,BenchmarkLoadGlobalConfig-8,713.00,160.00,1.00
 62cb604,BenchmarkPadString-8,2.67,0.00,0.00
+2014a26,BenchmarkCheckMetricsAndSwap-8,8.15,0.00,0.00
+2014a26,BenchmarkCrushOptimized-8,339.20,0.00,0.00
+2014a26,BenchmarkCrushOriginal-8,400.70,164.00,3.00
+2014a26,BenchmarkIndexDirectTracking-8,0.42,0.00,0.00
+2014a26,BenchmarkIndexSearch-8,2.87,0.00,0.00
+2014a26,BenchmarkLoadGlobalConfig-8,780.10,160.00,1.00
+2014a26,BenchmarkPadString-8,1.89,0.00,0.00
