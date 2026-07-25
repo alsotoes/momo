@@ -227,45 +227,324 @@ make vendor
 
 ---
 
-## Distributed Testing
+## Distributed Testing (`tests/`)
+
+The `tests/` directory contains all distributed systems testing infrastructure: k6 load generation, chaos engineering scripts, monitoring stack, and scalability manifests. These complement the Go-level unit and integration tests by exercising the cluster as a whole.
+
+### Directory Structure
+
+```
+tests/
+├── k6/                         # k6 load/stress/chaos test scripts
+│   ├── load_test.js            # Basic PUT load with ramping VUs
+│   ├── stress_test.js          # High concurrency + Slowloris trickle
+│   ├── chaos_test.js           # Upload → verify replication → delete → verify tombstone
+│   └── k6.json                 # k6 run configuration metadata
+├── chaos/                      # Chaos engineering shell scripts
+│   ├── network_partition.sh    # Jepsen-style netsplit via iptables
+│   ├── node_crash.sh           # Node kill -9 during replication
+│   └── slow_network.sh         # Network degradation via tc/netem
+├── monitoring/                 # Grafana + Prometheus observability stack
+│   ├── docker-compose-monitoring.yml
+│   ├── prometheus/
+│   │   ├── prometheus.yml      # Scrape config (5s interval, 3 momo nodes)
+│   │   └── alerts.yml          # Alert rules (error rate, node down, goroutines, memory)
+│   └── grafana/
+│       ├── provisioning.yml    # Auto-provisioned Prometheus datasource
+│       └── dashboards/
+│           └── momo-overview.json  # 7-panel dashboard
+└── kubernetes/                 # Scalability testing manifests
+    ├── momo-statefulset.yaml   # K8s StatefulSet (3 replicas, PVCs, health probes)
+    ├── scale-test.yaml         # K8s Deployment running k6 load generator
+    └── docker-swarm.yml        # Docker Swarm stack (3 nodes + 3 k6 workers)
+```
+
+---
 
 ### k6 Load Testing (`tests/k6/`)
 
-| Script | Purpose | VUs | Duration |
-|---|---|---|---|
-| `load_test.js` | Basic PUT/GET load with ramping | 50→200→0 | ~3.5 min |
-| `stress_test.js` | High concurrency (1000 VUs) + Slowloris trickle (200 VUs) | 1200 | ~2 min |
-| `chaos_test.js` | Upload + verify replication + delete + verify tombstone | 100 | ~8 min |
+Uses [k6](https://k6.io) for HTTP-based load generation against the Momo S3 API. Requires a running Momo cluster with `s3-tcp` or `s3-quic` protocol.
 
-Run with: `make test-load`, `make test-stress`, `make test-chaos`
+#### `load_test.js` — Basic Load Test
+
+Ramping PUT workload against a single Momo server. Used in CI (`distributed_test.yml`).
+
+| Parameter | Value |
+|---|---|
+| VUs | 10 → 20 → 0 (ramping) |
+| Duration | ~50s |
+| Payload | 16 KB random data per request |
+| Endpoint | `PUT /{bucket}/{key}` |
+| Thresholds | `http_req_failed < 5%`, `p(95) < 10s`, `put_errors < 100` |
+
+**Environment variables:** `MOMO_URL` (default `http://localhost:3333`), `AUTH_TOKEN` (default `secret`), `BUCKET` (default `test-bucket`)
+
+**Run:** `make test-load` or `k6 run tests/k6/load_test.js`
+
+#### `stress_test.js` — High Concurrency + Slowloris
+
+Two concurrent scenarios simulating production stress conditions:
+
+| Scenario | VUs | Duration | Payload | Description |
+|---|---|---|---|---|
+| `high_throughput` | 200 → 500 → 1000 → 0 | ~2.5 min | 256 KB | High-volume PUT uploads with 15s timeout |
+| `slowloris_trickle` | 50 → 200 → 0 | ~1.7 min | 16 KB | Slow clients with 30s timeout, accepts 200/408/429 |
+
+**Thresholds:** `failed_uploads < 100`, `healthy_connection_rate > 95%`, `p(99) < 15s`
+
+**Run:** `make test-stress` or `k6 run tests/k6/stress_test.js`
+
+#### `chaos_test.js` — Replication Consistency
+
+Upload-verify-delete-verify cycle against a 3-node cluster. Verifies data consistency across replicas and tombstone propagation after delete.
+
+| Parameter | Value |
+|---|---|
+| VUs | 100 (ramping) |
+| Duration | ~8 min |
+| Payload | 128 KB per request |
+
+**Flow per iteration:**
+1. PUT file to primary, wait 1s for replication
+2. GET file from each replica, verify status 200 and body matches
+3. DELETE file from primary, wait 1s for tombstone propagation
+4. GET file from each replica, verify status 404
+
+**Environment variables:** `MOMO_PRIMARY` (default `http://localhost:3333`), `MOMO_REPLICAS` (default `http://localhost:3334,http://localhost:3335`)
+
+**Thresholds:** `http_req_failed < 0.5%`, `delete_errors < 5`, `consistency_check_rate > 99%`
+
+**Run:** `make test-chaos` or `k6 run tests/k6/chaos_test.js`
+
+---
 
 ### Chaos Testing (`tests/chaos/`)
 
-| Script | Purpose |
-|---|---|
-| `network_partition.sh` | Simulates netsplit using iptables between containers |
-| `node_crash.sh` | Kills a node (kill -9) during active replication |
-| `slow_network.sh` | Injects delay/loss using tc/netem |
+Shell scripts for failure injection against a Docker Compose cluster. Require containers with `iptables` and `iproute2` installed (included in the Momo Dockerfile).
+
+#### `network_partition.sh` — Jepsen-Style Netsplit
+
+Simulates a network partition by injecting iptables DROP rules between one container and the others, then heals the partition and verifies cluster recovery.
+
+**Usage:**
+```bash
+tests/chaos/network_partition.sh [NODE_A] [DURATION] [RESULT_DIR]
+# defaults: NODE_A=momo-server0, DURATION=30, RESULT_DIR=/tmp/momo-chaos-partition
+```
+
+**Flow:**
+1. Resolve container IPs via `docker inspect`
+2. Inject iptables DROP rules: NODE_A ↔ NODE_B, NODE_A ↔ NODE_C (bidirectional)
+3. Wait for partition duration
+4. Remove all DROP rules (heal partition)
+5. Wait 5s for recovery, verify `/health` endpoint on all nodes
+
+**Spec scenario:** *"Simulating a datacenter partition during active writes"* — minority partition should reject writes while majority continues consistently.
+
+#### `node_crash.sh` — Node Crash During Replication
+
+Abruptly kills a node with `docker kill` (SIGKILL) during active file transfers, verifies data remains accessible on healthy replicas, then restarts the crashed node.
+
+**Usage:**
+```bash
+tests/chaos/node_crash.sh [CRASH_NODE] [REMAINING_NODES] [TEST_FILE] [RESULT_DIR]
+# defaults: CRASH_NODE=momo-server1, REMAINING_NODES="momo-server0 momo-server2"
+```
+
+**Flow:**
+1. Generate 10 MB random test file
+2. Upload to primary via `curl PUT`
+3. `docker kill` the target node (kill -9)
+4. Verify file retrievable and byte-identical on each remaining node via `curl GET` + `cmp`
+5. Restart crashed node, measure total downtime
+
+**Spec scenario:** *"Secondary node crash during splay replication"* — primary must catch socket error, file remains accessible on healthy replicas.
+
+#### `slow_network.sh` — Slow Network Simulation
+
+Injects network delay and packet loss using `tc`/`netem` to simulate degraded conditions.
+
+**Usage:**
+```bash
+tests/chaos/slow_network.sh [TARGET_NODE] [DELAY_MS] [LOSS_PERCENT] [DURATION]
+# defaults: TARGET_NODE=momo-server1, DELAY_MS=500, LOSS_PERCENT=5, DURATION=60
+```
+
+**Flow:**
+1. Detect default network interface inside the container
+2. Apply `tc qdisc add dev $IFACE root netem delay ${DELAY_MS}ms loss ${LOSS_PERCENT}%`
+3. Wait for duration
+4. Remove qdisc rule (`tc qdisc del`)
+5. Verify cluster health
+
+---
 
 ### Monitoring Stack (`tests/monitoring/`)
 
-Prometheus + Grafana + node-exporter via Docker Compose.
+Prometheus + Grafana + node-exporter via Docker Compose. Provides real-time observability during test runs.
 
+#### Components
+
+| Service | Image | Port | Purpose |
+|---|---|---|---|
+| Prometheus | `prom/prometheus:latest` | 9090 | Metrics scraping (5s interval) |
+| Grafana | `grafana/grafana:latest` | 3000 | Visualization (admin/admin) |
+| node-exporter | `prom/node-exporter:latest` | 9101 | Host-level metrics |
+
+#### Prometheus Configuration (`prometheus/prometheus.yml`)
+
+Scrapes `/metrics` from all 3 Momo nodes (`server0:9100`, `server1:9100`, `server2:9100`) and node-exporter at `:9101`. Evaluation interval: 5s.
+
+#### Alert Rules (`prometheus/alerts.yml`)
+
+| Alert | Expression | For | Severity |
+|---|---|---|---|
+| `MomoHighErrorRate` | `rate(momo_errors_total[1m]) > 0.1` | 2m | warning |
+| `MomoNodeDown` | `up{job="momo"} == 0` | 30s | critical |
+| `MomoHighGoroutines` | `momo_goroutines > 1000` | 1m | warning |
+| `MomoHighMemory` | `momo_memory_alloc_bytes > 1GiB` | 2m | warning |
+
+#### Grafana Dashboard (`grafana/dashboards/momo-overview.json`)
+
+7-panel dashboard auto-provisioned on startup:
+
+| Panel | Metric | Type |
+|---|---|---|
+| Upload Rate | `rate(momo_uploads_total[1m])` | graph |
+| Download Rate | `rate(momo_downloads_total[1m])` | graph |
+| Active Connections | `sum(momo_active_connections)` | stat |
+| Error Rate | `rate(momo_errors_total[1m])` | graph |
+| Goroutines | `momo_goroutines` | graph |
+| Memory Usage | `momo_memory_alloc_bytes / 1024 / 1024` | graph |
+| Bytes Uploaded (rate) | `rate(momo_bytes_uploaded_total[1m])` | graph |
+
+#### Prometheus `/metrics` Endpoint (`src/server/metrics_exporter.go`)
+
+The Momo server exposes a lightweight Prometheus-format metrics endpoint when `prometheus_port` is configured in the `[metrics]` section of `momo.conf`. No external dependencies — uses `sync/atomic` counters and `runtime.ReadMemStats`.
+
+**Exported metrics:**
+
+| Metric | Type | Description |
+|---|---|---|
+| `momo_connections_total` | counter | Total connections accepted |
+| `momo_active_connections` | gauge | Current active connections |
+| `momo_uploads_total` | counter | Total file uploads |
+| `momo_downloads_total` | counter | Total file downloads |
+| `momo_deletes_total` | counter | Total file deletes |
+| `momo_replication_total` | counter | Total replication operations |
+| `momo_errors_total` | counter | Total errors |
+| `momo_bytes_uploaded_total` | counter | Total bytes uploaded |
+| `momo_bytes_downloaded_total` | counter | Total bytes downloaded |
+| `momo_uptime_seconds` | gauge | Server uptime in seconds |
+| `momo_goroutines` | gauge | Current goroutine count |
+| `momo_memory_alloc_bytes` | gauge | Allocated memory in bytes |
+| `momo_memory_sys_bytes` | gauge | System memory in bytes |
+| `momo_gc_runs_total` | counter | Total GC runs |
+| `momo_build_info` | gauge | Build info (hostname label) |
+
+Also exposes `/health` endpoint returning `200 OK` — used by K8s liveness/readiness probes.
+
+**Configuration:** Add `prometheus_port=9100` to `[metrics]` section. Set to `0` or omit to disable.
+
+**Run:**
 ```bash
-make monitoring-up   # Start on port 9090 (Prometheus) and 3000 (Grafana)
-make monitoring-down  # Stop
+make monitoring-up   # Start Prometheus (9090) + Grafana (3000) + node-exporter (9101)
+make monitoring-down  # Stop and remove containers
 ```
 
-The Momo server exposes a `/metrics` endpoint in Prometheus format when `prometheus_port` is configured in `[metrics]` section of `momo.conf`.
+---
 
 ### Scalability Testing (`tests/kubernetes/`)
 
-| File | Purpose |
+#### Kubernetes StatefulSet (`momo-statefulset.yaml`)
+
+Deploys a 3-node Momo cluster on Kubernetes with:
+
+| Resource | Details |
 |---|---|
-| `momo-statefulset.yaml` | K8s StatefulSet with 3 replicas, headless service, health probes |
-| `scale-test.yaml` | K8s Deployment running k6 load generator against the cluster |
-| `docker-swarm.yml` | Docker Swarm stack with 3 momo nodes + k6 workers |
+| StatefulSet | 3 replicas, ordered startup/shutdown |
+| ConfigMap | Inline `momo.conf` with headless service DNS names |
+| Headless Service | `momo-headless` for stable pod DNS (`momo-0.momo-headless`, etc.) |
+| LoadBalancer Service | `momo` for external client access |
+| ClusterIP Service | `momo-metrics` for Prometheus scraping |
+| PVC | 10 GiB `ReadWriteOnce` per pod |
+| Liveness probe | `GET /health:9100` (initial 5s, period 10s) |
+| Readiness probe | `GET /health:9100` (initial 3s, period 5s) |
+
+Ports exposed: 3333 (data), 2223 (replication), 9100 (metrics), 4450 (gossip).
+
+P2P gossip enabled in config. Prometheus metrics endpoint on port 9100.
+
+**Deploy:**
+```bash
+kubectl apply -f tests/kubernetes/momo-statefulset.yaml
+```
+
+#### K8s Scale Test (`scale-test.yaml`)
+
+Runs k6 load generator as a K8s Deployment (5 replicas) against the Momo cluster. Each replica runs 50 VUs for 2 minutes.
+
+**Deploy:**
+```bash
+kubectl apply -f tests/kubernetes/scale-test.yaml
+```
+
+#### Docker Swarm Stack (`docker-swarm.yml`)
+
+Docker Swarm deployment with resource limits and overlay network:
+
+| Service | CPU | Memory | Port |
+|---|---|---|---|
+| `momo-0` | 2.0 | 2G | 3333, 9100 |
+| `momo-1` | 2.0 | 2G | 3334, 9101 |
+| `momo-2` | 2.0 | 2G | 3335, 9102 |
+| `k6-load` (×3) | — | — | — |
+
+k6 workers run `load_test.js` against `momo-0:3333` and exit (no restart).
+
+**Deploy:**
+```bash
+docker swarm init  # if not already in swarm mode
+docker stack deploy -c tests/kubernetes/docker-swarm.yml momo
+```
+
+---
 
 ### TCP Contract Testing (`src/server/contract_test.go`)
 
-Asserts wire protocol byte-level layout (handshake: 84 bytes, metadata: 192 bytes, RPC framing: 4-byte prefix). See `docs/CONTRACT_TESTING.md` for details.
+Wire protocol byte-level assertions that prevent accidental protocol breaking changes. Run in CI via `distributed_test.yml`.
+
+#### Contract Constants
+
+| Constant | Value | Description |
+|---|---|---|
+| `contractHandshakeLen` | 84 bytes | AuthToken (64) + Timestamp (19) + Mode (1) |
+| `contractMetadataLen` | 192 bytes | Hash (64) + FileName (64) + FileSize (64) |
+| `contractStatusLen` | 1 byte | Metadata status code |
+| `contractACKLen` | 2 bytes | Server ACK ("OK") |
+
+#### Tests
+
+| Test | What it asserts |
+|---|---|
+| `TestContract_HandshakeLayout` | Handshake is exactly 84 bytes; `AuthTokenLength` constant is 64 |
+| `TestContract_MetadataLayout` | Metadata is exactly 192 bytes |
+| `TestContract_HandshakeRoundTrip` | Full TCP handshake round-trip: send 84-byte packet, receive 1-byte mode echo, verify token preservation |
+| `TestContract_P2PRPCFraming` | 4-byte big-endian length prefix is correct; minimum body length is 5 bytes (type + from) |
+| `TestContract_FileMetadataSizes` | `PadString` produces exactly 64-byte padded name and size fields |
+
+**Run:** `make test-contract` or `go test -run TestContract -v -race ./src/server/...`
+
+See also: [`docs/CONTRACT_TESTING.md`](CONTRACT_TESTING.md) for the full wire protocol specification.
+
+---
+
+### Distributed Testing CI Workflow (`distributed_test.yml`)
+
+Runs on every push to `master` and every PR. Three jobs:
+
+| Job | What it does | Duration |
+|---|---|---|
+| **TCP Contract Test** | `go test -run TestContract -v -race ./src/server/...` | ~10s |
+| **k6 Load Test** | Starts 3-node `s3-tcp` cluster, installs k6 v0.54.0, runs `load_test.js` | ~1 min |
+| **Chaos - Node crash** | Starts 3-node cluster, uploads 5 MB file via `curl`, kills node 1, verifies nodes 0+2 alive, restarts node 1 | ~30s |
