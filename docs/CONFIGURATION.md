@@ -16,6 +16,12 @@ The configuration file uses a standard INI-style format. The parser is flexible 
 
 This section contains cluster-wide settings that affect all daemons.
 
+-   **`auth_token`**
+    -   **Description:** A shared secret token used for authentication between clients and servers. All nodes in the cluster must share the same token. For S3-compatible protocols, this token is used as the AWS access key ID.
+    -   **Type:** String (exactly 64 bytes when padded)
+    -   **Default:** None (required)
+    -   **Example:** `a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6`
+
 -   **`debug`**
     -   **Description:** When set to `true`, enables verbose debug logging for all daemons in the cluster.
     -   **Type:** Boolean (`true` or `false`)
@@ -143,6 +149,71 @@ The configuration must contain a section for each daemon in the cluster, numbere
     -   **Type:** String (host:port)
     -   **Example:** `localhost:9090`
 
+### [p2p]
+
+This section controls the P2P gossip transport layer for decentralized cluster coordination. When enabled, nodes discover each other via gossip, exchange heartbeats with SWIM-style failure detection, and coordinate scatter-gather queries and lease-based consensus for deletes.
+
+-   **`enabled`**
+    -   **Description:** Enables or disables the P2P transport layer.
+    -   **Type:** Boolean (`true` or `false`)
+    -   **Default:** `false`
+
+-   **`gossip_port`**
+    -   **Description:** The port used for P2P gossip communication. This is separate from the main daemon port.
+    -   **Type:** String
+    -   **Default:** `4450`
+
+-   **`gossip_interval`**
+    -   **Description:** The interval in seconds between gossip rounds. Each round sends heartbeats to a random subset of peers.
+    -   **Type:** Integer
+    -   **Default:** `1`
+
+-   **`suspicion_timeout`**
+    -   **Description:** The timeout in seconds before a peer is marked as Suspect (unreachable). A peer is marked Offline after twice this timeout.
+    -   **Type:** Integer
+    -   **Default:** `5`
+
+-   **`fanout`**
+    -   **Description:** The number of peers to contact per gossip round for heartbeat exchange.
+    -   **Type:** Integer
+    -   **Default:** `3`
+
+-   **`ping_timeout`**
+    -   **Description:** The timeout in milliseconds for SWIM direct ping/ack probes.
+    -   **Type:** Integer
+    -   **Default:** `500`
+
+-   **`indirect_ping_count`**
+    -   **Description:** The number of peers to ask for indirect pings when a direct ping fails. Capped at 10.
+Becomes a SWIM indirect ping fan-out.
+    -   **Type:** Integer
+    -   **Default:** `3`
+    -   **Max:** `10`
+
+-   **`scatter_gather_timeout`**
+    -   **Description:** The timeout in seconds for scatter-gather query responses. Queries that don't respond within this window are skipped.
+    -   **Type:** Integer
+    -   **Default:** `5`
+
+-   **`lease_timeout`**
+    -   **Description:** The timeout in seconds for lease-based consensus on destructive operations (delete). Leases are acquired before deletes and released after propagation.
+    -   **Type:** Integer
+    -   **Default:** `10`
+
+### [storage]
+
+This section controls the Content-Addressable Storage (CAS) engine, including garbage collection and tombstone retention.
+
+-   **`gc_interval`**
+    -   **Description:** The interval in seconds between CAS garbage collection sweeps. The GC removes orphaned blobs (refcount=0) and expired tombstones.
+    -   **Type:** Integer
+    -   **Default:** `300` (5 minutes)
+
+-   **`tombstone_retention`**
+    -   **Description:** The duration in seconds to retain tombstones after deletion. Tombstones prevent resurrection of deleted objects and are cleaned up after this period.
+    -   **Type:** Integer
+    -   **Default:** `86400` (24 hours)
+
 ## Example Configurations
 
 ### High-Durability Object Storage
@@ -168,6 +239,21 @@ change_replication = 10.0.0.1:9090
 data = /mnt/data/0
 drive = /dev/nvme0n1
 # ... additional daemons up to N
+
+[p2p]
+enabled = true
+gossip_port = 4450
+gossip_interval = 1
+suspicion_timeout = 5
+fanout = 3
+ping_timeout = 500
+indirect_ping_count = 3
+scatter_gather_timeout = 5
+lease_timeout = 10
+
+[storage]
+gc_interval = 300
+tombstone_retention = 86400
 ```
 
 ### Encrypted QUIC Deployment

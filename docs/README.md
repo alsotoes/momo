@@ -35,6 +35,7 @@ This document explains the architecture, configuration, wire protocol, replicati
   - `momo_tcp.go`: Legacy TCP implementation.
   - `momo_quic.go`: Modern QUIC implementation using `quic-go`.
   - `s3_communicator.go`: S3-compatible REST API mapping.
+  - `quic_net_conn.go`: Adapts `quic.Stream`+Dialer.DialContext`.
 - `src/client/`: Client-side logic for cluster replication and file forwarding.
   - `client.go`: Main cluster connection and parallel file transmission logic.
 - `src/common/`: Agnostic, shared utilities.
@@ -43,14 +44,22 @@ This document explains the architecture, configuration, wire protocol, replicati
   - `log.go`: Secure logging with CRLF sanitization.
   - `string.go`: Performance-tuned string padding.
   - `constants.go`: Shared system-wide protocol constants.
+  - `struct.go`: Configuration and metadata type definitions.
+  - `crush.go`: CRUSH-lite placement algorithm.
+  - `net.go`: Network utilities (`DialSocket`, `DialSocketWithContext`, `IdleTimeoutConn`).
+  - `parse.go`: Safe integer parsing helpers.
+  - `contains.go`: String containment checks for path traversal validation.
 - `src/server/`: Server daemon and file reception logic.
   - `server.go`: Core Daemon loop utilizing pluggable transports.
   - `file.go`: Secure metadata parsing and file writing.
   - `replication.go`: Dynamic replication mode control server.
   - `metrics_exporter.go`: Prometheus `/metrics` and `/health` endpoint with `MetricsCollector`.
   - `contract_test.go`: Wire protocol contract tests (handshake, metadata, round-trip, RPC framing).
+  - `query_handler.go`: LIST/DELETE/GET query handlers for native protocol.
+  - `p2p_adapters.go`: Adapters bridging P2P scatter-gather/lease to server interfaces.
 - `src/storage/`: Content-Addressable Storage (CAS) engine.
   - `storage.go`: Bbolt-backed object store with tiered directory layout.
+  - `gc.go`: Garbage collection for orphaned blobs and expired tombstones.
 - `src/p2p/`: P2P transport layer with gossip membership protocol.
   - `types.go`: Peer, RPC, HeartbeatPayload, PingPayload with binary length-prefixed encoding.
   - `transport.go`: Transport interface (Listen, Dial, Consume, Broadcast, Send).
@@ -60,7 +69,12 @@ This document explains the architecture, configuration, wire protocol, replicati
   - `scatter_gather.go`: Parallel scatter-gather query fan-out and response collection.
   - `lease.go`: Lease-based consensus for destructive operations.
 - `src/metrics/`: Performance monitoring and polymorphic control loop.
+  - `metrics.go`: CPU/memory sampling via gopsutil.
+  - `replication.go`: Polymorphic replication mode broadcast and control.
 - `conf/momo.conf`: Secure configuration example.
+- `conf/smoke.conf`: Smoke test configuration (3-node cluster).
+
+All packages include corresponding `*_test.go` files for unit and integration tests.
 
 ## Replication Modes & Handshake Actions
 

@@ -41,6 +41,10 @@ All RPCs use a binary, length-prefixed frame format for zero-allocation encoding
 [4 bytes: total length] [1 byte: msg type] [4 bytes: from ID] [N bytes: payload]
 ```
 
+**Safety limits:**
+- `MaxPeersInHeartbeat = 256` — heartbeats are truncated to 256 peers to bound frame size.
+- `maxPayloadSize = 1 MiB` — payloads exceeding 1 MiB are rejected to prevent memory exhaustion. Enforced in all `Decode*Payload` functions.
+
 ### Message Types
 
 | Type | Value | Description |
@@ -94,10 +98,14 @@ Enable P2P in `momo.conf`:
 ```ini
 [p2p]
 enabled = true
-gossip_port = 7946
-heartbeat_interval = 1s
-suspicion_timeout = 5s
+gossip_port = 4450
+gossip_interval = 1
+suspicion_timeout = 5
 fanout = 3
+ping_timeout = 500
+indirect_ping_count = 3
+scatter_gather_timeout = 5
+lease_timeout = 10
 ```
 
 P2P is **disabled by default** and coexists with the existing `Communicator` interface.
@@ -248,7 +256,7 @@ The `LeaseManager` provides time-bound, self-expiring leases for destructive ope
 
 1. **Acquire**: Node broadcasts `MsgLeaseRequest` to all alive peers
 2. **Grant**: Each peer checks if the key is available (no active lease) and responds with `MsgLeaseGrant` (expiry > 0 = granted, expiry = 0 = denied)
-3. **Quorum**: Acquirer needs majority (N/2 + 1) grants within timeout/2
+3. **Quorum**: Acquirer needs `(peerCount+1)/2 + 1` grants from peers within timeout/2, where `peerCount` excludes self. For small clusters this effectively requires unanimous peer agreement.
 4. **Release**: After operation completes, broadcasts `MsgLeaseRelease`
 5. **Expiry**: Background loop cleans up expired leases every 500ms
 

@@ -86,13 +86,13 @@ fi
 echo "PASS: /metrics has # TYPE lines"
 
 # Check specific metrics exist
-for METRIC in momo_connections_total momo_uploads_total momo_downloads_total momo_deletes_total momo_replication_total momo_errors_total momo_bytes_uploaded_total momo_bytes_downloaded_total momo_uptime_seconds momo_goroutines momo_memory_alloc_bytes momo_gc_runs_total momo_build_info; do
+for METRIC in momo_connections_total momo_active_connections momo_uploads_total momo_downloads_total momo_deletes_total momo_replication_total momo_errors_total momo_bytes_uploaded_total momo_bytes_downloaded_total momo_uptime_seconds momo_goroutines momo_memory_alloc_bytes momo_memory_sys_bytes momo_gc_runs_total momo_build_info; do
     if ! echo "$METRICS_BEFORE" | grep -q "^$METRIC"; then
         echo "FAIL: /metrics missing $METRIC"
         exit 1
     fi
 done
-echo "PASS: All 13 expected metrics present"
+echo "PASS: All 15 expected metrics present"
 
 # Check initial counter values
 CONNS_BEFORE=$(echo "$METRICS_BEFORE" | grep "^momo_connections_total " | awk '{print $2}')

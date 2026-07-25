@@ -16,7 +16,7 @@ This document describes every test suite and validation step that runs in the Mo
 | Go Version Consistency | `verify_go_version.yml` | PRs, push to master | Go version sync across all config files |
 | Gemini AI Reviewer | `gemini_reviewer.yml` | PRs | AI code review (security, performance, architecture) |
 | Auto Reviewer | `auto_reviewer.yml` | PR opened/reopened | Initial automated review |
-| Weekly Sanity | `weekly_sanity.yml`9 | Weekly cron (Sun 00:00 UTC) | Full suite + security audit |
+| Weekly Sanity | `weekly_sanity.yml` | Weekly cron (Sun 00:00 UTC) | Full suite + security audit |
 
 ---
 
@@ -228,6 +228,18 @@ make fmt
 
 # Vendor sync
 make vendor
+
+# Install git pre-commit hook
+make install-hooks
+
+# Clean build artifacts
+make clean
+
+# Generate godoc HTML
+make doc
+
+# Sync go workspace
+make tidy
 ```
 
 ---
@@ -569,7 +581,7 @@ Runs on every push to `master` and every PR that touches Go files. Verifies the 
 | **Start server** | 1-node cluster with `prometheus_port=9199` |
 | **GET /health** | Returns HTTP 200 with body `OK` |
 | **GET /metrics (before upload)** | Response has `# HELP` and `# TYPE` lines (Prometheus format) |
-| **Metric presence** | All 13 expected metrics are present in the response |
+| **Metric presence** | All 15 expected metrics are present in the response |
 | **Initial counters** | `momo_connections_total=0` before any traffic |
 | **Upload file** | Client uploads a test file via `momo-tcp` protocol |
 | **GET /metrics (after upload)** | `momo_uploads_total >= 1`, `momo_connections_total >= 1`, `momo_bytes_uploaded_total >= 1` |

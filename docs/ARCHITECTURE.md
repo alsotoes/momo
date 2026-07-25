@@ -53,7 +53,9 @@ Momo includes a built-in Prometheus metrics exporter (`src/server/metrics_export
 
 **Architecture:**
 - `MetricsCollector` struct holds `atomic.Uint64`/`atomic.Int64` counters — ~5ns per increment, no locks, no allocations.
-- `MetricsHook` interface (defined in `src/transport/communicator.go`) is injected into each `Communicator` via `SetMetricsHook`, enabling transport-layer instrumentation for downloads, deletes, and errors that are, and GC runs. Computed only at scrape time — zero per-request overhead.
+- `MetricsHook` interface (defined in `src/transport/communicator.go`) is injected into each `Communicator` via `SetMetricsHook`, enabling transport-layer instrumentation for downloads, deletes, and errors that bypass the server daemon's main handler (e.g., S3 GET/DELETE returning `ErrRequestHandled`).
+- `MetricsCollector` is also used directly in `server.go` for connection, upload, replication, and error counters on the main request path.
+- Runtime gauges (goroutines, memory, GC runs) are computed only at scrape time via `runtime.ReadMemStats` — zero per-request overhead.
 
 **Currently exported metrics (15):**
 

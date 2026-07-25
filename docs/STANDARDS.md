@@ -55,3 +55,14 @@ To defend against Slowloris attacks (where clients open connections and trickle 
 - **Handshake Phase:** Strictly bounded to at most **10 seconds**.
 - **Metadata Phase:** Strictly bounded to at most **60 seconds**.
 - **Data Transfer Phase:** Progressively adjusted based on active network throughput, closing stale connections automatically.
+
+### 5. Scanner-Safe Test Secrets (Rule 29)
+Automated secret scanners (e.g., GitHub Secret Scanning, TruffleHog) may flag dummy tokens used in tests, configs, and CI scripts as real secrets, triggering false-positive alerts.
+- **Rule:** All dummy tokens (e.g., `a1b2c3d4e5f6...`, `super_secret_token`, `secret`) MUST be annotated with a trailing `// notsecret` (Go code) or `# notsecret` (shell/config) comment on the same line.
+- **Enforcement:** The `.github/scripts/check-notsecret.sh` script scans the codebase for known dummy token patterns without the `notsecret` annotation. It runs in both the pre-commit hook (`hooks/pre-commit`) and CI (`.github/workflows/go.yml`).
+- **CI Step:** "Check Scanner-Safe Secrets (Rule 29)" in the Go workflow.
+
+### 6. Connection Concurrency Limit (Rule 32b)
+To prevent resource exhaustion via connection flooding, the server enforces a maximum concurrent connection limit.
+- **Rule:** The daemon accepts at most **1000 concurrent connections** via a semaphore (`maxConcurrentConnections = 1000` in `server.go`). Connections exceeding this limit block until a slot is freed.
+- **S3 Bounded Reads:** HTTP request reads are limited to **65536 bytes** via `LimitedConnReader` to prevent memory bloat from oversized S3 request headers.
