@@ -34,6 +34,7 @@ type MomoQUICCommunicator struct {
 	globalLister     GlobalLister
 	leaseAcquirer    LeaseAcquirer
 	deletePropagator DeletePropagator
+	metricsHook      MetricsHook
 }
 
 // NewMomoQUICCommunicator creates a new MomoQUICCommunicator.
@@ -61,6 +62,11 @@ func (m *MomoQUICCommunicator) SetLeaseAcquirer(la LeaseAcquirer) {
 // SetDeletePropagator sets the P2P delete propagation capability.
 func (m *MomoQUICCommunicator) SetDeletePropagator(dp DeletePropagator) {
 	m.deletePropagator = dp
+}
+
+// SetMetricsHook sets the metrics instrumentation hook.
+func (m *MomoQUICCommunicator) SetMetricsHook(hook MetricsHook) {
+	m.metricsHook = hook
 }
 
 func (m *MomoQUICCommunicator) SetAbsoluteDeadline(t interface{}) (err error) {
@@ -252,6 +258,10 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 			_ = m.deletePropagator.PropagateDelete(fileName, 5*time.Second)
 		}
 
+		if m.metricsHook != nil {
+			m.metricsHook.IncDeletes()
+		}
+
 		m.Write([]byte{'0'}) // success status
 		return 0, 0, ErrRequestHandled
 	}
@@ -307,6 +317,11 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 
 		if _, err := io.Copy(m, rc); err != nil {
 			return 0, 0, fmt.Errorf("failed to stream file payload: %w", err)
+		}
+
+		if m.metricsHook != nil {
+			m.metricsHook.IncDownloads()
+			m.metricsHook.AddBytesDownloaded(uint64(meta.Size))
 		}
 
 		return 0, 0, ErrRequestHandled

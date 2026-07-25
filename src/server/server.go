@@ -150,10 +150,15 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 			// 🛡️ Sentinel: Capture remote address for audit logging and traceability
 			remoteAddr := common.SanitizeLog(comm.RemoteAddr().String())
 
-			// Inject storage store if the communicator supports it (e.g. S3 for list/delete)
-			if s3Comm, ok := comm.(interface{ SetStore(storage.Store) }); ok {
-				s3Comm.SetStore(store)
-			}
+		// Inject storage store if the communicator supports it (e.g. S3 for list/delete)
+		if s3Comm, ok := comm.(interface{ SetStore(storage.Store) }); ok {
+			s3Comm.SetStore(store)
+		}
+
+		// Inject metrics hook for download/delete/error instrumentation
+		if mhComm, ok := comm.(interface{ SetMetricsHook(transport.MetricsHook) }); ok {
+			mhComm.SetMetricsHook(metricsCollector)
+		}
 
 			// Inject scatter-gather and lease capabilities if P2P is enabled
 			if scatterGather != nil {
@@ -198,6 +203,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 					return
 				}
 				log.Printf("AUDIT: Handshake failed from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
+				metricsCollector.IncErrors()
 				return
 			}
 
@@ -237,6 +243,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 			// Send the selected replication mode back to the client
 			if err := comm.SendReplicationMode(replicationMode); err != nil {
 				log.Printf("AUDIT: Error sending replication mode to %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
+				metricsCollector.IncErrors()
 				return
 			}
 
@@ -247,6 +254,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 			metadata, err := comm.ReceiveMetadata()
 			if err != nil {
 				log.Printf("AUDIT: Error getting metadata from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
+				metricsCollector.IncErrors()
 				return
 			}
 
@@ -255,6 +263,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 				log.Printf("AUDIT: Invalid hash received from %s: %v", remoteAddr, common.SanitizeLog(metadata.Hash))
 				// ⚡ Bolt: Map to syscall.EBADMSG for POSIX compliance.
 				success = false
+				metricsCollector.IncErrors()
 				return
 			}
 
@@ -263,6 +272,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 			if rawFileName == "" || rawFileName == "." || rawFileName == ".." || strings.Contains(rawFileName, "../") || strings.Contains(rawFileName, "\\") {
 				log.Printf("AUDIT: Invalid filename received from %s: %v", remoteAddr, common.SanitizeLog(rawFileName))
 				success = false
+				metricsCollector.IncErrors()
 				return
 			}
 			remotePath := ""
@@ -273,6 +283,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 			if fileName == "" || fileName == "." || fileName == ".." || fileName == "/" || fileName == "\\" {
 				log.Printf("AUDIT: Invalid filename received from %s: %v", remoteAddr, common.SanitizeLog(fileName))
 				success = false
+				metricsCollector.IncErrors()
 				return
 			}
 
@@ -281,12 +292,14 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 				log.Printf("AUDIT: Invalid file size received from %s: %d (max: %d)", remoteAddr, metadata.Size, common.MaxFileSize)
 				// ⚡ Bolt: Map to syscall.EBADMSG for POSIX compliance.
 				success = false
+				metricsCollector.IncErrors()
 				return
 			}
 
 			// 🛡️ Zero-Crash: Defensive check for storage initialization.
 			if store == nil {
 				log.Printf("AUDIT: Storage error for %s: store not initialized: %v", remoteAddr, syscall.EIO)
+				metricsCollector.IncErrors()
 				return
 			}
 
@@ -294,6 +307,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 			exists, err := store.Has(metadata.Hash)
 			if err != nil {
 				log.Printf("AUDIT: Storage error checking hash %s: %v", metadata.Hash, common.SanitizeLog(err.Error()))
+				metricsCollector.IncErrors()
 				return
 			}
 
@@ -301,11 +315,13 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 				log.Printf("AUDIT: Deduplication hit for %s (hash: %s)", remoteAddr, metadata.Hash)
 				if err := comm.SendMetadataStatus(transport.MetadataStatusSkipPayload); err != nil {
 					log.Printf("AUDIT: Error sending metadata status to %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
+					metricsCollector.IncErrors()
 					return
 				}
 			} else {
 				if err := comm.SendMetadataStatus(transport.MetadataStatusSendPayload); err != nil {
 					log.Printf("AUDIT: Error sending metadata status to %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
+					metricsCollector.IncErrors()
 					return
 				}
 			}
@@ -320,6 +336,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 			placement, err := cmap.Placement(metadata.Hash, factor)
 			if err != nil {
 				log.Printf("AUDIT: Placement failed for %s: %v", metadata.Hash, err)
+				metricsCollector.IncErrors()
 				return
 			}
 
@@ -336,10 +353,12 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 					// ⚡ Bolt: Deduplication hit. Just update metadata mapping without reading payload.
 					if err := store.Put(fileName, metadata.Hash, metadata.Size, remotePath, nil); err != nil {
 						log.Printf("AUDIT: Error updating metadata for %s from %s: %v", fileName, remoteAddr, common.SanitizeLog(err.Error()))
+						metricsCollector.IncErrors()
 					}
 				} else {
 					if err := getFile(comm, store, fileName, metadata.Hash, metadata.Size, remotePath); err != nil {
 						log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
+						metricsCollector.IncErrors()
 						return
 					}
 				}
@@ -358,11 +377,13 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 					// ⚡ Bolt: Deduplication hit. Just update metadata mapping without reading payload.
 					if err := store.Put(fileName, metadata.Hash, metadata.Size, remotePath, nil); err != nil {
 						log.Printf("AUDIT: Error updating metadata for %s from %s: %v", fileName, remoteAddr, common.SanitizeLog(err.Error()))
+						metricsCollector.IncErrors()
 					}
 				} else {
 					if err := getFile(comm, store, fileName, metadata.Hash, metadata.Size, remotePath); err != nil {
 						log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
 						wg.Done()
+						metricsCollector.IncErrors()
 						return
 					}
 				}
@@ -381,6 +402,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 						}()
 						// ⚡ Bolt: connectToPeer (client.Connect) handles wg.Done() internally via defer.
 						connectToPeer(&wg, cfg, path, "", id, finalTs, replicationMode, factor)
+						metricsCollector.IncReplication()
 					}(nextHop.ID, blobPath)
 				} else {
 					wg.Done()
@@ -395,6 +417,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 						// ⚡ Bolt: Deduplication hit. Just update metadata mapping.
 						if err := store.Put(fileName, metadata.Hash, metadata.Size, remotePath, nil); err != nil {
 							log.Printf("AUDIT: Error updating metadata for %s from %s: %v", fileName, remoteAddr, common.SanitizeLog(err.Error()))
+							metricsCollector.IncErrors()
 						}
 					} else {
 						if err := getFile(comm, store, fileName, metadata.Hash, metadata.Size, remotePath); err != nil {
@@ -402,6 +425,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 							for i := 0; i < len(placement)-1; i++ {
 								wg.Done()
 							}
+							metricsCollector.IncErrors()
 							return
 						}
 					}
@@ -417,8 +441,9 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 									log.Printf("CRITICAL: Panic recovered in Splay forwarder to node %d: %v", id, r)
 								}
 							}()
-							connectToPeer(&wg, cfg, blobPath, "", id, finalTs, replicationMode, factor)
-						}(targetId)
+						connectToPeer(&wg, cfg, blobPath, "", id, finalTs, replicationMode, factor)
+						metricsCollector.IncReplication()
+					}(targetId)
 					}
 					wg.Wait()
 				} else {
@@ -426,10 +451,12 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 					if exists {
 						if err := store.Put(fileName, metadata.Hash, metadata.Size, remotePath, nil); err != nil {
 							log.Printf("AUDIT: Error updating metadata for %s from %s: %v", fileName, remoteAddr, common.SanitizeLog(err.Error()))
+							metricsCollector.IncErrors()
 						}
 					} else {
 						if err := getFile(comm, store, fileName, metadata.Hash, metadata.Size, remotePath); err != nil {
 							log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
+							metricsCollector.IncErrors()
 							return
 						}
 					}
@@ -441,7 +468,9 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 		}
 		success = true
 		metricsCollector.IncUploads()
-		metricsCollector.AddBytesUploaded(uint64(metadata.Size))
+		if !exists {
+			metricsCollector.AddBytesUploaded(uint64(metadata.Size))
+		}
 	}(connection)
 	}
 }

@@ -420,9 +420,9 @@ Scrapes `/metrics` from all 3 Momo nodes (`server0:9100`, `server1:9100`, `serve
 
 #### Prometheus `/metrics` Endpoint (`src/server/metrics_exporter.go`)
 
-The Momo server exposes a lightweight Prometheus-format metrics endpoint when `prometheus_port` is configured in the `[metrics]` section of `momo.conf`. No external dependencies — uses `sync/atomic` counters and `runtime.ReadMemStats`.
+The Momo server exposes a lightweight Prometheus-format metrics endpoint when `prometheus_port` is configured in the `[metrics]` section of `momo.conf`. No external dependencies — uses `sync/atomic` counters and `runtime.ReadMemStats`. The metrics server runs in a separate goroutine on a separate port — it does not share the accept loop or connection pool with the main daemon.
 
-**Exported metrics:**
+**Exported metrics (all counters wired via `MetricsHook` interface):**
 
 | Metric | Type | Description |
 |---|---|---|
@@ -433,7 +433,7 @@ The Momo server exposes a lightweight Prometheus-format metrics endpoint when `p
 | `momo_deletes_total` | counter | Total file deletes |
 | `momo_replication_total` | counter | Total replication operations |
 | `momo_errors_total` | counter | Total errors |
-| `momo_bytes_uploaded_total` | counter | Total bytes uploaded |
+| `momo_bytes_uploaded_total` | counter | Total bytes uploaded (excludes dedup hits) |
 | `momo_bytes_downloaded_total` | counter | Total bytes downloaded |
 | `momo_uptime_seconds` | gauge | Server uptime in seconds |
 | `momo_goroutines` | gauge | Current goroutine count |

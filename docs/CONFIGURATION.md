@@ -55,7 +55,7 @@ This section contains cluster-wide settings that affect all daemons.
 
 ### [metrics]
 
-This section controls the behavior of the decentralized polymorphic system. It is only active if `polymorphic_system = true` in the `[global]` section.
+This section controls the behavior of the decentralized polymorphic system and the Prometheus metrics exporter. The polymorphic system is only active if `polymorphic_system = true` in the `[global]` section. The Prometheus exporter is independent of the polymorphic system and can be used on its own.
 
 -   **`interval`**
     -   **Description:** The interval in seconds at which each daemon samples its local CPU and memory metrics.
@@ -76,6 +76,46 @@ This section controls the behavior of the decentralized polymorphic system. It i
     -   **Description:** The duration in seconds that the system must remain in a low-load state before it will attempt to switch back to a more robust replication strategy.
     -   **Type:** Integer
     -   **Default:** `30`
+
+-   **`prometheus_port`**
+    -   **Description:** The port on which the Prometheus metrics exporter listens. When set to a positive value, the server starts an HTTP server on the specified port exposing `/metrics` (Prometheus-format text) and `/health` (returns `200 OK`) endpoints. The metrics server runs in a separate goroutine and does not share the accept loop or connection pool with the main daemon. All counters use `sync/atomic` — no locks, no external dependencies.
+    -   **Type:** Integer
+    -   **Default:** `0` (disabled)
+    -   **Example:** `9100`
+
+    **Exported metrics:**
+
+    | Metric | Type | Description |
+    |---|---|---|
+    | `momo_connections_total` | counter | Total connections accepted |
+    | `momo_active_connections` | gauge | Current active connections |
+    | `momo_uploads_total` | counter | Total file uploads |
+    | `momo_downloads_total` | counter | Total file downloads |
+    | `momo_deletes_total` | counter | Total file deletes |
+    | `momo_replication_total` | counter | Total replication operations |
+    | `momo_errors_total` | counter | Total errors |
+    | `momo_bytes_uploaded_total` | counter | Total bytes uploaded (excludes dedup hits) |
+    | `momo_bytes_downloaded_total` | counter | Total bytes downloaded |
+    | `momo_uptime_seconds` | gauge | Server uptime in seconds |
+    | `momo_goroutines` | gauge | Current goroutine count |
+    | `momo_memory_alloc_bytes` | gauge | Allocated memory in bytes |
+    | `momo_memory_sys_bytes` | gauge | System memory in bytes |
+    | `momo_gc_runs_total` | counter | Total GC runs |
+    | `momo_build_info` | gauge | Build info (hostname label) |
+
+    **Prometheus scrape config:**
+    ```yaml
+    scrape_configs:
+      - job_name: 'momo'
+        static_configs:
+          - targets: ['node1:9100', 'node2:9100', 'node3:9100']
+    ```
+
+    **Health check:**
+    ```bash
+    curl http://localhost:9100/health
+    # Returns: OK
+    ```
 
 ### [daemon.N]
 
@@ -120,6 +160,7 @@ interval = 10
 min_threshold = 0.1
 max_threshold = 0.9
 fallback_interval = 30
+prometheus_port = 9100
 
 [daemon.0]
 host = 10.0.0.1:8080

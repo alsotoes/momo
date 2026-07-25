@@ -43,6 +43,18 @@ type DeletePropagator interface {
 	PropagateDelete(key string, timeout time.Duration) error
 }
 
+// MetricsHook enables metrics instrumentation in the transport layer.
+// When set on a Communicator, download/delete/error counters are incremented
+// directly at the point of operation, without requiring the server daemon
+// to plumb the collector through every code path.
+type MetricsHook interface {
+	IncDownloads()
+	IncDeletes()
+	AddBytesDownloaded(n uint64)
+	IncReplication()
+	IncErrors()
+}
+
 // Communicator defines a transport-agnostic interface for Momo protocol operations.
 // It encapsulates the handshake, metadata exchange, and file transfer logic.
 type Communicator interface {

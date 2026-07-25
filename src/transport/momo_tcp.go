@@ -27,6 +27,7 @@ type MomoTCPCommunicator struct {
 	globalLister     GlobalLister
 	leaseAcquirer    LeaseAcquirer
 	deletePropagator DeletePropagator
+	metricsHook      MetricsHook
 }
 
 // NewMomoTCPCommunicator creates a new MomoTCPCommunicator wrapping a net.Conn.
@@ -53,6 +54,11 @@ func (m *MomoTCPCommunicator) SetLeaseAcquirer(la LeaseAcquirer) {
 // SetDeletePropagator sets the P2P delete propagation capability.
 func (m *MomoTCPCommunicator) SetDeletePropagator(dp DeletePropagator) {
 	m.deletePropagator = dp
+}
+
+// SetMetricsHook sets the metrics instrumentation hook.
+func (m *MomoTCPCommunicator) SetMetricsHook(hook MetricsHook) {
+	m.metricsHook = hook
 }
 
 func (m *MomoTCPCommunicator) SetAbsoluteDeadline(t interface{}) (err error) {
@@ -243,6 +249,10 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 			_ = m.deletePropagator.PropagateDelete(fileName, 5*time.Second)
 		}
 
+		if m.metricsHook != nil {
+			m.metricsHook.IncDeletes()
+		}
+
 		m.Write([]byte{'0'}) // success status
 		return 0, 0, ErrRequestHandled
 	}
@@ -298,6 +308,11 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 
 		if _, err := io.Copy(m, rc); err != nil {
 			return 0, 0, fmt.Errorf("failed to stream file payload: %w", err)
+		}
+
+		if m.metricsHook != nil {
+			m.metricsHook.IncDownloads()
+			m.metricsHook.AddBytesDownloaded(uint64(meta.Size))
 		}
 
 		return 0, 0, ErrRequestHandled

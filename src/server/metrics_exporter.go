@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -42,9 +43,7 @@ func (m *MetricsCollector) IncErrors()          { m.errorsTotal.Add(1) }
 func (m *MetricsCollector) AddBytesUploaded(n uint64)    { m.bytesUploaded.Add(n) }
 func (m *MetricsCollector) AddBytesDownloaded(n uint64)  { m.bytesDownloaded.Add(n) }
 
-func (m *MetricsCollector) handler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-
+func (m *MetricsCollector) writeMetrics(w io.Writer) {
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
 
@@ -110,6 +109,11 @@ func (m *MetricsCollector) handler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "# HELP momo_build_info Build information.\n")
 	fmt.Fprintf(w, "# TYPE momo_build_info gauge\n")
 	fmt.Fprintf(w, "momo_build_info{hostname=\"%s\"} 1\n", hostname)
+}
+
+func (m *MetricsCollector) handler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+	m.writeMetrics(w)
 }
 
 // StartMetricsServer starts an HTTP server exposing Prometheus metrics on the given port.

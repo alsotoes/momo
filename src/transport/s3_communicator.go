@@ -70,6 +70,8 @@ type S3Communicator struct {
 	leaseAcquirer LeaseAcquirer
 	// DeletePropagator for P2P delete fan-out (optional)
 	deletePropagator DeletePropagator
+	// MetricsHook for instrumentation (optional)
+	metricsHook MetricsHook
 }
 
 func NewS3Communicator(conn net.Conn) *S3Communicator {
@@ -99,6 +101,11 @@ func (m *S3Communicator) SetLeaseAcquirer(la LeaseAcquirer) {
 // SetDeletePropagator sets the P2P delete propagation capability.
 func (m *S3Communicator) SetDeletePropagator(dp DeletePropagator) {
 	m.deletePropagator = dp
+}
+
+// SetMetricsHook sets the metrics instrumentation hook.
+func (m *S3Communicator) SetMetricsHook(hook MetricsHook) {
+	m.metricsHook = hook
 }
 
 func (m *S3Communicator) Read(p []byte) (n int, err error) {
@@ -348,6 +355,11 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			return 0, 0, fmt.Errorf("failed to stream GET body: %v: %w", err, syscall.EPIPE)
 		}
 
+		if m.metricsHook != nil {
+			m.metricsHook.IncDownloads()
+			m.metricsHook.AddBytesDownloaded(uint64(meta.Size))
+		}
+
 		return 0, 0, ErrRequestHandled
 	}
 
@@ -381,12 +393,16 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			return 0, 0, fmt.Errorf("failed to delete file %q: %w", key, err)
 		}
 
-		// Propagate delete to all peers via scatter-gather (best-effort).
-		if m.deletePropagator != nil {
-			_ = m.deletePropagator.PropagateDelete(key, 5*time.Second)
-		}
+	// Propagate delete to all peers via scatter-gather (best-effort).
+	if m.deletePropagator != nil {
+		_ = m.deletePropagator.PropagateDelete(key, 5*time.Second)
+	}
 
-		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	if m.metricsHook != nil {
+		m.metricsHook.IncDeletes()
+	}
+
+	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		m.conn.Write([]byte("HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"))
 
 		return 0, 0, ErrRequestHandled
