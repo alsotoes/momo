@@ -1177,3 +1177,10 @@ dd98dab,BenchmarkPadString-8,2.23,0.00,0.00
 304c31e,BenchmarkIndexSearch-8,3.06,0.00,0.00
 304c31e,BenchmarkLoadGlobalConfig-8,702.40,160.00,1.00
 304c31e,BenchmarkPadString-8,2.21,0.00,0.00
+c92e38e,BenchmarkCheckMetricsAndSwap-8,6.79,0.00,0.00
+c92e38e,BenchmarkCrushOptimized-8,308.50,0.00,0.00
+c92e38e,BenchmarkCrushOriginal-8,399.30,164.00,3.00
+c92e38e,BenchmarkIndexDirectTracking-8,0.38,0.00,0.00
+c92e38e,BenchmarkIndexSearch-8,2.71,0.00,0.00
+c92e38e,BenchmarkLoadGlobalConfig-8,666.70,160.00,1.00
+c92e38e,BenchmarkPadString-8,2.16,0.00,0.00

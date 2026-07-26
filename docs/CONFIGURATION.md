@@ -202,7 +202,17 @@ Becomes a SWIM indirect ping fan-out.
 
 ### [storage]
 
-This section controls the Content-Addressable Storage (CAS) engine, including garbage collection and tombstone retention.
+This section controls the Content-Addressable Storage (CAS) engine, including backend selection, garbage collection, and tombstone retention.
+
+-   **`backend`**
+    -   **Description:** Selects the blob storage backend. The bbolt metadata database is always stored locally in `daemon.data`; only blob bytes are routed to the configured backend.
+    -   **Type:** String
+    -   **Default:** `local`
+    -   **Valid values:**
+        -   `local` — Local filesystem with tiered directory layout (default, backward-compatible)
+        -   `nfs` — Local filesystem on an NFS mount (functionally identical to `local`; set `daemon.data` to the NFS mount path)
+        -   `s3` — S3-compatible remote storage (requires `s3_*` config fields)
+        -   `raw` — Raw block device (requires `raw_device_path` or `daemon.drive`)
 
 -   **`gc_interval`**
     -   **Description:** The interval in seconds between CAS garbage collection sweeps. The GC removes orphaned blobs (refcount=0) and expired tombstones.
@@ -213,6 +223,41 @@ This section controls the Content-Addressable Storage (CAS) engine, including ga
     -   **Description:** The duration in seconds to retain tombstones after deletion. Tombstones prevent resurrection of deleted objects and are cleaned up after this period.
     -   **Type:** Integer
     -   **Default:** `86400` (24 hours)
+
+-   **`s3_endpoint`**
+    -   **Description:** S3-compatible API endpoint URL (e.g., `https://s3.amazonaws.com`). Only used when `backend = s3`.
+    -   **Type:** String
+    -   **Default:** (none)
+
+-   **`s3_region`**
+    -   **Description:** S3 region name. Only used when `backend = s3`.
+    -   **Type:** String
+    -   **Default:** (none)
+
+-   **`s3_bucket`**
+    -   **Description:** S3 bucket name for blob storage. Only used when `backend = s3`.
+    -   **Type:** String
+    -   **Default:** (none)
+
+-   **`s3_access_key`**
+    -   **Description:** S3 access key ID. Only used when `backend = s3`.
+    -   **Type:** String
+    -   **Default:** (none)
+
+-   **`s3_secret_key`**
+    -   **Description:** S3 secret access key. Only used when `backend = s3`.
+    -   **Type:** String
+    -   **Default:** (none)
+
+-   **`s3_path_style`**
+    -   **Description:** Use path-style addressing (`endpoint/bucket/key`) instead of virtual-host style (`bucket.endpoint/key`). Required for MinIO and most S3-compatible APIs.
+    -   **Type:** Boolean
+    -   **Default:** `true`
+
+-   **`raw_device_path`**
+    -   **Description:** Path to the raw block device for blob storage (e.g., `/dev/sda1`). Overrides `daemon.drive` if set. Only used when `backend = raw`.
+    -   **Type:** String
+    -   **Default:** (none; falls back to `daemon.drive`)
 
 ## Example Configurations
 
@@ -252,6 +297,50 @@ scatter_gather_timeout = 5
 lease_timeout = 10
 
 [storage]
+gc_interval = 300
+tombstone_retention = 86400
+```
+
+### NFS Storage Backend
+
+To store blobs on an NFS-mounted filesystem, set `backend = nfs` and point `data` to the NFS mount path. The bbolt metadata database is also stored locally on the NFS mount. Note: NFS provides close-to-open consistency, not coherent consistency — suitable for single-writer-per-object workloads.
+
+```ini
+[storage]
+backend = nfs
+gc_interval = 300
+tombstone_retention = 86400
+
+[daemon.0]
+data = /mnt/nfs/momo/node0
+# ...
+```
+
+### S3 Storage Backend
+
+To store blobs in an S3-compatible bucket (AWS S3, MinIO, etc.):
+
+```ini
+[storage]
+backend = s3
+s3_endpoint = https://s3.us-east-1.amazonaws.com
+s3_region = us-east-1
+s3_bucket = momo-blobs
+s3_access_key = AKIAIOSFODNN7EXAMPLE      # notsecret
+s3_secret_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY  # notsecret
+s3_path_style = false
+gc_interval = 300
+tombstone_retention = 86400
+```
+
+### Raw Device Storage Backend
+
+To store blobs directly on a raw block device (no filesystem overhead):
+
+```ini
+[storage]
+backend = raw
+raw_device_path = /dev/sda1
 gc_interval = 300
 tombstone_retention = 86400
 ```
