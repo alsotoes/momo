@@ -40,14 +40,19 @@ func NewRawBlobStore(cfg common.ConfigurationStorage, daemon *common.Daemon) (*R
 		return nil, fmt.Errorf("raw device path is required (set raw_device_path or daemon.drive): %w", syscall.EINVAL)
 	}
 
+	if err := os.MkdirAll(daemon.Data, 0755); err != nil {
+		return nil, fmt.Errorf("raw: failed to create data dir: %w", syscall.EIO)
+	}
+
+	if dir := filepath.Dir(devicePath); dir != "." && dir != "/" {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return nil, fmt.Errorf("raw: failed to create device dir: %w", syscall.EIO)
+		}
+	}
+
 	device, err := os.OpenFile(devicePath, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return nil, fmt.Errorf("raw: failed to open device %s: %w", devicePath, syscall.EIO)
-	}
-
-	if err := os.MkdirAll(daemon.Data, 0755); err != nil {
-		device.Close()
-		return nil, fmt.Errorf("raw: failed to create data dir: %w", syscall.EIO)
 	}
 
 	allocPath := filepath.Join(daemon.Data, "raw_alloc.db")
