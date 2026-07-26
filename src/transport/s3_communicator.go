@@ -781,10 +781,9 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, f
 	buf.Write(strconv.AppendInt(intBuf[:0], int64(maxKeys), 10))
 	buf.WriteString(`</MaxKeys>`)
 
-	buf.WriteString(`<IsTruncated>false</IsTruncated>`)
-
 	commonPrefixes := make(map[string]bool)
 	keyCount := 0
+	truncated := false
 
 	for _, file := range files {
 		// 🛡️ Sentinel: Validate that the metadata fields conform to the project's strict size limits (64 bytes)
@@ -815,6 +814,11 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, f
 			}
 		}
 
+		if maxKeys > 0 && keyCount >= maxKeys {
+			truncated = true
+			break
+		}
+
 		buf.WriteString(`<Contents>`)
 		buf.WriteString(`<Key>`)
 		xmlEscape(&buf, key)
@@ -829,10 +833,6 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, f
 		buf.WriteString(`<StorageClass>STANDARD</StorageClass>`)
 		buf.WriteString(`</Contents>`)
 		keyCount++
-
-		if maxKeys > 0 && keyCount >= maxKeys {
-			break
-		}
 	}
 
 	for cp := range commonPrefixes {
@@ -843,6 +843,14 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, f
 		buf.WriteString(`</CommonPrefixes>`)
 		keyCount++
 	}
+
+	buf.WriteString(`<IsTruncated>`)
+	if truncated {
+		buf.WriteString(`true`)
+	} else {
+		buf.WriteString(`false`)
+	}
+	buf.WriteString(`</IsTruncated>`)
 
 	buf.WriteString(`<KeyCount>`)
 	buf.Write(strconv.AppendInt(intBuf[:0], int64(keyCount), 10))
