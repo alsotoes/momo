@@ -281,12 +281,28 @@ func (g *Gossiper) sendPing() {
 		g.rtt.Update(target.ID, rtt)
 		g.removePendingPing(pingID)
 	case <-time.After(g.cfg.PingTimeout):
-		g.sendIndirectPing(target.ID, pingID, now)
+		helperContacted := g.sendIndirectPing(target.ID, pingID, now)
+		if !helperContacted {
+			if peer := g.transport.Peers().Get(target.ID); peer != nil {
+				if peer.State() == PeerStateAlive {
+					peer.SetState(PeerStateSuspect)
+					log.Printf("Gossip: peer %d marked SUSPECT (ping failed, no helper contacted)", target.ID)
+				}
+			}
+			g.removePendingPing(pingID)
+			return
+		}
 		select {
 		case <-pp.ackCh:
 			rtt := time.Since(pp.sentAt)
 			g.rtt.Update(target.ID, rtt)
 		case <-time.After(g.cfg.PingTimeout):
+			if peer := g.transport.Peers().Get(target.ID); peer != nil {
+				if peer.State() == PeerStateAlive {
+					peer.SetState(PeerStateSuspect)
+					log.Printf("Gossip: peer %d marked SUSPECT (ping + indirect ping ack timeout)", target.ID)
+				}
+			}
 		case <-g.done:
 			g.removePendingPing(pingID)
 			return
@@ -299,10 +315,11 @@ func (g *Gossiper) sendPing() {
 }
 
 // sendIndirectPing asks K random peers to ping the target on our behalf.
-func (g *Gossiper) sendIndirectPing(targetID int32, pingID uint64, timestamp int64) {
+// Returns true if at least one helper peer was successfully contacted.
+func (g *Gossiper) sendIndirectPing(targetID int32, pingID uint64, timestamp int64) bool {
 	peers := g.transport.Peers().RandomPeers(g.cfg.IndirectPingCount, g.cfg.LocalID)
 	if len(peers) == 0 {
-		return
+		return false
 	}
 
 	payload := &PingPayload{
@@ -339,14 +356,7 @@ func (g *Gossiper) sendIndirectPing(targetID int32, pingID uint64, timestamp int
 	}
 	wg.Wait()
 
-	if len(indirectAck) == 0 {
-		if peer := g.transport.Peers().Get(targetID); peer != nil {
-			if peer.State() == PeerStateAlive {
-				peer.SetState(PeerStateSuspect)
-				log.Printf("Gossip: peer %d marked SUSPECT (ping + indirect ping failed)", targetID)
-			}
-		}
-	}
+	return len(indirectAck) > 0
 }
 
 // removePendingPing removes a pending ping entry safely.
