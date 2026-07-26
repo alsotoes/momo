@@ -23,6 +23,10 @@ import (
 // connectToPeer is an alias for the client.Connect function, used to connect to other servers in the cluster for data replication.
 var connectToPeer = client.Connect
 
+// connectToPeerStream is an alias for client.ConnectStream, used for streaming
+// replication forwarding from a store reader instead of a local file path.
+var connectToPeerStream = client.ConnectStream
+
 // Daemon is the core of the momo server.
 // It listens for incoming connections and handles file uploads and replication.
 // The server's behavior is determined by the replicationMode, which is received from the client.
@@ -41,26 +45,12 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 	}
 	factory := transport.NewProtocolFactory(cfg)
 
-	// Initialize CAS Storage
-	store, err := storage.NewCASStore(daemons[serverId].Data)
+	// Initialize storage with configured backend
+	store, err := storage.NewStore(cfg.Storage, daemons[serverId])
 	if err != nil {
 		return fmt.Errorf("failed to initialize storage: %w", err)
 	}
 	defer store.Close()
-
-	// Start garbage collector
-	gcInterval := time.Duration(cfg.Storage.GCInterval) * time.Second
-	if gcInterval <= 0 {
-		gcInterval = 5 * time.Minute
-	}
-	tombstoneRetention := time.Duration(cfg.Storage.TombstoneRetention) * time.Second
-	if tombstoneRetention <= 0 {
-		tombstoneRetention = 24 * time.Hour
-	}
-	store.StartGC(storage.GCConfig{
-		Interval:           gcInterval,
-		TombstoneRetention: tombstoneRetention,
-	})
 
 	server, err := factory.Listen(daemons[serverId].Host)
 	if err != nil {
@@ -150,15 +140,15 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 			// 🛡️ Sentinel: Capture remote address for audit logging and traceability
 			remoteAddr := common.SanitizeLog(comm.RemoteAddr().String())
 
-		// Inject storage store if the communicator supports it (e.g. S3 for list/delete)
-		if s3Comm, ok := comm.(interface{ SetStore(storage.Store) }); ok {
-			s3Comm.SetStore(store)
-		}
+			// Inject storage store if the communicator supports it (e.g. S3 for list/delete)
+			if s3Comm, ok := comm.(interface{ SetStore(storage.Store) }); ok {
+				s3Comm.SetStore(store)
+			}
 
-		// Inject metrics hook for download/delete/error instrumentation
-		if mhComm, ok := comm.(interface{ SetMetricsHook(transport.MetricsHook) }); ok {
-			mhComm.SetMetricsHook(metricsCollector)
-		}
+			// Inject metrics hook for download/delete/error instrumentation
+			if mhComm, ok := comm.(interface{ SetMetricsHook(transport.MetricsHook) }); ok {
+				mhComm.SetMetricsHook(metricsCollector)
+			}
 
 			// Inject scatter-gather and lease capabilities if P2P is enabled
 			if scatterGather != nil {
@@ -390,20 +380,27 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 
 				if myPos != -1 && myPos < len(placement)-1 {
 					nextHop := placement[myPos+1]
-					blobPath, _ := store.GetBlobPath(fileName)
 					log.Printf("AUDIT: Chain forwarding from Node %d to Node %d", serverId, nextHop.ID)
 
 					// 🛡️ Zero-Crash: Wrap Chain forwarding in a goroutine with recovery for consistency and safety.
-					go func(id int, path string) {
+					go func(id int) {
 						defer func() {
 							if r := recover(); r != nil {
 								log.Printf("CRITICAL: Panic recovered in Chain forwarder to node %d: %v", id, r)
 							}
 						}()
-						// ⚡ Bolt: connectToPeer (client.Connect) handles wg.Done() internally via defer.
-						connectToPeer(&wg, cfg, path, "", id, finalTs, replicationMode, factor)
+						reader, _, err := store.Get(fileName)
+						if err != nil {
+							log.Printf("AUDIT: Failed to get blob for chain forwarding: %v", common.SanitizeLog(err.Error()))
+							wg.Done()
+							metricsCollector.IncErrors()
+							return
+						}
+						defer reader.Close()
+						// ⚡ Bolt: connectToPeerStream (client.ConnectStream) handles wg.Done() internally via defer.
+						connectToPeerStream(&wg, cfg, reader, fileName, metadata.Hash, metadata.Size, "", id, finalTs, replicationMode, factor)
 						metricsCollector.IncReplication()
-					}(nextHop.ID, blobPath)
+					}(nextHop.ID)
 				} else {
 					wg.Done()
 				}
@@ -429,21 +426,26 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 							return
 						}
 					}
-					blobPath, _ := store.GetBlobPath(fileName)
 					for i := 1; i < len(placement); i++ {
 						targetId := placement[i].ID
 						go func(id int) {
-							// ⚡ Bolt: connectToPeer (client.Connect) handles wg.Done() internally via defer.
-							// Wait, if connectToPeer handles wg.Done(), we MUST NOT call it here.
-							// client.Connect DOES call wg.Done().
+							// ⚡ Bolt: connectToPeerStream (client.ConnectStream) handles wg.Done() internally via defer.
 							defer func() {
 								if r := recover(); r != nil {
 									log.Printf("CRITICAL: Panic recovered in Splay forwarder to node %d: %v", id, r)
 								}
 							}()
-						connectToPeer(&wg, cfg, blobPath, "", id, finalTs, replicationMode, factor)
-						metricsCollector.IncReplication()
-					}(targetId)
+							reader, _, err := store.Get(fileName)
+							if err != nil {
+								log.Printf("AUDIT: Failed to get blob for splay forwarding: %v", common.SanitizeLog(err.Error()))
+								wg.Done()
+								metricsCollector.IncErrors()
+								return
+							}
+							defer reader.Close()
+							connectToPeerStream(&wg, cfg, reader, fileName, metadata.Hash, metadata.Size, "", id, finalTs, replicationMode, factor)
+							metricsCollector.IncReplication()
+						}(targetId)
 					}
 					wg.Wait()
 				} else {
@@ -461,17 +463,17 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 						}
 					}
 				}
-		default:
-			log.Printf("AUDIT: *** ERROR: Unknown replication type from %s", remoteAddr)
-			metricsCollector.IncErrors()
-			return
-		}
-		success = true
-		metricsCollector.IncUploads()
-		if !exists {
-			metricsCollector.AddBytesUploaded(uint64(metadata.Size))
-		}
-	}(connection)
+			default:
+				log.Printf("AUDIT: *** ERROR: Unknown replication type from %s", remoteAddr)
+				metricsCollector.IncErrors()
+				return
+			}
+			success = true
+			metricsCollector.IncUploads()
+			if !exists {
+				metricsCollector.AddBytesUploaded(uint64(metadata.Size))
+			}
+		}(connection)
 	}
 }
 

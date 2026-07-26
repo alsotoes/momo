@@ -272,6 +272,7 @@ func loadP2PConfig(section *ini.Section) (ConfigurationP2P, error) {
 // defaultStorageConfig returns the default storage configuration.
 func defaultStorageConfig() ConfigurationStorage {
 	return ConfigurationStorage{
+		Backend:            "local",
 		GCInterval:         300,
 		TombstoneRetention: 86400,
 	}
@@ -282,6 +283,11 @@ func loadStorageConfig(section *ini.Section) (ConfigurationStorage, error) {
 	cfg := defaultStorageConfig()
 	var err error
 
+	cfg.Backend = section.Key("backend").String()
+	if cfg.Backend == "" {
+		cfg.Backend = "local"
+	}
+
 	cfg.GCInterval, err = section.Key("gc_interval").Int()
 	if err != nil || cfg.GCInterval <= 0 {
 		cfg.GCInterval = 300
@@ -291,6 +297,18 @@ func loadStorageConfig(section *ini.Section) (ConfigurationStorage, error) {
 	if err != nil || cfg.TombstoneRetention <= 0 {
 		cfg.TombstoneRetention = 86400
 	}
+
+	cfg.S3Endpoint = section.Key("s3_endpoint").String()
+	cfg.S3Region = section.Key("s3_region").String()
+	cfg.S3Bucket = section.Key("s3_bucket").String()
+	cfg.S3AccessKey = section.Key("s3_access_key").String()
+	cfg.S3SecretKey = section.Key("s3_secret_key").String()
+	cfg.S3PathStyle, err = section.Key("s3_path_style").Bool()
+	if err != nil {
+		cfg.S3PathStyle = true
+	}
+
+	cfg.RawDevicePath = section.Key("raw_device_path").String()
 
 	return cfg, nil
 }

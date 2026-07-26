@@ -9,6 +9,7 @@ This document explains the architecture, configuration, wire protocol, replicati
 - **Balanced Primary Architecture**: Removes central bottlenecks by deterministically selecting primary nodes for each object using the CRUSH-lite algorithm.
 - **Automated AI Governance**: Pull Requests are automatically reviewed and merged by a Gemini-powered audit engine that enforces strict architectural steering rules.
 - **Content-Addressable Storage (CAS)**: Saves disk space and bandwidth by identifying files by their SHA-256 content hash, with built-in server-side deduplication.
+- **Pluggable Storage Backends**: Configurable blob storage via `[storage] backend` — supports `local` (default), `nfs`, `s3` (zero-dep SigV4 client), and `raw` (direct block I/O). Bbolt metadata stays local per-node.
 - **Pluggable Transport Layer**: Communicate seamlessly over raw TCP, encrypted QUIC (TLS 1.3), or S3-compatible REST gateways via a modular `ProtocolFactory`.
 - **Zero-Allocation Hashing & Encoding**: SHA-256 sums and hex encoding use stack-allocated buffers to eliminate heap escapes.
 - **Phased Absolute Deadlines**: Continuous protection against Slowloris attacks with strict bounds for handshake (10s), metadata (60s), and dynamic transfer phases.

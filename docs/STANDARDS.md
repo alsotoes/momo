@@ -72,3 +72,12 @@ To prevent CPU and memory exhaustion from malicious or buggy peers, the P2P subs
 - **Heartbeat Peer Count:** Each heartbeat message carries at most `MaxPeersInHeartbeat = 256` peer entries. Heartbeats exceeding this limit are truncated and `E2BIG` is logged.
 - **Payload Size:** All P2P RPC payloads are capped at `maxPayloadSize = 1 MiB` (1048576 bytes). Payloads exceeding this limit are rejected with `EFBIG` to prevent memory exhaustion.
 - **Suspect Marking:** Peers are marked SUSPECT based on target ack timeout (not helper contact success), ensuring accurate failure detection.
+
+### 8. Storage Backend Interface Contract
+Any new `BlobStore` implementation MUST satisfy the following:
+- **Interface:** Implement `PutBlob(hash, io.Reader)`, `GetBlob(hash) (io.ReadCloser, error)`, `DeleteBlob(hash)`, and `Close()`.
+- **POSIX Errors (Rule 10):** All errors must map to `syscall` POSIX constants (e.g., `ENOENT` for missing blobs, `EIO` for I/O failures, `ECONNREFUSED` for network errors).
+- **Panic Recovery (Rule 37):** The CASStore wrapper provides panic recovery; backends should not swallow panics.
+- **DeleteBlob Idempotency:** Deleting a non-existent blob must return `nil` (not an error).
+- **Content-Addressed (Rule 12):** Object key = content hash. No name-based storage.
+- **Zero Dependencies (Rule 1):** Backends must use only Go stdlib (no external SDKs). The S3 backend uses a minimal SigV4 client (~200 lines of stdlib code).

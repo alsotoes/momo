@@ -195,6 +195,34 @@ In this mode, the client sends the file to all servers in the cluster simultaneo
                             +------>      ...
 ```
 
+## Pluggable Storage Backend
+
+Momo's storage layer uses a two-layer architecture:
+
+### BlobStore (Pluggable)
+Raw blob bytes keyed by content hash. The backend is selected via `[storage] backend` config field:
+
+| Backend | Description |
+|---------|-------------|
+| `local` (default) | Local filesystem with tiered directory layout (`blobs/ab/cd/ef/<hash>`) |
+| `nfs` | Local filesystem on an NFS mount (functionally identical to `local`) |
+| `s3` | S3-compatible API via zero-dependency SigV4 HTTP client |
+| `raw` | Raw block device with bump allocator and bbolt allocation table |
+
+A `StorageFactory` (`NewStore`) mirrors the transport `ProtocolFactory`, switching on the configured backend. All backends implement the `BlobStore` interface (`PutBlob`/`GetBlob`/`DeleteBlob`).
+
+### MetadataStore (Fixed)
+Per-node bbolt metadata database (`momo.db`) handles:
+- **Namespace mapping**: file name → content hash
+- **Reference counting**: deduplication with refcount tracking
+- **Tombstones**: deletion tracking with retention-based GC
+- **P2P exchange**: tombstone propagation via scatter-gather
+
+The metadata layer is always local (bbolt in `daemon.data`), regardless of blob backend. This keeps GC, refcounting, and P2P tombstone exchange logic unchanged for all backends.
+
+### Streaming Replication Forward
+Replication forwarding (Chain/Splay) uses `store.Get()` → `connectToPeerStream(io.Reader)` to stream blobs to peers. This is backend-agnostic — no local filesystem path is required, enabling S3 and raw device backends to forward blobs seamlessly.
+
 ## Polymorphic System: Dual-Dimensional Adaptability
 
 The defining feature of Momo is its **Dual-Dimensional Polymorphic Architecture**, which enables the system to adapt dynamically to load conditions and traffic origins with **zero manual configuration changes and zero runtime impact**:

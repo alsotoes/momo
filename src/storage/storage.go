@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"bufio"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -64,21 +63,34 @@ type Store interface {
 	Get(name string) (io.ReadCloser, common.FileMetadata, error)
 	Has(hash string) (bool, error)
 	Delete(name string) error
-	GetBlobPath(name string) (string, error)
 	List() ([]common.FileMetadata, error)
 }
 
 // CASStore implements Content-Addressable Storage with Bbolt metadata.
+// It composes a pluggable BlobStore (for raw blob bytes) with a fixed
+// bbolt metadata layer (for refcounts, tombstones, namespace mappings).
 type CASStore struct {
 	mu     sync.RWMutex
 	db     *bbolt.DB
 	base   string
+	blobs  BlobStore
 	gcDone chan struct{}
 	gcWG   sync.WaitGroup
 }
 
-// NewCASStore initializes a new CAS storage backend.
+// NewCASStore initializes a CAS store with a LocalBlobStore backend.
+// This preserves backward compatibility with existing callers and tests.
 func NewCASStore(dataDir string) (*CASStore, error) {
+	blobs, err := NewLocalBlobStore(dataDir)
+	if err != nil {
+		return nil, err
+	}
+	return newCASStore(dataDir, blobs)
+}
+
+// newCASStore creates a CAS store with the given BlobStore backend and
+// a bbolt metadata database in dataDir.
+func newCASStore(dataDir string, blobs BlobStore) (*CASStore, error) {
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create data dir: %w", syscall.EIO)
 	}
@@ -111,6 +123,7 @@ func NewCASStore(dataDir string) (*CASStore, error) {
 	return &CASStore{
 		db:     db,
 		base:   dataDir,
+		blobs:  blobs,
 		gcDone: make(chan struct{}),
 	}, nil
 }
@@ -119,6 +132,9 @@ func (s *CASStore) Close() error {
 	if s.gcDone != nil {
 		close(s.gcDone)
 		s.gcWG.Wait()
+	}
+	if s.blobs != nil {
+		s.blobs.Close()
 	}
 	return s.db.Close()
 }
@@ -140,36 +156,8 @@ func (s *CASStore) Put(name string, hash string, size int64, remotePath string, 
 	// 1. Check if we already have the blob
 	exists, _ := s.hasInternal(hash)
 	if !exists && content != nil {
-		// 🛡️ Zero-Crash: Use atomic rename to ensure data integrity.
-		blobPath := s.getBlobPath(hash)
-		if err := os.MkdirAll(filepath.Dir(blobPath), 0755); err != nil {
-			return fmt.Errorf("storage error: failed to create tiered dir: %w", syscall.EIO)
-		}
-
-		tmpFile, err := os.CreateTemp(s.base, "blob-*.tmp")
-		if err != nil {
-			return fmt.Errorf("storage error: failed to create temp file: %w", syscall.EIO)
-		}
-		tmpPath := tmpFile.Name()
-
-		// ⚡ Bolt: Use a buffered writer to optimize disk I/O and minimize syscalls.
-		writer := bufio.NewWriterSize(tmpFile, 64*1024) // 64KB buffer
-		if _, err := io.Copy(writer, content); err != nil {
-			tmpFile.Close()
-			os.Remove(tmpPath)
-			return fmt.Errorf("storage error: failed to write blob: %w", syscall.ENOSPC)
-		}
-
-		if err := writer.Flush(); err != nil {
-			tmpFile.Close()
-			os.Remove(tmpPath)
-			return fmt.Errorf("storage error: failed to flush blob: %w", syscall.EIO)
-		}
-		tmpFile.Close()
-
-		if err := os.Rename(tmpPath, blobPath); err != nil {
-			os.Remove(tmpPath)
-			return fmt.Errorf("storage error: failed to commit blob: %w", syscall.EIO)
+		if err := s.blobs.PutBlob(hash, content); err != nil {
+			return err
 		}
 	}
 
@@ -244,8 +232,7 @@ func (s *CASStore) Get(name string) (rc io.ReadCloser, meta common.FileMetadata,
 		return nil, common.FileMetadata{}, err
 	}
 
-	blobPath := s.getBlobPath(hash)
-	f, openErr := os.Open(blobPath)
+	f, openErr := s.blobs.GetBlob(hash)
 	if openErr != nil {
 		return nil, common.FileMetadata{}, openErr
 	}

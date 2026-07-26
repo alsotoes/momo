@@ -1,0 +1,255 @@
+package storage
+
+import (
+	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"net/url"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/alsotoes/momo/src/common"
+)
+
+// S3BlobStore implements BlobStore using an S3-compatible API.
+// It uses a zero-dependency SigV4 HTTP client (no AWS SDK required).
+// Object key = content hash. Metadata (refcounts, tombstones) stays
+// in local bbolt via the CASStore wrapper.
+type S3BlobStore struct {
+	client    *http.Client
+	endpoint  string
+	region    string
+	bucket    string
+	accessKey string
+	secretKey string
+	pathStyle bool
+}
+
+// NewS3BlobStore creates a new S3-backed BlobStore from storage config.
+func NewS3BlobStore(cfg common.ConfigurationStorage) (*S3BlobStore, error) {
+	if cfg.S3Endpoint == "" {
+		return nil, fmt.Errorf("s3_endpoint is required: %w", syscall.EINVAL)
+	}
+	if cfg.S3Bucket == "" {
+		return nil, fmt.Errorf("s3_bucket is required: %w", syscall.EINVAL)
+	}
+	if cfg.S3AccessKey == "" {
+		return nil, fmt.Errorf("s3_access_key is required: %w", syscall.EINVAL)
+	}
+	if cfg.S3SecretKey == "" {
+		return nil, fmt.Errorf("s3_secret_key is required: %w", syscall.EINVAL)
+	}
+
+	region := cfg.S3Region
+	if region == "" {
+		region = "us-east-1"
+	}
+
+	return &S3BlobStore{
+		client: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+		endpoint:  strings.TrimRight(cfg.S3Endpoint, "/"),
+		region:    region,
+		bucket:    cfg.S3Bucket,
+		accessKey: cfg.S3AccessKey,
+		secretKey: cfg.S3SecretKey,
+		pathStyle: cfg.S3PathStyle,
+	}, nil
+}
+
+func (s *S3BlobStore) Close() error {
+	return nil
+}
+
+// PutBlob uploads a blob to S3 using HTTP PUT with SigV4 authentication.
+func (s *S3BlobStore) PutBlob(hash string, content io.Reader) error {
+	payload, err := io.ReadAll(content)
+	if err != nil {
+		return fmt.Errorf("s3: failed to read payload: %w", syscall.EIO)
+	}
+
+	req, err := s.newRequest("PUT", hash, bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.ContentLength = int64(len(payload))
+	req.Header.Set("x-amz-content-sha256", hexSHA256(payload))
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("s3: PUT request failed: %w", syscall.ECONNREFUSED)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("s3: PUT failed with status %d: %w", resp.StatusCode, syscall.EIO)
+	}
+	return nil
+}
+
+// GetBlob downloads a blob from S3 using HTTP GET with SigV4 authentication.
+func (s *S3BlobStore) GetBlob(hash string) (io.ReadCloser, error) {
+	req, err := s.newRequest("GET", hash, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("s3: GET request failed: %w", syscall.ECONNREFUSED)
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		resp.Body.Close()
+		return nil, syscall.ENOENT
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, fmt.Errorf("s3: GET failed with status %d: %w", resp.StatusCode, syscall.EIO)
+	}
+	return resp.Body, nil
+}
+
+// DeleteBlob removes a blob from S3 using HTTP DELETE with SigV4 authentication.
+// Missing blobs are silently ignored (treated as success).
+func (s *S3BlobStore) DeleteBlob(hash string) error {
+	req, err := s.newRequest("DELETE", hash, nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("s3: DELETE request failed: %w", syscall.ECONNREFUSED)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("s3: DELETE failed with status %d: %w", resp.StatusCode, syscall.EIO)
+	}
+	return nil
+}
+
+// newRequest builds an HTTP request for the given method and object key.
+func (s *S3BlobStore) newRequest(method, key string, body io.Reader) (*http.Request, error) {
+	var reqURL string
+	if s.pathStyle {
+		reqURL = fmt.Sprintf("%s/%s/%s", s.endpoint, s.bucket, key)
+	} else {
+		reqURL = fmt.Sprintf("%s/%s", s.endpoint, key)
+	}
+
+	parsedURL, err := url.Parse(reqURL)
+	if err != nil {
+		return nil, fmt.Errorf("s3: invalid URL: %w", syscall.EINVAL)
+	}
+
+	req, err := http.NewRequest(method, reqURL, body)
+	if err != nil {
+		return nil, fmt.Errorf("s3: failed to create request: %w", syscall.EINVAL)
+	}
+
+	now := time.Now().UTC()
+	amzDate := now.Format("20060102T150405Z")
+	dateStamp := now.Format("20060102")
+
+	payloadHash := emptyStringSHA256
+	if method == "PUT" {
+		payloadHash = req.Header.Get("x-amz-content-sha256")
+		if payloadHash == "" {
+			payloadHash = emptyStringSHA256
+		}
+	}
+
+	host := parsedURL.Host
+	if s.pathStyle {
+		req.Header.Set("host", host)
+	} else {
+		req.Header.Set("host", fmt.Sprintf("%s.%s", s.bucket, host))
+	}
+	req.Header.Set("x-amz-date", amzDate)
+	req.Header.Set("x-amz-content-sha256", payloadHash)
+
+	signingKey := s.getSigningKey(dateStamp)
+	stringToSign := s.getStringToSign(method, parsedURL, amzDate, dateStamp, payloadHash)
+	signature := hexHMAC(signingKey, stringToSign)
+
+	signedHeaders := "host;x-amz-content-sha256;x-amz-date"
+	credentialScope := fmt.Sprintf("%s/%s/s3/aws4_request", dateStamp, s.region)
+	authHeader := fmt.Sprintf("AWS4-HMAC-SHA256 Credential=%s/%s, SignedHeaders=%s, Signature=%s",
+		s.accessKey, credentialScope, signedHeaders, signature)
+	req.Header.Set("Authorization", authHeader)
+
+	return req, nil
+}
+
+// getStringToSign builds the AWS SigV4 string-to-sign.
+func (s *S3BlobStore) getStringToSign(method string, parsedURL *url.URL, amzDate, dateStamp, payloadHash string) string {
+	canonicalURI := parsedURL.Path
+	if canonicalURI == "" {
+		canonicalURI = "/"
+	}
+
+	host := parsedURL.Host
+	if !s.pathStyle {
+		host = fmt.Sprintf("%s.%s", s.bucket, host)
+	}
+
+	canonicalHeaders := fmt.Sprintf("host:%s\nx-amz-content-sha256:%s\nx-amz-date:%s\n",
+		host, payloadHash, amzDate)
+	signedHeaders := "host;x-amz-content-sha256;x-amz-date"
+
+	canonicalRequest := fmt.Sprintf("%s\n%s\n\n%s\n%s\n%s",
+		method, canonicalURI, canonicalHeaders, signedHeaders, payloadHash)
+
+	credentialScope := fmt.Sprintf("%s/%s/s3/aws4_request", dateStamp, s.region)
+	hashedCanonicalRequest := hexSHA256([]byte(canonicalRequest))
+
+	return fmt.Sprintf("AWS4-HMAC-SHA256\n%s\n%s\n%s",
+		amzDate, credentialScope, hashedCanonicalRequest)
+}
+
+// getSigningKey derives the SigV4 signing key from the secret key.
+func (s *S3BlobStore) getSigningKey(dateStamp string) []byte {
+	kDate := hmacSHA256([]byte("AWS4"+s.secretKey), dateStamp)
+	kRegion := hmacSHA256(kDate, s.region)
+	kService := hmacSHA256(kRegion, "s3")
+	return hmacSHA256(kService, "aws4_request")
+}
+
+var emptyStringSHA256 = hexSHA256(nil)
+
+func hexSHA256(data []byte) string {
+	h := sha256.Sum256(data)
+	return hex.EncodeToString(h[:])
+}
+
+func hmacSHA256(key []byte, data string) []byte {
+	h := hmac.New(sha256.New, key)
+	h.Write([]byte(data))
+	return h.Sum(nil)
+}
+
+func hexHMAC(key []byte, data string) string {
+	h := hmac.New(sha256.New, key)
+	h.Write([]byte(data))
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// Ensure S3BlobStore satisfies BlobStore at compile time.
+var _ BlobStore = (*S3BlobStore)(nil)
+
+// logS3Error logs an S3 error with sanitized output (Rule 10).
+func logS3Error(op string, hash string, err error) {
+	log.Printf("S3BlobStore %s %s: %v", op, common.SanitizeLog(hash), common.SanitizeLog(err.Error()))
+}
