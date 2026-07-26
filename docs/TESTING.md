@@ -172,6 +172,21 @@ Run as part of `make test` in the Go workflow.
 | `TestGossiper_SuspicionTimeout` | Peer marked suspect/offline after timeout |
 | `TestIntegration_ThreeNodeCluster` | 3-node cluster: all nodes discover each other |
 | `TestIntegration_NodeJoinAfterStart` | Node joins after cluster is running, discovered via gossip |
+| `TestGossiper_PingAck` | Direct ping/ack between 2 nodes |
+| `TestGossiper_IndirectPing` | Indirect ping via intermediary peer |
+| `TestAdaptiveTimeout_Update` | Adaptive timeout adjusts based on RTT |
+| `TestAdaptiveTimeout_Bounds` | Adaptive timeout stays within min/max bounds |
+| `TestRTTTracker_Update` | RTT EWMA tracking (alpha=0.25) |
+| `TestRTTTracker_EWMA` | RTT exponential weighted moving average |
+| `TestLeaseManager_AcquireRelease` | Lease acquire and release lifecycle |
+| `TestLeaseManager_NoPeers` | Lease acquisition fails with no peers |
+| `TestLeaseManager_Expiry` | Lease expires after timeout |
+| `TestLeaseManager_QuorumTimeout` | Lease fails when quorum not reached in time |
+| `TestScatterGather_Query` | Scatter-gather query across 3 nodes |
+| `TestScatterGather_LargeData` | Scatter-gather with large response data |
+| `TestQueryPayload_EncodeDecode` | Query payload binary roundtrip |
+| `TestQueryResponsePayload_EncodeDecode` | Query response payload binary roundtrip |
+| `TestLeasePayload_EncodeDecode` | Lease payload binary roundtrip |
 
 ### P2P Benchmarks
 

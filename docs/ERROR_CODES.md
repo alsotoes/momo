@@ -24,6 +24,13 @@ Below is a list of common `errno` values that might be encountered and their spe
 | `ENOSPC` | No space left on device | An attempt to write a file to a device has failed because the device is full. | A server in the cluster has run out of disk space. The replication for the current file will fail on that specific server. |
 | `EIO` | I/O error | A physical I/O error has occurred. | This indicates a problem with the underlying storage hardware on one of the servers, or a serious data integrity issue. |
 | `ENOENT` | No such file or directory | The specified file or directory does not exist. | In the Momo Object Store, this signifies that a requested human-readable name or content hash was not found in the local Bbolt metadata index. |
+| `E2BIG` | Argument list too long | The number of peers in a heartbeat exceeds the maximum. | P2P gossip truncates heartbeats to `MaxPeersInHeartbeat=256` peers. If a heartbeat exceeds this, the excess peers are dropped and `E2BIG` is logged. |
+| `EFBIG` | File too large | A P2P payload exceeds the maximum allowed size. | P2P RPC payloads are capped at `maxPayloadSize=1 MiB`. Payloads exceeding this limit are rejected with `EFBIG` to prevent memory exhaustion from malicious peers. |
+| `ECANCELED` | Operation canceled | An operation was canceled because the system is shutting down. | The P2P lease manager returns `ECANCELED` when a lease operation is attempted after `Stop()` has been called. |
+| `EHOSTUNREACH` | Host unreachable | The remote host is unreachable. | P2P gossip and lease operations return `EHOSTUNREACH` when an RPC send fails (peer is down or network partition). Used in `sendPing`, `sendIndirectPing`, lease acquisition, and scatter-gather queries. |
+| `ENAMETOOLONG` | File name too long | The virtual file path exceeds the maximum length. | Returned by the storage layer and TCP/QUIC transports when a file name or virtual path exceeds the protocol's fixed-size field boundaries. |
+| `EINVAL` | Invalid argument | An invalid argument was provided. | Returned by the config parser (e.g., empty `ReplicationOrder`), P2P payload decoder (invalid count), query handler (empty data), and CRUSH placement (invalid node count). |
+| `ENOBUFS` | No buffer space available | A bounded read limit was exceeded. | The S3 communicator returns `ENOBUFS` when an HTTP request body exceeds the bounded read limit (65536 bytes), preventing memory exhaustion from oversized requests. |
 
 ## Application-Specific Exit Codes
 

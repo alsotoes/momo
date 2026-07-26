@@ -15,7 +15,7 @@ WORKDIR /app
 
 # Copy binary and config
 COPY --from=build /out/momo /app/momo
-COPY src/conf /app/conf
+COPY conf/ /app/conf/
 
 # Utilities for healthchecks, debugging, and chaos testing
 RUN apk add --no-cache netcat-openbsd iproute2 iptables

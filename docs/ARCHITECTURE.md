@@ -4,7 +4,7 @@ This document provides a high-level overview of the Momo architecture, its compo
 
 ## System Overview
 
-Momo is a TCP-based file replication system that consists of a client and a cluster of servers. The client sends files to the servers, and the servers replicate the files to each other based on a configured replication strategy. The system is designed to be polymorphic, meaning it can change its replication strategy at runtime based on system metrics.
+Momo is a polymorphic file replication system that consists of a client and a cluster of servers. The client sends files to the servers, and the servers replicate the files to each other based on a configured replication strategy. The system supports multiple transport protocols (TCP, QUIC, and S3-compatible REST) and is designed to be polymorphic, meaning it can change its replication strategy at runtime based on system metrics.
 
 ### Components
 
@@ -34,6 +34,16 @@ Momo utilizes a **Shared-Nothing Partitioned Architecture** for its object stora
 - **Data Placement (CRUSH)**: We use a simplified Go implementation of the **CRUSH** (Controlled Replication Under Scalable Hashing) algorithm, originally designed by **Sage Weil** (the creator of Ceph). CRUSH allows us to calculate data locations deterministically, eliminating the need for a central metadata server or coordinator. Given a file hash and the cluster map, both the client and all nodes can calculate exactly which nodes should store the data.
 - **Metadata Management (Bbolt)**: High-speed, transactional metadata is stored in local Bbolt databases on each node. Metadata is partitioned across the cluster using the same algorithmic placement as the data itself.
 - **Automatic Deduplication**: By using content-addressing (SHA-256), Momo ensures that any specific piece of data is only stored once per node, regardless of the filenames associated with it.
+- **Garbage Collection & Tombstones**: The `src/storage/gc.go` module implements reference-counted garbage collection with tombstone retention. When an object's refcount drops to zero, a tombstone is written with a configurable retention period (`tombstone_retention`, default 86400s). Tombstones are propagated across the cluster via P2P delete messages. GC runs periodically (`gc_interval`, default 300s) and reaps expired tombstones. See [P2P.md](P2P.md) for details on delete propagation.
+
+### 4b. P2P Subsystem (Gossip & SWIM)
+Momo includes a fully decentralized P2P subsystem (`src/p2p/`) for cluster membership, failure detection, and coordinated operations. See [P2P.md](P2P.md) for the complete protocol specification.
+
+- **Gossip Membership**: Each node maintains a peer table and exchanges heartbeat messages containing peer state (ALIVE/SUSPECT/DEAD) via the gossip protocol. Heartbeats carry up to `MaxPeersInHeartbeat=256` peer entries per message.
+- **SWIM Failure Detection**: Direct ping/ack probes with indirect ping (asking K random peers to probe the target) and adaptive RTT-based timeouts. Suspect marking is based on target ack timeout, not helper contact success.
+- **Lease Consensus**: Lease-based consensus for coordinated operations. Leases require a quorum of `(peerCount+1)/2 + 1` peers and expire after a configurable timeout.
+- **Scatter-Gather Queries**: Decentralized query mechanism for list/get/has/delete operations across the cluster without a central coordinator.
+- **Transport**: P2P communication runs on a separate UDP port (default `4450`, configurable via `gossip_port`). The P2P transport supports both TCP and QUIC underlying connections.
 
 ### 5. Automated Governance & AI Reviewer
 To maintain high integrity in a single-contributor environment, Momo employs an automated governance layer:

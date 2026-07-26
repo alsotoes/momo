@@ -118,6 +118,9 @@ P2P is **disabled by default** and coexists with the existing `Communicator` int
 - `peer_map_test.go`: Add/Remove/Get, RandomPeers, concurrent access
 - `tcp_transport_test.go`: Listen/Dial/Send/Broadcast, connection lifecycle
 - `gossip_test.go`: Heartbeat exchange, suspicion transitions, membership discovery
+- `swim_test.go`: Ping/ack, indirect ping, adaptive RTT timeouts, RTT tracker EWMA, suspicion timeout
+- `lease_test.go`: Lease acquire/release, no-peers edge case, lease expiry, quorum timeout
+- `scatter_gather_test.go`: Scatter-gather query, large data handling, query payload encode/decode
 - `integration_test.go`: 3-node cluster convergence, dynamic node join
 - `benchmark_test.go`: RPC encode/decode, heartbeat encode/decode, peer map operations
 
@@ -193,7 +196,6 @@ indirect_ping_count = 3     # peers to ask for indirect ping
 ## Future Work
 
 - Compression for large heartbeat payloads
-- CAS garbage collection via decentralized refcounting
 
 ---
 
@@ -271,7 +273,6 @@ The `LeaseManager` provides time-bound, self-expiring leases for destructive ope
 ```ini
 [p2p]
 lease_timeout = 10  # seconds
-```
 ```
 
 ## CAS Garbage Collection

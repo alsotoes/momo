@@ -35,7 +35,7 @@ This document explains the architecture, configuration, wire protocol, replicati
   - `momo_tcp.go`: Legacy TCP implementation.
   - `momo_quic.go`: Modern QUIC implementation using `quic-go`.
   - `s3_communicator.go`: S3-compatible REST API mapping.
-  - `quic_net_conn.go`: Adapts `quic.Stream`+Dialer.DialContext`.
+  - `quic_net_conn.go`: Adapts `quic.Stream` + `Dialer.DialContext`.
 - `src/client/`: Client-side logic for cluster replication and file forwarding.
   - `client.go`: Main cluster connection and parallel file transmission logic.
 - `src/common/`: Agnostic, shared utilities.

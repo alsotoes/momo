@@ -7,7 +7,7 @@ Momo is developed with a focus on high-performance, security, and architectural 
 1.  **Spec First**: All significant changes must start with an **OpenSpec** proposal in `openspec/changes/`.
 2.  **Issue Linkage**: Every spec must be linked to a mirrored GitHub Issue to maintain traceability.
 3.  **Feature Branching**: Work is performed in dedicated branches named `feature/<issue-number>-<description>`.
-4.  **⚡ Bolt & 🛡️ Sentinel**: Code must adhere to the performance (Bolt) and security (Sentinel) patterns defined in the `.jules/` directory.
+4.  **⚡ Bolt & 🛡️ Sentinel**: Code must adhere to the performance (Bolt) and security (Sentinel) patterns defined in `openspec/config.yaml` (the single source of truth for all steering rules, per Rule 39). Cumulative learnings are recorded in `.jules/bolt.md` and `.jules/sentinel.md`.
 
 ## Automated Code Review & Merge
 

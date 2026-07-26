@@ -24,7 +24,7 @@ While Momo adopts the core philosophy of Sage Weil's CRUSH (rule-based, content-
 | **Topology & Hierarchy** | **Complex & Deep:** Datacenter $\rightarrow$ Row $\rightarrow$ Rack $\rightarrow$ Chassis $\rightarrow$ Host $\rightarrow$ OSD (Leaf). | **Flat & Compact:** Multi-region awareness mapped directly over flat virtual node rings. |
 | **Replication Selection** | Recursive tree/list/straw bucket backtracking on collision or failure. | Deterministic, single-pass flat hashing with linear fallback probing. |
 | **Mathematical Precision** | Weight-based float64 division and logarithmic scaling. | Pure bitwise integer arithmetic and linear congruent mapping. |
-| **CPU Speed** | Microsecond scale (bound by tree traversal and backtrack recursion). | **Sub-microsecond scale (<250 ns)** (bound by standard CPU register operations). |
+| **CPU Speed** | Microsecond scale (bound by tree traversal and backtrack recursion). | **Sub-microsecond scale (~360 ns)** (bound by standard CPU register operations). |
 | **Memory Allocation** | Heavy heap-allocated node tree traversals and array slices. | **Zero-Allocation (0 B/op, 0 allocs/op)** (operates purely on the CPU stack). |
 
 ---
@@ -66,7 +66,7 @@ Our optimized `CRUSH-lite` implementation completely avoids heap escapes by:
 ### Live Performance Metrics Comparison
 The micro-benchmarks prove the extreme performance advantages of our optimized design:
 
-*   **`BenchmarkCrushOriginal` (356.80 ns/op, 164 B/op, 3 allocs/op):** Uses standard reflection, float-math divisions, and heap-allocated arrays.
-*   **`BenchmarkCrushOptimized` (253.50 ns/op, 0 B/op, 0 allocs/op):** Uses our optimized bitwise shifts and stack-allocated arrays.
+*   **`BenchmarkCrushOriginal` (417.30 ns/op, 164 B/op, 3 allocs/op):** Uses standard reflection, float-math divisions, and heap-allocated arrays.
+*   **`BenchmarkCrushOptimized` (362.10 ns/op, 0 B/op, 0 allocs/op):** Uses our optimized bitwise shifts and stack-allocated arrays.
 
-By stripping out Ceph's heavy hierarchical backtrack recursion, Momo's `CRUSH-lite` executes **~30% faster** and produces **absolutely zero Garbage Collector pressure**, guaranteeing predictable sub-millisecond latencies during intensive S3 gateway streams.
+By stripping out Ceph's heavy hierarchical backtrack recursion, Momo's `CRUSH-lite` executes **~13% faster** and produces **absolutely zero Garbage Collector pressure**, guaranteeing predictable sub-millisecond latencies during intensive S3 gateway streams.

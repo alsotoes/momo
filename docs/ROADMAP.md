@@ -23,6 +23,7 @@ This document outlines the high-level roadmap for the Momo project, tracking maj
 | **P2P Transport** | [#153](https://github.com/alsotoes/momo/issues/153) | ✅ Merged | Decentralized gossip-based discovery, heartbeat liveness, and elastic membership. |
 | **Decentralized P2P Scale** | [#248](https://github.com/alsotoes/momo/issues/248) | ✅ Merged | Gossip node membership, parallel Scatter-Gather queries, and Lease consensus. |
 | **SWIM Failure Detection** | [#355](https://github.com/alsotoes/momo/issues/355) | ✅ Merged | SWIM-style ping/ack, indirect ping, RTT EWMA, and adaptive timeouts. |
+| **CAS Garbage Collection** | [#350](https://github.com/alsotoes/momo/pull/350) | ✅ Merged | Reference-counted GC with tombstone retention and P2P delete propagation via scatter-gather. |
 | **Comprehensive Testing** | [#155](https://github.com/alsotoes/momo/issues/155) | ✅ Merged | k6 load/stress/chaos tests, chaos engineering scripts, Prometheus/Grafana monitoring, K8s scalability, TCP contract tests, context.WithTimeout refactoring. |
 | **Prometheus Metrics Exporter** | [#364](https://github.com/alsotoes/momo/issues/364) | ✅ Merged | Built-in Prometheus `/metrics` endpoint with `sync/atomic` counters, `MetricsHook` interface for transport-layer instrumentation, zero-overhead on hot path. |
 | **Scanner-Safe Secrets (Rule 29)** | [#216](https://github.com/alsotoes/momo/issues/216) | ✅ Merged | `notsecret` annotation enforcement on all dummy tokens via pre-commit hook and CI check. |
@@ -41,4 +42,4 @@ This document outlines the high-level roadmap for the Momo project, tracking maj
 - **Client SDKs**: Native SDKs for Python and Rust.
 
 ---
-*Last Updated: 2026-07-24*
+*Last Updated: 2026-07-26*

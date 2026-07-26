@@ -17,8 +17,8 @@ The configuration file uses a standard INI-style format. The parser is flexible 
 This section contains cluster-wide settings that affect all daemons.
 
 -   **`auth_token`**
-    -   **Description:** A shared secret token used for authentication between clients and servers. All nodes in the cluster must share the same token. For S3-compatible protocols, this token is used as the AWS access key ID.
-    -   **Type:** String (exactly 64 bytes when padded)
+    -   **Description:** A shared secret token used for authentication between clients and servers. All nodes in the cluster must share the same token. For S3-compatible protocols, this token is used as the AWS access key ID. Tokens longer than 64 bytes are rejected with `EINVAL` at startup.
+    -   **Type:** String (exactly 64 bytes when null-padded; max 64 bytes)
     -   **Default:** None (required)
     -   **Example:** `a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6`
 
@@ -59,9 +59,9 @@ This section contains cluster-wide settings that affect all daemons.
         -   `s3-quic`: AWS S3-compatible REST API mapping over secure QUIC streams.
     -   **Default:** `momo-tcp` (if omitted, falls back to `momo-tcp` with a warning log)
 
-### [metrics]
+### [metrics] (required)
 
-This section controls the behavior of the decentralized polymorphic system and the Prometheus metrics exporter. The polymorphic system is only active if `polymorphic_system = true` in the `[global]` section. The Prometheus exporter is independent of the polymorphic system and can be used on its own.
+This section controls the behavior of the decentralized polymorphic system and the Prometheus metrics exporter. **This section is mandatory** — the application will return an error if it is missing. The polymorphic system is only active if `polymorphic_system = true` in the `[global]` section. The Prometheus exporter is independent of the polymorphic system and can be used on its own.
 
 -   **`interval`**
     -   **Description:** The interval in seconds at which each daemon samples its local CPU and memory metrics.

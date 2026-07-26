@@ -289,3 +289,42 @@ When P2P is enabled, nodes exchange gossip membership and failure detection RPCs
 - **PingID**: Unique identifier for matching acks to pings
 - **TargetID**: The peer being pinged (for indirect pings, the ultimate target)
 - **Timestamp**: Send time for RTT calculation
+
+### Heartbeat Payload (MsgHeartbeat)
+
+```
+[4 bytes: peer count] [for each peer: [4 bytes: peer ID] [2 bytes: addr len] [N bytes: addr]]
+```
+
+- **Peer count**: Number of peers in the heartbeat (max `MaxPeersInHeartbeat=256`)
+- **Per peer**: Peer ID (int32) + address string length + address bytes
+
+### Query Payload (MsgQuery)
+
+```
+[1 byte: query type] [8 bytes: request ID] [N bytes: data]
+```
+
+- **QueryType**: `QueryList=1`, `QueryGet=2`, `QueryHas=3`, `QueryDelete=4`
+- **RequestID**: Unique ID for matching responses to requests
+- **Data**: Query-specific data (e.g., file name for QueryGet)
+
+### Query Response Payload (MsgQueryResponse)
+
+```
+[8 bytes: request ID] [4 bytes: data len] [N bytes: data] [2 bytes: err len] [M bytes: err]
+```
+
+- **RequestID**: Matches the originating query
+- **Data**: Response data (e.g., file list for QueryList)
+- **Error**: Error string (empty if successful)
+
+### Lease Payload (MsgLeaseRequest / MsgLeaseGrant / MsgLeaseRelease)
+
+```
+[8 bytes: lease ID] [4 bytes: key len] [N bytes: key] [8 bytes: expiry unixnano]
+```
+
+- **LeaseID**: Unique lease identifier
+- **Key**: Resource key being leased
+- **Expiry**: Lease expiration timestamp (unix nano)
