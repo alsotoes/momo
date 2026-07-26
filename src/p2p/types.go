@@ -33,6 +33,7 @@ type Peer struct {
 	lastSeen atomic.Int64
 	conn     net.Conn
 	mu       sync.Mutex
+	writeMu  sync.Mutex
 }
 
 // NewPeer creates a new Peer with the given ID and address.

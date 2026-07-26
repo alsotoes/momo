@@ -229,8 +229,11 @@ func (t *TCPTransport) Broadcast(rpc *RPC) int {
 		if conn == nil {
 			continue
 		}
+		p.writeMu.Lock()
 		conn.SetWriteDeadline(time.Now().Add(p2pWriteTimeout))
-		if _, err := conn.Write(encoded); err != nil {
+		_, err := conn.Write(encoded)
+		p.writeMu.Unlock()
+		if err != nil {
 			log.Printf("P2P broadcast to peer %d failed: %v (errno=%d)", p.ID, err, syscall.EPIPE)
 			continue
 		}
@@ -250,8 +253,11 @@ func (t *TCPTransport) Send(peerID int32, rpc *RPC) error {
 		return fmt.Errorf("peer %d has no connection: %w", peerID, syscall.ENOTCONN)
 	}
 	encoded := rpc.Encode()
+	peer.writeMu.Lock()
 	conn.SetWriteDeadline(time.Now().Add(p2pWriteTimeout))
-	if _, err := conn.Write(encoded); err != nil {
+	_, err := conn.Write(encoded)
+	peer.writeMu.Unlock()
+	if err != nil {
 		return fmt.Errorf("send to peer %d failed: %v: %w", peerID, err, syscall.EPIPE)
 	}
 	return nil
