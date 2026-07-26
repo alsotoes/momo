@@ -164,3 +164,8 @@
 ## 2026-07-22 - Eliminate binary.Write Reflection Overhead
 **Learning:** In Go, using `binary.Write` with generic types (like `int32`) involves runtime reflection to inspect the type of the argument and dynamically allocate memory to write it. This creates unnecessary CPU overhead and heap escapes in performance-critical paths.
 **Action:** Replace `binary.Write` with direct serialization using `binary.LittleEndian` or `binary.BigEndian` methods (e.g., `PutUint32`) into a pre-allocated stack byte array. This eliminates reflection and dynamic allocations entirely.
+## 2026-07-25 - TrimNullBytesString string allocation overhead elimination
+
+**Learning:** When trimming null bytes from a byte slice and converting the result to a string (e.g., extracting fixed-size network fields), using standard `string()` casting triggers a heap allocation.
+
+**Action:** Using `unsafe.String(unsafe.SliceData(b), length)` bypasses this allocation. Since the application was already doing this with `TrimNullBytesString` in `common/string.go`, replacing scattered local string-casting implementations of `bytesTrimNull` with `common.TrimNullBytesString` successfully removes unnecessary heap allocations on the hot path for metadata parsing in TCP/QUIC communicators. Always check for an existing zero-allocation equivalent in common utilities before implementing a local slice-to-string cast.
