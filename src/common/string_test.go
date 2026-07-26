@@ -26,6 +26,28 @@ func TestSanitizeLog(t *testing.T) {
 	}
 }
 
+func TestTrimNullBytesFromString(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"With null bytes", "hello\x00\x00\x00", "hello"},
+		{"Without null bytes", "world", "world"},
+		{"Empty string", "", ""},
+		{"Only null bytes", "\x00\x00\x00", ""},
+		{"Null byte in middle", "hello\x00world", "hello"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := TrimNullBytesFromString(tt.input); got != tt.expected {
+				t.Errorf("TrimNullBytesFromString(%q) = %q, want %q", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestHasPathTraversalChars(t *testing.T) {
 	tests := []struct {
 		name     string

@@ -545,7 +545,7 @@ func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (status int, er
 		b = append(b, norm...)
 		b = append(b, '/')
 	}
-	b = append(b, strings.TrimRight(meta.Name, "\x00")...)
+	b = append(b, common.TrimNullBytesFromString(meta.Name)...)
 	b = append(b, " HTTP/1.1\r\nHost: "...)
 	b = append(b, host...)
 	b = append(b, "\r\nAuthorization: Bearer "...)
@@ -553,7 +553,7 @@ func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (status int, er
 	b = append(b, "\r\nX-Momo-Timestamp: "...)
 	b = strconv.AppendInt(b, m.clientTimestamp, 10)
 	b = append(b, "\r\nX-Amz-Content-Sha256: "...)
-	b = append(b, strings.TrimRight(meta.Hash, "\x00")...)
+	b = append(b, common.TrimNullBytesFromString(meta.Hash)...)
 	b = append(b, "\r\nContent-Length: "...)
 	b = strconv.AppendInt(b, meta.Size, 10)
 	b = append(b, "\r\n\r\n"...)
