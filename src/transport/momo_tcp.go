@@ -397,12 +397,14 @@ func (m *MomoTCPCommunicator) ReceiveMetadata() (meta common.FileMetadata, err e
 		return metadata, fmt.Errorf("metadata buffer too small: %w", syscall.EBADMSG)
 	}
 
-	metadata.Hash = common.SanitizeLog(string(bytesTrimNull(buffer[:hashLength])))
+	// ⚡ Bolt: Use common.TrimNullBytesString to eliminate string allocation overhead
+	metadata.Hash = common.SanitizeLog(common.TrimNullBytesString(buffer[:hashLength]))
 	// 🛡️ Sentinel: Sanitize hash immediately to prevent path traversal in all downstream consumers.
 	if metadata.Hash == "" || common.HasPathTraversalChars(metadata.Hash) {
 		return common.FileMetadata{}, fmt.Errorf("invalid hash: %s: %w", metadata.Hash, syscall.EBADMSG)
 	}
-	metadata.Name = string(bytesTrimNull(buffer[hashLength : hashLength+common.FileInfoLength]))
+	// ⚡ Bolt: Use common.TrimNullBytesString to eliminate string allocation overhead
+	metadata.Name = common.TrimNullBytesString(buffer[hashLength : hashLength+common.FileInfoLength])
 
 	size, err := common.SafeParseInt(buffer[hashLength+common.FileInfoLength:])
 	if err != nil {
@@ -426,14 +428,6 @@ func (m *MomoTCPCommunicator) SendMetadataStatus(status int) (err error) {
 		return fmt.Errorf("failed to send metadata status: %v: %w", err, syscall.EIO)
 	}
 	return nil
-}
-
-// bytesTrimNull is a helper to trim null bytes from a byte slice.
-func bytesTrimNull(b []byte) []byte {
-	if i := bytes.IndexByte(b, 0); i != -1 {
-		return b[:i]
-	}
-	return b
 }
 
 func (m *MomoTCPCommunicator) SendACK(serverId int) (err error) {
