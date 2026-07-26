@@ -217,7 +217,14 @@ func (t *TCPTransport) Consume() <-chan RPC {
 }
 
 // Broadcast sends an RPC to all active peers. Returns the number of peers contacted.
-func (t *TCPTransport) Broadcast(rpc *RPC) int {
+func (t *TCPTransport) Broadcast(rpc *RPC) (result int) {
+	defer func() {
+		if r := recover(); r != nil {
+			err := fmt.Errorf("panic in Broadcast: %v: %w", r, syscall.EIO)
+			log.Printf("CRITICAL: %v", err)
+		}
+	}()
+
 	peers := t.peerMap.All()
 	encoded := rpc.Encode()
 	sent := 0
@@ -229,21 +236,29 @@ func (t *TCPTransport) Broadcast(rpc *RPC) int {
 		if conn == nil {
 			continue
 		}
-		p.writeMu.Lock()
-		conn.SetWriteDeadline(time.Now().Add(p2pWriteTimeout))
-		_, err := conn.Write(encoded)
-		p.writeMu.Unlock()
-		if err != nil {
-			log.Printf("P2P broadcast to peer %d failed: %v (errno=%d)", p.ID, err, syscall.EPIPE)
-			continue
-		}
-		sent++
+		func() {
+			p.writeMu.Lock()
+			defer p.writeMu.Unlock()
+			conn.SetWriteDeadline(time.Now().Add(p2pWriteTimeout))
+			if _, err := conn.Write(encoded); err != nil {
+				log.Printf("P2P broadcast to peer %d failed: %v (errno=%d)", p.ID, err, syscall.EPIPE)
+				return
+			}
+			sent++
+		}()
 	}
 	return sent
 }
 
 // Send sends an RPC to a specific peer by ID.
-func (t *TCPTransport) Send(peerID int32, rpc *RPC) error {
+func (t *TCPTransport) Send(peerID int32, rpc *RPC) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in Send to peer %d: %v: %w", peerID, r, syscall.EIO)
+			log.Printf("CRITICAL: %v", err)
+		}
+	}()
+
 	peer := t.peerMap.Get(peerID)
 	if peer == nil {
 		return fmt.Errorf("peer %d not found: %w", peerID, syscall.ENOENT)
@@ -254,10 +269,9 @@ func (t *TCPTransport) Send(peerID int32, rpc *RPC) error {
 	}
 	encoded := rpc.Encode()
 	peer.writeMu.Lock()
+	defer peer.writeMu.Unlock()
 	conn.SetWriteDeadline(time.Now().Add(p2pWriteTimeout))
-	_, err := conn.Write(encoded)
-	peer.writeMu.Unlock()
-	if err != nil {
+	if _, err := conn.Write(encoded); err != nil {
 		return fmt.Errorf("send to peer %d failed: %v: %w", peerID, err, syscall.EPIPE)
 	}
 	return nil
