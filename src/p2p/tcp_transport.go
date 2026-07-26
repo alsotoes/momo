@@ -124,6 +124,10 @@ func (t *TCPTransport) handleConn(conn net.Conn) {
 
 		if peer == nil {
 			peerID = rpc.From
+			if t.cfg.AuthFunc != nil && !t.cfg.AuthFunc(peerID) {
+				log.Printf("P2P rejected unauthenticated peer %d from %s (errno=%d)", peerID, conn.RemoteAddr(), syscall.EACCES)
+				return
+			}
 			peer = NewPeer(peerID, conn.RemoteAddr().String())
 			peer.SetConn(conn)
 			t.peerMap.Add(peer)
