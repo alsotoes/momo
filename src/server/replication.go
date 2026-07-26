@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/alsotoes/momo/src/common"
@@ -175,22 +176,20 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 
 			// If this is the primary server, propagate the change to the other servers
 			if 0 == serverId {
-				go func() {
-					defer func() {
-						if r := recover(); r != nil {
-							log.Printf("CRITICAL: Panic recovered in propagation to node 1: %v", r)
-						}
-					}()
-					ChangeReplicationModeClient(factory, newReplicationJson, 1)
-				}()
-				go func() {
-					defer func() {
-						if r := recover(); r != nil {
-							log.Printf("CRITICAL: Panic recovered in propagation to node 2: %v", r)
-						}
-					}()
-					ChangeReplicationModeClient(factory, newReplicationJson, 2)
-				}()
+				daemons := factory.GetDaemons()
+				for i := range daemons {
+					if i == serverId {
+						continue
+					}
+					go func(id int) {
+						defer func() {
+							if r := recover(); r != nil {
+								log.Printf("CRITICAL: Panic recovered in propagation to node %d: %v (errno=%d)", id, r, syscall.EIO)
+							}
+						}()
+						ChangeReplicationModeClient(factory, newReplicationJson, id)
+					}(i)
+				}
 			}
 		}()
 	}
