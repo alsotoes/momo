@@ -66,13 +66,13 @@ func TestNewStore_NFS(t *testing.T) {
 	defer store.Close()
 }
 
-func TestNewStore_S3NotYetImplemented(t *testing.T) {
+func TestNewStore_S3MissingConfig(t *testing.T) {
 	cfg := common.ConfigurationStorage{Backend: "s3"}
 	daemon := &common.Daemon{Data: "/tmp"}
 
 	_, err := NewStore(cfg, daemon)
 	if err == nil {
-		t.Fatalf("Expected error for s3 backend (not yet implemented)")
+		t.Fatalf("Expected error for s3 backend with missing config")
 	}
 }
 
