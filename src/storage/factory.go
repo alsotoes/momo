@@ -27,7 +27,7 @@ func NewStore(cfg common.ConfigurationStorage, daemon *common.Daemon) (Store, er
 	case "s3":
 		blobs, err = NewS3BlobStore(cfg)
 	case "raw":
-		return nil, fmt.Errorf("storage backend %q is not yet implemented: %w", cfg.Backend, syscall.ENOSYS)
+		blobs, err = NewRawBlobStore(cfg, daemon)
 	default:
 		return nil, fmt.Errorf("unsupported storage backend %q: %w", cfg.Backend, syscall.EINVAL)
 	}

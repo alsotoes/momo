@@ -1,0 +1,199 @@
+package storage
+
+import (
+	"bytes"
+	"encoding/binary"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sync"
+	"syscall"
+
+	"github.com/alsotoes/momo/src/common"
+	"go.etcd.io/bbolt"
+)
+
+var bucketRawAlloc = []byte("raw_alloc")
+
+// RawBlobStore implements BlobStore using direct I/O on a raw block device.
+// A bump allocator assigns each blob a contiguous region. The allocation
+// table (hash → offset+length) is stored in a local bbolt DB.
+// Deleted blob space is not reclaimed (fragmentation); a compaction
+// pass can be added in a future enhancement.
+type RawBlobStore struct {
+	device     *os.File
+	allocDB    *bbolt.DB
+	mu         sync.Mutex
+	nextOffset int64
+}
+
+// NewRawBlobStore creates a new RawBlobStore. The device path is taken
+// from cfg.RawDevicePath, falling back to daemon.Drive. The allocation
+// table DB is stored in daemon.Data/raw_alloc.db.
+func NewRawBlobStore(cfg common.ConfigurationStorage, daemon *common.Daemon) (*RawBlobStore, error) {
+	devicePath := cfg.RawDevicePath
+	if devicePath == "" {
+		devicePath = daemon.Drive
+	}
+	if devicePath == "" {
+		return nil, fmt.Errorf("raw device path is required (set raw_device_path or daemon.drive): %w", syscall.EINVAL)
+	}
+
+	device, err := os.OpenFile(devicePath, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("raw: failed to open device %s: %w", devicePath, syscall.EIO)
+	}
+
+	if err := os.MkdirAll(daemon.Data, 0755); err != nil {
+		device.Close()
+		return nil, fmt.Errorf("raw: failed to create data dir: %w", syscall.EIO)
+	}
+
+	allocPath := filepath.Join(daemon.Data, "raw_alloc.db")
+	allocDB, err := bbolt.Open(allocPath, 0600, nil)
+	if err != nil {
+		device.Close()
+		return nil, fmt.Errorf("raw: failed to open allocation DB: %w", syscall.EIO)
+	}
+
+	var nextOffset int64
+	err = allocDB.Update(func(tx *bbolt.Tx) error {
+		b, err := tx.CreateBucketIfNotExists(bucketRawAlloc)
+		if err != nil {
+			return err
+		}
+		c := b.Cursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			if len(v) == 16 {
+				offset := int64(binary.BigEndian.Uint64(v[0:8]))
+				length := int64(binary.BigEndian.Uint64(v[8:16]))
+				end := offset + length
+				if end > nextOffset {
+					nextOffset = end
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		allocDB.Close()
+		device.Close()
+		return nil, fmt.Errorf("raw: failed to init allocation table: %w", err)
+	}
+
+	return &RawBlobStore{
+		device:     device,
+		allocDB:    allocDB,
+		nextOffset: nextOffset,
+	}, nil
+}
+
+func (r *RawBlobStore) Close() error {
+	r.allocDB.Close()
+	return r.device.Close()
+}
+
+// PutBlob writes a blob to the raw device at the next available offset.
+// If the hash already exists in the allocation table, it is a no-op.
+func (r *RawBlobStore) PutBlob(hash string, content io.Reader) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var exists bool
+	r.allocDB.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket(bucketRawAlloc)
+		if b != nil {
+			exists = b.Get([]byte(hash)) != nil
+		}
+		return nil
+	})
+	if exists {
+		return nil
+	}
+
+	data, err := io.ReadAll(content)
+	if err != nil {
+		return fmt.Errorf("raw: failed to read content: %w", syscall.EIO)
+	}
+
+	offset := r.nextOffset
+	n, err := r.device.WriteAt(data, offset)
+	if err != nil {
+		return fmt.Errorf("raw: failed to write to device: %w", syscall.EIO)
+	}
+	if int64(n) != int64(len(data)) {
+		return fmt.Errorf("raw: short write: %w", syscall.EIO)
+	}
+
+	var alloc [16]byte
+	binary.BigEndian.PutUint64(alloc[0:8], uint64(offset))
+	binary.BigEndian.PutUint64(alloc[8:16], uint64(len(data)))
+	err = r.allocDB.Update(func(tx *bbolt.Tx) error {
+		return tx.Bucket(bucketRawAlloc).Put([]byte(hash), alloc[:])
+	})
+	if err != nil {
+		return fmt.Errorf("raw: failed to record allocation: %w", syscall.EIO)
+	}
+
+	r.nextOffset = offset + int64(len(data))
+	return nil
+}
+
+// GetBlob reads a blob from the raw device by its content hash.
+func (r *RawBlobStore) GetBlob(hash string) (io.ReadCloser, error) {
+	var offset, length int64
+	var found bool
+	err := r.allocDB.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket(bucketRawAlloc)
+		if b == nil {
+			return nil
+		}
+		v := b.Get([]byte(hash))
+		if v != nil && len(v) == 16 {
+			offset = int64(binary.BigEndian.Uint64(v[0:8]))
+			length = int64(binary.BigEndian.Uint64(v[8:16]))
+			found = true
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, syscall.ENOENT
+	}
+
+	data := make([]byte, length)
+	n, err := r.device.ReadAt(data, offset)
+	if err != nil && err != io.EOF {
+		return nil, fmt.Errorf("raw: failed to read from device: %w", syscall.EIO)
+	}
+	if int64(n) != length {
+		return nil, fmt.Errorf("raw: short read: %w", syscall.EIO)
+	}
+
+	return io.NopCloser(bytes.NewReader(data)), nil
+}
+
+// DeleteBlob removes a blob's allocation entry. The device space is not
+// reclaimed (bump allocator; compaction is a future enhancement).
+// Missing blobs are silently ignored.
+func (r *RawBlobStore) DeleteBlob(hash string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	err := r.allocDB.Update(func(tx *bbolt.Tx) error {
+		b := tx.Bucket(bucketRawAlloc)
+		if b == nil {
+			return nil
+		}
+		return b.Delete([]byte(hash))
+	})
+	if err != nil {
+		return fmt.Errorf("raw: failed to delete allocation: %w", syscall.EIO)
+	}
+	return nil
+}
+
+var _ BlobStore = (*RawBlobStore)(nil)

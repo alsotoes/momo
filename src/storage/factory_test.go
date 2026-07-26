@@ -76,13 +76,13 @@ func TestNewStore_S3MissingConfig(t *testing.T) {
 	}
 }
 
-func TestNewStore_RawNotYetImplemented(t *testing.T) {
+func TestNewStore_RawMissingConfig(t *testing.T) {
 	cfg := common.ConfigurationStorage{Backend: "raw"}
 	daemon := &common.Daemon{Data: "/tmp"}
 
 	_, err := NewStore(cfg, daemon)
 	if err == nil {
-		t.Fatalf("Expected error for raw backend (not yet implemented)")
+		t.Fatalf("Expected error for raw backend with missing device path")
 	}
 }
 
