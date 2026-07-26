@@ -100,7 +100,8 @@ func (t *TCPTransport) handleConn(conn net.Conn) {
 	defer conn.Close()
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("P2P handleConn panic recovered: %v (errno=%d)", r, syscall.EIO)
+			err := fmt.Errorf("panic in handleConn: %v: %w", r, syscall.EIO)
+			log.Printf("CRITICAL: %v", err)
 		}
 	}()
 
@@ -124,6 +125,10 @@ func (t *TCPTransport) handleConn(conn net.Conn) {
 
 		if peer == nil {
 			peerID = rpc.From
+			if peerID < 0 {
+				log.Printf("P2P rejected invalid peer ID %d from %s (errno=%d)", peerID, conn.RemoteAddr(), syscall.EBADMSG)
+				return
+			}
 			if t.cfg.AuthFunc != nil && !t.cfg.AuthFunc(peerID) {
 				log.Printf("P2P rejected unauthenticated peer %d from %s (errno=%d)", peerID, conn.RemoteAddr(), syscall.EACCES)
 				return
