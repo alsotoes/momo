@@ -116,6 +116,7 @@ func getFile(comm transport.Communicator, store storage.Store, fileName string, 
 	hash := string(hexBuf[:])
 
 	if hash != expectedHash {
+		store.Delete(fileName)
 		err = fmt.Errorf("file hash mismatch: expected %s, got %s: %w", expectedHash, hash, syscall.EBADMSG)
 		return err
 	}
