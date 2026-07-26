@@ -184,7 +184,8 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 					go func(id int) {
 						defer func() {
 							if r := recover(); r != nil {
-								log.Printf("CRITICAL: Panic recovered in propagation to node %d: %v (errno=%d)", id, r, syscall.EIO)
+								err := fmt.Errorf("panic in propagation to node %d: %v: %w", id, r, syscall.EIO)
+								log.Printf("CRITICAL: %v", err)
 							}
 						}()
 						ChangeReplicationModeClient(factory, newReplicationJson, id)
