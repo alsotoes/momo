@@ -230,6 +230,12 @@ func (g *Gossiper) pingLoop() {
 // sendPing sends a direct ping to one random alive peer and waits for an ack.
 // On timeout, it initiates an indirect ping through K other peers.
 func (g *Gossiper) sendPing() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("Gossip sendPing panic recovered: %v", r)
+		}
+	}()
+
 	peers := g.transport.Peers().RandomPeers(1, g.cfg.LocalID)
 	if len(peers) == 0 {
 		return
