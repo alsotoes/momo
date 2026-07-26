@@ -244,12 +244,11 @@ func TestS3Communicator_EdgeCases(t *testing.T) {
 }
 
 type mockStore struct {
-	putFunc     func(name string, hash string, size int64, remotePath string, content io.Reader) error
-	getFunc     func(name string) (io.ReadCloser, common.FileMetadata, error)
-	hasFunc     func(hash string) (bool, error)
-	deleteFunc  func(name string) error
-	listFunc    func() ([]common.FileMetadata, error)
-	getBlobPath func(name string) (string, error)
+	putFunc    func(name string, hash string, size int64, remotePath string, content io.Reader) error
+	getFunc    func(name string) (io.ReadCloser, common.FileMetadata, error)
+	hasFunc    func(hash string) (bool, error)
+	deleteFunc func(name string) error
+	listFunc   func() ([]common.FileMetadata, error)
 }
 
 func (m *mockStore) Close() error { return nil }
@@ -282,12 +281,6 @@ func (m *mockStore) List() ([]common.FileMetadata, error) {
 		return m.listFunc()
 	}
 	return nil, nil
-}
-func (m *mockStore) GetBlobPath(name string) (string, error) {
-	if m.getBlobPath != nil {
-		return m.getBlobPath(name)
-	}
-	return "", nil
 }
 
 func runS3TestRequest(t *testing.T, reqStr string, mock storage.Store) string {

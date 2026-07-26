@@ -1170,3 +1170,10 @@ dd98dab,BenchmarkIndexDirectTracking-8,0.35,0.00,0.00
 dd98dab,BenchmarkIndexSearch-8,2.89,0.00,0.00
 dd98dab,BenchmarkLoadGlobalConfig-8,716.90,160.00,1.00
 dd98dab,BenchmarkPadString-8,2.23,0.00,0.00
+304c31e,BenchmarkCheckMetricsAndSwap-8,7.10,0.00,0.00
+304c31e,BenchmarkCrushOptimized-8,285.50,0.00,0.00
+304c31e,BenchmarkCrushOriginal-8,401.70,164.00,3.00
+304c31e,BenchmarkIndexDirectTracking-8,0.32,0.00,0.00
+304c31e,BenchmarkIndexSearch-8,3.06,0.00,0.00
+304c31e,BenchmarkLoadGlobalConfig-8,702.40,160.00,1.00
+304c31e,BenchmarkPadString-8,2.21,0.00,0.00

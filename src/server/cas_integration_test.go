@@ -189,10 +189,12 @@ func TestCAS_MultiNode_Integration(t *testing.T) {
 		exists, _ := stores[i].Has(file1Hash)
 		if exists {
 			foundInObjects = true
-			// Check if the physical file exists
-			path, _ := stores[i].GetBlobPath("file1.txt")
-			if _, err := os.Stat(path); err != nil {
-				t.Errorf("Physical blob missing on node %d at %s", i, path)
+			// Check if the blob is readable
+			reader, _, err := stores[i].Get("file1.txt")
+			if err != nil {
+				t.Errorf("Blob not readable on node %d: %v", i, err)
+			} else {
+				reader.Close()
 			}
 
 			// Verify duplicate.txt also maps here

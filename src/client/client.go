@@ -175,3 +175,89 @@ func sendFile(wg *sync.WaitGroup, comm transport.Communicator, filePath string, 
 
 	log.Printf("File %s sent successfully.", common.SanitizeLog(meta.Name))
 }
+
+// ConnectStream establishes a connection with a daemon and sends file content
+// from an io.Reader with pre-computed metadata. This is used by the server
+// for replication forwarding when the blob may not be on the local filesystem
+// (e.g., S3 or raw device backends).
+func ConnectStream(wg *sync.WaitGroup, cfg common.Configuration, content io.Reader, name string, hash string, size int64, remotePath string, serverId int, timestamp int64, requestedMode int, replicationFactor int) {
+	defer wg.Done()
+	daemons := cfg.Daemons
+	if serverId < 0 || serverId >= len(daemons) {
+		log.Printf("Server ID %d is out of range", serverId)
+		return
+	}
+	authToken := cfg.Global.AuthToken
+	factory := transport.NewProtocolFactory(cfg)
+
+	comm, err := factory.Dial(daemons[serverId].Host)
+	if err != nil {
+		log.Printf("Failed to connect to daemon %s: %v", daemons[serverId].Host, common.SanitizeLog(err.Error()))
+		return
+	}
+	defer comm.Close()
+
+	_, err = comm.HandshakeClient(authToken, timestamp, requestedMode)
+	if err != nil {
+		log.Printf("Handshake failed with %s: %v", daemons[serverId].Host, common.SanitizeLog(err.Error()))
+		return
+	}
+
+	meta := &common.FileMetadata{
+		Name:       name,
+		Hash:       hash,
+		Size:       size,
+		RemotePath: remotePath,
+	}
+
+	wireName := meta.Name
+	if meta.RemotePath != "" {
+		normalized, err := common.NormalizeVirtualPath(meta.RemotePath)
+		if err != nil {
+			log.Printf("Failed to upload %s: invalid remote path %q: %v", common.SanitizeLog(name), common.SanitizeLog(meta.RemotePath), err)
+			return
+		}
+		wireName = normalized + "/" + meta.Name
+	}
+	if len(wireName) > common.FileInfoLength {
+		log.Printf("Failed to upload %s: remote path and filename exceed limit of %d characters", common.SanitizeLog(name), common.FileInfoLength)
+		return
+	}
+
+	log.Printf("=> Hash:    %s", common.SanitizeLog(meta.Hash))
+	log.Printf("=> Name:    %s", common.SanitizeLog(meta.Name))
+	log.Printf("=> Size:    %d", meta.Size)
+
+	sendFileStream(comm, content, meta)
+}
+
+// sendFileStream sends file content from an io.Reader over a network connection.
+func sendFileStream(comm transport.Communicator, content io.Reader, meta *common.FileMetadata) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in sendFileStream for %s: %v", common.SanitizeLog(meta.Name), r)
+		}
+	}()
+
+	status, err := comm.SendMetadata(meta)
+	if err != nil {
+		log.Printf("Failed to send metadata for %s: %v", common.SanitizeLog(meta.Name), common.SanitizeLog(err.Error()))
+		return
+	}
+
+	if status == transport.MetadataStatusSkipPayload {
+		log.Printf("Server already has content for %s, skipping upload.", common.SanitizeLog(meta.Name))
+	} else {
+		if _, err := io.Copy(comm, content); err != nil {
+			log.Printf("Error sending file %s: %v", common.SanitizeLog(meta.Name), common.SanitizeLog(err.Error()))
+			return
+		}
+	}
+
+	if err := comm.ReceiveACK(); err != nil {
+		log.Printf("Failed to read ACK from server: %v", common.SanitizeLog(err.Error()))
+		return
+	}
+
+	log.Printf("File %s sent successfully.", common.SanitizeLog(meta.Name))
+}

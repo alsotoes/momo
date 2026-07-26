@@ -63,7 +63,6 @@ type Store interface {
 	Get(name string) (io.ReadCloser, common.FileMetadata, error)
 	Has(hash string) (bool, error)
 	Delete(name string) error
-	GetBlobPath(name string) (string, error)
 	List() ([]common.FileMetadata, error)
 }
 
