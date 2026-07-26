@@ -525,6 +525,17 @@ func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (status int, er
 		return 0, fmt.Errorf("invalid characters in path: %w", syscall.EBADMSG)
 	}
 
+	// 🛡️ Sentinel: Validate hash, auth token, and host for CRLF to prevent HTTP header injection.
+	if strings.ContainsAny(meta.Hash, "\r\n") {
+		return 0, fmt.Errorf("invalid characters in hash: %w", syscall.EBADMSG)
+	}
+	if strings.ContainsAny(m.clientAuthToken, "\r\n") {
+		return 0, fmt.Errorf("invalid characters in auth token: %w", syscall.EBADMSG)
+	}
+	if strings.ContainsAny(host, "\r\n") {
+		return 0, fmt.Errorf("invalid characters in host: %w", syscall.EBADMSG)
+	}
+
 	// ⚡ Bolt: Eliminate fmt.Sprintf and string allocations using stack-allocated buffer
 	var buf [512]byte
 	b := buf[:0]
