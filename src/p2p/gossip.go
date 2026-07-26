@@ -230,12 +230,22 @@ func (g *Gossiper) pingLoop() {
 // sendPing sends a direct ping to one random alive peer and waits for an ack.
 // On timeout, it initiates an indirect ping through K other peers.
 func (g *Gossiper) sendPing() {
+	var pingID uint64
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("Gossip sendPing panic recovered: %v (errno=%d)", r, syscall.EIO)
+			if pingID != 0 {
+				g.removePendingPing(pingID)
+			}
+		}
+	}()
+
 	peers := g.transport.Peers().RandomPeers(1, g.cfg.LocalID)
 	if len(peers) == 0 {
 		return
 	}
 	target := peers[0]
-	pingID := atomic.AddUint64(&g.nextPingID, 1)
+	pingID = atomic.AddUint64(&g.nextPingID, 1)
 	now := time.Now().UnixNano()
 
 	payload := &PingPayload{
@@ -271,8 +281,17 @@ func (g *Gossiper) sendPing() {
 		g.rtt.Update(target.ID, rtt)
 		g.removePendingPing(pingID)
 	case <-time.After(g.cfg.PingTimeout):
-		g.removePendingPing(pingID)
 		g.sendIndirectPing(target.ID, pingID, now)
+		select {
+		case <-pp.ackCh:
+			rtt := time.Since(pp.sentAt)
+			g.rtt.Update(target.ID, rtt)
+		case <-time.After(g.cfg.PingTimeout):
+		case <-g.done:
+			g.removePendingPing(pingID)
+			return
+		}
+		g.removePendingPing(pingID)
 	case <-g.done:
 		g.removePendingPing(pingID)
 		return
