@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log"
-	"os"
 	"syscall"
 	"time"
 
@@ -87,9 +86,8 @@ func (s *CASStore) sweepOrphanedBlobs() error {
 			meta := decodeObjectMeta(v)
 			if meta.RefCount <= 0 {
 				hash := string(k)
-				blobPath := s.getBlobPath(hash)
-				if err := os.Remove(blobPath); err != nil && !os.IsNotExist(err) {
-					log.Printf("CAS GC: failed to remove blob %s: %v", blobPath, err)
+				if err := s.blobs.DeleteBlob(hash); err != nil {
+					log.Printf("CAS GC: failed to remove blob %s: %v", hash, err)
 					continue
 				}
 				orphanedHashes = append(orphanedHashes, hash)

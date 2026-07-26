@@ -88,10 +88,29 @@ type ConfigurationP2P struct {
 
 // ConfigurationStorage holds the storage and garbage collection configuration.
 type ConfigurationStorage struct {
+	// Backend selects the storage backend type.
+	// Valid values: "local" (default), "nfs", "s3", "raw".
+	// An empty string defaults to "local".
+	Backend string
 	// GCInterval is how often the garbage collector runs, in seconds.
 	GCInterval int
 	// TombstoneRetention is how long tombstones are kept, in seconds.
 	TombstoneRetention int
+	// S3Endpoint is the S3-compatible API endpoint URL.
+	S3Endpoint string
+	// S3Region is the S3 region name.
+	S3Region string
+	// S3Bucket is the S3 bucket name for blob storage.
+	S3Bucket string
+	// S3AccessKey is the S3 access key ID for authentication.
+	S3AccessKey string
+	// S3SecretKey is the S3 secret access key for authentication.
+	S3SecretKey string
+	// S3PathStyle uses path-style addressing (bucket in URL path) instead of virtual-host style.
+	S3PathStyle bool
+	// RawDevicePath is the path to the raw block device for blob storage.
+	// Overrides Daemon.Drive if set.
+	RawDevicePath string
 }
 
 // Configuration holds the overall configuration for the application.

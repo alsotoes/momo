@@ -41,26 +41,12 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 	}
 	factory := transport.NewProtocolFactory(cfg)
 
-	// Initialize CAS Storage
-	store, err := storage.NewCASStore(daemons[serverId].Data)
+	// Initialize storage with configured backend
+	store, err := storage.NewStore(cfg.Storage, daemons[serverId])
 	if err != nil {
 		return fmt.Errorf("failed to initialize storage: %w", err)
 	}
 	defer store.Close()
-
-	// Start garbage collector
-	gcInterval := time.Duration(cfg.Storage.GCInterval) * time.Second
-	if gcInterval <= 0 {
-		gcInterval = 5 * time.Minute
-	}
-	tombstoneRetention := time.Duration(cfg.Storage.TombstoneRetention) * time.Second
-	if tombstoneRetention <= 0 {
-		tombstoneRetention = 24 * time.Hour
-	}
-	store.StartGC(storage.GCConfig{
-		Interval:           gcInterval,
-		TombstoneRetention: tombstoneRetention,
-	})
 
 	server, err := factory.Listen(daemons[serverId].Host)
 	if err != nil {
@@ -150,15 +136,15 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 			// 🛡️ Sentinel: Capture remote address for audit logging and traceability
 			remoteAddr := common.SanitizeLog(comm.RemoteAddr().String())
 
-		// Inject storage store if the communicator supports it (e.g. S3 for list/delete)
-		if s3Comm, ok := comm.(interface{ SetStore(storage.Store) }); ok {
-			s3Comm.SetStore(store)
-		}
+			// Inject storage store if the communicator supports it (e.g. S3 for list/delete)
+			if s3Comm, ok := comm.(interface{ SetStore(storage.Store) }); ok {
+				s3Comm.SetStore(store)
+			}
 
-		// Inject metrics hook for download/delete/error instrumentation
-		if mhComm, ok := comm.(interface{ SetMetricsHook(transport.MetricsHook) }); ok {
-			mhComm.SetMetricsHook(metricsCollector)
-		}
+			// Inject metrics hook for download/delete/error instrumentation
+			if mhComm, ok := comm.(interface{ SetMetricsHook(transport.MetricsHook) }); ok {
+				mhComm.SetMetricsHook(metricsCollector)
+			}
 
 			// Inject scatter-gather and lease capabilities if P2P is enabled
 			if scatterGather != nil {
@@ -441,9 +427,9 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 									log.Printf("CRITICAL: Panic recovered in Splay forwarder to node %d: %v", id, r)
 								}
 							}()
-						connectToPeer(&wg, cfg, blobPath, "", id, finalTs, replicationMode, factor)
-						metricsCollector.IncReplication()
-					}(targetId)
+							connectToPeer(&wg, cfg, blobPath, "", id, finalTs, replicationMode, factor)
+							metricsCollector.IncReplication()
+						}(targetId)
 					}
 					wg.Wait()
 				} else {
@@ -461,17 +447,17 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 						}
 					}
 				}
-		default:
-			log.Printf("AUDIT: *** ERROR: Unknown replication type from %s", remoteAddr)
-			metricsCollector.IncErrors()
-			return
-		}
-		success = true
-		metricsCollector.IncUploads()
-		if !exists {
-			metricsCollector.AddBytesUploaded(uint64(metadata.Size))
-		}
-	}(connection)
+			default:
+				log.Printf("AUDIT: *** ERROR: Unknown replication type from %s", remoteAddr)
+				metricsCollector.IncErrors()
+				return
+			}
+			success = true
+			metricsCollector.IncUploads()
+			if !exists {
+				metricsCollector.AddBytesUploaded(uint64(metadata.Size))
+			}
+		}(connection)
 	}
 }
 
