@@ -169,3 +169,7 @@
 **Learning:** When trimming null bytes from a byte slice and converting the result to a string (e.g., extracting fixed-size network fields), using standard `string()` casting triggers a heap allocation.
 
 **Action:** Using `unsafe.String(unsafe.SliceData(b), length)` bypasses this allocation. Since the application was already doing this with `TrimNullBytesString` in `common/string.go`, replacing scattered local string-casting implementations of `bytesTrimNull` with `common.TrimNullBytesString` successfully removes unnecessary heap allocations on the hot path for metadata parsing in TCP/QUIC communicators. Always check for an existing zero-allocation equivalent in common utilities before implementing a local slice-to-string cast.
+
+## 2026-07-25 - [Optimize trailing null byte trimming in strings]
+**Learning:** Using `strings.TrimRight(s, "\x00")` checks characters sequentially from the right and is relatively slow. Using `strings.IndexByte(s, 0)` to locate the first null byte and slicing the string is substantially faster since `IndexByte` uses highly optimized assembly routines.
+**Action:** When truncating trailing null bytes from strings, use `strings.IndexByte(s, 0)` to find the boundary and slice the string instead of `strings.TrimRight`.

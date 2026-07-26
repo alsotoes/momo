@@ -98,3 +98,12 @@ func TrimNullBytesString(b []byte) string {
 	}
 	return unsafe.String(unsafe.SliceData(b), len(b))
 }
+
+// TrimNullBytesFromString finds the first null byte and returns a substring up to that byte
+// using strings.IndexByte. This is significantly faster than strings.TrimRight.
+func TrimNullBytesFromString(s string) string {
+	if idx := strings.IndexByte(s, 0); idx != -1 {
+		return s[:idx]
+	}
+	return s
+}
