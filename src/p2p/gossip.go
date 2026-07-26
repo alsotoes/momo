@@ -271,8 +271,17 @@ func (g *Gossiper) sendPing() {
 		g.rtt.Update(target.ID, rtt)
 		g.removePendingPing(pingID)
 	case <-time.After(g.cfg.PingTimeout):
-		g.removePendingPing(pingID)
 		g.sendIndirectPing(target.ID, pingID, now)
+		select {
+		case <-pp.ackCh:
+			rtt := time.Since(pp.sentAt)
+			g.rtt.Update(target.ID, rtt)
+		case <-time.After(g.cfg.PingTimeout):
+		case <-g.done:
+			g.removePendingPing(pingID)
+			return
+		}
+		g.removePendingPing(pingID)
 	case <-g.done:
 		g.removePendingPing(pingID)
 		return
