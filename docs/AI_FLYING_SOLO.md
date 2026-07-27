@@ -1,12 +1,12 @@
-# AI Flying Solo — Autonomous Bug-Fix Workflow
+# AI Flying Solo — Autonomous Development Workflow
 
-This document defines the complete workflow for AI agents working autonomously on bug fixes without direct human supervision. All AI agents MUST follow this guide when operating in "Flying Solo" mode.
+This document defines the complete workflow for AI agents working autonomously on bug fixes **and** new features without direct human supervision. All AI agents MUST follow this guide when operating in "Flying Solo" mode.
 
 ## Steering Rules Reference
 
 This document is governed by the steering rules in [`openspec/config.yaml`](../openspec/config.yaml) (single source of truth, Rule 39). The following rules are specifically relevant:
 
-- **Rules 51-57**: Bug-fix PR workflow (assign, label, comment, update, merge, close, return)
+- **Rules 51-57**: PR workflow (assign, label, comment, update, merge, close, return) — applies to both bug fixes and features
 - **Rule 58**: Pre-push branch validation
 - **Rule 59**: No-assumption doubt protocol (AIFS)
 - **Rule 60**: This document is the authoritative workflow guide
@@ -16,35 +16,42 @@ This document is governed by the steering rules in [`openspec/config.yaml`](../o
 
 ## Pre-Flight Checklist
 
-Before starting any bug-fix work, verify:
+Before starting any autonomous work, verify:
 
 1. **Branch**: `git branch --show-current` shows `master`
 2. **Master is up to date**: `git pull` reports "Already up to date"
 3. **No uncommitted changes**: `git status` shows clean working tree
 4. **GitHub CLI authenticated**: `gh auth status` shows active account
 
-## Per-Bug Cycle (15 Steps)
+## Per-Task Cycle (15 Steps)
 
-For each bug, execute these steps strictly sequentially. Do NOT start the next bug until the current one is merged.
+For each task (bug fix or feature), execute these steps strictly sequentially. Do NOT start the next task until the current one is merged.
 
 ### Step 1: Create GitHub Issue
 ```bash
 gh issue create \
-  --title "Bug: <description>" \
-  --label "bug" \
+  --title "<type>: <description>" \
+  --label "<bug|enhancement>" \
   --assignee "alsotoes" \
-  --body "<bug documentation>"
+  --body "<issue documentation>"
 ```
 Record the issue number (`ISSUE_N`).
+
+**Issue type guidance:**
+- **Bug fix**: `--title "Bug: ..."`, `--label "bug"`
+- **New feature**: `--title "Feature: ..."`, `--label "enhancement"`
 
 ### Step 2: Create Branch
 ```bash
 git checkout master && git pull
-git checkout -b fix/bug-<N>-<short-slug>
+git checkout -b <type>/<N>-<short-slug>
 ```
+**Branch naming:**
+- Bug fix: `fix/bug-<N>-<short-slug>`
+- Feature: `feature/<N>-<short-slug>`
 
-### Step 3: Write Fix + Tests
-Implement the fix and any necessary tests. Run:
+### Step 3: Implement + Test
+Implement the fix or feature and any necessary tests. Run:
 ```bash
 go build ./...
 go test ./...
@@ -54,28 +61,31 @@ gofmt -w <modified files>
 ### Step 4: Commit
 ```bash
 git add <files>
-git commit -m "fix: <description> (#ISSUE_N)"
+git commit -m "<type>: <description> (#ISSUE_N)"
 ```
+**Commit prefix:**
+- Bug fix: `fix:`
+- Feature: `feat:`
 
 ### Step 5: Pre-Push Branch Validation (Rule 58)
 **CRITICAL**: Before pushing, verify you are on the correct branch:
 ```bash
 git branch --show-current
 ```
-The output MUST match `fix/bug-<N>-<short-slug>`. If it doesn't, STOP and re-checkout the correct branch. Never push to `master` directly.
+The output MUST match `<type>/<N>-<short-slug>`. If it doesn't, STOP and re-checkout the correct branch. Never push to `master` directly.
 
 ### Step 6: Push
 ```bash
-git push -u origin fix/bug-<N>-<short-slug>
+git push -u origin <type>/<N>-<short-slug>
 ```
 
 ### Step 7: Create PR
 ```bash
 gh pr create \
-  --title "fix: <description>" \
-  --body "Fixes #ISSUE_N
+  --title "<type>: <description>" \
+  --body "Resolves #ISSUE_N
 
-<full bug documentation, fix explanation, changelog>" \
+<full issue documentation, implementation explanation, changelog>" \
   --base master
 ```
 Record the PR number (`PR_N`).
@@ -85,9 +95,9 @@ Record the PR number (`PR_N`).
 gh pr edit PR_N --add-assignee alsotoes
 ```
 
-### Step 9: Add Bug Label (Rule 52)
+### Step 9: Add Label (Rule 52)
 ```bash
-gh pr edit PR_N --add-label bug
+gh pr edit PR_N --add-label <bug|enhancement>
 ```
 
 ### Step 10: Wait for CI + Reviewer
@@ -162,7 +172,7 @@ Verify ALL conditions before merging:
    ```bash
    git push origin --delete <stale-branch>
    ```
-5. Proceed to the next bug.
+5. Proceed to the next task.
 
 ## Key Principles
 
@@ -183,22 +193,22 @@ After EVERY push to a PR branch:
 Silent pushes are prohibited. The reviewer and collaborators must always know what changed and why.
 
 ### Strictly Sequential
-One bug at a time. Wait for merge before starting the next. This prevents merge conflicts and keeps the review cycle clean.
+One task at a time. Wait for merge before starting the next. This prevents merge conflicts and keeps the review cycle clean.
 
 ## Flow Diagram
 
 ```
 [Start]
   │
-  ├─ 1. Create issue (label: bug, assignee: alsotoes)
-  ├─ 2. Create branch off master
-  ├─ 3. Write fix + tests
-  ├─ 4. Commit
+  ├─ 1. Create issue (label: bug|enhancement, assignee: alsotoes)
+  ├─ 2. Create branch off master (fix/ or feature/)
+  ├─ 3. Implement + tests
+  ├─ 4. Commit (fix: or feat:)
   ├─ 5. Validate branch (Rule 58)
   ├─ 6. Push
-  ├─ 7. Create PR (Fixes #NNN)
+  ├─ 7. Create PR (Resolves #NNN)
   ├─ 8. Assign PR to alsotoes (Rule 51)
-  ├─ 9. Add bug label (Rule 52)
+  ├─ 9. Add label bug|enhancement (Rule 52)
   ├─ 10. Wait for CI + reviewer
   │      │
   │      ├─ Reviewer found issues?
@@ -208,7 +218,7 @@ One bug at a time. Wait for merge before starting the next. This prevents merge 
   │      └─ Something unclear? → 13. AIFS issue → wait for human
   │
   ├─ 14. All checks pass + reviewer ✅? → merge
-  ├─ 15. Close issue + return to master
+  ├─ 15. Close issue + return to master + cleanup branches (Rule 63)
   │
-  └─ [Next bug]
+  └─ [Next task]
 ```
