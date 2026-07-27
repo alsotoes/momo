@@ -71,11 +71,15 @@ echo ""
 echo "=== Test 1: External S3 client (curl) PUT in primary-splay mode ==="
 echo "external-client-test-data" > $E2E_DIR/test_external.txt
 
+# Compute actual SHA-256 hash of the file content
+FILE_HASH=$(sha256sum $E2E_DIR/test_external.txt | awk '{print $1}')
+FILE_SIZE=$(wc -c < $E2E_DIR/test_external.txt)
+
 # curl PUT without X-Momo-Requested-Mode — simulates aws-cli
 curl -s -X PUT \
   -H "Authorization: AWS4-HMAC-SHA256 Credential=a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6/20260727/us-east-1/s3/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=dummy" \
   -H "X-Amz-Date: 20260727T120000Z" \
-  -H "X-Amz-Content-Sha256: dummyhash" \
+  -H "X-Amz-Content-Sha256: $FILE_HASH" \
   -H "Content-Type: application/octet-stream" \
   --data-binary @$E2E_DIR/test_external.txt \
   http://127.0.0.1:4440/test-bucket/test_external.txt || true
