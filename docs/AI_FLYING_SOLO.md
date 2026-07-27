@@ -17,6 +17,10 @@ This document is governed by the steering rules in [`openspec/config.yaml`](../o
 - **Rule 61**: Clean rebase via cherry-pick (avoid pre-commit hook spurious commits on force-push)
 - **Rule 62**: Stale reviewer re-trigger (comment to re-run Gemini review after push)
 - **Rule 63**: Post-merge branch cleanup (local `git branch -D`, remote `--delete-branch`, periodic audit)
+- **Rule 64**: Pre-existing CI failure diagnosis — reproduce on master before blocking PR
+- **Rule 65**: Skill asset build isolation — `//go:build ignore` on `agent/skills/*/assets/examples/*.go`
+- **Rule 66**: No parallel agent work — post STOP comment before manual intervention
+- **Rule 67**: Agent instructions in PR comments, not PR body
 
 ## Pre-Flight Checklist
 
@@ -223,14 +227,14 @@ When the **3-push circuit breaker** trips (an automated agent has pushed 3 times
 
 9. **Merge once All-Green** (Rule 55), close issue (Rule 56), clean up (Rules 57, 63).
 
-### Critical: No Parallel Work
+### Critical: No Parallel Work (Rule 66)
 
 When manual intervention is in progress, **no automated agent may push to the PR branch**. The STOP comment must be posted *before* any manual work begins. This prevents:
 - Conflicting commits on the same files
 - Force-push wars between agents
 - Race conditions on CI runs
 
-## Handling Pre-Existing CI Failures
+## Handling Pre-Existing CI Failures (Rule 64)
 
 A PR may have failing CI checks that are **pre-existing on master** and unrelated to the PR's changes. These must be handled correctly:
 
@@ -252,7 +256,7 @@ A PR may have failing CI checks that are **pre-existing on master** and unrelate
 
 4. **If introduced by the PR**: fix the PR code that caused the failure.
 
-### Example: Vendoring Parity (Rule 25)
+### Example: Vendoring Parity (Rules 25, 65)
 
 Go files in `agent/skills/*/assets/examples/` that import external packages not in `go.mod` will break `go work vendor`. These are skill reference files, not project code.
 
@@ -283,7 +287,7 @@ The auto-reviewer may autonomously create tracking issues for PRs. Sometimes **d
 
 4. **Link the PR**: ensure the PR description contains `Resolves #<canonical-issue>`.
 
-## PR Comments vs PR Body for Agent Instructions
+## PR Comments vs PR Body for Agent Instructions (Rule 67)
 
 **Instructions to other agents (Jules, etc.) must be posted as PR comments, NOT embedded in the PR description.**
 
@@ -340,7 +344,8 @@ Silent pushes are prohibited. The reviewer and collaborators must always know wh
 ### Strictly Sequential
 One task at a time. Wait for merge before starting the next. This prevents merge conflicts and keeps the review cycle clean.
 
-### No Parallel Work on the Same PR
+### No Parallel Work on the Same PR (Rule 66)
+
 When manual intervention is happening, automated agents MUST be told to STOP. No two agents (human-directed or autonomous) should push to the same PR branch simultaneously. This prevents conflicting commits, force-push wars, and CI race conditions.
 
 ## Flow Diagram

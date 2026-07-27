@@ -8,9 +8,9 @@ This document describes every test suite and validation step that runs in the Mo
 |---|---|---|---|
 | Go | `go.yml` | push to master, PRs | Build, unit tests, benchmarks, E2E, coverage, scanner-safe secrets |
 | Smoke Test | `smoke_test.yml` | push to master, PRs | Multi-protocol file replication verification |
-| Scale & CAS E2E | `scale_cas_test.yml` | push to master, PRs | CAS storage scale testing |
-| P2P Gossip E2E | `p2p_test.yml` | push to master, PRs | P2P gossip convergence + failure detection |
-| Distributed Testing | `distributed_test.yml` | push to master, PRs | TCP contract, k6 load, chaos node-crash |
+| Scale & CAS E2E | `scale_cas_test.yml` | push to master, PRs (path-filtered) | CAS storage scale testing |
+| P2P Gossip E2E | `p2p_test.yml` | push to master, PRs (path-filtered) | P2P gossip convergence + failure detection |
+| Distributed Testing | `distributed_test.yml` | push to master, PRs (path-filtered) | TCP contract, k6 load, chaos node-crash |
 | Metrics Test | `metrics_test.yml` | push to master, PRs | Prometheus metrics endpoint format + counter verification |
 | Performance Comparison | `benchmark_compare.yml` | PRs, push to master | Benchmark regression detection (>5% threshold) |
 | Go Version Consistency | `verify_go_version.yml` | PRs, push to master | Go version sync across all config files |
@@ -574,7 +574,7 @@ See also: [`docs/CONTRACT_TESTING.md`](CONTRACT_TESTING.md) for the full wire pr
 
 ### Distributed Testing CI Workflow (`distributed_test.yml`)
 
-Runs on every push to `master` and every PR. Three jobs:
+Runs on every push to `master` and every PR (path-filtered to `src/**/*.go`, `tests/k6/**`, etc.). Three jobs:
 
 | Job | What it does | Duration |
 |---|---|---|
