@@ -60,6 +60,10 @@ func (h *StorageQueryHandler) handleGet(data []byte) (result []byte, err error) 
 		return nil, fmt.Errorf("empty file name: %w", syscall.EINVAL)
 	}
 	name := string(data)
+	// 🛡️ Sentinel: Sanitize name immediately to prevent path traversal in local storage queries.
+	if common.HasPathTraversalChars(name) {
+		return nil, fmt.Errorf("invalid name: %w", syscall.EBADMSG)
+	}
 	rc, meta, err := h.store.Get(name)
 	if err != nil {
 		return nil, err
@@ -76,6 +80,10 @@ func (h *StorageQueryHandler) handleHas(data []byte) ([]byte, error) {
 		return nil, fmt.Errorf("empty hash")
 	}
 	hash := string(data)
+	// 🛡️ Sentinel: Sanitize hash immediately to prevent path traversal in local storage queries.
+	if common.HasPathTraversalChars(hash) {
+		return nil, fmt.Errorf("invalid hash: %w", syscall.EBADMSG)
+	}
 	exists, err := h.store.Has(hash)
 	if err != nil {
 		return nil, err
@@ -94,6 +102,10 @@ func (h *StorageQueryHandler) handleDelete(data []byte) ([]byte, error) {
 		return nil, fmt.Errorf("empty file name: %w", syscall.EINVAL)
 	}
 	name := string(data)
+	// 🛡️ Sentinel: Sanitize name immediately to prevent path traversal in local storage queries.
+	if common.HasPathTraversalChars(name) {
+		return nil, fmt.Errorf("invalid name: %w", syscall.EBADMSG)
+	}
 	if err := h.store.Delete(name); err != nil {
 		return nil, err
 	}
@@ -192,6 +204,17 @@ func DecodeFileMetadataList(data []byte) (result []common.FileMetadata, err erro
 		}
 		remotePath := string(data[off : off+pathLen])
 		off += pathLen
+
+		// 🛡️ Sentinel: Sanitize decoded metadata to prevent path traversal and resource exhaustion from malicious peers.
+		if common.HasPathTraversalChars(hash) {
+			return nil, fmt.Errorf("invalid hash at entry %d: %w", i, syscall.EBADMSG)
+		}
+		if common.HasPathTraversalChars(name) {
+			return nil, fmt.Errorf("invalid name at entry %d: %w", i, syscall.EBADMSG)
+		}
+		if fileSize < 0 || fileSize > common.MaxFileSize {
+			return nil, fmt.Errorf("invalid file size at entry %d: %w", i, syscall.EBADMSG)
+		}
 
 		files = append(files, common.FileMetadata{
 			Name:       name,
