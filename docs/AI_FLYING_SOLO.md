@@ -6,6 +6,10 @@ This document defines the complete workflow for AI agents working autonomously o
 
 This document is governed by the steering rules in [`openspec/config.yaml`](../openspec/config.yaml) (single source of truth, Rule 39). The following rules are specifically relevant:
 
+- **Rules 14, 18**: 3-push circuit breaker — automated agent loop halts after 3 failed iterations; manual intervention required
+- **Rule 20**: Autonomous traceability — reuse existing tracking issues, never create duplicates
+- **Rule 25**: Workspace vendoring parity — `go work vendor` must produce no diff
+- **Rules 49, 51, 52**: Issue/PR assignment and labeling (assignee: alsotoes, labels: bug|enhancement + automation)
 - **Rules 51-57**: PR workflow (assign, label, comment, update, merge, close, return) — applies to both bug fixes and features
 - **Rule 58**: Pre-push branch validation
 - **Rule 59**: No-assumption doubt protocol (AIFS)
@@ -174,6 +178,147 @@ Verify ALL conditions before merging:
    ```
 5. Proceed to the next task.
 
+## Manual Intervention & Circuit Breaker (Rules 14, 18)
+
+When the **3-push circuit breaker** trips (an automated agent has pushed 3 times without reaching All-Green), the automated loop MUST halt. A human (or a human-directed agent like opencode) must then take over manually.
+
+### Manual Intervention Procedure
+
+1. **Post a STOP comment on the PR** — explicitly instruct all automated agents (Jules, etc.) to cease work:
+   ```bash
+   gh pr comment PR_N --body "## ⛔ Manual Intervention — Automated Loop Halted
+
+   Per Rule 14 & 18 (3-Push Circuit Breaker), the automated agent loop has reached
+   its maximum iterations. @google-labs-jules, please STOP all work on this PR.
+   No further automated commits or pushes.
+
+   @alsotoes is now performing a manual final review."
+   ```
+
+2. **Pull the latest PR state and code**:
+   ```bash
+   gh pr view PR_N --json commits,reviews,comments,statusCheckRollup
+   git fetch origin && git checkout <pr-branch>
+   ```
+
+3. **Review all commits and reviewer feedback** — read every review pass to understand what was fixed and what remains.
+
+4. **Verify the code locally**:
+   ```bash
+   go build ./...
+   go vet ./...
+   go test ./...
+   ```
+
+5. **Fix any remaining issues directly** (see "Handling Pre-Existing CI Failures" below).
+
+6. **Merge master into the PR branch** (Rule 50) before pushing any manual fixes:
+   ```bash
+   git merge master --no-edit
+   ```
+
+7. **Commit, push, comment, and update PR body** (Rules 53, 54) — same as the normal cycle.
+
+8. **Wait for all CI checks** — note that `benchstat` can take **7+ minutes** to complete.
+
+9. **Merge once All-Green** (Rule 55), close issue (Rule 56), clean up (Rules 57, 63).
+
+### Critical: No Parallel Work
+
+When manual intervention is in progress, **no automated agent may push to the PR branch**. The STOP comment must be posted *before* any manual work begins. This prevents:
+- Conflicting commits on the same files
+- Force-push wars between agents
+- Race conditions on CI runs
+
+## Handling Pre-Existing CI Failures
+
+A PR may have failing CI checks that are **pre-existing on master** and unrelated to the PR's changes. These must be handled correctly:
+
+### Diagnosis Procedure
+
+1. **Identify the failing check** and read its logs:
+   ```bash
+   gh run view <run-id> --log-failed
+   ```
+
+2. **Reproduce on master** to confirm it's pre-existing:
+   ```bash
+   git checkout master
+   # Run the failing check's command locally
+   git checkout <pr-branch>
+   ```
+
+3. **If pre-existing**: fix it as part of the manual intervention. Do NOT block the PR on unrelated failures.
+
+4. **If introduced by the PR**: fix the PR code that caused the failure.
+
+### Example: Vendoring Parity (Rule 25)
+
+Go files in `agent/skills/*/assets/examples/` that import external packages not in `go.mod` will break `go work vendor`. These are skill reference files, not project code.
+
+**Fix**: Add `//go:build ignore` build tag to exclude them from compilation and vendoring while keeping them as readable reference material:
+```bash
+for f in agent/skills/*/assets/examples/*.go; do
+  # Prepend: //go:build ignore\n\n
+done
+```
+Verify: `go work vendor` exits 0 and `git status --porcelain vendor/` shows no changes.
+
+## Duplicate Tracking Issues (Rule 20)
+
+The auto-reviewer may autonomously create tracking issues for PRs. Sometimes **duplicates** are created (e.g., two issues for the same PR). The agent MUST:
+
+1. **Search before creating**:
+   ```bash
+   gh issue list --state open --search "<PR title or number>"
+   ```
+
+2. **If duplicates exist**: close all but one with an explanatory comment:
+   ```bash
+   gh issue close <dup-issue> --reason "not planned" \
+     --comment "Closing as duplicate of #<canonical-issue> (Rule 20)."
+   ```
+
+3. **Reuse the canonical issue**: update its body with actionable remaining work rather than creating a new one.
+
+4. **Link the PR**: ensure the PR description contains `Resolves #<canonical-issue>`.
+
+## PR Comments vs PR Body for Agent Instructions
+
+**Instructions to other agents (Jules, etc.) must be posted as PR comments, NOT embedded in the PR description.**
+
+- **PR body**: `Resolves #ISSUE_ID`, high-level description, changelog, reviewer status section.
+- **PR comments**: actionable instructions to other agents, status updates, review responses.
+
+Rationale: PR comments appear in the conversation timeline and trigger notifications. PR body edits are silent and may be missed by automated agents watching for new comments.
+
+## Common Pitfalls & Solutions
+
+### Forgetting Labels and Assignment (Rules 49, 51, 52)
+**Pitfall**: During manual intervention, it's easy to forget assigning the PR and adding labels.
+**Solution**: Always run these immediately after creating or taking over a PR:
+```bash
+gh pr edit PR_N --add-assignee alsotoes
+gh pr edit PR_N --add-label bug        # for bug fixes
+gh pr edit PR_N --add-label enhancement # for features
+gh pr edit PR_N --add-label automation  # for AI-driven work
+```
+
+### Pre-Commit Hooks Updating Benchmark Docs
+**Pitfall**: The pre-commit hook regenerates `docs/PERFORMANCE.md` and `.github/data/benchmark_history.csv`, adding unexpected files to the commit.
+**Solution**: This is expected behavior. Include these files in the commit. Do NOT revert them. Per Rule 61, when rebasing, resolve these by taking the master version (`--theirs`) since they are regenerated.
+
+### Benchstat Check Timing
+**Pitfall**: The `benchstat` CI check can take **7+ minutes** to complete, causing premature merge attempts.
+**Solution**: Budget at least 8 minutes for the final CI wait. Poll with `gh pr checks PR_N` until NO checks show `pending`.
+
+### Stale Branch Missing Master Files
+**Pitfall**: A PR branch created from an older master may be missing files that exist on current master. CI runs on the **merge commit** (PR branch + master), so failures from missing files appear even though the PR branch doesn't have them.
+**Solution**: Always merge master into the PR branch before pushing (Rule 50):
+```bash
+git merge master --no-edit
+```
+
 ## Key Principles
 
 ### Never Assume (Rule 59)
@@ -195,6 +340,9 @@ Silent pushes are prohibited. The reviewer and collaborators must always know wh
 ### Strictly Sequential
 One task at a time. Wait for merge before starting the next. This prevents merge conflicts and keeps the review cycle clean.
 
+### No Parallel Work on the Same PR
+When manual intervention is happening, automated agents MUST be told to STOP. No two agents (human-directed or autonomous) should push to the same PR branch simultaneously. This prevents conflicting commits, force-push wars, and CI race conditions.
+
 ## Flow Diagram
 
 ```
@@ -215,7 +363,19 @@ One task at a time. Wait for merge before starting the next. This prevents merge
   │      │   ├─ YES → 12. Fix → push → comment (Rule 53) → update body (Rule 54) → back to 10
   │      │   └─ NO (✅) → continue
   │      │
-  │      └─ Something unclear? → 13. AIFS issue → wait for human
+  │      ├─ Something unclear? → 13. AIFS issue → wait for human
+  │      │
+  │      └─ Circuit breaker tripped (Rule 14/18)? → MANUAL INTERVENTION
+  │            │
+  │            ├─ Post STOP comment to PR (halt automated agents)
+  │            ├─ Pull latest PR state + code
+  │            ├─ Review all commits + reviewer feedback
+  │            ├─ Verify code locally (build, vet, test)
+  │            ├─ Fix remaining issues directly
+  │            ├─ Merge master into branch (Rule 50)
+  │            ├─ Commit → push → comment (Rule 53) → update body (Rule 54)
+  │            ├─ Wait for all CI (benchstat can take 7+ min)
+  │            └─ Continue to merge gate (Step 14)
   │
   ├─ 14. All checks pass + reviewer ✅? → merge
   ├─ 15. Close issue + return to master + cleanup branches (Rule 63)

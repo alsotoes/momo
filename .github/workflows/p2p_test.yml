@@ -3,8 +3,22 @@ name: P2P Gossip E2E Test
 on:
   push:
     branches: [ "master" ]
+    paths:
+      - 'src/**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
+      - '.github/scripts/test-e2e-p2p.sh'
+      - '.github/workflows/p2p_test.yml'
   pull_request:
     branches: [ "master" ]
+    paths:
+      - 'src/**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
+      - '.github/scripts/test-e2e-p2p.sh'
+      - '.github/workflows/p2p_test.yml'
 
 jobs:
   p2p-gossip-test:
