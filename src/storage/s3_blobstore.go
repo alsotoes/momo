@@ -144,9 +144,9 @@ func (s *S3BlobStore) DeleteBlob(hash string) error {
 func (s *S3BlobStore) newRequest(method, key string, body io.Reader) (*http.Request, error) {
 	var reqURL string
 	if s.pathStyle {
-		reqURL = fmt.Sprintf("%s/%s/%s", s.endpoint, s.bucket, key)
+		reqURL = s.endpoint + "/" + s.bucket + "/" + key
 	} else {
-		reqURL = fmt.Sprintf("%s/%s", s.endpoint, key)
+		reqURL = s.endpoint + "/" + key
 	}
 
 	parsedURL, err := url.Parse(reqURL)
@@ -175,7 +175,7 @@ func (s *S3BlobStore) newRequest(method, key string, body io.Reader) (*http.Requ
 	if s.pathStyle {
 		req.Header.Set("host", host)
 	} else {
-		req.Header.Set("host", fmt.Sprintf("%s.%s", s.bucket, host))
+		req.Header.Set("host", s.bucket+"."+host)
 	}
 	req.Header.Set("x-amz-date", amzDate)
 	req.Header.Set("x-amz-content-sha256", payloadHash)
@@ -185,9 +185,8 @@ func (s *S3BlobStore) newRequest(method, key string, body io.Reader) (*http.Requ
 	signature := hexHMAC(signingKey, stringToSign)
 
 	signedHeaders := "host;x-amz-content-sha256;x-amz-date"
-	credentialScope := fmt.Sprintf("%s/%s/s3/aws4_request", dateStamp, s.region)
-	authHeader := fmt.Sprintf("AWS4-HMAC-SHA256 Credential=%s/%s, SignedHeaders=%s, Signature=%s",
-		s.accessKey, credentialScope, signedHeaders, signature)
+	credentialScope := dateStamp + "/" + s.region + "/s3/aws4_request"
+	authHeader := "AWS4-HMAC-SHA256 Credential=" + s.accessKey + "/" + credentialScope + ", SignedHeaders=" + signedHeaders + ", Signature=" + signature
 	req.Header.Set("Authorization", authHeader)
 
 	return req, nil
@@ -202,21 +201,18 @@ func (s *S3BlobStore) getStringToSign(method string, parsedURL *url.URL, amzDate
 
 	host := parsedURL.Host
 	if !s.pathStyle {
-		host = fmt.Sprintf("%s.%s", s.bucket, host)
+		host = s.bucket + "." + host
 	}
 
-	canonicalHeaders := fmt.Sprintf("host:%s\nx-amz-content-sha256:%s\nx-amz-date:%s\n",
-		host, payloadHash, amzDate)
+	canonicalHeaders := "host:" + host + "\nx-amz-content-sha256:" + payloadHash + "\nx-amz-date:" + amzDate + "\n"
 	signedHeaders := "host;x-amz-content-sha256;x-amz-date"
 
-	canonicalRequest := fmt.Sprintf("%s\n%s\n\n%s\n%s\n%s",
-		method, canonicalURI, canonicalHeaders, signedHeaders, payloadHash)
+	canonicalRequest := method + "\n" + canonicalURI + "\n\n" + canonicalHeaders + "\n" + signedHeaders + "\n" + payloadHash
 
-	credentialScope := fmt.Sprintf("%s/%s/s3/aws4_request", dateStamp, s.region)
+	credentialScope := dateStamp + "/" + s.region + "/s3/aws4_request"
 	hashedCanonicalRequest := hexSHA256([]byte(canonicalRequest))
 
-	return fmt.Sprintf("AWS4-HMAC-SHA256\n%s\n%s\n%s",
-		amzDate, credentialScope, hashedCanonicalRequest)
+	return "AWS4-HMAC-SHA256\n" + amzDate + "\n" + credentialScope + "\n" + hashedCanonicalRequest
 }
 
 // getSigningKey derives the SigV4 signing key from the secret key.
