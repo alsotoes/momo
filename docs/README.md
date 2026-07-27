@@ -23,7 +23,7 @@ This document explains the architecture, configuration, wire protocol, replicati
 | [COMPATIBILITY.md](COMPATIBILITY.md) | Go version, platform compatibility, dependencies |
 | [CONTRACT_TESTING.md](CONTRACT_TESTING.md) | TCP wire protocol contract testing strategy |
 | [POLYMORPHIC_SYSTEM.md](POLYMORPHIC_SYSTEM.md) | Dynamic replication mode switching and polymorphic engine |
-| [AI_FLYING_SOLO.md](AI_FLYING_SOLO.md) | Autonomous bug-fix workflow for AI agents |
+| [AI_FLYING_SOLO.md](AI_FLYING_SOLO.md) | Autonomous development workflow for AI agents (bugs and features) |
 
 ## Key Performance & Security Features (⚡ Bolt & 🛡️ Sentinel)
 
