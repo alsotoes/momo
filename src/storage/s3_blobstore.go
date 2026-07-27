@@ -17,6 +17,12 @@ import (
 	"github.com/alsotoes/momo/src/common"
 )
 
+const (
+	maxS3KeyLen      = 1024
+	maxS3BucketLen   = 128
+	maxS3EndpointLen = 1024
+)
+
 // S3BlobStore implements BlobStore using an S3-compatible API.
 // It uses a zero-dependency SigV4 HTTP client (no AWS SDK required).
 // Object key = content hash. Metadata (refcounts, tombstones) stays
@@ -141,22 +147,36 @@ func (s *S3BlobStore) DeleteBlob(hash string) error {
 }
 
 // newRequest builds an HTTP request for the given method and object key.
-func (s *S3BlobStore) newRequest(method, key string, body io.Reader) (*http.Request, error) {
+func (s *S3BlobStore) newRequest(method, key string, body io.Reader) (req *http.Request, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("panic building new request: %v", r)
+			if closer, ok := body.(io.ReadCloser); ok {
+				closer.Close()
+			}
+			err = fmt.Errorf("panic building new request: %v: %w", r, syscall.EIO)
+		}
+	}()
+
+	if len(key) > maxS3KeyLen || len(s.bucket) > maxS3BucketLen || len(s.endpoint) > maxS3EndpointLen {
+		return nil, fmt.Errorf("s3: input length exceeds limits: %w", syscall.EINVAL)
+	}
+
 	var reqURL string
 	if s.pathStyle {
-		reqURL = fmt.Sprintf("%s/%s/%s", s.endpoint, s.bucket, key)
+		reqURL = s.endpoint + "/" + s.bucket + "/" + key
 	} else {
-		reqURL = fmt.Sprintf("%s/%s", s.endpoint, key)
+		reqURL = s.endpoint + "/" + key
 	}
 
-	parsedURL, err := url.Parse(reqURL)
-	if err != nil {
-		return nil, fmt.Errorf("s3: invalid URL: %w", syscall.EINVAL)
+	parsedURL, parseErr := url.Parse(reqURL)
+	if parseErr != nil {
+		return nil, fmt.Errorf("s3: invalid URL: %v: %w", parseErr, syscall.EINVAL)
 	}
 
-	req, err := http.NewRequest(method, reqURL, body)
-	if err != nil {
-		return nil, fmt.Errorf("s3: failed to create request: %w", syscall.EINVAL)
+	req, newReqErr := http.NewRequest(method, reqURL, body)
+	if newReqErr != nil {
+		return nil, fmt.Errorf("s3: failed to create request: %v: %w", newReqErr, syscall.EINVAL)
 	}
 
 	now := time.Now().UTC()
@@ -175,26 +195,34 @@ func (s *S3BlobStore) newRequest(method, key string, body io.Reader) (*http.Requ
 	if s.pathStyle {
 		req.Header.Set("host", host)
 	} else {
-		req.Header.Set("host", fmt.Sprintf("%s.%s", s.bucket, host))
+		req.Header.Set("host", s.bucket+"."+host)
 	}
 	req.Header.Set("x-amz-date", amzDate)
 	req.Header.Set("x-amz-content-sha256", payloadHash)
 
 	signingKey := s.getSigningKey(dateStamp)
-	stringToSign := s.getStringToSign(method, parsedURL, amzDate, dateStamp, payloadHash)
+	stringToSign, signErr := s.getStringToSign(method, parsedURL, amzDate, dateStamp, payloadHash)
+	if signErr != nil {
+		return nil, signErr
+	}
 	signature := hexHMAC(signingKey, stringToSign)
 
 	signedHeaders := "host;x-amz-content-sha256;x-amz-date"
-	credentialScope := fmt.Sprintf("%s/%s/s3/aws4_request", dateStamp, s.region)
-	authHeader := fmt.Sprintf("AWS4-HMAC-SHA256 Credential=%s/%s, SignedHeaders=%s, Signature=%s",
-		s.accessKey, credentialScope, signedHeaders, signature)
+	credentialScope := dateStamp + "/" + s.region + "/s3/aws4_request"
+	authHeader := "AWS4-HMAC-SHA256 Credential=" + s.accessKey + "/" + credentialScope + ", SignedHeaders=" + signedHeaders + ", Signature=" + signature
 	req.Header.Set("Authorization", authHeader)
 
 	return req, nil
 }
 
 // getStringToSign builds the AWS SigV4 string-to-sign.
-func (s *S3BlobStore) getStringToSign(method string, parsedURL *url.URL, amzDate, dateStamp, payloadHash string) string {
+func (s *S3BlobStore) getStringToSign(method string, parsedURL *url.URL, amzDate, dateStamp, payloadHash string) (str string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("panic building string to sign: %v", r)
+			err = fmt.Errorf("panic building string to sign: %v: %w", r, syscall.EIO)
+		}
+	}()
 	canonicalURI := parsedURL.Path
 	if canonicalURI == "" {
 		canonicalURI = "/"
@@ -202,21 +230,18 @@ func (s *S3BlobStore) getStringToSign(method string, parsedURL *url.URL, amzDate
 
 	host := parsedURL.Host
 	if !s.pathStyle {
-		host = fmt.Sprintf("%s.%s", s.bucket, host)
+		host = s.bucket + "." + host
 	}
 
-	canonicalHeaders := fmt.Sprintf("host:%s\nx-amz-content-sha256:%s\nx-amz-date:%s\n",
-		host, payloadHash, amzDate)
+	canonicalHeaders := "host:" + host + "\nx-amz-content-sha256:" + payloadHash + "\nx-amz-date:" + amzDate + "\n"
 	signedHeaders := "host;x-amz-content-sha256;x-amz-date"
 
-	canonicalRequest := fmt.Sprintf("%s\n%s\n\n%s\n%s\n%s",
-		method, canonicalURI, canonicalHeaders, signedHeaders, payloadHash)
+	canonicalRequest := method + "\n" + canonicalURI + "\n\n" + canonicalHeaders + "\n" + signedHeaders + "\n" + payloadHash
 
-	credentialScope := fmt.Sprintf("%s/%s/s3/aws4_request", dateStamp, s.region)
+	credentialScope := dateStamp + "/" + s.region + "/s3/aws4_request"
 	hashedCanonicalRequest := hexSHA256([]byte(canonicalRequest))
 
-	return fmt.Sprintf("AWS4-HMAC-SHA256\n%s\n%s\n%s",
-		amzDate, credentialScope, hashedCanonicalRequest)
+	return "AWS4-HMAC-SHA256\n" + amzDate + "\n" + credentialScope + "\n" + hashedCanonicalRequest, nil
 }
 
 // getSigningKey derives the SigV4 signing key from the secret key.
