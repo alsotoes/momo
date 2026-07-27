@@ -75,7 +75,14 @@ func (h *StorageQueryHandler) handleGet(data []byte) (result []byte, err error) 
 }
 
 // handleHas checks if a hash exists in the local store.
-func (h *StorageQueryHandler) handleHas(data []byte) ([]byte, error) {
+func (h *StorageQueryHandler) handleHas(data []byte) (result []byte, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in handleHas: %v", r)
+			err = fmt.Errorf("panic in handleHas: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	if len(data) == 0 {
 		return nil, fmt.Errorf("empty hash")
 	}
@@ -88,7 +95,7 @@ func (h *StorageQueryHandler) handleHas(data []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	result := make([]byte, 1)
+	result = make([]byte, 1)
 	if exists {
 		result[0] = 1
 	}
@@ -97,7 +104,14 @@ func (h *StorageQueryHandler) handleHas(data []byte) ([]byte, error) {
 
 // handleDelete deletes a file by name from the local store.
 // This is invoked by remote peers via scatter-gather to propagate deletes.
-func (h *StorageQueryHandler) handleDelete(data []byte) ([]byte, error) {
+func (h *StorageQueryHandler) handleDelete(data []byte) (result []byte, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in handleDelete: %v", r)
+			err = fmt.Errorf("panic in handleDelete: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	if len(data) == 0 {
 		return nil, fmt.Errorf("empty file name: %w", syscall.EINVAL)
 	}
@@ -109,7 +123,7 @@ func (h *StorageQueryHandler) handleDelete(data []byte) ([]byte, error) {
 	if err := h.store.Delete(name); err != nil {
 		return nil, err
 	}
-	result := make([]byte, 1)
+	result = make([]byte, 1)
 	result[0] = 1
 	return result, nil
 }
@@ -171,6 +185,10 @@ func DecodeFileMetadataList(data []byte) (result []common.FileMetadata, err erro
 		}
 		nameLen := int(binary.BigEndian.Uint32(data[off : off+4]))
 		off += 4
+		// 🛡️ Sentinel (Rule 32): Validate length bounds to prevent resource exhaustion from malicious peers.
+		if nameLen > common.FileInfoLength {
+			return nil, fmt.Errorf("name length %d exceeds max %d at entry %d: %w", nameLen, common.FileInfoLength, i, syscall.EBADMSG)
+		}
 		if off+nameLen > len(data) {
 			return nil, fmt.Errorf("truncated name at entry %d", i)
 		}
@@ -182,6 +200,10 @@ func DecodeFileMetadataList(data []byte) (result []common.FileMetadata, err erro
 		}
 		hashLen := int(binary.BigEndian.Uint32(data[off : off+4]))
 		off += 4
+		// 🛡️ Sentinel (Rule 32): Validate length bounds to prevent resource exhaustion from malicious peers.
+		if hashLen > common.FileInfoLength {
+			return nil, fmt.Errorf("hash length %d exceeds max %d at entry %d: %w", hashLen, common.FileInfoLength, i, syscall.EBADMSG)
+		}
 		if off+hashLen > len(data) {
 			return nil, fmt.Errorf("truncated hash at entry %d", i)
 		}
@@ -199,6 +221,10 @@ func DecodeFileMetadataList(data []byte) (result []common.FileMetadata, err erro
 		}
 		pathLen := int(binary.BigEndian.Uint32(data[off : off+4]))
 		off += 4
+		// 🛡️ Sentinel (Rule 32): Validate length bounds to prevent resource exhaustion from malicious peers.
+		if pathLen > common.MaxPathLength {
+			return nil, fmt.Errorf("path length %d exceeds max %d at entry %d: %w", pathLen, common.MaxPathLength, i, syscall.EBADMSG)
+		}
 		if off+pathLen > len(data) {
 			return nil, fmt.Errorf("truncated path at entry %d", i)
 		}
