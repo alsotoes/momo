@@ -27,6 +27,9 @@ This document outlines the high-level roadmap for the Momo project, tracking maj
 | **Comprehensive Testing** | [#155](https://github.com/alsotoes/momo/issues/155) | ✅ Merged | k6 load/stress/chaos tests, chaos engineering scripts, Prometheus/Grafana monitoring, K8s scalability, TCP contract tests, context.WithTimeout refactoring. |
 | **Prometheus Metrics Exporter** | [#364](https://github.com/alsotoes/momo/issues/364) | ✅ Merged | Built-in Prometheus `/metrics` endpoint with `sync/atomic` counters, `MetricsHook` interface for transport-layer instrumentation, zero-overhead on hot path. |
 | **Scanner-Safe Secrets (Rule 29)** | [#216](https://github.com/alsotoes/momo/issues/216) | ✅ Merged | `notsecret` annotation enforcement on all dummy tokens via pre-commit hook and CI check. |
+| **Pluggable Storage Backends** | [#226](https://github.com/alsotoes/momo/issues/226) | ✅ Merged | Configurable blob storage (local, NFS, S3, raw) via `BlobStore` interface with zero-dep SigV4 client and bbolt metadata. |
+| **Storage Backend E2E Tests** | [#409](https://github.com/alsotoes/momo/issues/409) | ✅ Merged | E2E integration tests for S3 and raw device backends with CI workflow. |
+| **Path Traversal Hardening** | [#410](https://github.com/alsotoes/momo/issues/410) | ✅ Merged | Sanitized scatter-gather query handlers with bounds validation (Rule 32) and panic recovery (Rule 37). |
 
 ## 🟡 In Progress / Upcoming
 

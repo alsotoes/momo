@@ -219,6 +219,7 @@ The `ScatterGather` struct enables distributed queries across the cluster. When 
 | `QueryList` | List all local files |
 | `QueryGet` | Get metadata for a specific file |
 | `QueryHas` | Check if a hash exists locally |
+| `QueryDelete` | Delete a file by hash (requires lease consensus) |
 
 ### RPC Routing
 

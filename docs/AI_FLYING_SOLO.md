@@ -10,6 +10,9 @@ This document is governed by the steering rules in [`openspec/config.yaml`](../o
 - **Rule 58**: Pre-push branch validation
 - **Rule 59**: No-assumption doubt protocol (AIFS)
 - **Rule 60**: This document is the authoritative workflow guide
+- **Rule 61**: Clean rebase via cherry-pick (avoid pre-commit hook spurious commits on force-push)
+- **Rule 62**: Stale reviewer re-trigger (comment to re-run Gemini review after push)
+- **Rule 63**: Post-merge branch cleanup (local `git branch -D`, remote `--delete-branch`, periodic audit)
 
 ## Pre-Flight Checklist
 
@@ -151,7 +154,15 @@ Verify ALL conditions before merging:
    ```bash
    git checkout master && git pull
    ```
-3. Proceed to the next bug.
+3. **Rule 63**: Delete local branch:
+   ```bash
+   git branch -D <branch-name>
+   ```
+4. **Rule 63**: Periodically audit and delete stale remote branches:
+   ```bash
+   git push origin --delete <stale-branch>
+   ```
+5. Proceed to the next bug.
 
 ## Key Principles
 

@@ -14,9 +14,7 @@ Below is a list of common `errno` values that might be encountered and their spe
 
 | Error Code | Constant | POSIX Meaning | Momo Context & Interpretation |
 | :--- | :--- | :--- | :--- |
-| `EPROTO` | Protocol error | A protocol error was detected on the communication link. | This is a critical error. It most likely means there is a bug or a version mismatch between the client and server, or that a non-Momo client is trying to connect. The handshake or message framing has failed. |
-| `ENOLINK` | Link has been severed | A communication link has been severed. | This error is particularly relevant for **Chain Replication**. It indicates that a server in the middle of the chain has disconnected, breaking the replication flow. The file transfer will fail. |
-| `EBADMSG` | Bad message | The message received does not conform to the protocol. | This often points to data corruption during transit or an issue with how the message was framed (e.g., incorrect metadata size). The SHA-256 hash validation failure triggers this error (returned as part of the error chain). |
+| `EBADMSG` | Bad message | The message received does not conform to the protocol. | This often points to data corruption during transit or an issue with how the message was framed (e.g., incorrect metadata size). The SHA-256 hash validation failure triggers this error (returned as part of the error chain). Also returned by `DecodeFileMetadataList` for path traversal chars or oversized length fields (Rule 32). |
 | `EACCES` | Permission denied | An attempt was made to access a file in a way forbidden by its file access permissions. | In Momo, this is used to indicate an authentication failure when an invalid AuthToken is provided during the handshake. |
 | `ETIMEDOUT`| Connection timed out | A connection attempt timed out, or a connected partner has not responded. | Could occur during the initial handshake if the server is unresponsive, or during the file transfer if there is a network partition or a server becomes overloaded and cannot respond. |
 | `ECONNREFUSED`| Connection refused | The target machine actively refused the connection. | This is a straightforward network error. It means a Momo server is not running or is not reachable at the specified IP address and port, or a firewall is blocking the connection. |
@@ -31,6 +29,11 @@ Below is a list of common `errno` values that might be encountered and their spe
 | `ENAMETOOLONG` | File name too long | The virtual file path exceeds the maximum length. | Returned by the storage layer and TCP/QUIC transports when a file name or virtual path exceeds the protocol's fixed-size field boundaries. |
 | `EINVAL` | Invalid argument | An invalid argument was provided. | Returned by the config parser (e.g., empty `ReplicationOrder`), P2P payload decoder (invalid count), query handler (empty data), and CRUSH placement (invalid node count). |
 | `ENOBUFS` | No buffer space available | A bounded read limit was exceeded. | The S3 communicator returns `ENOBUFS` when an HTTP request body exceeds the bounded read limit (65536 bytes), preventing memory exhaustion from oversized requests. |
+| `ECONNABORTED` | Connection aborted | Software caused connection abort. | Returned by `net.go` when a connection is aborted by the host system. |
+| `ECONNRESET` | Connection reset by peer | Connection reset by peer. | Returned by `net.go` when the remote end resets the connection. |
+| `ENOTCONN` | Transport endpoint is not connected | Socket not connected. | Returned by `net.go` when operating on an unconnected socket. |
+| `ENETDOWN` | Network is down | Network interface not available. | Returned by `net.go` when the local network interface is down. |
+| `EADDRINUSE` | Address already in use | Port binding conflict. | Returned when the daemon's configured port is already in use by another process. |
 
 ## Application-Specific Exit Codes
 

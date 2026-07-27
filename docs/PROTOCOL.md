@@ -105,11 +105,18 @@ When `RequestedMode` is `ModeGet` (`'G'`), the client requests the raw binary pa
 2.  **Target Name (Client sends):** Client sends the 64-byte null-padded name of the file to retrieve.
 3.  **Server Response (ACK/Payload):**
     -   If the file does not exist, the server writes a 1-byte `'1'` (Not Found) code and closes.
+    -   If a server error occurs, the server writes a 1-byte `'2'` (Server Error) code and closes.
     -   If the file exists, the server writes a 1-byte `'0'` (Success) code, followed by a 64-byte null-padded `FileSize` string, followed by the raw binary stream of the file until EOF.
 
 ### Payload
 
 The file payload is streamed until EOF. The server reads exactly the number of bytes specified in the `fileSize` metadata field.
+
+### Limits
+
+- **MaxFileSize:** 1 GB (`1024 * 1024 * 1024` bytes). Files exceeding this limit are rejected with `EFBIG` at `server.go:281`.
+- **MaxPathLength:** 4096 bytes. Virtual paths exceeding this limit are rejected with `EBADMSG` in `DecodeFileMetadataList`.
+- **FileInfoLength:** 64 bytes. Hash and name fields exceeding this length are rejected with `EBADMSG` in `DecodeFileMetadataList`.
 
 ## Replication Modes in Detail
 
@@ -252,7 +259,7 @@ When a Momo cluster node acts as an S3 client to forward and replicate files to 
 ## Security & Resilience
 
 -   **Authentication:** Every connection requires a valid 64-byte AuthToken.
--   **Timeouts:** Connections are protected by rolling idle timeouts (30s) and phased absolute deadlines (10s for handshake, 60s for metadata) to prevent Slowloris attacks.
+-   **Timeouts:** Connections are protected by rolling idle timeouts (30s, TCP only) and phased absolute deadlines (10s for handshake, 60s for metadata) to prevent Slowloris attacks.
 -   **Sanitization:** All network inputs and error messages are sanitized before logging to prevent CRLF injection.
 -   **Error Handling:** If an error occurs (e.g., hash mismatch, disk full, or connection reset), the connection is closed. Hash mismatches return `EBADMSG`.
 

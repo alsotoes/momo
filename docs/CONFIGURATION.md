@@ -25,7 +25,7 @@ This section contains cluster-wide settings that affect all daemons.
 -   **`debug`**
     -   **Description:** When set to `true`, enables verbose debug logging for all daemons in the cluster.
     -   **Type:** Boolean (`true` or `false`)
-    -   **Default:** `false`
+    -   **Default:** None (required)
 
 - **`replication_order`**
     -   **Description:** A comma-separated list of integers that defines the sequence of replication strategies the polymorphic system can cycle through. The order determines the path of escalation and de-escalation based on system load.
@@ -34,7 +34,7 @@ This section contains cluster-wide settings that affect all daemons.
         -   `1`: Chain Replication (0 -> 1 -> 2)
         -   `2`: Splay Replication (0 -> 1, 0 -> 2)
         -   `3`: Primary-Splay Replication (Client -> 0, 1, 2)
-    -   **Default:** `3,2,1`
+    -   **Default:** None (required)
     -   **Note:** Mode `0` (No Replication) is used internally by the cluster to signal the end of a replication sequence and should not be included in the configuration.
 
 
@@ -47,7 +47,7 @@ This section contains cluster-wide settings that affect all daemons.
 -   **`polymorphic_system`**
     -   **Description:** When set to `true`, enables the polymorphic engine on the primary server (daemon 0), allowing the cluster to change replication strategies dynamically based on system load.
     -   **Type:** Boolean (`true` or `false`)
-    -   **Default:** `true`
+    -   **Default:** None (required)
 
 -   **`protocol`**
     -   **Description:** Defines the transport layer used for all intra-cluster and client-server communication.
@@ -66,22 +66,22 @@ This section controls the behavior of the decentralized polymorphic system and t
 -   **`interval`**
     -   **Description:** The interval in seconds at which each daemon samples its local CPU and memory metrics.
     -   **Type:** Integer
-    -   **Default:** `10`
+    -   **Default:** None (required)
 
 -   **`min_threshold`**
     -   **Description:** The minimum free resource percentage, represented as a float. If free CPU or memory drops below this threshold, it triggers a move to a less robust replication strategy.
     -   **Type:** Float (e.g., `0.1` for 10%)
-    -   **Default:** `0.1`
+    -   **Default:** None (required)
 
 -   **`max_threshold`**
     -   **Description:** The maximum used resource percentage, represented as a float. If used CPU or memory rises above this threshold, it also triggers a move to a less robust strategy.
     -   **Type:** Float (e.g., `0.9` for 90%)
-    -   **Default:** `0.9`
+    -   **Default:** None (required)
 
 -   **`fallback_interval`**
     -   **Description:** The duration in seconds that the system must remain in a low-load state before it will attempt to switch back to a more robust replication strategy.
     -   **Type:** Integer
-    -   **Default:** `30`
+    -   **Default:** None (required)
 
 -   **`prometheus_port`**
     -   **Description:** The port on which the Prometheus metrics exporter listens. When set to a positive value, the server starts an HTTP server on the specified port exposing `/metrics` (Prometheus-format text) and `/health` (returns `200 OK`) endpoints. The metrics server runs in a separate goroutine and does not share the accept loop or connection pool with the main daemon. All counters use `sync/atomic` — no locks, no external dependencies.

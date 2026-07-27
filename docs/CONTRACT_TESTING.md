@@ -35,9 +35,9 @@ The Momo wire protocol has fixed-size fields that **must not change** without a 
 - `1` = `MetadataStatusSendPayload` — client should send file payload
 - `2` = `MetadataStatusSkipPayload` — server has content (CAS deduplication hit)
 
-### ACK (2 bytes)
+### ACK (3+ bytes, variable)
 
-- `"OK"` — server acknowledgment after successful file transfer
+- `"ACK" + serverId digits` (e.g., `"ACK0"`, `"ACK1"`) — server acknowledgment after successful file transfer
 
 ### P2P RPC Framing (4-byte length prefix + body)
 

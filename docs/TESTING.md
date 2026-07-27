@@ -17,6 +17,7 @@ This document describes every test suite and validation step that runs in the Mo
 | Gemini AI Reviewer | `gemini_reviewer.yml` | PRs | AI code review (security, performance, architecture) |
 | Auto Reviewer | `auto_reviewer.yml` | PR opened/reopened | Initial automated review |
 | Weekly Sanity | `weekly_sanity.yml` | Weekly cron (Sun 00:00 UTC) | Full suite + security audit |
+| Storage Backend E2E | `storage_backends_test.yml` | PRs touching `src/storage/` | S3 and raw device backend E2E tests (`-race`) |
 
 ---
 
@@ -553,7 +554,7 @@ Wire protocol byte-level assertions that prevent accidental protocol breaking ch
 | `contractHandshakeLen` | 84 bytes | AuthToken (64) + Timestamp (19) + Mode (1) |
 | `contractMetadataLen` | 192 bytes | Hash (64) + FileName (64) + FileSize (64) |
 | `contractStatusLen` | 1 byte | Metadata status code |
-| `contractACKLen` | 2 bytes | Server ACK ("OK") |
+| `contractACKLen` | 4+ bytes | Server ACK ("ACK" + serverId digits, e.g. "ACK0") |
 
 #### Tests
 

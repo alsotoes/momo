@@ -4,6 +4,27 @@ Momo is a high-performance, transport-agnostic file replication playground writt
 
 This document explains the architecture, configuration, wire protocol, replication modes, and how to run the client and servers.
 
+## Documentation Index
+
+| Document | Description |
+|---|---|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | System architecture, storage layer, replication, P2P, metrics |
+| [CONFIGURATION.md](CONFIGURATION.md) | Complete configuration reference for `momo.conf` |
+| [STANDARDS.md](STANDARDS.md) | ⚡ Bolt (performance) and 🛡️ Sentinel (security) coding standards |
+| [PROTOCOL.md](PROTOCOL.md) | Wire protocol specification (handshake, metadata, replication) |
+| [REPLICATION_STRATEGIES.md](REPLICATION_STRATEGIES.md) | Chain, Splay, Primary-Splay replication modes |
+| [CRUSH.md](CRUSH.md) | CRUSH-lite placement algorithm (Weighted Rendezvous Hashing) |
+| [P2P.md](P2P.md) | P2P gossip, SWIM failure detection, scatter-gather, lease consensus |
+| [TESTING.md](TESTING.md) | Test suites, CI pipeline, contract testing, E2E tests |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guidelines and PR workflow |
+| [ROADMAP.md](ROADMAP.md) | Project roadmap with milestones and GitHub issues |
+| [ERROR_CODES.md](ERROR_CODES.md) | POSIX error codes and exit statuses reference |
+| [PERFORMANCE.md](PERFORMANCE.md) | Auto-generated benchmark results and performance history |
+| [COMPATIBILITY.md](COMPATIBILITY.md) | Go version, platform compatibility, dependencies |
+| [CONTRACT_TESTING.md](CONTRACT_TESTING.md) | TCP wire protocol contract testing strategy |
+| [POLYMORPHIC_SYSTEM.md](POLYMORPHIC_SYSTEM.md) | Dynamic replication mode switching and polymorphic engine |
+| [AI_FLYING_SOLO.md](AI_FLYING_SOLO.md) | Autonomous bug-fix workflow for AI agents |
+
 ## Key Performance & Security Features (⚡ Bolt & 🛡️ Sentinel)
 
 - **Balanced Primary Architecture**: Removes central bottlenecks by deterministically selecting primary nodes for each object using the CRUSH-lite algorithm.

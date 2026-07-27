@@ -81,3 +81,11 @@ Any new `BlobStore` implementation MUST satisfy the following:
 - **DeleteBlob Idempotency:** Deleting a non-existent blob must return `nil` (not an error).
 - **Content-Addressed (Rule 12):** Object key = content hash. No name-based storage.
 - **Zero Dependencies (Rule 1):** Backends must use only Go stdlib (no external SDKs). The S3 backend uses a minimal SigV4 client (~200 lines of stdlib code).
+
+---
+
+## See Also
+
+- [AI_FLYING_SOLO.md](AI_FLYING_SOLO.md) — Autonomous bug-fix workflow rules 51-63 (PR workflow, clean rebase, stale reviewer re-trigger, post-merge branch cleanup)
+- [CONTRIBUTING.md](CONTRIBUTING.md) — Contribution guidelines and PR process
+- [`openspec/config.yaml`](../openspec/config.yaml) — Single source of truth for all steering rules (Rule 39)
