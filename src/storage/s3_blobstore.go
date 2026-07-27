@@ -141,7 +141,17 @@ func (s *S3BlobStore) DeleteBlob(hash string) error {
 }
 
 // newRequest builds an HTTP request for the given method and object key.
-func (s *S3BlobStore) newRequest(method, key string, body io.Reader) (*http.Request, error) {
+func (s *S3BlobStore) newRequest(method, key string, body io.Reader) (req *http.Request, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic building new request: %v: %w", r, syscall.EIO)
+		}
+	}()
+
+	if len(key) > 1024 || len(s.bucket) > 128 || len(s.endpoint) > 1024 {
+		return nil, fmt.Errorf("s3: input length exceeds limits: %w", syscall.EINVAL)
+	}
+
 	var reqURL string
 	if s.pathStyle {
 		reqURL = s.endpoint + "/" + s.bucket + "/" + key
@@ -149,14 +159,14 @@ func (s *S3BlobStore) newRequest(method, key string, body io.Reader) (*http.Requ
 		reqURL = s.endpoint + "/" + key
 	}
 
-	parsedURL, err := url.Parse(reqURL)
-	if err != nil {
-		return nil, fmt.Errorf("s3: invalid URL: %w", syscall.EINVAL)
+	parsedURL, parseErr := url.Parse(reqURL)
+	if parseErr != nil {
+		return nil, fmt.Errorf("s3: invalid URL: %v: %w", parseErr, syscall.EINVAL)
 	}
 
-	req, err := http.NewRequest(method, reqURL, body)
-	if err != nil {
-		return nil, fmt.Errorf("s3: failed to create request: %w", syscall.EINVAL)
+	req, newReqErr := http.NewRequest(method, reqURL, body)
+	if newReqErr != nil {
+		return nil, fmt.Errorf("s3: failed to create request: %v: %w", newReqErr, syscall.EINVAL)
 	}
 
 	now := time.Now().UTC()
@@ -181,7 +191,10 @@ func (s *S3BlobStore) newRequest(method, key string, body io.Reader) (*http.Requ
 	req.Header.Set("x-amz-content-sha256", payloadHash)
 
 	signingKey := s.getSigningKey(dateStamp)
-	stringToSign := s.getStringToSign(method, parsedURL, amzDate, dateStamp, payloadHash)
+	stringToSign, signErr := s.getStringToSign(method, parsedURL, amzDate, dateStamp, payloadHash)
+	if signErr != nil {
+		return nil, signErr
+	}
 	signature := hexHMAC(signingKey, stringToSign)
 
 	signedHeaders := "host;x-amz-content-sha256;x-amz-date"
@@ -193,7 +206,12 @@ func (s *S3BlobStore) newRequest(method, key string, body io.Reader) (*http.Requ
 }
 
 // getStringToSign builds the AWS SigV4 string-to-sign.
-func (s *S3BlobStore) getStringToSign(method string, parsedURL *url.URL, amzDate, dateStamp, payloadHash string) string {
+func (s *S3BlobStore) getStringToSign(method string, parsedURL *url.URL, amzDate, dateStamp, payloadHash string) (str string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic building string to sign: %v: %w", r, syscall.EIO)
+		}
+	}()
 	canonicalURI := parsedURL.Path
 	if canonicalURI == "" {
 		canonicalURI = "/"
@@ -212,7 +230,7 @@ func (s *S3BlobStore) getStringToSign(method string, parsedURL *url.URL, amzDate
 	credentialScope := dateStamp + "/" + s.region + "/s3/aws4_request"
 	hashedCanonicalRequest := hexSHA256([]byte(canonicalRequest))
 
-	return "AWS4-HMAC-SHA256\n" + amzDate + "\n" + credentialScope + "\n" + hashedCanonicalRequest
+	return "AWS4-HMAC-SHA256\n" + amzDate + "\n" + credentialScope + "\n" + hashedCanonicalRequest, nil
 }
 
 // getSigningKey derives the SigV4 signing key from the secret key.
