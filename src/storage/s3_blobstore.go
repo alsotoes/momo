@@ -17,6 +17,12 @@ import (
 	"github.com/alsotoes/momo/src/common"
 )
 
+const (
+	maxS3KeyLen      = 1024
+	maxS3BucketLen   = 128
+	maxS3EndpointLen = 1024
+)
+
 // S3BlobStore implements BlobStore using an S3-compatible API.
 // It uses a zero-dependency SigV4 HTTP client (no AWS SDK required).
 // Object key = content hash. Metadata (refcounts, tombstones) stays
@@ -144,11 +150,15 @@ func (s *S3BlobStore) DeleteBlob(hash string) error {
 func (s *S3BlobStore) newRequest(method, key string, body io.Reader) (req *http.Request, err error) {
 	defer func() {
 		if r := recover(); r != nil {
+			log.Printf("panic building new request: %v", r)
+			if closer, ok := body.(io.ReadCloser); ok {
+				closer.Close()
+			}
 			err = fmt.Errorf("panic building new request: %v: %w", r, syscall.EIO)
 		}
 	}()
 
-	if len(key) > 1024 || len(s.bucket) > 128 || len(s.endpoint) > 1024 {
+	if len(key) > maxS3KeyLen || len(s.bucket) > maxS3BucketLen || len(s.endpoint) > maxS3EndpointLen {
 		return nil, fmt.Errorf("s3: input length exceeds limits: %w", syscall.EINVAL)
 	}
 
@@ -209,6 +219,7 @@ func (s *S3BlobStore) newRequest(method, key string, body io.Reader) (req *http.
 func (s *S3BlobStore) getStringToSign(method string, parsedURL *url.URL, amzDate, dateStamp, payloadHash string) (str string, err error) {
 	defer func() {
 		if r := recover(); r != nil {
+			log.Printf("panic building string to sign: %v", r)
 			err = fmt.Errorf("panic building string to sign: %v: %w", r, syscall.EIO)
 		}
 	}()
