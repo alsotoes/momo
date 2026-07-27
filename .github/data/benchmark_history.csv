@@ -1212,3 +1212,10 @@ c74da10,BenchmarkPadString-8,2.15,0.00,0.00
 721d225,BenchmarkIndexSearch-8,3.15,0.00,0.00
 721d225,BenchmarkLoadGlobalConfig-8,706.30,160.00,1.00
 721d225,BenchmarkPadString-8,1.91,0.00,0.00
+29b12b4,BenchmarkCheckMetricsAndSwap-8,7.45,0.00,0.00
+29b12b4,BenchmarkCrushOptimized-8,295.90,0.00,0.00
+29b12b4,BenchmarkCrushOriginal-8,415.10,164.00,3.00
+29b12b4,BenchmarkIndexDirectTracking-8,0.35,0.00,0.00
+29b12b4,BenchmarkIndexSearch-8,3.04,0.00,0.00
+29b12b4,BenchmarkLoadGlobalConfig-8,758.70,160.00,1.00
+29b12b4,BenchmarkPadString-8,2.00,0.00,0.00

@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -31,7 +32,14 @@ type RawBlobStore struct {
 // NewRawBlobStore creates a new RawBlobStore. The device path is taken
 // from cfg.RawDevicePath, falling back to daemon.Drive. The allocation
 // table DB is stored in daemon.Data/raw_alloc.db.
-func NewRawBlobStore(cfg common.ConfigurationStorage, daemon *common.Daemon) (*RawBlobStore, error) {
+func NewRawBlobStore(cfg common.ConfigurationStorage, daemon *common.Daemon) (rbs *RawBlobStore, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in NewRawBlobStore: %v", r)
+			err = fmt.Errorf("raw: initialization panic: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	devicePath := cfg.RawDevicePath
 	if devicePath == "" {
 		devicePath = daemon.Drive
