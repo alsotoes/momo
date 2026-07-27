@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -31,7 +32,14 @@ type RawBlobStore struct {
 // NewRawBlobStore creates a new RawBlobStore. The device path is taken
 // from cfg.RawDevicePath, falling back to daemon.Drive. The allocation
 // table DB is stored in daemon.Data/raw_alloc.db.
-func NewRawBlobStore(cfg common.ConfigurationStorage, daemon *common.Daemon) (*RawBlobStore, error) {
+func NewRawBlobStore(cfg common.ConfigurationStorage, daemon *common.Daemon) (rbs *RawBlobStore, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in NewRawBlobStore: %v", r)
+			err = fmt.Errorf("raw: initialization panic: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	devicePath := cfg.RawDevicePath
 	if devicePath == "" {
 		devicePath = daemon.Drive
@@ -40,14 +48,19 @@ func NewRawBlobStore(cfg common.ConfigurationStorage, daemon *common.Daemon) (*R
 		return nil, fmt.Errorf("raw device path is required (set raw_device_path or daemon.drive): %w", syscall.EINVAL)
 	}
 
+	if err := os.MkdirAll(daemon.Data, 0755); err != nil {
+		return nil, fmt.Errorf("raw: failed to create data dir: %w", syscall.EIO)
+	}
+
+	if dir := filepath.Dir(devicePath); dir != "." && dir != "/" {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return nil, fmt.Errorf("raw: failed to create device dir: %w", syscall.EIO)
+		}
+	}
+
 	device, err := os.OpenFile(devicePath, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return nil, fmt.Errorf("raw: failed to open device %s: %w", devicePath, syscall.EIO)
-	}
-
-	if err := os.MkdirAll(daemon.Data, 0755); err != nil {
-		device.Close()
-		return nil, fmt.Errorf("raw: failed to create data dir: %w", syscall.EIO)
 	}
 
 	allocPath := filepath.Join(daemon.Data, "raw_alloc.db")
