@@ -1247,3 +1247,10 @@ cddb5d4,BenchmarkIndexDirectTracking-8,0.33,0.00,0.00
 cddb5d4,BenchmarkIndexSearch-8,2.73,0.00,0.00
 cddb5d4,BenchmarkLoadGlobalConfig-8,698.10,160.00,1.00
 cddb5d4,BenchmarkPadString-8,2.09,0.00,0.00
+21ed36a,BenchmarkCheckMetricsAndSwap-8,7.28,0.00,0.00
+21ed36a,BenchmarkCrushOptimized-8,340.60,0.00,0.00
+21ed36a,BenchmarkCrushOriginal-8,414.90,164.00,3.00
+21ed36a,BenchmarkIndexDirectTracking-8,0.33,0.00,0.00
+21ed36a,BenchmarkIndexSearch-8,2.72,0.00,0.00
+21ed36a,BenchmarkLoadGlobalConfig-8,726.50,160.00,1.00
+21ed36a,BenchmarkPadString-8,2.25,0.00,0.00

@@ -114,7 +114,7 @@ The file payload is streamed until EOF. The server reads exactly the number of b
 
 ### Limits
 
-- **MaxFileSize:** 1 GB (`1024 * 1024 * 1024` bytes). Files exceeding this limit are rejected with `EFBIG` at `server.go:281`.
+- **MaxFileSize:** 1 GB (`1024 * 1024 * 1024` bytes). Files exceeding this limit are rejected with `EBADMSG` at `server.go:283`.
 - **MaxPathLength:** 4096 bytes. Virtual paths exceeding this limit are rejected with `EBADMSG` in `DecodeFileMetadataList`.
 - **FileInfoLength:** 64 bytes. Hash and name fields exceeding this length are rejected with `EBADMSG` in `DecodeFileMetadataList`.
 
