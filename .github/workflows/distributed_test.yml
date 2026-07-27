@@ -3,7 +3,22 @@ name: Distributed Testing
 on:
   push:
     branches: [master]
+    paths:
+      - 'src/**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
+      - 'tests/k6/**'
+      - '.github/workflows/distributed_test.yml'
   pull_request:
+    branches: [master]
+    paths:
+      - 'src/**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
+      - 'tests/k6/**'
+      - '.github/workflows/distributed_test.yml'
   workflow_dispatch:
 
 jobs:

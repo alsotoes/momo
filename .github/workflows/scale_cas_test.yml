@@ -3,8 +3,22 @@ name: Scale & CAS E2E Test
 on:
   push:
     branches: [ "master" ]
+    paths:
+      - 'src/**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
+      - '.github/scripts/test-scale-cas.sh'
+      - '.github/workflows/scale_cas_test.yml'
   pull_request:
     branches: [ "master" ]
+    paths:
+      - 'src/**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
+      - '.github/scripts/test-scale-cas.sh'
+      - '.github/workflows/scale_cas_test.yml'
 
 jobs:
   scale-cas-test:
