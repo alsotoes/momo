@@ -1,3 +1,5 @@
+//go:build ignore
+
 // cmd/myapp/serve.go
 package main
 
