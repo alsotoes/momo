@@ -13,6 +13,8 @@ const (
 	FileInfoLength = 64
 	// MaxFileSize is the maximum allowed size for a file transfer (1GB).
 	MaxFileSize = 1024 * 1024 * 1024
+	// MaxPathLength is the maximum allowed length for a virtual path string.
+	MaxPathLength = 4096
 )
 
 const (

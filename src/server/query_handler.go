@@ -60,6 +60,10 @@ func (h *StorageQueryHandler) handleGet(data []byte) (result []byte, err error) 
 		return nil, fmt.Errorf("empty file name: %w", syscall.EINVAL)
 	}
 	name := string(data)
+	// 🛡️ Sentinel: Sanitize name immediately to prevent path traversal in local storage queries.
+	if common.HasPathTraversalChars(name) {
+		return nil, fmt.Errorf("invalid name: %w", syscall.EBADMSG)
+	}
 	rc, meta, err := h.store.Get(name)
 	if err != nil {
 		return nil, err
@@ -71,16 +75,27 @@ func (h *StorageQueryHandler) handleGet(data []byte) (result []byte, err error) 
 }
 
 // handleHas checks if a hash exists in the local store.
-func (h *StorageQueryHandler) handleHas(data []byte) ([]byte, error) {
+func (h *StorageQueryHandler) handleHas(data []byte) (result []byte, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in handleHas: %v", r)
+			err = fmt.Errorf("panic in handleHas: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	if len(data) == 0 {
 		return nil, fmt.Errorf("empty hash")
 	}
 	hash := string(data)
+	// 🛡️ Sentinel: Sanitize hash immediately to prevent path traversal in local storage queries.
+	if common.HasPathTraversalChars(hash) {
+		return nil, fmt.Errorf("invalid hash: %w", syscall.EBADMSG)
+	}
 	exists, err := h.store.Has(hash)
 	if err != nil {
 		return nil, err
 	}
-	result := make([]byte, 1)
+	result = make([]byte, 1)
 	if exists {
 		result[0] = 1
 	}
@@ -89,15 +104,26 @@ func (h *StorageQueryHandler) handleHas(data []byte) ([]byte, error) {
 
 // handleDelete deletes a file by name from the local store.
 // This is invoked by remote peers via scatter-gather to propagate deletes.
-func (h *StorageQueryHandler) handleDelete(data []byte) ([]byte, error) {
+func (h *StorageQueryHandler) handleDelete(data []byte) (result []byte, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in handleDelete: %v", r)
+			err = fmt.Errorf("panic in handleDelete: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	if len(data) == 0 {
 		return nil, fmt.Errorf("empty file name: %w", syscall.EINVAL)
 	}
 	name := string(data)
+	// 🛡️ Sentinel: Sanitize name immediately to prevent path traversal in local storage queries.
+	if common.HasPathTraversalChars(name) {
+		return nil, fmt.Errorf("invalid name: %w", syscall.EBADMSG)
+	}
 	if err := h.store.Delete(name); err != nil {
 		return nil, err
 	}
-	result := make([]byte, 1)
+	result = make([]byte, 1)
 	result[0] = 1
 	return result, nil
 }
@@ -159,6 +185,10 @@ func DecodeFileMetadataList(data []byte) (result []common.FileMetadata, err erro
 		}
 		nameLen := int(binary.BigEndian.Uint32(data[off : off+4]))
 		off += 4
+		// 🛡️ Sentinel (Rule 32): Validate length bounds to prevent resource exhaustion from malicious peers.
+		if nameLen > common.FileInfoLength {
+			return nil, fmt.Errorf("name length %d exceeds max %d at entry %d: %w", nameLen, common.FileInfoLength, i, syscall.EBADMSG)
+		}
 		if off+nameLen > len(data) {
 			return nil, fmt.Errorf("truncated name at entry %d", i)
 		}
@@ -170,6 +200,10 @@ func DecodeFileMetadataList(data []byte) (result []common.FileMetadata, err erro
 		}
 		hashLen := int(binary.BigEndian.Uint32(data[off : off+4]))
 		off += 4
+		// 🛡️ Sentinel (Rule 32): Validate length bounds to prevent resource exhaustion from malicious peers.
+		if hashLen > common.FileInfoLength {
+			return nil, fmt.Errorf("hash length %d exceeds max %d at entry %d: %w", hashLen, common.FileInfoLength, i, syscall.EBADMSG)
+		}
 		if off+hashLen > len(data) {
 			return nil, fmt.Errorf("truncated hash at entry %d", i)
 		}
@@ -187,11 +221,26 @@ func DecodeFileMetadataList(data []byte) (result []common.FileMetadata, err erro
 		}
 		pathLen := int(binary.BigEndian.Uint32(data[off : off+4]))
 		off += 4
+		// 🛡️ Sentinel (Rule 32): Validate length bounds to prevent resource exhaustion from malicious peers.
+		if pathLen > common.MaxPathLength {
+			return nil, fmt.Errorf("path length %d exceeds max %d at entry %d: %w", pathLen, common.MaxPathLength, i, syscall.EBADMSG)
+		}
 		if off+pathLen > len(data) {
 			return nil, fmt.Errorf("truncated path at entry %d", i)
 		}
 		remotePath := string(data[off : off+pathLen])
 		off += pathLen
+
+		// 🛡️ Sentinel: Sanitize decoded metadata to prevent path traversal and resource exhaustion from malicious peers.
+		if common.HasPathTraversalChars(hash) {
+			return nil, fmt.Errorf("invalid hash at entry %d: %w", i, syscall.EBADMSG)
+		}
+		if common.HasPathTraversalChars(name) {
+			return nil, fmt.Errorf("invalid name at entry %d: %w", i, syscall.EBADMSG)
+		}
+		if fileSize < 0 || fileSize > common.MaxFileSize {
+			return nil, fmt.Errorf("invalid file size at entry %d: %w", i, syscall.EBADMSG)
+		}
 
 		files = append(files, common.FileMetadata{
 			Name:       name,
