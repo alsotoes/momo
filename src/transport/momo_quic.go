@@ -490,6 +490,10 @@ func (m *MomoQUICCommunicator) RemoteAddr() net.Addr {
 	return m.conn.RemoteAddr()
 }
 
+func (m *MomoQUICCommunicator) IsExternalClient() bool {
+	return false
+}
+
 func (m *MomoQUICCommunicator) Close() (err error) {
 	defer func() {
 		if r := recover(); r != nil {

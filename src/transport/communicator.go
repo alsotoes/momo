@@ -92,6 +92,11 @@ type Communicator interface {
 
 	// RemoteAddr returns the address of the remote peer.
 	RemoteAddr() net.Addr
+
+	// IsExternalClient returns true if the connection is from an external S3 client
+	// (e.g., aws-cli) that does not understand the momo protocol. The server uses
+	// this to determine if client-side replication modes should be downgraded.
+	IsExternalClient() bool
 }
 
 // MomoListener defines a transport-agnostic interface for accepting new Momo connections.

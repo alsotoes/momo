@@ -477,3 +477,7 @@ func (m *MomoTCPCommunicator) ReceiveACK() (err error) {
 	m.SetDeadline(time.Time{}) // Restore default deadline
 	return nil
 }
+
+func (m *MomoTCPCommunicator) IsExternalClient() bool {
+	return false
+}
