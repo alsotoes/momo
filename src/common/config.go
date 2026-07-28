@@ -147,35 +147,39 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 	// Parse client_side_replication_modes: comma-separated list of mode IDs that
 	// require a momo-aware client. External S3 clients get these modes subtracted
 	// from replication_order. Defaults to [3] (ReplicationPrimarySplay) if unset.
-	clientSideStr := section.Key("client_side_replication_modes").String()
-	if clientSideStr == "" {
-		globalCfg.ClientSideReplicationModes = defaultClientSideReplicationModes
-	} else {
-		csmCount := strings.Count(clientSideStr, ",") + 1
-		globalCfg.ClientSideReplicationModes = make([]int, 0, csmCount)
-		for len(clientSideStr) > 0 {
-			csmIdx := strings.IndexByte(clientSideStr, ',')
-			var csmPart string
-			if csmIdx == -1 {
-				csmPart = clientSideStr
-				clientSideStr = ""
-			} else {
-				csmPart = clientSideStr[:csmIdx]
-				clientSideStr = clientSideStr[csmIdx+1:]
-			}
-			trimmedCSM := strings.TrimSpace(csmPart)
-			if trimmedCSM == "" {
-				continue
-			}
-			csmMode, err := strconv.Atoi(trimmedCSM)
-			if err != nil {
-				return ConfigurationGlobal{}, fmt.Errorf("failed to parse 'client_side_replication_modes' part %q: %w", trimmedCSM, err)
-			}
-			globalCfg.ClientSideReplicationModes = append(globalCfg.ClientSideReplicationModes, csmMode)
-		}
-		if len(globalCfg.ClientSideReplicationModes) == 0 {
+	if csmKey, err := section.GetKey("client_side_replication_modes"); err == nil {
+		clientSideStr := csmKey.String()
+		if clientSideStr == "" {
 			globalCfg.ClientSideReplicationModes = defaultClientSideReplicationModes
+		} else {
+			csmCount := strings.Count(clientSideStr, ",") + 1
+			globalCfg.ClientSideReplicationModes = make([]int, 0, csmCount)
+			for len(clientSideStr) > 0 {
+				csmIdx := strings.IndexByte(clientSideStr, ',')
+				var csmPart string
+				if csmIdx == -1 {
+					csmPart = clientSideStr
+					clientSideStr = ""
+				} else {
+					csmPart = clientSideStr[:csmIdx]
+					clientSideStr = clientSideStr[csmIdx+1:]
+				}
+				trimmedCSM := strings.TrimSpace(csmPart)
+				if trimmedCSM == "" {
+					continue
+				}
+				csmMode, err := strconv.Atoi(trimmedCSM)
+				if err != nil {
+					return ConfigurationGlobal{}, fmt.Errorf("failed to parse 'client_side_replication_modes' part %q: %w", trimmedCSM, err)
+				}
+				globalCfg.ClientSideReplicationModes = append(globalCfg.ClientSideReplicationModes, csmMode)
+			}
+			if len(globalCfg.ClientSideReplicationModes) == 0 {
+				globalCfg.ClientSideReplicationModes = defaultClientSideReplicationModes
+			}
 		}
+	} else {
+		globalCfg.ClientSideReplicationModes = defaultClientSideReplicationModes
 	}
 
 	globalCfg.PolymorphicSystem, err = section.Key("polymorphic_system").Bool()
