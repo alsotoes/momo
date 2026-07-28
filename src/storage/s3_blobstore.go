@@ -155,7 +155,7 @@ func (s *S3BlobStore) newRequest(method, key string, body io.Reader) (req *http.
 			if closer, ok := body.(io.ReadCloser); ok {
 				closer.Close()
 			}
-			err = fmt.Errorf("panic building new request: %v: %w", r, syscall.EIO)
+			err = syscall.EIO
 		}
 	}()
 
@@ -226,7 +226,7 @@ func (s *S3BlobStore) getStringToSign(method string, parsedURL *url.URL, amzDate
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("panic building string to sign: %v", r)
-			err = fmt.Errorf("panic building string to sign: %v: %w", r, syscall.EIO)
+			err = syscall.EIO
 		}
 	}()
 	canonicalURI := parsedURL.Path
