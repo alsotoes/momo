@@ -50,7 +50,17 @@ func (b *LocalBlobStore) PutBlob(hash string, content io.Reader) error {
 		os.Remove(tmpPath)
 		return fmt.Errorf("storage error: failed to flush blob: %w", syscall.EIO)
 	}
-	tmpFile.Close()
+
+	if err := tmpFile.Sync(); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("storage error: failed to fsync blob: %w", syscall.EIO)
+	}
+
+	if err := tmpFile.Close(); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("storage error: failed to close blob: %w", syscall.EIO)
+	}
 
 	if err := os.Rename(tmpPath, blobPath); err != nil {
 		os.Remove(tmpPath)
