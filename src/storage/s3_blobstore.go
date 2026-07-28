@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 	"syscall"
 	"time"
@@ -162,11 +163,16 @@ func (s *S3BlobStore) newRequest(method, key string, body io.Reader) (req *http.
 		return nil, fmt.Errorf("s3: input length exceeds limits: %w", syscall.EINVAL)
 	}
 
+	cleanedKey := path.Clean(key)
+	if cleanedKey == "." || cleanedKey == ".." || strings.HasPrefix(cleanedKey, "../") || strings.HasPrefix(cleanedKey, "/") {
+		return nil, fmt.Errorf("s3: invalid key path traversal: %w", syscall.EINVAL)
+	}
+
 	var reqURL string
 	if s.pathStyle {
-		reqURL = s.endpoint + "/" + s.bucket + "/" + key
+		reqURL = s.endpoint + "/" + s.bucket + "/" + cleanedKey
 	} else {
-		reqURL = s.endpoint + "/" + key
+		reqURL = s.endpoint + "/" + cleanedKey
 	}
 
 	parsedURL, parseErr := url.Parse(reqURL)
