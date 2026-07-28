@@ -403,6 +403,8 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 						defer func() {
 							if r := recover(); r != nil {
 								log.Printf("CRITICAL: Panic recovered in Chain forwarder to node %d: %v", id, r)
+								wg.Done()
+								metricsCollector.IncErrors()
 							}
 						}()
 						reader, _, err := store.Get(fileName)
@@ -446,11 +448,13 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 						targetId := placement[i].ID
 						go func(id int) {
 							// ⚡ Bolt: connectToPeerStream (client.ConnectStream) handles wg.Done() internally via defer.
-							defer func() {
-								if r := recover(); r != nil {
-									log.Printf("CRITICAL: Panic recovered in Splay forwarder to node %d: %v", id, r)
-								}
-							}()
+						defer func() {
+							if r := recover(); r != nil {
+								log.Printf("CRITICAL: Panic recovered in Splay forwarder to node %d: %v", id, r)
+								wg.Done()
+								metricsCollector.IncErrors()
+							}
+						}()
 							reader, _, err := store.Get(fileName)
 							if err != nil {
 								log.Printf("AUDIT: Failed to get blob for splay forwarding: %v", common.SanitizeLog(err.Error()))
