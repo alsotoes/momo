@@ -60,6 +60,10 @@ type S3Communicator struct {
 
 	// Server state
 	meta common.FileMetadata
+	// isExternalClient is true when the client did not send X-Momo-Requested-Mode,
+	// indicating it is an external S3 client (e.g., aws-cli) that cannot perform
+	// client-side replication.
+	isExternalClient bool
 
 	// Storage store for list, get, and delete operations
 	store storage.Store
@@ -393,16 +397,16 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			return 0, 0, fmt.Errorf("failed to delete file %q: %w", key, err)
 		}
 
-	// Propagate delete to all peers via scatter-gather (best-effort).
-	if m.deletePropagator != nil {
-		_ = m.deletePropagator.PropagateDelete(key, 5*time.Second)
-	}
+		// Propagate delete to all peers via scatter-gather (best-effort).
+		if m.deletePropagator != nil {
+			_ = m.deletePropagator.PropagateDelete(key, 5*time.Second)
+		}
 
-	if m.metricsHook != nil {
-		m.metricsHook.IncDeletes()
-	}
+		if m.metricsHook != nil {
+			m.metricsHook.IncDeletes()
+		}
 
-	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		m.conn.Write([]byte("HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"))
 
 		return 0, 0, ErrRequestHandled
@@ -435,6 +439,12 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		if err != nil {
 			return 0, 0, fmt.Errorf("invalid requested mode: %s: %w", requestedModeStr, syscall.EBADMSG)
 		}
+	} else {
+		// External S3 client (e.g., aws-cli) — no X-Momo-Requested-Mode header.
+		// Force DummyEpoch so the server treats this as a direct client connection
+		// and uses its configured replication mode, then downgrades if needed.
+		m.isExternalClient = true
+		timestamp = common.DummyEpoch
 	}
 
 	// Parse Metadata if it's a PUT request
@@ -716,6 +726,10 @@ func (m *S3Communicator) ReceiveACK() (err error) {
 
 func (m *S3Communicator) RemoteAddr() net.Addr {
 	return m.remoteAddr
+}
+
+func (m *S3Communicator) IsExternalClient() bool {
+	return m.isExternalClient
 }
 
 // extractS3BucketAndKey parses the bucket name and key path from an S3 HTTP request.

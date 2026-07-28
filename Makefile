@@ -9,7 +9,7 @@ BIN := $(BIN_DIR)/momo
 MAIN := src/momo.go
 MODULES := ./src/common ./src/transport ./src/client ./src/metrics ./src/p2p ./src/server ./src/storage
 
-.PHONY: all build clean tidy vendor test vet coverage doc doc-live benchmark test-e2e smoke-tcp smoke-quic smoke-scale-cas test-contract test-load test-stress test-chaos test-metrics monitoring-up monitoring-down
+.PHONY: all build clean tidy vendor test vet coverage doc doc-live benchmark test-e2e smoke-tcp smoke-quic smoke-scale-cas test-contract test-load test-stress test-chaos test-metrics test-external-client monitoring-up monitoring-down
 
 all: build
 
@@ -73,6 +73,9 @@ smoke-s3-tcp:
 
 smoke-s3-quic:
 	./.github/scripts/test-e2e.sh s3-quic
+
+test-external-client:
+	./.github/scripts/test-external-client.sh
 
 smoke-scale-cas:
 	./.github/scripts/test-scale-cas.sh

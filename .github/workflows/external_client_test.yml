@@ -1,0 +1,38 @@
+name: External Client Replication Test
+
+on:
+  push:
+    branches: [ "master" ]
+    paths:
+      - 'src/**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
+      - '.github/scripts/test-external-client.sh'
+      - '.github/workflows/external_client_test.yml'
+  pull_request:
+    branches: [ "master" ]
+    paths:
+      - 'src/**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
+      - '.github/scripts/test-external-client.sh'
+      - '.github/workflows/external_client_test.yml'
+
+jobs:
+  external-client-test:
+    name: External Client Replication Downgrade
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version: '1.25.x'
+    - name: Build momo
+      run: make build
+    - name: Run External Client E2E Test
+      run: |
+        chmod +x .github/scripts/test-external-client.sh
+        ./.github/scripts/test-external-client.sh

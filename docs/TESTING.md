@@ -18,6 +18,7 @@ This document describes every test suite and validation step that runs in the Mo
 | Auto Reviewer | `auto_reviewer.yml` | PR opened/reopened | Initial automated review |
 | Weekly Sanity | `weekly_sanity.yml` | Weekly cron (Sun 00:00 UTC) | Full suite + security audit |
 | Storage Backend E2E | `storage_backends_test.yml` | PRs touching `src/storage/` | S3 and raw device backend E2E tests (`-race`) |
+| External Client Replication | `external_client_test.yml` | push to master, PRs (path-filtered) | External S3 client replication mode downgrade |
 
 ---
 
@@ -581,6 +582,25 @@ Runs on every push to `master` and every PR (path-filtered to `src/**/*.go`, `te
 | **TCP Contract Test** | `go test -run TestContract -v -race ./src/server/...` | ~10s |
 | **k6 Load Test** | Starts 3-node `s3-tcp` cluster, installs k6 v0.54.0, runs `load_test.js` | ~1 min |
 | **Chaos - Node crash** | Starts 3-node cluster, uploads 5 MB file via `curl`, kills node 1, verifies nodes 0+2 alive, restarts node 1 | ~30s |
+
+---
+
+## External Client Replication Test (`external_client_test.yml`)
+
+Runs on every push to `master` and every PR (path-filtered to `src/**/*.go`, etc.). Verifies that external S3 clients (e.g., aws-cli) get correct replication mode downgrade.
+
+**Script:** `.github/scripts/test-external-client.sh` (Makefile target: `make test-external-client`)
+
+### Test Steps
+
+| Step | What it verifies |
+|---|---|
+| **Start cluster** | 3-node `s3-tcp` cluster with `replication_order=3,2,1` and `client_side_replication_modes=3` |
+| **Switch to primary-splay** | Set replication mode to 3 (primary-splay) |
+| **External client PUT** | `curl` PUT without `X-Momo-Requested-Mode` (simulates aws-cli) |
+| **Verify replication** | File replicated to all 3 nodes (downgraded to splay mode 2) |
+| **momo CLI PUT** | momo CLI client uploads to same cluster |
+| **Verify replication** | File replicated to all 3 nodes (uses primary-splay mode 3) |
 
 ---
 

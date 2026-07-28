@@ -44,6 +44,10 @@ type ConfigurationGlobal struct {
 	AuthToken string
 	// ReplicationOrder is the order of replication modes to use.
 	ReplicationOrder []int
+	// ClientSideReplicationModes lists mode IDs that require a momo-aware client.
+	// External S3 clients (e.g., aws-cli) cannot use these modes; the server
+	// downgrades to the next server-side mode in ReplicationOrder per-connection.
+	ClientSideReplicationModes []int
 	// ReplicationFactor is the number of replicas to maintain for each object.
 	ReplicationFactor int
 	// PolymorphicSystem enables or disables the polymorphic system.

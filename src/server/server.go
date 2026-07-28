@@ -227,6 +227,22 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 				replicationMode = common.ReplicationNone
 			}
 
+			// Downgrade client-side replication modes for external S3 clients.
+			// External clients (e.g., aws-cli) cannot perform client-side replication
+			// (primary-splay). If the selected mode is in ClientSideReplicationModes,
+			// walk ReplicationOrder forward to find the next server-side mode.
+			// This is a per-transaction downgrade — global polymorphic state is unchanged.
+			if comm.IsExternalClient() {
+				for _, csm := range cfg.Global.ClientSideReplicationModes {
+					if replicationMode == csm {
+						originalMode := replicationMode
+						replicationMode = downgradeToServerSideMode(replicationMode, cfg.Global.ReplicationOrder, cfg.Global.ClientSideReplicationModes)
+						log.Printf("AUDIT: External client detected — downgraded replication mode %d → %d (per-transaction, global state unchanged)", originalMode, replicationMode)
+						break
+					}
+				}
+			}
+
 			log.Printf("Cluster object global timestamp: %d", finalTs)
 			log.Printf("Server Daemon replicationMode: %d", replicationMode)
 
@@ -554,4 +570,49 @@ func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, d
 	}()
 
 	return scatterGather, leaseManager
+}
+
+// downgradeToServerSideMode finds the next mode in replicationOrder that is NOT
+// in clientSideModes, starting from the position after the current mode.
+// If the current mode is already server-side (not in clientSideModes), it is
+// returned as-is. If no suitable mode is found, falls back to ReplicationNone (0)
+// to ensure the file is at least stored locally.
+func downgradeToServerSideMode(currentMode int, replicationOrder []int, clientSideModes []int) int {
+	isClientSide := func(mode int) bool {
+		for _, csm := range clientSideModes {
+			if mode == csm {
+				return true
+			}
+		}
+		return false
+	}
+
+	// If the current mode is already server-side, no downgrade needed.
+	if !isClientSide(currentMode) {
+		return currentMode
+	}
+
+	// Find the position of currentMode in replicationOrder and walk forward.
+	startIdx := 0
+	for i, mode := range replicationOrder {
+		if mode == currentMode {
+			startIdx = i + 1
+			break
+		}
+	}
+
+	for i := startIdx; i < len(replicationOrder); i++ {
+		if !isClientSide(replicationOrder[i]) {
+			return replicationOrder[i]
+		}
+	}
+
+	// No server-side mode found after current position — scan from the beginning.
+	for i := 0; i < startIdx && i < len(replicationOrder); i++ {
+		if !isClientSide(replicationOrder[i]) {
+			return replicationOrder[i]
+		}
+	}
+
+	return common.ReplicationNone
 }

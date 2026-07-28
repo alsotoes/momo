@@ -24,6 +24,10 @@ const (
 	prefixDaemon = "daemon."
 )
 
+// defaultClientSideReplicationModes is the default when client_side_replication_modes
+// is not specified in config. Defined at package level to avoid per-call allocation.
+var defaultClientSideReplicationModes = []int{ReplicationPrimarySplay}
+
 // GetConfig loads and validates the configuration from the given file path.
 func GetConfig(path string) (Configuration, error) {
 	var config Configuration
@@ -41,6 +45,38 @@ func GetConfig(path string) (Configuration, error) {
 	config.Global, err = loadGlobalConfig(globalSec)
 	if err != nil {
 		return Configuration{}, fmt.Errorf("failed to load [%s] section: %w", sectionGlobal, err)
+	}
+
+	// Parse client_side_replication_modes: comma-separated list of mode IDs that
+	// require a momo-aware client. External S3 clients get these modes subtracted
+	// from replication_order. Defaults to [3] (ReplicationPrimarySplay) if unset.
+	clientSideStr := globalSec.Key("client_side_replication_modes").String()
+	if clientSideStr != "" {
+		csmCount := strings.Count(clientSideStr, ",") + 1
+		modes := make([]int, 0, csmCount)
+		for len(clientSideStr) > 0 {
+			csmIdx := strings.IndexByte(clientSideStr, ',')
+			var csmPart string
+			if csmIdx == -1 {
+				csmPart = clientSideStr
+				clientSideStr = ""
+			} else {
+				csmPart = clientSideStr[:csmIdx]
+				clientSideStr = clientSideStr[csmIdx+1:]
+			}
+			trimmedCSM := strings.TrimSpace(csmPart)
+			if trimmedCSM == "" {
+				continue
+			}
+			csmMode, err := strconv.Atoi(trimmedCSM)
+			if err != nil {
+				return Configuration{}, fmt.Errorf("failed to parse 'client_side_replication_modes' part %q: %w", trimmedCSM, err)
+			}
+			modes = append(modes, csmMode)
+		}
+		if len(modes) > 0 {
+			config.Global.ClientSideReplicationModes = modes
+		}
 	}
 
 	// Load [metrics] section
@@ -139,6 +175,8 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 	if len(globalCfg.ReplicationOrder) == 0 {
 		return ConfigurationGlobal{}, fmt.Errorf("'replication_order' contains no valid entries: %w", syscall.EINVAL)
 	}
+
+	globalCfg.ClientSideReplicationModes = defaultClientSideReplicationModes
 
 	globalCfg.PolymorphicSystem, err = section.Key("polymorphic_system").Bool()
 	if err != nil {
