@@ -262,3 +262,49 @@ func TestNewStore_S3Backend(t *testing.T) {
 		t.Errorf("Content mismatch")
 	}
 }
+
+func TestS3BlobStore_PutLargeBlob(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	server, _ := mockS3Server(t)
+	defer server.Close()
+
+	cfg := common.ConfigurationStorage{
+		Backend:     "s3",
+		S3Endpoint:  server.URL,
+		S3Region:    "us-east-1",
+		S3Bucket:    "test-bucket",
+		S3AccessKey: "AKIAIOSFODNN7EXAMPLE",                     // notsecret
+		S3SecretKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", // notsecret
+		S3PathStyle: true,
+	}
+
+	store, err := NewS3BlobStore(cfg)
+	if err != nil {
+		t.Fatalf("NewS3BlobStore failed: %v", err)
+	}
+	defer store.Close()
+
+	content := bytes.Repeat([]byte("x"), 10*1024*1024)
+	hash := "largeblobhash123456"
+
+	if err := store.PutBlob(hash, bytes.NewReader(content)); err != nil {
+		t.Fatalf("PutBlob large failed: %v", err)
+	}
+
+	reader, err := store.GetBlob(hash)
+	if err != nil {
+		t.Fatalf("GetBlob large failed: %v", err)
+	}
+	defer reader.Close()
+
+	got, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("Failed to read large blob: %v", err)
+	}
+	if len(got) != len(content) {
+		t.Errorf("Size mismatch: got %d, want %d", len(got), len(content))
+	}
+	if !bytes.Equal(got, content) {
+		t.Errorf("Content mismatch in large blob")
+	}
+}
