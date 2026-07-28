@@ -24,6 +24,10 @@ const (
 	prefixDaemon = "daemon."
 )
 
+// defaultClientSideReplicationModes is the default when client_side_replication_modes
+// is not specified in config. Defined at package level to avoid per-call allocation.
+var defaultClientSideReplicationModes = []int{ReplicationPrimarySplay}
+
 // GetConfig loads and validates the configuration from the given file path.
 func GetConfig(path string) (Configuration, error) {
 	var config Configuration
@@ -145,7 +149,7 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 	// from replication_order. Defaults to [3] (ReplicationPrimarySplay) if unset.
 	clientSideStr := section.Key("client_side_replication_modes").String()
 	if clientSideStr == "" {
-		globalCfg.ClientSideReplicationModes = []int{ReplicationPrimarySplay}
+		globalCfg.ClientSideReplicationModes = defaultClientSideReplicationModes
 	} else {
 		csmCount := strings.Count(clientSideStr, ",") + 1
 		globalCfg.ClientSideReplicationModes = make([]int, 0, csmCount)
@@ -170,7 +174,7 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 			globalCfg.ClientSideReplicationModes = append(globalCfg.ClientSideReplicationModes, csmMode)
 		}
 		if len(globalCfg.ClientSideReplicationModes) == 0 {
-			globalCfg.ClientSideReplicationModes = []int{ReplicationPrimarySplay}
+			globalCfg.ClientSideReplicationModes = defaultClientSideReplicationModes
 		}
 	}
 
