@@ -1380,3 +1380,10 @@ b1fc642,BenchmarkPadString-8,1.98,0.00,0.00
 3913228,BenchmarkIndexSearch-8,1.60,0.00,0.00
 3913228,BenchmarkLoadGlobalConfig-8,748.00,160.00,1.00
 3913228,BenchmarkPadString-8,1.99,0.00,0.00
+e441354,BenchmarkCheckMetricsAndSwap-8,6.92,0.00,0.00
+e441354,BenchmarkCrushOptimized-8,299.00,0.00,0.00
+e441354,BenchmarkCrushOriginal-8,406.80,164.00,3.00
+e441354,BenchmarkIndexDirectTracking-8,0.35,0.00,0.00
+e441354,BenchmarkIndexSearch-8,1.50,0.00,0.00
+e441354,BenchmarkLoadGlobalConfig-8,723.20,160.00,1.00
+e441354,BenchmarkPadString-8,1.96,0.00,0.00

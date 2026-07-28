@@ -44,13 +44,20 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 
 	if replicationMode == common.ReplicationPrimarySplay {
 		// ⚡ Bolt: Use CRUSH to find the specific replicas for PrimarySplay.
-		fileHash, _ := common.HashFile(filePath)
+		fileHash, err := common.HashFile(filePath)
+		if err != nil {
+			log.Printf("Failed to hash file %s for CRUSH placement: %v", common.SanitizeLog(filePath), common.SanitizeLog(err.Error()))
+			return
+		}
 		nodes := make([]*common.Node, len(daemons))
 		for i, d := range daemons {
 			nodes[i] = &common.Node{ID: i, Weight: 1, Addr: d.Host}
 		}
 		cmap := &common.ClusterMap{Nodes: nodes}
-		placement, _ := cmap.Placement(fileHash, replicationFactor)
+		placement, err := cmap.Placement(fileHash, replicationFactor)
+		if err != nil {
+			log.Printf("WARNING: CRUSH placement failed for %s, replicating to initial daemon only: %v", common.SanitizeLog(filePath), common.SanitizeLog(err.Error()))
+		}
 
 		for _, node := range placement {
 			if node.ID == serverId {
