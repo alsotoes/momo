@@ -17,10 +17,14 @@ import (
 // If splay replication is active, it connects to all other daemons.
 // Finally, it sends the file to all established connections concurrently.
 func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remotePath string, serverId int, timestamp int64, requestedMode int, replicationFactor int) (err error) {
+	var communicators []transport.Communicator
 	defer wg.Done()
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Panic recovered in client.Connect: %v", r)
+			for _, c := range communicators {
+				c.Close()
+			}
 			err = fmt.Errorf("panic in Connect: %v: %w", r, syscall.EIO)
 		}
 	}()
@@ -31,7 +35,6 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 	}
 	authToken := cfg.Global.AuthToken
 	factory := transport.NewProtocolFactory(cfg)
-	var communicators []transport.Communicator
 	var wgSendFile sync.WaitGroup
 
 	// Connect to the initial daemon to check replication mode
