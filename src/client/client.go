@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"sync"
+	"syscall"
 
 	"github.com/alsotoes/momo/src/common"
 	"github.com/alsotoes/momo/src/transport"
@@ -16,6 +17,11 @@ import (
 // Finally, it sends the file to all established connections concurrently.
 func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remotePath string, serverId int, timestamp int64, requestedMode int, replicationFactor int) {
 	defer wg.Done()
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in client.Connect: %v", r)
+		}
+	}()
 	daemons := cfg.Daemons
 	if serverId < 0 || serverId >= len(daemons) {
 		log.Printf("Server ID %d is out of range", serverId)
@@ -56,7 +62,7 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 		cmap := &common.ClusterMap{Nodes: nodes}
 		placement, err := cmap.Placement(fileHash, replicationFactor)
 		if err != nil {
-			log.Printf("WARNING: CRUSH placement failed for %s, replicating to initial daemon only: %v", common.SanitizeLog(filePath), common.SanitizeLog(err.Error()))
+			log.Printf("WARNING: CRUSH placement failed for %s, replicating to initial daemon only: %v (errno=%d)", common.SanitizeLog(filePath), common.SanitizeLog(err.Error()), syscall.EHOSTUNREACH)
 		}
 
 		for _, node := range placement {
