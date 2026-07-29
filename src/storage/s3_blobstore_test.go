@@ -308,3 +308,28 @@ func TestS3BlobStore_PutLargeBlob(t *testing.T) {
 		t.Errorf("Content mismatch in large blob")
 	}
 }
+
+func TestNewRequest_PathTraversal(t *testing.T) {
+	server, _ := mockS3Server(t)
+	defer server.Close()
+
+	cfg := common.ConfigurationStorage{
+		Backend:     "s3",
+		S3Endpoint:  server.URL,
+		S3Bucket:    "test-bucket",
+		S3AccessKey: "test", // notsecret
+		S3SecretKey: "test", // notsecret
+	}
+
+	store, err := NewS3BlobStore(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+
+	_, err = store.GetBlob("../etc/passwd")
+	if err == nil {
+		t.Errorf("Expected path traversal error, got nil")
+	} else if !strings.Contains(err.Error(), "invalid key path traversal") {
+		t.Errorf("Expected path traversal error, got %v", err)
+	}
+}
