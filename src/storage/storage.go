@@ -70,12 +70,13 @@ type Store interface {
 // It composes a pluggable BlobStore (for raw blob bytes) with a fixed
 // bbolt metadata layer (for refcounts, tombstones, namespace mappings).
 type CASStore struct {
-	mu     sync.RWMutex
-	db     *bbolt.DB
-	base   string
-	blobs  BlobStore
-	gcDone chan struct{}
-	gcWG   sync.WaitGroup
+	mu       sync.RWMutex
+	db       *bbolt.DB
+	base     string
+	blobs    BlobStore
+	gcDone   chan struct{}
+	gcWG     sync.WaitGroup
+	closeOnce sync.Once
 }
 
 // NewCASStore initializes a CAS store with a LocalBlobStore backend.
@@ -129,14 +130,19 @@ func newCASStore(dataDir string, blobs BlobStore) (*CASStore, error) {
 }
 
 func (s *CASStore) Close() error {
-	if s.gcDone != nil {
-		close(s.gcDone)
-		s.gcWG.Wait()
-	}
-	if s.blobs != nil {
-		s.blobs.Close()
-	}
-	return s.db.Close()
+	s.closeOnce.Do(func() {
+		s.mu.Lock()
+		if s.gcDone != nil {
+			close(s.gcDone)
+			s.gcWG.Wait()
+		}
+		if s.blobs != nil {
+			s.blobs.Close()
+		}
+		s.db.Close()
+		s.mu.Unlock()
+	})
+	return nil
 }
 
 // Put saves an object to the store.

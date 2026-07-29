@@ -1569,3 +1569,10 @@ cacc02f,BenchmarkPadString-8,2.19,0.00,0.00
 4246b52,BenchmarkIndexSearch-8,1.75,0.00,0.00
 4246b52,BenchmarkLoadGlobalConfig-8,777.20,160.00,1.00
 4246b52,BenchmarkPadString-8,2.47,0.00,0.00
+66ac855,BenchmarkCheckMetricsAndSwap-8,8.20,0.00,0.00
+66ac855,BenchmarkCrushOptimized-8,303.60,0.00,0.00
+66ac855,BenchmarkCrushOriginal-8,401.70,164.00,3.00
+66ac855,BenchmarkIndexDirectTracking-8,0.38,0.00,0.00
+66ac855,BenchmarkIndexSearch-8,1.49,0.00,0.00
+66ac855,BenchmarkLoadGlobalConfig-8,711.30,160.00,1.00
+66ac855,BenchmarkPadString-8,2.04,0.00,0.00

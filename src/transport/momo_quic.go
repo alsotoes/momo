@@ -506,7 +506,12 @@ func (m *MomoQUICCommunicator) Close() (err error) {
 			err = fmt.Errorf("panic in Close: %v: %w", r, syscall.EIO)
 		}
 	}()
-	return m.Stream.Close()
+	streamErr := m.Stream.Close()
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		m.conn.CloseWithError(0, "")
+	}()
+	return streamErr
 }
 
 // GenerateSelfSignedCert generates a self-signed TLS certificate for testing and internal use.
