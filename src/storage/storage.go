@@ -150,6 +150,10 @@ func (s *CASStore) Put(name string, hash string, size int64, remotePath string, 
 		}
 	}()
 
+	if common.HasPathTraversalChars(hash) {
+		return fmt.Errorf("hash contains path traversal characters: %w", syscall.EINVAL)
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -285,6 +289,10 @@ func (s *CASStore) Has(hash string) (exists bool, err error) {
 			err = fmt.Errorf("internal storage panic: %w", syscall.EIO)
 		}
 	}()
+
+	if common.HasPathTraversalChars(hash) {
+		return false, fmt.Errorf("hash contains path traversal characters: %w", syscall.EINVAL)
+	}
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()

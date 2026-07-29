@@ -355,20 +355,21 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 			// Handle the file based on the replication mode
 			switch replicationMode {
 			case common.ReplicationNone, common.ReplicationPrimarySplay:
-				if exists {
-					// ⚡ Bolt: Deduplication hit. Just update metadata mapping without reading payload.
-					if err := store.Put(fileName, metadata.Hash, metadata.Size, remotePath, nil); err != nil {
-						log.Printf("AUDIT: Error updating metadata for %s from %s: %v", fileName, remoteAddr, common.SanitizeLog(err.Error()))
-						metricsCollector.IncErrors()
-					}
-				} else {
-					if err := getFile(comm, store, fileName, metadata.Hash, metadata.Size, remotePath); err != nil {
-						log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
-						metricsCollector.IncErrors()
-						return
-					}
+			if exists {
+				// ⚡ Bolt: Deduplication hit. Just update metadata mapping without reading payload.
+				if err := store.Put(fileName, metadata.Hash, metadata.Size, remotePath, nil); err != nil {
+					log.Printf("AUDIT: Error updating metadata for %s from %s: %v", fileName, remoteAddr, common.SanitizeLog(err.Error()))
+					metricsCollector.IncErrors()
+					return
 				}
-			case common.ReplicationChain:
+			} else {
+				if err := getFile(comm, store, fileName, metadata.Hash, metadata.Size, remotePath); err != nil {
+					log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
+					metricsCollector.IncErrors()
+					return
+				}
+			}
+		case common.ReplicationChain:
 				// In Chain mode, we find our position in the placement list and forward to the next node.
 				myPos := -1
 				for i, n := range placement {
@@ -383,7 +384,9 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 					// ⚡ Bolt: Deduplication hit. Just update metadata mapping without reading payload.
 					if err := store.Put(fileName, metadata.Hash, metadata.Size, remotePath, nil); err != nil {
 						log.Printf("AUDIT: Error updating metadata for %s from %s: %v", fileName, remoteAddr, common.SanitizeLog(err.Error()))
+						wg.Done()
 						metricsCollector.IncErrors()
+						return
 					}
 				} else {
 					if err := getFile(comm, store, fileName, metadata.Hash, metadata.Size, remotePath); err != nil {
@@ -432,7 +435,11 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 						// ⚡ Bolt: Deduplication hit. Just update metadata mapping.
 						if err := store.Put(fileName, metadata.Hash, metadata.Size, remotePath, nil); err != nil {
 							log.Printf("AUDIT: Error updating metadata for %s from %s: %v", fileName, remoteAddr, common.SanitizeLog(err.Error()))
+							for i := 0; i < len(placement)-1; i++ {
+								wg.Done()
+							}
 							metricsCollector.IncErrors()
+							return
 						}
 					} else {
 						if err := getFile(comm, store, fileName, metadata.Hash, metadata.Size, remotePath); err != nil {
@@ -469,13 +476,14 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 					}
 					wg.Wait()
 				} else {
-					// We are a secondary in a splay, just receive the file if needed.
-					if exists {
-						if err := store.Put(fileName, metadata.Hash, metadata.Size, remotePath, nil); err != nil {
-							log.Printf("AUDIT: Error updating metadata for %s from %s: %v", fileName, remoteAddr, common.SanitizeLog(err.Error()))
-							metricsCollector.IncErrors()
-						}
-					} else {
+				// We are a secondary in a splay, just receive the file if needed.
+				if exists {
+					if err := store.Put(fileName, metadata.Hash, metadata.Size, remotePath, nil); err != nil {
+						log.Printf("AUDIT: Error updating metadata for %s from %s: %v", fileName, remoteAddr, common.SanitizeLog(err.Error()))
+						metricsCollector.IncErrors()
+						return
+					}
+				} else {
 						if err := getFile(comm, store, fileName, metadata.Hash, metadata.Size, remotePath); err != nil {
 							log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
 							metricsCollector.IncErrors()
