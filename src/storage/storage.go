@@ -164,7 +164,10 @@ func (s *CASStore) Put(name string, hash string, size int64, remotePath string, 
 	defer s.mu.Unlock()
 
 	// 1. Check if we already have the blob
-	exists, _ := s.hasInternal(hash)
+	exists, err := s.hasInternal(hash)
+	if err != nil {
+		return fmt.Errorf("failed to check blob existence: %w", err)
+	}
 	if !exists && content != nil {
 		if err := s.blobs.PutBlob(hash, content); err != nil {
 			return err
@@ -192,7 +195,9 @@ func (s *CASStore) Put(name string, hash string, size int64, remotePath string, 
 		}
 
 		// Remove any existing tombstone for this name (resurrection).
-		tx.Bucket(bucketTombstones).Delete([]byte(name))
+		if err := tx.Bucket(bucketTombstones).Delete([]byte(name)); err != nil {
+			return fmt.Errorf("tombstone delete error: %w", err)
+		}
 
 		// Store RemotePath
 		if remotePath != "" {
@@ -275,13 +280,16 @@ func (s *CASStore) Get(name string) (rc io.ReadCloser, meta common.FileMetadata,
 	}
 
 	var remotePath string
-	_ = s.db.View(func(tx *bbolt.Tx) error {
+	err = s.db.View(func(tx *bbolt.Tx) error {
 		p := tx.Bucket(bucketPaths).Get([]byte(name))
 		if p != nil {
 			remotePath = string(p)
 		}
 		return nil
 	})
+	if err != nil {
+		return nil, common.FileMetadata{}, fmt.Errorf("failed to read remotePath: %w", err)
+	}
 
 	return f, common.FileMetadata{Name: name, Hash: hash, Size: size, RemotePath: remotePath}, nil
 }
@@ -359,8 +367,12 @@ func (s *CASStore) Delete(name string) (err error) {
 		}
 
 		// Remove namespace and paths entries.
-		ns.Delete([]byte(name))
-		paths.Delete([]byte(name))
+		if err := ns.Delete([]byte(name)); err != nil {
+			return fmt.Errorf("namespace delete error: %w", err)
+		}
+		if err := paths.Delete([]byte(name)); err != nil {
+			return fmt.Errorf("paths delete error: %w", err)
+		}
 		return nil
 	})
 }
