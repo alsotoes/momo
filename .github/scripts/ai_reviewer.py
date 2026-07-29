@@ -90,6 +90,60 @@ def add_jules_label(pr_number):
     except Exception as e:
         print(f"Failed to add jules label: {e}", file=sys.stderr)
 
+def sync_pr_labels_and_assignee(pr_number, pr_title, pr_body):
+    """Sync labels from linked issues to the PR and assign alsotoes.
+
+    This runs BEFORE any review work, ensuring every PR has correct
+    labels and an assignee from the moment it's opened.
+
+    1. Parse 'Closes #NNN' / 'Fixes #NNN' / 'Resolves #NNN' from PR body.
+    2. Fetch labels from each linked issue.
+    3. Add those labels to the PR (deduplicated by gh).
+    4. Assign alsotoes to the PR.
+    5. Add 'bug' label if the PR title starts with 'fix('.
+    """
+    if not pr_number:
+        return
+
+    labels_to_add = set()
+
+    # Parse issue references from PR body
+    issue_pattern = re.compile(r'\b(?:Closes|Fixes|Resolves)\s+#(\d+)', re.IGNORECASE)
+    issue_nums = issue_pattern.findall(pr_body or "")
+
+    for issue_num in issue_nums:
+        try:
+            cmd = ["gh", "issue", "view", issue_num, "--json", "labels"]
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            data = json.loads(result.stdout)
+            for label in data.get("labels", []):
+                labels_to_add.add(label["name"])
+        except Exception as e:
+            print(f"Failed to fetch labels for issue #{issue_num}: {e}", file=sys.stderr)
+
+    # Add 'bug' label for fix() PRs even without issue links
+    if pr_title and pr_title.lower().startswith("fix("):
+        labels_to_add.add("bug")
+    elif pr_title and pr_title.lower().startswith("feat("):
+        labels_to_add.add("enhancement")
+
+    # Apply labels
+    if labels_to_add:
+        try:
+            cmd = ["gh", "pr", "edit", pr_number, "--add-label", ",".join(sorted(labels_to_add))]
+            subprocess.run(cmd, capture_output=True, text=True, check=True)
+            print(f"Synced labels to PR #{pr_number}: {sorted(labels_to_add)}")
+        except Exception as e:
+            print(f"Failed to sync labels: {e}", file=sys.stderr)
+
+    # Assign alsotoes to every PR
+    try:
+        subprocess.run(["gh", "pr", "edit", pr_number, "--add-assignee", "alsotoes"],
+                       capture_output=True, text=True, check=True)
+        print(f"Assigned alsotoes to PR #{pr_number}")
+    except Exception as e:
+        print(f"Failed to assign alsotoes: {e}", file=sys.stderr)
+
 def create_missing_issue(pr_number, pr_title, pr_body):
     try:
         print(f"Rule 11 Violation detected. Autonomously creating tracking issue for PR #{pr_number}...")
@@ -147,6 +201,12 @@ def main():
     pr_body = os.environ.get("PR_BODY", "")
     pr_title = os.environ.get("PR_TITLE", "")
     pr_number = os.environ.get("PR_NUMBER", "")
+
+    # ⚡ First: Sync labels from linked issues and assign alsotoes.
+    # This ensures every PR has correct labels and an assignee before
+    # any review work begins.
+    sync_pr_labels_and_assignee(pr_number, pr_title, pr_body)
+
     # Rule 68: Detect Jules PRs by author, body, or first comment
     is_jules_pr = "jules" in pr_author.lower() or "jules" in pr_body.lower() or check_jules_first_comment(pr_number)
     
@@ -166,17 +226,15 @@ def main():
 
     # ⚡ Bolt: Automated PR Management
     if pr_number:
-        # 1. Labeling for Jules PRs (Rule 68)
+        # Labeling for Jules PRs (Rule 68)
         if is_jules_pr:
             add_jules_label(pr_number)
             if "sentinel" in pr_title.lower():
-                subprocess.run(["gh", "pr", "edit", pr_number, "--add-label", "bug"])
+                subprocess.run(["gh", "pr", "edit", pr_number, "--add-label", "bug"],
+                               capture_output=True, text=True)
             elif "bolt" in pr_title.lower():
-                subprocess.run(["gh", "pr", "edit", pr_number, "--add-label", "enhancement"])
-        
-        # 2. Assignment for alsotoes PRs
-        if pr_author.lower() == "alsotoes":
-            subprocess.run(["gh", "pr", "edit", pr_number, "--add-assignee", "alsotoes"])
+                subprocess.run(["gh", "pr", "edit", pr_number, "--add-label", "enhancement"],
+                               capture_output=True, text=True)
 
     jules_commits = get_jules_commit_count()
     max_jules_pushes = 3
