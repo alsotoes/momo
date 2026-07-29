@@ -589,3 +589,21 @@ func TestS3Communicator_DELETE(t *testing.T) {
 		t.Errorf("Expected 204 No Content, got: %s", respStr)
 	}
 }
+
+func TestS3Communicator_HandshakeClient_CRLFInjection(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	comm := NewS3Communicator(serverConn)
+
+	_, err := comm.HandshakeClient("evil\r\nX-Injected: true", 12345, 1)
+	if err == nil {
+		t.Fatal("Expected error for CRLF in auth token, got nil")
+	}
+	if !strings.Contains(err.Error(), "CRLF") {
+		t.Errorf("Expected CRLF error, got: %v", err)
+	}
+}

@@ -172,6 +172,13 @@ func (m *S3Communicator) HandshakeClient(authToken string, timestamp int64, requ
 		host = m.remoteAddr.String()
 	}
 
+	if strings.ContainsAny(authToken, "\r\n") {
+		return 0, fmt.Errorf("auth token contains CRLF characters: %w", syscall.EINVAL)
+	}
+	if strings.ContainsAny(host, "\r\n") {
+		return 0, fmt.Errorf("host contains CRLF characters: %w", syscall.EINVAL)
+	}
+
 	// ⚡ Bolt: Eliminate fmt.Sprintf and string allocations using stack-allocated buffer
 	var buf [256]byte
 	b := buf[:0]
