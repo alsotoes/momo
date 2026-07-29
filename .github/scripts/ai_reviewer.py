@@ -65,6 +65,30 @@ def get_jules_commit_count():
     except Exception:
         return 0
 
+def check_jules_first_comment(pr_number):
+    """Rule 68: Detect Jules-created PRs by checking the first comment
+    for the phrase 'PR created automatically by Jules'."""
+    if not pr_number:
+        return False
+    try:
+        cmd = ["gh", "pr", "view", pr_number, "--json", "comments", "--jq", ".comments[0].body"]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        first_comment = result.stdout.strip()
+        return "PR created automatically by Jules" in first_comment
+    except Exception:
+        return False
+
+def add_jules_label(pr_number):
+    """Rule 68: Add the 'jules' label to Jules-created PRs."""
+    if not pr_number:
+        return
+    try:
+        subprocess.run(["gh", "pr", "edit", pr_number, "--add-label", "jules"],
+                       capture_output=True, text=True, check=True)
+        print("Added 'jules' label (Rule 68)")
+    except Exception as e:
+        print(f"Failed to add jules label: {e}", file=sys.stderr)
+
 def create_missing_issue(pr_number, pr_title, pr_body):
     try:
         print(f"Rule 11 Violation detected. Autonomously creating tracking issue for PR #{pr_number}...")
@@ -122,7 +146,8 @@ def main():
     pr_body = os.environ.get("PR_BODY", "")
     pr_title = os.environ.get("PR_TITLE", "")
     pr_number = os.environ.get("PR_NUMBER", "")
-    is_jules_pr = "jules" in pr_author.lower() or "jules" in pr_body.lower()
+    # Rule 68: Detect Jules PRs by author, body, or first comment
+    is_jules_pr = "jules" in pr_author.lower() or "jules" in pr_body.lower() or check_jules_first_comment(pr_number)
     
     # 🛡️ Rule 11: Check for Issue-Spec Traceability
     # Detect both the full URL format (github.com/alsotoes/momo/issues/NNN)
@@ -140,8 +165,9 @@ def main():
 
     # ⚡ Bolt: Automated PR Management
     if pr_number:
-        # 1. Labeling for Jules PRs
+        # 1. Labeling for Jules PRs (Rule 68)
         if is_jules_pr:
+            add_jules_label(pr_number)
             if "sentinel" in pr_title.lower():
                 subprocess.run(["gh", "pr", "edit", pr_number, "--add-label", "bug"])
             elif "bolt" in pr_title.lower():
@@ -200,10 +226,25 @@ INSTRUCTIONS:
 
     review = call_gemini(api_key, model, prompt)
     if review:
-        print(review)
-        
+        is_approved = review.strip().startswith("✅")
+
+        # Rule 69: For Jules PRs with actionable findings, post directly as
+        # alsotoes (GITHUB_TOKEN = PAT) so Jules can recognize and act on it.
+        # For ✅ reviews or non-Jules PRs, print to stdout and let the workflow
+        # post as github-actions[bot] (BOT_TOKEN).
+        if is_jules_pr and not is_approved and pr_number:
+            try:
+                subprocess.run(["gh", "pr", "comment", pr_number, "--body", review],
+                               check=True)
+                print("Review posted as alsotoes (Rule 69 — Jules PR)", file=sys.stderr)
+            except Exception as e:
+                print(f"Failed to post review as alsotoes: {e}", file=sys.stderr)
+                print(review)
+        else:
+            print(review)
+
         # 🚀 Final Validation & Auto-Merge Gate
-        if review.strip().startswith("✅") and pr_number:
+        if is_approved and pr_number:
             check_ci_and_merge(pr_number)
 
 if __name__ == "__main__":
