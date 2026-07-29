@@ -213,8 +213,12 @@ func (s *CASStore) ApplyTombstone(name string, deletedAt int64) (err error) {
 				}
 			}
 		}
-		ns.Delete([]byte(name))
-		paths.Delete([]byte(name))
+		if err := ns.Delete([]byte(name)); err != nil {
+			return fmt.Errorf("namespace delete error: %w", err)
+		}
+		if err := paths.Delete([]byte(name)); err != nil {
+			return fmt.Errorf("paths delete error: %w", err)
+		}
 		return nil
 	})
 }
