@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"sync"
@@ -78,13 +79,15 @@ func NewRawBlobStore(cfg common.ConfigurationStorage, daemon *common.Daemon) (rb
 		}
 		c := b.Cursor()
 		for k, v := c.First(); k != nil; k, v = c.Next() {
-			if len(v) == 16 {
-				offset := int64(binary.BigEndian.Uint64(v[0:8]))
-				length := int64(binary.BigEndian.Uint64(v[8:16]))
+		if len(v) == 16 {
+			offset := int64(binary.BigEndian.Uint64(v[0:8]))
+			length := int64(binary.BigEndian.Uint64(v[8:16]))
+			if offset > 0 && length > 0 && offset <= math.MaxInt64-length {
 				end := offset + length
 				if end > nextOffset {
 					nextOffset = end
 				}
+			}
 			}
 		}
 		return nil
@@ -123,13 +126,16 @@ func (r *RawBlobStore) PutBlob(hash string, content io.Reader) (err error) {
 	defer r.mu.Unlock()
 
 	var exists bool
-	r.allocDB.View(func(tx *bbolt.Tx) error {
+	err = r.allocDB.View(func(tx *bbolt.Tx) error {
 		b := tx.Bucket(bucketRawAlloc)
 		if b != nil {
 			exists = b.Get([]byte(hash)) != nil
 		}
 		return nil
 	})
+	if err != nil {
+		return fmt.Errorf("raw: failed to check existence: %w", err)
+	}
 	if exists {
 		return nil
 	}
@@ -173,6 +179,9 @@ func (r *RawBlobStore) PutBlob(hash string, content io.Reader) (err error) {
 		return fmt.Errorf("raw: failed to record allocation: %w", syscall.EIO)
 	}
 
+	if offset > math.MaxInt64-totalWritten {
+		return fmt.Errorf("raw: offset overflow: %d + %d exceeds MaxInt64: %w", offset, totalWritten, syscall.EIO)
+	}
 	r.nextOffset = offset + totalWritten
 	return nil
 }
