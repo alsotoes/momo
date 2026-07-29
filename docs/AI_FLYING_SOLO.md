@@ -310,7 +310,11 @@ Rationale: PR comments appear in the conversation timeline and trigger notificat
 
 ### Detecting Jules-Created PRs (Rule 68)
 
-Jules-created PRs are identified by the phrase **"PR created automatically by Jules"** in the PR's first comment or PR body. When this phrase is detected, the agent MUST immediately add the `jules` label:
+Jules-created PRs are identified by either of these phrases in the PR's first comment or PR body:
+- **"PR created automatically by Jules"**
+- **"Jules, reporting for duty"**
+
+When either phrase is detected, the agent MUST immediately add the `jules` label:
 
 ```bash
 gh pr edit PR_N --add-label jules
