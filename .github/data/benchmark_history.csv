@@ -1604,3 +1604,10 @@ cbe2a54,BenchmarkPadString-8,1.93,0.00,0.00
 83d81be,BenchmarkIndexSearch-8,1.74,0.00,0.00
 83d81be,BenchmarkLoadGlobalConfig-8,794.70,160.00,1.00
 83d81be,BenchmarkPadString-8,2.39,0.00,0.00
+221ec34,BenchmarkCheckMetricsAndSwap-8,7.59,0.00,0.00
+221ec34,BenchmarkCrushOptimized-8,388.90,0.00,0.00
+221ec34,BenchmarkCrushOriginal-8,602.30,164.00,3.00
+221ec34,BenchmarkIndexDirectTracking-8,0.33,0.00,0.00
+221ec34,BenchmarkIndexSearch-8,1.49,0.00,0.00
+221ec34,BenchmarkLoadGlobalConfig-8,886.00,160.00,1.00
+221ec34,BenchmarkPadString-8,2.06,0.00,0.00
