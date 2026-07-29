@@ -1513,3 +1513,10 @@ dfca564,BenchmarkIndexDirectTracking-8,0.34,0.00,0.00
 dfca564,BenchmarkIndexSearch-8,1.86,0.00,0.00
 dfca564,BenchmarkLoadGlobalConfig-8,735.70,160.00,1.00
 dfca564,BenchmarkPadString-8,1.92,0.00,0.00
+c5342af,BenchmarkCheckMetricsAndSwap-8,8.47,0.00,0.00
+c5342af,BenchmarkCrushOptimized-8,324.00,0.00,0.00
+c5342af,BenchmarkCrushOriginal-8,426.50,164.00,3.00
+c5342af,BenchmarkIndexDirectTracking-8,0.38,0.00,0.00
+c5342af,BenchmarkIndexSearch-8,1.57,0.00,0.00
+c5342af,BenchmarkLoadGlobalConfig-8,775.00,160.00,1.00
+c5342af,BenchmarkPadString-8,1.96,0.00,0.00

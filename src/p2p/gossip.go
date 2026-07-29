@@ -91,9 +91,9 @@ type Gossiper struct {
 	mu        sync.Mutex
 	wg        sync.WaitGroup
 
-	onJoin  func(peer *Peer)
-	onLeave func(peerID int32)
-
+	cbMu          sync.RWMutex
+	onJoin        func(peer *Peer)
+	onLeave       func(peerID int32)
 	scatterGather *ScatterGather
 	leaseManager  *LeaseManager
 
@@ -116,24 +116,32 @@ func NewGossiper(cfg GossipConfig, transport Transport) *Gossiper {
 
 // OnJoin sets a callback invoked when a new peer joins the cluster.
 func (g *Gossiper) OnJoin(fn func(peer *Peer)) {
+	g.cbMu.Lock()
 	g.onJoin = fn
+	g.cbMu.Unlock()
 }
 
 // OnLeave sets a callback invoked when a peer leaves the cluster.
 func (g *Gossiper) OnLeave(fn func(peerID int32)) {
+	g.cbMu.Lock()
 	g.onLeave = fn
+	g.cbMu.Unlock()
 }
 
 // SetScatterGather attaches a ScatterGather instance whose query RPCs will be
 // routed by the gossiper's consumer loop.
 func (g *Gossiper) SetScatterGather(sg *ScatterGather) {
+	g.cbMu.Lock()
 	g.scatterGather = sg
+	g.cbMu.Unlock()
 }
 
 // SetLeaseManager attaches a LeaseManager instance whose lease RPCs will be
 // routed by the gossiper's consumer loop.
 func (g *Gossiper) SetLeaseManager(lm *LeaseManager) {
+	g.cbMu.Lock()
 	g.leaseManager = lm
+	g.cbMu.Unlock()
 }
 
 // Start launches the heartbeat, ping, and suspicion loops.
@@ -541,8 +549,11 @@ func (g *Gossiper) checkSuspicion() {
 			if elapsed > 2*timeout {
 				p.SetState(PeerStateOffline)
 				log.Printf("Gossip: peer %d marked OFFLINE (last seen %v ago, timeout=%v)", p.ID, elapsed, timeout)
-				if g.onLeave != nil {
-					g.onLeave(p.ID)
+				g.cbMu.RLock()
+				onLeave := g.onLeave
+				g.cbMu.RUnlock()
+				if onLeave != nil {
+					onLeave(p.ID)
 				}
 			}
 		}
@@ -588,12 +599,18 @@ func (g *Gossiper) HandleRPC(rpc *RPC) {
 	case MsgIndirectPing:
 		g.handleIndirectPing(rpc)
 	case MsgQuery, MsgQueryResponse:
-		if g.scatterGather != nil {
-			g.scatterGather.HandleRPC(rpc)
+		g.cbMu.RLock()
+		sg := g.scatterGather
+		g.cbMu.RUnlock()
+		if sg != nil {
+			sg.HandleRPC(rpc)
 		}
 	case MsgLeaseRequest, MsgLeaseGrant, MsgLeaseRelease:
-		if g.leaseManager != nil {
-			g.leaseManager.HandleLeaseRPC(rpc)
+		g.cbMu.RLock()
+		lm := g.leaseManager
+		g.cbMu.RUnlock()
+		if lm != nil {
+			lm.HandleLeaseRPC(rpc)
 		}
 	}
 }
@@ -620,8 +637,11 @@ func (g *Gossiper) handleHeartbeat(rpc *RPC) {
 			peer := NewPeer(pi.ID, pi.Addr)
 			g.transport.Peers().Add(peer)
 			log.Printf("Gossip: discovered new peer %d at %s via heartbeat from %d", pi.ID, pi.Addr, rpc.From)
-			if g.onJoin != nil {
-				g.onJoin(peer)
+			g.cbMu.RLock()
+			onJoin := g.onJoin
+			g.cbMu.RUnlock()
+			if onJoin != nil {
+				onJoin(peer)
 			}
 		}
 	}
@@ -657,8 +677,11 @@ func (g *Gossiper) handleMembership(rpc *RPC) {
 			peer := NewPeer(pi.ID, pi.Addr)
 			g.transport.Peers().Add(peer)
 			log.Printf("Gossip: new peer %d joined via membership update from %d", pi.ID, rpc.From)
-			if g.onJoin != nil {
-				g.onJoin(peer)
+			g.cbMu.RLock()
+			onJoin := g.onJoin
+			g.cbMu.RUnlock()
+			if onJoin != nil {
+				onJoin(peer)
 			}
 		}
 	}
