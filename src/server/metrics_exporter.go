@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -118,7 +119,8 @@ func (m *MetricsCollector) handler(w http.ResponseWriter, r *http.Request) {
 
 // StartMetricsServer starts an HTTP server exposing Prometheus metrics on the given port.
 // It runs in a background goroutine and returns immediately.
-func StartMetricsServer(port int, collector *MetricsCollector) {
+// The server is shut down when the provided context is canceled.
+func StartMetricsServer(ctx context.Context, port int, collector *MetricsCollector) {
 	if port <= 0 {
 		return
 	}
@@ -137,6 +139,8 @@ func StartMetricsServer(port int, collector *MetricsCollector) {
 		return
 	}
 
+	srv := &http.Server{Handler: mux}
+
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -144,8 +148,15 @@ func StartMetricsServer(port int, collector *MetricsCollector) {
 			}
 		}()
 		log.Printf("Prometheus metrics server listening on :%d/metrics", port)
-		if err := http.Serve(ln, mux); err != nil && err != http.ErrServerClosed {
+		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			log.Printf("Metrics server error: %v", err)
 		}
+	}()
+
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		srv.Shutdown(shutdownCtx)
 	}()
 }

@@ -75,7 +75,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 
 	// Start Prometheus metrics endpoint if configured
 	metricsCollector := NewMetricsCollector()
-	StartMetricsServer(cfg.Metrics.PrometheusPort, metricsCollector)
+	StartMetricsServer(ctx, cfg.Metrics.PrometheusPort, metricsCollector)
 
 	// 🛡️ Zero-Crash: Log a warning if the cluster cannot meet the desired durability goal.
 	if cfg.Global.ReplicationFactor > len(daemons) {
