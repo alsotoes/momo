@@ -131,11 +131,11 @@ func newCASStore(dataDir string, blobs BlobStore) (*CASStore, error) {
 
 func (s *CASStore) Close() error {
 	s.closeOnce.Do(func() {
-		s.mu.Lock()
 		if s.gcDone != nil {
 			close(s.gcDone)
 			s.gcWG.Wait()
 		}
+		s.mu.Lock()
 		if s.blobs != nil {
 			s.blobs.Close()
 		}
