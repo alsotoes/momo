@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -75,18 +74,23 @@ func (s *S3BlobStore) Close() error {
 }
 
 // PutBlob uploads a blob to S3 using HTTP PUT with SigV4 authentication.
-func (s *S3BlobStore) PutBlob(hash string, content io.Reader) error {
-	payload, err := io.ReadAll(content)
-	if err != nil {
-		return fmt.Errorf("s3: failed to read payload: %w", syscall.EIO)
-	}
+// The content is streamed directly to S3 using UNSIGNED-PAYLOAD to avoid
+// buffering the entire blob in memory (OOM/DoS prevention).
+func (s *S3BlobStore) PutBlob(hash string, content io.Reader) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in S3BlobStore.PutBlob: %v", r)
+			err = fmt.Errorf("panic in S3BlobStore.PutBlob: %v: %w", r, syscall.EIO)
+		}
+	}()
 
-	req, err := s.newRequest("PUT", hash, bytes.NewReader(payload))
+	boundedContent := io.LimitReader(content, common.MaxFileSize)
+
+	req, err := s.newRequest("PUT", hash, boundedContent, "UNSIGNED-PAYLOAD")
 	if err != nil {
 		return err
 	}
-	req.ContentLength = int64(len(payload))
-	req.Header.Set("x-amz-content-sha256", hexSHA256(payload))
+	req.ContentLength = -1
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -102,7 +106,7 @@ func (s *S3BlobStore) PutBlob(hash string, content io.Reader) error {
 
 // GetBlob downloads a blob from S3 using HTTP GET with SigV4 authentication.
 func (s *S3BlobStore) GetBlob(hash string) (io.ReadCloser, error) {
-	req, err := s.newRequest("GET", hash, nil)
+	req, err := s.newRequest("GET", hash, nil, emptyStringSHA256)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +130,7 @@ func (s *S3BlobStore) GetBlob(hash string) (io.ReadCloser, error) {
 // DeleteBlob removes a blob from S3 using HTTP DELETE with SigV4 authentication.
 // Missing blobs are silently ignored (treated as success).
 func (s *S3BlobStore) DeleteBlob(hash string) error {
-	req, err := s.newRequest("DELETE", hash, nil)
+	req, err := s.newRequest("DELETE", hash, nil, emptyStringSHA256)
 	if err != nil {
 		return err
 	}
@@ -147,7 +151,7 @@ func (s *S3BlobStore) DeleteBlob(hash string) error {
 }
 
 // newRequest builds an HTTP request for the given method and object key.
-func (s *S3BlobStore) newRequest(method, key string, body io.Reader) (req *http.Request, err error) {
+func (s *S3BlobStore) newRequest(method, key string, body io.Reader, payloadHash string) (req *http.Request, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("panic building new request: %v", r)
@@ -182,14 +186,6 @@ func (s *S3BlobStore) newRequest(method, key string, body io.Reader) (req *http.
 	now := time.Now().UTC()
 	amzDate := now.Format("20060102T150405Z")
 	dateStamp := now.Format("20060102")
-
-	payloadHash := emptyStringSHA256
-	if method == "PUT" {
-		payloadHash = req.Header.Get("x-amz-content-sha256")
-		if payloadHash == "" {
-			payloadHash = emptyStringSHA256
-		}
-	}
 
 	host := parsedURL.Host
 	if s.pathStyle {

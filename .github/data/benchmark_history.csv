@@ -1408,3 +1408,17 @@ ff0f7f4,BenchmarkPadString-8,1.93,0.00,0.00
 0469af7,BenchmarkIndexSearch-8,1.71,0.00,0.00
 0469af7,BenchmarkLoadGlobalConfig-8,715.20,160.00,1.00
 0469af7,BenchmarkPadString-8,1.91,0.00,0.00
+fa2a91d,BenchmarkCheckMetricsAndSwap-8,8.38,0.00,0.00
+fa2a91d,BenchmarkCrushOptimized-8,315.20,0.00,0.00
+fa2a91d,BenchmarkCrushOriginal-8,597.80,164.00,3.00
+fa2a91d,BenchmarkIndexDirectTracking-8,0.35,0.00,0.00
+fa2a91d,BenchmarkIndexSearch-8,1.79,0.00,0.00
+fa2a91d,BenchmarkLoadGlobalConfig-8,723.30,160.00,1.00
+fa2a91d,BenchmarkPadString-8,2.11,0.00,0.00
+be3840d,BenchmarkCheckMetricsAndSwap-8,9.16,0.00,0.00
+be3840d,BenchmarkCrushOptimized-8,375.40,0.00,0.00
+be3840d,BenchmarkCrushOriginal-8,519.00,164.00,3.00
+be3840d,BenchmarkIndexDirectTracking-8,0.65,0.00,0.00
+be3840d,BenchmarkIndexSearch-8,2.21,0.00,0.00
+be3840d,BenchmarkLoadGlobalConfig-8,850.60,160.00,1.00
+be3840d,BenchmarkPadString-8,2.32,0.00,0.00
