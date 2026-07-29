@@ -53,14 +53,17 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 		return
 	}
 
+	// Compute file hash once and reuse for both CRUSH placement and metadata.
+	// This prevents a TOCTOU race where the file is modified between two
+	// independent hash calls, causing placement and metadata to diverge.
+	fileHash, err := common.HashFile(filePath)
+	if err != nil {
+		log.Printf("Failed to hash file %s: %v", common.SanitizeLog(filePath), common.SanitizeLog(err.Error()))
+		return
+	}
+
 	if replicationMode == common.ReplicationPrimarySplay {
 		// ⚡ Bolt: Use CRUSH to find the specific replicas for PrimarySplay.
-		var fileHash string
-		fileHash, err = common.HashFile(filePath)
-		if err != nil {
-			log.Printf("Failed to hash file %s for CRUSH placement: %v", common.SanitizeLog(filePath), common.SanitizeLog(err.Error()))
-			return
-		}
 		nodes := make([]*common.Node, len(daemons))
 		for i, d := range daemons {
 			nodes[i] = &common.Node{ID: i, Weight: 1, Addr: d.Host}
@@ -100,17 +103,10 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 		}
 	}()
 
-	// Optimization: Pre-compute file metadata (hash, size, name) before concurrent transmission.
-	// This avoids redundant disk reads and hashing for each connection in splay replication.
+	// Optimization: Pre-compute file metadata (size, name) before concurrent transmission.
 	fileInfo, err := os.Stat(filePath)
 	if err != nil {
 		log.Printf("Failed to get file info for %s: %v", common.SanitizeLog(filePath), common.SanitizeLog(err.Error()))
-		return
-	}
-
-	fileHash, err := common.HashFile(filePath)
-	if err != nil {
-		log.Printf("Failed to hash file %s: %v", common.SanitizeLog(filePath), common.SanitizeLog(err.Error()))
 		return
 	}
 
