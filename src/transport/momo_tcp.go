@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net"
 	"os"
 	"strconv"
@@ -302,6 +303,10 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 		copyTimeout := 5 * time.Second
 		mb := meta.Size / (1024 * 1024)
 		if mb > 0 {
+			maxMB := int64(math.MaxInt64 / int64(time.Second))
+			if mb > maxMB {
+				mb = maxMB
+			}
 			copyTimeout += time.Duration(mb) * time.Second
 		}
 		m.SetWriteDeadline(time.Now().Add(copyTimeout))
