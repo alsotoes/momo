@@ -178,10 +178,17 @@ func (r *RawBlobStore) PutBlob(hash string, content io.Reader) (err error) {
 }
 
 // GetBlob reads a blob from the raw device by its content hash.
-func (r *RawBlobStore) GetBlob(hash string) (io.ReadCloser, error) {
+func (r *RawBlobStore) GetBlob(hash string) (rc io.ReadCloser, err error) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			log.Printf("CRITICAL: Panic recovered in RawBlobStore.GetBlob: %v", rec)
+			err = fmt.Errorf("raw: read panic: %v: %w", rec, syscall.EIO)
+		}
+	}()
+
 	var offset, length int64
 	var found bool
-	err := r.allocDB.View(func(tx *bbolt.Tx) error {
+	err = r.allocDB.View(func(tx *bbolt.Tx) error {
 		b := tx.Bucket(bucketRawAlloc)
 		if b == nil {
 			return nil
@@ -199,6 +206,13 @@ func (r *RawBlobStore) GetBlob(hash string) (io.ReadCloser, error) {
 	}
 	if !found {
 		return nil, syscall.ENOENT
+	}
+
+	if length <= 0 || length > common.MaxFileSize {
+		return nil, fmt.Errorf("raw: invalid blob length %d in alloc table: %w", length, syscall.EIO)
+	}
+	if offset < 0 {
+		return nil, fmt.Errorf("raw: invalid blob offset %d in alloc table: %w", offset, syscall.EIO)
 	}
 
 	data := make([]byte, length)

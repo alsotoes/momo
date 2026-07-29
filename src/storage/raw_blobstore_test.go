@@ -2,11 +2,13 @@ package storage
 
 import (
 	"bytes"
+	"encoding/binary"
 	"io"
 	"path/filepath"
 	"testing"
 
 	"github.com/alsotoes/momo/src/common"
+	"go.etcd.io/bbolt"
 	"go.uber.org/goleak"
 )
 
@@ -227,6 +229,60 @@ func TestRawBlobStore_PutLargeBlob(t *testing.T) {
 	}
 	if !bytes.Equal(got, content) {
 		t.Errorf("Large blob content mismatch: got %d bytes, want %d bytes", len(got), len(content))
+	}
+}
+
+func TestRawBlobStore_CorruptedAllocTable(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	tempDir := t.TempDir()
+	devicePath := filepath.Join(tempDir, "fake-device")
+	dataDir := filepath.Join(tempDir, "data")
+
+	cfg := common.ConfigurationStorage{Backend: "raw", RawDevicePath: devicePath}
+	daemon := &common.Daemon{Data: dataDir}
+
+	store, err := NewRawBlobStore(cfg, daemon)
+	if err != nil {
+		t.Fatalf("NewRawBlobStore failed: %v", err)
+	}
+	defer store.Close()
+
+	content := []byte("corrupt test")
+	hash := "corrupthash"
+
+	if err := store.PutBlob(hash, bytes.NewReader(content)); err != nil {
+		t.Fatalf("PutBlob failed: %v", err)
+	}
+
+	// Corrupt the allocation table: set length to a huge value
+	var alloc [16]byte
+	binary.BigEndian.PutUint64(alloc[0:8], 0)
+	binary.BigEndian.PutUint64(alloc[8:16], uint64(common.MaxFileSize+1))
+	err = store.allocDB.Update(func(tx *bbolt.Tx) error {
+		return tx.Bucket(bucketRawAlloc).Put([]byte(hash), alloc[:])
+	})
+	if err != nil {
+		t.Fatalf("Failed to corrupt alloc table: %v", err)
+	}
+
+	// GetBlob should return an error, not panic or OOM
+	_, err = store.GetBlob(hash)
+	if err == nil {
+		t.Fatal("Expected error for corrupted alloc table, got nil")
+	}
+
+	// Corrupt with negative length (via uint64 that overflows int64)
+	binary.BigEndian.PutUint64(alloc[8:16], 0xFFFFFFFFFFFFFFFF)
+	err = store.allocDB.Update(func(tx *bbolt.Tx) error {
+		return tx.Bucket(bucketRawAlloc).Put([]byte(hash), alloc[:])
+	})
+	if err != nil {
+		t.Fatalf("Failed to corrupt alloc table: %v", err)
+	}
+
+	_, err = store.GetBlob(hash)
+	if err == nil {
+		t.Fatal("Expected error for negative length, got nil")
 	}
 }
 
