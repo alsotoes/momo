@@ -1422,3 +1422,10 @@ be3840d,BenchmarkIndexDirectTracking-8,0.65,0.00,0.00
 be3840d,BenchmarkIndexSearch-8,2.21,0.00,0.00
 be3840d,BenchmarkLoadGlobalConfig-8,850.60,160.00,1.00
 be3840d,BenchmarkPadString-8,2.32,0.00,0.00
+0c050bb,BenchmarkCheckMetricsAndSwap-8,8.28,0.00,0.00
+0c050bb,BenchmarkCrushOptimized-8,340.90,0.00,0.00
+0c050bb,BenchmarkCrushOriginal-8,434.10,164.00,3.00
+0c050bb,BenchmarkIndexDirectTracking-8,0.33,0.00,0.00
+0c050bb,BenchmarkIndexSearch-8,1.58,0.00,0.00
+0c050bb,BenchmarkLoadGlobalConfig-8,736.80,160.00,1.00
+0c050bb,BenchmarkPadString-8,1.97,0.00,0.00
