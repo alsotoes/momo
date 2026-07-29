@@ -64,6 +64,9 @@ func SetReplicationState(newMode int, timestamp int64) common.ReplicationData {
 // it propagates the change to the other servers in the cluster.
 func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, serverId int, timestamp int64) error {
 	daemons := cfg.Daemons
+	if serverId < 0 || serverId >= len(daemons) {
+		return fmt.Errorf("server ID %d is out of range [0, %d)", serverId, len(daemons))
+	}
 	factory := transport.NewProtocolFactory(cfg)
 	server, err := factory.Listen(daemons[serverId].ChangeReplication)
 	if err != nil {

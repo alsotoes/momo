@@ -176,7 +176,7 @@ func DecodeFileMetadataList(data []byte) (result []common.FileMetadata, err erro
 	off := 4
 	maxCount := (len(data) - 4) / 20
 	if count > maxCount {
-		count = maxCount
+		return nil, fmt.Errorf("file metadata list count %d exceeds max %d for data length %d: %w", count, maxCount, len(data), syscall.EBADMSG)
 	}
 	files := make([]common.FileMetadata, 0, count)
 	for i := 0; i < count; i++ {
