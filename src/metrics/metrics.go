@@ -99,6 +99,11 @@ func GetMetrics(ctx context.Context, cfg common.Configuration, serverId int) {
 
 	log.Printf("Daemon GetMetrics started...")
 
+	if cfg.Metrics.Interval <= 0 {
+		log.Printf("ERROR: metrics interval must be positive, got %d — metrics loop not started", cfg.Metrics.Interval)
+		return
+	}
+
 	// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
 	paddedAuthToken := []byte(common.PadString(cfg.Global.AuthToken, common.AuthTokenLength))
 
