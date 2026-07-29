@@ -1506,3 +1506,10 @@ cab6e2d,BenchmarkIndexDirectTracking-8,0.34,0.00,0.00
 cab6e2d,BenchmarkIndexSearch-8,1.96,0.00,0.00
 cab6e2d,BenchmarkLoadGlobalConfig-8,751.30,160.00,1.00
 cab6e2d,BenchmarkPadString-8,1.93,0.00,0.00
+dfca564,BenchmarkCheckMetricsAndSwap-8,6.78,0.00,0.00
+dfca564,BenchmarkCrushOptimized-8,348.80,0.00,0.00
+dfca564,BenchmarkCrushOriginal-8,406.20,164.00,3.00
+dfca564,BenchmarkIndexDirectTracking-8,0.34,0.00,0.00
+dfca564,BenchmarkIndexSearch-8,1.86,0.00,0.00
+dfca564,BenchmarkLoadGlobalConfig-8,735.70,160.00,1.00
+dfca564,BenchmarkPadString-8,1.92,0.00,0.00

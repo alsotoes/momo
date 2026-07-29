@@ -210,7 +210,9 @@ func (lm *LeaseManager) Acquire(key string, duration time.Duration) (*Lease, err
 	}
 
 	quorum := (peerCount+1)/2 + 1
-	if quorum < 1 {
+	if peerCount == 0 {
+		quorum = 0
+	} else if peerCount == 1 {
 		quorum = 1
 	}
 
