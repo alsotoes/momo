@@ -20,7 +20,7 @@ import (
 type IdleTimeoutConn struct {
 	net.Conn
 	timeout          time.Duration
-	absoluteDeadline time.Time
+	absoluteDeadline atomic.Pointer[time.Time]
 	readCalls        atomic.Uint32
 	writeCalls       atomic.Uint32
 	broken           atomic.Bool
@@ -44,7 +44,7 @@ func (c *IdleTimeoutConn) SetAbsoluteDeadline(t time.Time) {
 		}
 	}()
 
-	c.absoluteDeadline = t
+	c.absoluteDeadline.Store(&t)
 
 	// 🛡️ Sentinel: Immediately apply the new deadline to the underlying connection.
 	// Since applyDeadlines amortizes updates (skipping 63 of 64 calls), failing to
@@ -52,8 +52,8 @@ func (c *IdleTimeoutConn) SetAbsoluteDeadline(t time.Time) {
 	// handshake deadline, causing valid large file transfers to drop prematurely (DoS).
 	now := time.Now()
 	deadline := now.Add(c.timeout)
-	if !c.absoluteDeadline.IsZero() && c.absoluteDeadline.Before(deadline) {
-		deadline = c.absoluteDeadline
+	if !t.IsZero() && t.Before(deadline) {
+		deadline = t
 	}
 	c.Conn.SetDeadline(deadline)
 }
@@ -87,8 +87,8 @@ func (c *IdleTimeoutConn) applyDeadlines(isRead bool) {
 
 	now := time.Now()
 	deadline := now.Add(c.timeout)
-	if !c.absoluteDeadline.IsZero() && c.absoluteDeadline.Before(deadline) {
-		deadline = c.absoluteDeadline
+	if dp := c.absoluteDeadline.Load(); dp != nil && !dp.IsZero() && dp.Before(deadline) {
+		deadline = *dp
 	}
 
 	if isRead {

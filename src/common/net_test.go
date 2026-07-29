@@ -15,6 +15,7 @@ type mockConn struct {
 	net.Conn
 	readDeadlineSet  bool
 	writeDeadlineSet bool
+	deadlineSet      bool
 	readError        error
 }
 
@@ -25,6 +26,15 @@ func (m *mockConn) SetReadDeadline(t time.Time) error {
 
 func (m *mockConn) SetWriteDeadline(t time.Time) error {
 	m.writeDeadlineSet = true
+	return nil
+}
+
+func (m *mockConn) SetDeadline(t time.Time) error {
+	m.deadlineSet = true
+	return nil
+}
+
+func (m *mockConn) Close() error {
 	return nil
 }
 
@@ -191,4 +201,46 @@ func TestIdleTimeoutConn_BrokenFlagAfterPanic(t *testing.T) {
 	if !errors.Is(err, syscall.EIO) {
 		t.Errorf("Expected err to wrap %v, got %v", syscall.EIO, err)
 	}
+}
+
+func TestIdleTimeoutConn_AbsoluteDeadlineConcurrentAccess(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	mc := &mockConn{}
+	idleConn := NewIdleTimeoutConn(mc, 30*time.Second)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	stop := make(chan struct{})
+
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				idleConn.SetAbsoluteDeadline(time.Now().Add(time.Hour))
+			}
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		buf := make([]byte, 64)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				idleConn.Read(buf)
+				idleConn.Write(buf)
+			}
+		}
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	close(stop)
+	wg.Wait()
 }
