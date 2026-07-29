@@ -403,6 +403,8 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 						defer func() {
 							if r := recover(); r != nil {
 								log.Printf("CRITICAL: Panic recovered in Chain forwarder to node %d: %v", id, r)
+								wg.Done()
+								metricsCollector.IncErrors()
 							}
 						}()
 						reader, _, err := store.Get(fileName)
@@ -414,7 +416,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 						}
 						defer reader.Close()
 						// ⚡ Bolt: connectToPeerStream (client.ConnectStream) handles wg.Done() internally via defer.
-						connectToPeerStream(&wg, cfg, reader, fileName, metadata.Hash, metadata.Size, "", id, finalTs, replicationMode, factor)
+						connectToPeerStream(&wg, cfg, reader, fileName, metadata.Hash, metadata.Size, remotePath, id, finalTs, replicationMode, factor)
 						metricsCollector.IncReplication()
 					}(nextHop.ID)
 				} else {
@@ -446,11 +448,13 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 						targetId := placement[i].ID
 						go func(id int) {
 							// ⚡ Bolt: connectToPeerStream (client.ConnectStream) handles wg.Done() internally via defer.
-							defer func() {
-								if r := recover(); r != nil {
-									log.Printf("CRITICAL: Panic recovered in Splay forwarder to node %d: %v", id, r)
-								}
-							}()
+						defer func() {
+							if r := recover(); r != nil {
+								log.Printf("CRITICAL: Panic recovered in Splay forwarder to node %d: %v", id, r)
+								wg.Done()
+								metricsCollector.IncErrors()
+							}
+						}()
 							reader, _, err := store.Get(fileName)
 							if err != nil {
 								log.Printf("AUDIT: Failed to get blob for splay forwarding: %v", common.SanitizeLog(err.Error()))
@@ -459,7 +463,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 								return
 							}
 							defer reader.Close()
-							connectToPeerStream(&wg, cfg, reader, fileName, metadata.Hash, metadata.Size, "", id, finalTs, replicationMode, factor)
+							connectToPeerStream(&wg, cfg, reader, fileName, metadata.Hash, metadata.Size, remotePath, id, finalTs, replicationMode, factor)
 							metricsCollector.IncReplication()
 						}(targetId)
 					}

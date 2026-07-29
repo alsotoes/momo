@@ -109,7 +109,16 @@ func (r *RawBlobStore) Close() error {
 
 // PutBlob writes a blob to the raw device at the next available offset.
 // If the hash already exists in the allocation table, it is a no-op.
-func (r *RawBlobStore) PutBlob(hash string, content io.Reader) error {
+// Content is streamed in 64 KB chunks to avoid unbounded memory allocation.
+// The total size is capped at common.MaxFileSize (Rule 4 — Zero-Crash Pattern).
+func (r *RawBlobStore) PutBlob(hash string, content io.Reader) (err error) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			log.Printf("CRITICAL: Panic recovered in RawBlobStore.PutBlob: %v", rec)
+			err = fmt.Errorf("raw: write panic: %v: %w", rec, syscall.EIO)
+		}
+	}()
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -125,23 +134,38 @@ func (r *RawBlobStore) PutBlob(hash string, content io.Reader) error {
 		return nil
 	}
 
-	data, err := io.ReadAll(content)
-	if err != nil {
-		return fmt.Errorf("raw: failed to read content: %w", syscall.EIO)
+	limited := io.LimitReader(content, common.MaxFileSize+1)
+	offset := r.nextOffset
+	buf := make([]byte, 64*1024)
+	var totalWritten int64
+
+	for {
+		n, readErr := limited.Read(buf)
+		if n > 0 {
+			written, writeErr := r.device.WriteAt(buf[:n], offset+totalWritten)
+			if writeErr != nil {
+				return fmt.Errorf("raw: failed to write to device: %w", syscall.EIO)
+			}
+			if written != n {
+				return fmt.Errorf("raw: short write: %w", syscall.EIO)
+			}
+			totalWritten += int64(written)
+		}
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			return fmt.Errorf("raw: failed to read content: %w", syscall.EIO)
+		}
 	}
 
-	offset := r.nextOffset
-	n, err := r.device.WriteAt(data, offset)
-	if err != nil {
-		return fmt.Errorf("raw: failed to write to device: %w", syscall.EIO)
-	}
-	if int64(n) != int64(len(data)) {
-		return fmt.Errorf("raw: short write: %w", syscall.EIO)
+	if totalWritten > common.MaxFileSize {
+		return fmt.Errorf("raw: blob exceeds MaxFileSize (%d bytes): %w", common.MaxFileSize, syscall.EFBIG)
 	}
 
 	var alloc [16]byte
 	binary.BigEndian.PutUint64(alloc[0:8], uint64(offset))
-	binary.BigEndian.PutUint64(alloc[8:16], uint64(len(data)))
+	binary.BigEndian.PutUint64(alloc[8:16], uint64(totalWritten))
 	err = r.allocDB.Update(func(tx *bbolt.Tx) error {
 		return tx.Bucket(bucketRawAlloc).Put([]byte(hash), alloc[:])
 	})
@@ -149,7 +173,7 @@ func (r *RawBlobStore) PutBlob(hash string, content io.Reader) error {
 		return fmt.Errorf("raw: failed to record allocation: %w", syscall.EIO)
 	}
 
-	r.nextOffset = offset + int64(len(data))
+	r.nextOffset = offset + totalWritten
 	return nil
 }
 

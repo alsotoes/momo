@@ -1,10 +1,12 @@
 package client
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"os"
 	"sync"
+	"syscall"
 
 	"github.com/alsotoes/momo/src/common"
 	"github.com/alsotoes/momo/src/transport"
@@ -14,8 +16,18 @@ import (
 // It first connects to a specified daemon to determine the replication mode.
 // If splay replication is active, it connects to all other daemons.
 // Finally, it sends the file to all established connections concurrently.
-func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remotePath string, serverId int, timestamp int64, requestedMode int, replicationFactor int) {
+func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remotePath string, serverId int, timestamp int64, requestedMode int, replicationFactor int) (err error) {
+	var communicators []transport.Communicator
 	defer wg.Done()
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in client.Connect: %v", r)
+			for _, c := range communicators {
+				c.Close()
+			}
+			err = fmt.Errorf("panic in Connect: %v: %w", r, syscall.EIO)
+		}
+	}()
 	daemons := cfg.Daemons
 	if serverId < 0 || serverId >= len(daemons) {
 		log.Printf("Server ID %d is out of range", serverId)
@@ -23,7 +35,6 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 	}
 	authToken := cfg.Global.AuthToken
 	factory := transport.NewProtocolFactory(cfg)
-	var communicators []transport.Communicator
 	var wgSendFile sync.WaitGroup
 
 	// Connect to the initial daemon to check replication mode
@@ -44,13 +55,21 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 
 	if replicationMode == common.ReplicationPrimarySplay {
 		// ⚡ Bolt: Use CRUSH to find the specific replicas for PrimarySplay.
-		fileHash, _ := common.HashFile(filePath)
+		var fileHash string
+		fileHash, err = common.HashFile(filePath)
+		if err != nil {
+			log.Printf("Failed to hash file %s for CRUSH placement: %v", common.SanitizeLog(filePath), common.SanitizeLog(err.Error()))
+			return
+		}
 		nodes := make([]*common.Node, len(daemons))
 		for i, d := range daemons {
 			nodes[i] = &common.Node{ID: i, Weight: 1, Addr: d.Host}
 		}
 		cmap := &common.ClusterMap{Nodes: nodes}
-		placement, _ := cmap.Placement(fileHash, replicationFactor)
+		placement, err := cmap.Placement(fileHash, replicationFactor)
+		if err != nil {
+			log.Printf("WARNING: CRUSH placement failed for %s, replicating to initial daemon only: %v (errno=%d)", common.SanitizeLog(filePath), common.SanitizeLog(err.Error()), syscall.EHOSTUNREACH)
+		}
 
 		for _, node := range placement {
 			if node.ID == serverId {
@@ -105,7 +124,8 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 	// Validate RemotePath and length limit before transmission
 	wireName := meta.Name
 	if meta.RemotePath != "" {
-		normalized, err := common.NormalizeVirtualPath(meta.RemotePath)
+		var normalized string
+		normalized, err = common.NormalizeVirtualPath(meta.RemotePath)
 		if err != nil {
 			log.Printf("Failed to upload %s: invalid remote path %q: %v", common.SanitizeLog(filePath), common.SanitizeLog(meta.RemotePath), err)
 			return
@@ -127,6 +147,7 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 		go sendFile(&wgSendFile, c, filePath, meta)
 	}
 	wgSendFile.Wait()
+	return
 }
 
 // sendFile sends a file over a network connection.

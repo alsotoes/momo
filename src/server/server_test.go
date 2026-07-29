@@ -19,9 +19,10 @@ import (
 )
 
 // mockConnect is a mock implementation of Connect for testing.
-func mockConnect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remotePath string, serverId int, timestamp int64, requestedMode int, replicationFactor int) {
+func mockConnect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remotePath string, serverId int, timestamp int64, requestedMode int, replicationFactor int) (err error) {
 	defer wg.Done()
 	// In a real test, you might add more logic here to simulate the client's behavior
+	return nil
 }
 
 // mockGetFile is a mock implementation of getFile for testing.

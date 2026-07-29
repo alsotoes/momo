@@ -192,6 +192,44 @@ func TestRawBlobStore_MissingDevicePath(t *testing.T) {
 	}
 }
 
+func TestRawBlobStore_PutLargeBlob(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	tempDir := t.TempDir()
+	devicePath := filepath.Join(tempDir, "fake-device")
+	dataDir := filepath.Join(tempDir, "data")
+
+	cfg := common.ConfigurationStorage{Backend: "raw", RawDevicePath: devicePath}
+	daemon := &common.Daemon{Data: dataDir}
+
+	store, err := NewRawBlobStore(cfg, daemon)
+	if err != nil {
+		t.Fatalf("NewRawBlobStore failed: %v", err)
+	}
+	defer store.Close()
+
+	size := 10 * 1024 * 1024
+	content := bytes.Repeat([]byte("A"), size)
+	hash := "largeblobhash"
+
+	if err := store.PutBlob(hash, bytes.NewReader(content)); err != nil {
+		t.Fatalf("PutBlob large failed: %v", err)
+	}
+
+	reader, err := store.GetBlob(hash)
+	if err != nil {
+		t.Fatalf("GetBlob large failed: %v", err)
+	}
+	defer reader.Close()
+
+	got, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("Failed to read large blob: %v", err)
+	}
+	if !bytes.Equal(got, content) {
+		t.Errorf("Large blob content mismatch: got %d bytes, want %d bytes", len(got), len(content))
+	}
+}
+
 func TestNewStore_RawBackend(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	tempDir := t.TempDir()

@@ -21,6 +21,9 @@ This document is governed by the steering rules in [`openspec/config.yaml`](../o
 - **Rule 65**: Skill asset build isolation — `//go:build ignore` on `agent/skills/*/assets/examples/*.go`
 - **Rule 66**: No parallel agent work — post STOP comment before manual intervention
 - **Rule 67**: Agent instructions in PR comments, not PR body
+- **Rule 68**: Jules PR detection — check first comment for "PR created automatically by Jules", add `jules` label
+- **Rule 69**: Jules PR reviewer protocol — comments to Jules MUST come from `alsotoes`, not `github-actions[bot]`
+- **Rule 70**: Steering rule → reviewer script sync — update `ai_reviewer.py` when adding rules that affect PR review/labeling/commenting/merge
 
 ## Pre-Flight Checklist
 
@@ -135,6 +138,7 @@ gh pr view PR_N --json reviews --jq '.reviews[-1].body'
    ### Changes in commit <hash>
    <what changed and why>"
    ```
+   **Rule 69**: If the PR has the `jules` label, this comment MUST be posted from an authenticated `alsotoes` session (PAT), not `github-actions[bot]`. See [Jules PR Detection & Reviewer Protocol](#jules-pr-detection--reviewer-protocol-rules-68-69).
 7. **Rule 54**: Update PR body with new changelog entry
 8. Go to Step 10 (wait for CI + reviewer again)
 
@@ -198,6 +202,7 @@ When the **3-push circuit breaker** trips (an automated agent has pushed 3 times
 
    @alsotoes is now performing a manual final review."
    ```
+   **Rule 69**: If the PR has the `jules` label, this STOP comment MUST be posted from an authenticated `alsotoes` session (PAT). Jules ignores comments from `github-actions[bot]`.
 
 2. **Pull the latest PR state and code**:
    ```bash
@@ -205,27 +210,32 @@ When the **3-push circuit breaker** trips (an automated agent has pushed 3 times
    git fetch origin && git checkout <pr-branch>
    ```
 
-3. **Review all commits and reviewer feedback** — read every review pass to understand what was fixed and what remains.
+3. **Detect Jules PR (Rule 68)**: Check if the PR's first comment contains "PR created automatically by Jules". If so, add the `jules` label and follow the Jules Reviewer Protocol (Rule 69) for all subsequent comments:
+   ```bash
+   gh pr edit PR_N --add-label jules
+   ```
 
-4. **Verify the code locally**:
+4. **Review all commits and reviewer feedback** — read every review pass to understand what was fixed and what remains.
+
+5. **Verify the code locally**:
    ```bash
    go build ./...
    go vet ./...
    go test ./...
    ```
 
-5. **Fix any remaining issues directly** (see "Handling Pre-Existing CI Failures" below).
+6. **Fix any remaining issues directly** (see "Handling Pre-Existing CI Failures" below).
 
-6. **Merge master into the PR branch** (Rule 50) before pushing any manual fixes:
+7. **Merge master into the PR branch** (Rule 50) before pushing any manual fixes:
    ```bash
    git merge master --no-edit
    ```
 
-7. **Commit, push, comment, and update PR body** (Rules 53, 54) — same as the normal cycle.
+8. **Commit, push, comment, and update PR body** (Rules 53, 54) — same as the normal cycle. **Rule 69**: If the PR has the `jules` label, comments MUST be from `alsotoes`.
 
-8. **Wait for all CI checks** — note that `benchstat` can take **7+ minutes** to complete.
+9. **Wait for all CI checks** — note that `benchstat` can take **7+ minutes** to complete.
 
-9. **Merge once All-Green** (Rule 55), close issue (Rule 56), clean up (Rules 57, 63).
+10. **Merge once All-Green** (Rule 55), close issue (Rule 56), clean up (Rules 57, 63).
 
 ### Critical: No Parallel Work (Rule 66)
 
@@ -296,6 +306,53 @@ The auto-reviewer may autonomously create tracking issues for PRs. Sometimes **d
 
 Rationale: PR comments appear in the conversation timeline and trigger notifications. PR body edits are silent and may be missed by automated agents watching for new comments.
 
+## Jules PR Detection & Reviewer Protocol (Rules 68, 69)
+
+### Detecting Jules-Created PRs (Rule 68)
+
+Jules-created PRs are identified by either of these phrases in the PR's first comment or PR body:
+- **"PR created automatically by Jules"**
+- **"Jules, reporting for duty"**
+
+When either phrase is detected, the agent MUST immediately add the `jules` label:
+
+```bash
+gh pr edit PR_N --add-label jules
+```
+
+This detection MUST be performed **before** any reviewer interaction or feedback addressing begins. The `jules` label selects the Jules-specific reviewer protocol (Rule 69) for all subsequent operations on that PR.
+
+### Jules Reviewer Protocol (Rule 69)
+
+When a PR has the `jules` label, **all comments directed at the Jules agent MUST be posted by `alsotoes`** (using a PAT), NOT by `github-actions[bot]`. The Jules agent only recognizes and acts upon comments from `alsotoes`; comments from the bot account are silently ignored.
+
+This affects:
+
+| Action | Normal PR | Jules-labeled PR |
+|--------|-----------|------------------|
+| Reviewer feedback (Gemini) | `github-actions[bot]` | `github-actions[bot]` (read-only, no change) |
+| Feedback addressing (Rule 53) | Any authenticated user | **`alsotoes`** via PAT |
+| STOP comments (Rule 66) | Any authenticated user | **`alsotoes`** via PAT |
+| Merge status updates | Any authenticated user | **`alsotoes`** via PAT |
+| Actionable instructions to Jules | Any authenticated user | **`alsotoes`** via PAT |
+
+**Procedure**: The Gemini reviewer's review (posted as `github-actions[bot]`) is still read by the human/agent to determine if issues exist. However, any follow-up instructions to Jules MUST be re-posted by `alsotoes`:
+
+```bash
+# Read the Gemini reviewer's feedback (bot identity is fine for reading)
+gh pr view PR_N --json reviews --jq '.reviews[-1].body'
+
+# Post follow-up instructions to Jules — MUST be from alsotoes
+gh pr comment PR_N --body "## Reviewer Feedback for @google-labs-jules
+
+The Gemini reviewer found the following issues:
+<summarize findings>
+
+Please address these and push updates."
+```
+
+**Critical**: The `gh pr comment` command MUST be run from an authenticated `alsotoes` session (PAT), not from the `GITHUB_TOKEN` used by CI. Comments posted as `github-actions[bot]` will NOT be actioned by Jules.
+
 ## Common Pitfalls & Solutions
 
 ### Forgetting Labels and Assignment (Rules 49, 51, 52)
@@ -307,6 +364,29 @@ gh pr edit PR_N --add-label bug        # for bug fixes
 gh pr edit PR_N --add-label enhancement # for features
 gh pr edit PR_N --add-label automation  # for AI-driven work
 ```
+
+### Jules PR Comments Posted as Bot (Rule 69)
+**Pitfall**: Posting reviewer feedback or STOP comments as `github-actions[bot]` on a Jules-created PR. Jules only recognizes comments from `alsotoes` and will silently ignore bot comments, causing Jules to continue working or miss feedback.
+**Solution**: Before posting any comment on a PR, check for the `jules` label. If present, ensure the `gh pr comment` command runs from an authenticated `alsotoes` session (PAT), not the `GITHUB_TOKEN` used by CI:
+```bash
+# Check for jules label
+gh pr view PR_N --json labels --jq '.labels[].name'
+
+# If "jules" is present, comment as alsotoes (PAT session)
+gh pr comment PR_N --body "..."
+```
+
+### Forgetting to Update the Reviewer Script (Rule 70)
+**Pitfall**: Adding or modifying a steering rule that affects PR review, labeling, commenting, or merge behavior, but forgetting to update `.github/scripts/ai_reviewer.py` and `.github/workflows/gemini_reviewer.yml` to implement the new behavior. The rule exists on paper but is never enforced in code.
+**Solution**: Before merging a PR that adds or modifies rules in `openspec/config.yaml`, verify that the reviewer script implements the new rule. If the rule affects any of these areas, the PR MUST include corresponding changes to `ai_reviewer.py`:
+- PR detection logic (e.g., Jules detection per Rule 68)
+- Labeling (Rules 49, 52, 68)
+- Comment posting identity — bot vs PAT (Rules 48, 69)
+- Circuit breaker enforcement (Rules 14, 18)
+- Traceability checks (Rules 11, 20)
+- Merge gate conditions (Rule 55)
+
+If no script change is needed, add a PR comment explaining why.
 
 ### Pre-Commit Hooks Updating Benchmark Docs
 **Pitfall**: The pre-commit hook regenerates `docs/PERFORMANCE.md` and `.github/data/benchmark_history.csv`, adding unexpected files to the commit.
