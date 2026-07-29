@@ -67,14 +67,15 @@ def get_jules_commit_count():
 
 def check_jules_first_comment(pr_number):
     """Rule 68: Detect Jules-created PRs by checking the first comment
-    for the phrase 'PR created automatically by Jules'."""
+    for known Jules signature phrases."""
     if not pr_number:
         return False
     try:
         cmd = ["gh", "pr", "view", pr_number, "--json", "comments", "--jq", ".comments[0].body"]
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         first_comment = result.stdout.strip()
-        return "PR created automatically by Jules" in first_comment
+        return ("PR created automatically by Jules" in first_comment or
+                "Jules, reporting for duty" in first_comment)
     except Exception:
         return False
 
