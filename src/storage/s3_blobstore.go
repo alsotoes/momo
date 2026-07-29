@@ -176,7 +176,13 @@ func (s *S3BlobStore) newRequest(method, key string, body io.Reader, payloadHash
 	if s.pathStyle {
 		reqURL = s.endpoint + "/" + s.bucket + "/" + cleanedKey
 	} else {
-		reqURL = s.endpoint + "/" + cleanedKey
+		parsedEndpoint, parseErr := url.Parse(s.endpoint)
+		if parseErr != nil {
+			return nil, fmt.Errorf("s3: invalid endpoint: %v: %w", parseErr, syscall.EINVAL)
+		}
+		parsedEndpoint.Host = s.bucket + "." + parsedEndpoint.Host
+		parsedEndpoint.Path = "/" + cleanedKey
+		reqURL = parsedEndpoint.String()
 	}
 
 	parsedURL, parseErr := url.Parse(reqURL)
@@ -193,12 +199,7 @@ func (s *S3BlobStore) newRequest(method, key string, body io.Reader, payloadHash
 	amzDate := now.Format("20060102T150405Z")
 	dateStamp := now.Format("20060102")
 
-	host := parsedURL.Host
-	if s.pathStyle {
-		req.Header.Set("host", host)
-	} else {
-		req.Header.Set("host", s.bucket+"."+host)
-	}
+	req.Host = parsedURL.Host
 	req.Header.Set("x-amz-date", amzDate)
 	req.Header.Set("x-amz-content-sha256", payloadHash)
 
@@ -231,9 +232,6 @@ func (s *S3BlobStore) getStringToSign(method string, parsedURL *url.URL, amzDate
 	}
 
 	host := parsedURL.Host
-	if !s.pathStyle {
-		host = s.bucket + "." + host
-	}
 
 	canonicalHeaders := "host:" + host + "\nx-amz-content-sha256:" + payloadHash + "\nx-amz-date:" + amzDate + "\n"
 	signedHeaders := "host;x-amz-content-sha256;x-amz-date"
