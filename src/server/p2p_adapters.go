@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"syscall"
 	"time"
 
 	"github.com/alsotoes/momo/src/common"
@@ -89,6 +90,18 @@ func (d *ScatterGatherDeleter) PropagateDelete(key string, timeout time.Duration
 	if d.sg == nil {
 		return nil
 	}
-	d.sg.Query(p2p.QueryDelete, []byte(key), timeout)
+	results, count := d.sg.Query(p2p.QueryDelete, []byte(key), timeout)
+	if count == 0 {
+		return fmt.Errorf("propagate delete: no peers responded (errno=%d)", syscall.EHOSTUNREACH)
+	}
+	successes := 0
+	for _, resp := range results {
+		if resp.Error == "" {
+			successes++
+		}
+	}
+	if successes == 0 {
+		return fmt.Errorf("propagate delete: all %d peer responses were errors (errno=%d)", count, syscall.EIO)
+	}
 	return nil
 }
