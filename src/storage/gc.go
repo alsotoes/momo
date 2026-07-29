@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"log"
@@ -125,12 +126,12 @@ func (s *CASStore) sweepExpiredTombstones(retention time.Duration) error {
 		c := ts.Cursor()
 		for k, v := c.First(); k != nil; k, v = c.Next() {
 			if len(v) < 8 {
-				expiredNames = append(expiredNames, k)
+				expiredNames = append(expiredNames, bytes.Clone(k))
 				continue
 			}
 			deletedAt := int64(binary.BigEndian.Uint64(v[:8]))
 			if deletedAt < cutoff {
-				expiredNames = append(expiredNames, k)
+				expiredNames = append(expiredNames, bytes.Clone(k))
 			}
 		}
 
