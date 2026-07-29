@@ -117,7 +117,12 @@ func (l *TCPListener) Accept() (Communicator, error) {
 	if err != nil {
 		return nil, err
 	}
-	return l.factory.NewCommunicator(conn)
+	comm, err := l.factory.NewCommunicator(conn)
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+	return comm, nil
 }
 
 // QUICListener wraps a quic.Listener to implement the MomoListener interface.
