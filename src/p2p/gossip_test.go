@@ -2,6 +2,7 @@ package p2p
 
 import (
 	"net"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -182,5 +183,45 @@ func TestGossiper_SuspicionTimeout(t *testing.T) {
 	}
 	if peer.State() != PeerStateSuspect && peer.State() != PeerStateOffline {
 		t.Errorf("expected peer 2 to be suspect or offline, got state %d", peer.State())
+	}
+}
+
+func TestGossiper_PingIDUniquenessAcrossNodes(t *testing.T) {
+	tr1 := NewTCPTransport(TCPTransportConfig{LocalID: 1})
+	tr2 := NewTCPTransport(TCPTransportConfig{LocalID: 2})
+	defer tr1.Close()
+	defer tr2.Close()
+
+	cfg := GossipConfig{
+		HeartbeatInterval: time.Hour,
+		SuspicionTimeout:  time.Hour,
+		Fanout:            3,
+		PingTimeout:       time.Hour,
+		IndirectPingCount: 3,
+		RTTAlpha:          0.25,
+	}
+
+	cfg1 := cfg
+	cfg1.LocalID = 1
+	cfg2 := cfg
+	cfg2.LocalID = 2
+
+	g1 := NewGossiper(cfg1, tr1)
+	g2 := NewGossiper(cfg2, tr2)
+	defer g1.Close()
+	defer g2.Close()
+
+	for i := 0; i < 1000; i++ {
+		id1 := (uint64(g1.cfg.LocalID) << 32) | (atomic.AddUint64(&g1.nextPingID, 1) & 0xFFFFFFFF)
+		id2 := (uint64(g2.cfg.LocalID) << 32) | (atomic.AddUint64(&g2.nextPingID, 1) & 0xFFFFFFFF)
+		if id1 == id2 {
+			t.Fatalf("ping ID collision between node 1 and node 2: %d (iteration %d)", id1, i)
+		}
+		if id1>>32 != 1 {
+			t.Fatalf("node 1 ping ID %d has wrong node ID in upper bits: %d", id1, id1>>32)
+		}
+		if id2>>32 != 2 {
+			t.Fatalf("node 2 ping ID %d has wrong node ID in upper bits: %d", id2, id2>>32)
+		}
 	}
 }

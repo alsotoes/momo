@@ -245,7 +245,7 @@ func (g *Gossiper) sendPing() {
 		return
 	}
 	target := peers[0]
-	pingID = atomic.AddUint64(&g.nextPingID, 1)
+	pingID = (uint64(g.cfg.LocalID) << 32) | (atomic.AddUint64(&g.nextPingID, 1) & 0xFFFFFFFF)
 	now := time.Now().UnixNano()
 
 	payload := &PingPayload{
