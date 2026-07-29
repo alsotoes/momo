@@ -70,6 +70,8 @@ func (s *CASStore) runGC(cfg GCConfig) (err error) {
 }
 
 // sweepOrphanedBlobs removes blob files and objects entries with RefCount=0.
+// Blob deletions (which may involve network I/O for S3 backends) are performed
+// OUTSIDE the bbolt write transaction to avoid blocking all db operations.
 func (s *CASStore) sweepOrphanedBlobs() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -86,24 +88,28 @@ func (s *CASStore) sweepOrphanedBlobs() error {
 			meta := decodeObjectMeta(v)
 			if meta.RefCount <= 0 {
 				hash := string(k)
-				if err := s.blobs.DeleteBlob(hash); err != nil {
-					log.Printf("CAS GC: failed to remove blob %s: %v", hash, err)
-					continue
-				}
 				orphanedHashes = append(orphanedHashes, hash)
+				if err := obj.Delete([]byte(hash)); err != nil {
+					log.Printf("CAS GC: failed to delete metadata for blob %s: %v", hash, err)
+				}
 			}
-		}
-
-		for _, hash := range orphanedHashes {
-			obj.Delete([]byte(hash))
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+
+	for _, hash := range orphanedHashes {
+		if err := s.blobs.DeleteBlob(hash); err != nil {
+			log.Printf("CAS GC: failed to remove blob %s: %v", hash, err)
+		}
+	}
 
 	if len(orphanedHashes) > 0 {
 		log.Printf("CAS GC: removed %d orphaned blob(s)", len(orphanedHashes))
 	}
-	return err
+	return nil
 }
 
 // sweepExpiredTombstones removes tombstones older than the retention period.
