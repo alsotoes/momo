@@ -158,3 +158,15 @@ func TestNormalizeVirtualPath(t *testing.T) {
 		})
 	}
 }
+
+func TestTrimNullBytesString_BufferReuse(t *testing.T) {
+	buf := []byte("hello\x00world")
+	result := TrimNullBytesString(buf)
+	if result != "hello" {
+		t.Fatalf("expected 'hello', got %q", result)
+	}
+	buf[0] = 'X'
+	if result != "hello" {
+		t.Fatalf("result changed after buffer reuse: got %q, expected 'hello'", result)
+	}
+}
