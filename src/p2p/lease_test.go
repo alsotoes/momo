@@ -86,9 +86,15 @@ func TestLeaseManager_NoPeers(t *testing.T) {
 	lm.Start()
 	defer lm.Stop()
 
-	_, err := lm.Acquire("test-key", 5*time.Second)
-	if err == nil {
-		t.Error("expected error with no peers")
+	lease, err := lm.Acquire("test-key", 5*time.Second)
+	if err != nil {
+		t.Fatalf("expected self-grant for single-node cluster, got error: %v", err)
+	}
+	if lease == nil {
+		t.Fatal("expected non-nil lease for single-node cluster")
+	}
+	if lease.Key != "test-key" {
+		t.Errorf("key mismatch: got %q, want %q", lease.Key, "test-key")
 	}
 }
 
@@ -117,13 +123,22 @@ func TestLeaseManager_Expiry(t *testing.T) {
 
 func TestLeaseManager_QuorumTimeout(t *testing.T) {
 	tr1 := NewTCPTransport(TCPTransportConfig{LocalID: 1})
+	tr2 := NewTCPTransport(TCPTransportConfig{LocalID: 2})
 	defer tr1.Close()
+	defer tr2.Close()
 
 	ln1, _ := net.Listen("tcp", "127.0.0.1:0")
 	addr1 := ln1.Addr().String()
 	ln1.Close()
+	ln2, _ := net.Listen("tcp", "127.0.0.1:0")
+	addr2 := ln2.Addr().String()
+	ln2.Close()
 
 	tr1.Listen(addr1)
+	tr2.Listen(addr2)
+
+	tr1.Dial(2, addr2)
+	time.Sleep(100 * time.Millisecond)
 
 	lm1 := NewLeaseManager(1, tr1)
 	lm1.Start()
@@ -138,6 +153,62 @@ func TestLeaseManager_QuorumTimeout(t *testing.T) {
 
 	_, err := lm1.Acquire("test-key", 1*time.Second)
 	if err == nil {
-		t.Error("expected timeout error with no peers for quorum")
+		t.Error("expected timeout error when remote peer does not grant lease")
+	}
+}
+
+func TestLeaseManager_TwoNodeCluster(t *testing.T) {
+	tr1 := NewTCPTransport(TCPTransportConfig{LocalID: 1})
+	tr2 := NewTCPTransport(TCPTransportConfig{LocalID: 2})
+	defer tr1.Close()
+	defer tr2.Close()
+
+	ln1, _ := net.Listen("tcp", "127.0.0.1:0")
+	addr1 := ln1.Addr().String()
+	ln1.Close()
+	ln2, _ := net.Listen("tcp", "127.0.0.1:0")
+	addr2 := ln2.Addr().String()
+	ln2.Close()
+
+	tr1.Listen(addr1)
+	tr2.Listen(addr2)
+
+	tr1.Dial(2, addr2)
+	tr2.Dial(1, addr1)
+	time.Sleep(100 * time.Millisecond)
+
+	lm1 := NewLeaseManager(1, tr1)
+	lm2 := NewLeaseManager(2, tr2)
+
+	g1 := NewGossiper(DefaultGossipConfig(1), tr1)
+	g2 := NewGossiper(DefaultGossipConfig(2), tr2)
+	g1.SetLeaseManager(lm1)
+	g2.SetLeaseManager(lm2)
+	defer g1.Close()
+	defer g2.Close()
+
+	lm1.Start()
+	lm2.Start()
+	defer lm1.Stop()
+	defer lm2.Stop()
+
+	g1.Run()
+	g2.Run()
+
+	time.Sleep(200 * time.Millisecond)
+
+	lease, err := lm1.Acquire("test-key", 5*time.Second)
+	if err != nil {
+		t.Fatalf("expected lease acquisition in 2-node cluster, got error: %v", err)
+	}
+	if lease == nil {
+		t.Fatal("expected non-nil lease")
+	}
+	if lease.QuorumSize < 1 {
+		t.Errorf("expected quorum >= 1, got %d", lease.QuorumSize)
+	}
+
+	if err := lm1.Release(lease); err != nil {
+		t.Fatalf("release failed: %v", err)
 	}
 }
