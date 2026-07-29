@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 	"syscall"
 	"time"
@@ -158,7 +159,7 @@ func (s *S3BlobStore) newRequest(method, key string, body io.Reader, payloadHash
 			if closer, ok := body.(io.ReadCloser); ok {
 				closer.Close()
 			}
-			err = fmt.Errorf("panic building new request: %v: %w", r, syscall.EIO)
+			err = syscall.EIO
 		}
 	}()
 
@@ -166,11 +167,16 @@ func (s *S3BlobStore) newRequest(method, key string, body io.Reader, payloadHash
 		return nil, fmt.Errorf("s3: input length exceeds limits: %w", syscall.EINVAL)
 	}
 
+	cleanedKey := path.Clean(key)
+	if cleanedKey == "." || cleanedKey == ".." || strings.HasPrefix(cleanedKey, "../") || strings.HasPrefix(cleanedKey, "/") {
+		return nil, fmt.Errorf("s3: invalid key path traversal: %w", syscall.EINVAL)
+	}
+
 	var reqURL string
 	if s.pathStyle {
-		reqURL = s.endpoint + "/" + s.bucket + "/" + key
+		reqURL = s.endpoint + "/" + s.bucket + "/" + cleanedKey
 	} else {
-		reqURL = s.endpoint + "/" + key
+		reqURL = s.endpoint + "/" + cleanedKey
 	}
 
 	parsedURL, parseErr := url.Parse(reqURL)
@@ -216,7 +222,7 @@ func (s *S3BlobStore) getStringToSign(method string, parsedURL *url.URL, amzDate
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("panic building string to sign: %v", r)
-			err = fmt.Errorf("panic building string to sign: %v: %w", r, syscall.EIO)
+			err = syscall.EIO
 		}
 	}()
 	canonicalURI := parsedURL.Path
