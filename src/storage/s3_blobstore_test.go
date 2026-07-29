@@ -333,3 +333,68 @@ func TestNewRequest_PathTraversal(t *testing.T) {
 		t.Errorf("Expected path traversal error, got %v", err)
 	}
 }
+
+func TestS3BlobStore_VirtualHostedURL(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	cfg := common.ConfigurationStorage{
+		Backend:     "s3",
+		S3Endpoint:  "https://s3.amazonaws.com",
+		S3Bucket:    "mybucket",
+		S3AccessKey: "test", // notsecret
+		S3SecretKey: "test", // notsecret
+		S3PathStyle: false,
+	}
+
+	store, err := NewS3BlobStore(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+
+	req, err := store.newRequest("GET", "testfile.txt", nil, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+	if err != nil {
+		t.Fatalf("newRequest failed: %v", err)
+	}
+
+	expectedHost := "mybucket.s3.amazonaws.com"
+	if req.Host != expectedHost {
+		t.Errorf("Expected Host %q, got %q", expectedHost, req.Host)
+	}
+	if req.URL.Host != expectedHost {
+		t.Errorf("Expected URL.Host %q, got %q", expectedHost, req.URL.Host)
+	}
+	if req.URL.Path != "/testfile.txt" {
+		t.Errorf("Expected URL.Path /testfile.txt, got %q", req.URL.Path)
+	}
+}
+
+func TestS3BlobStore_PathStyleURL(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	cfg := common.ConfigurationStorage{
+		Backend:     "s3",
+		S3Endpoint:  "https://s3.amazonaws.com",
+		S3Bucket:    "mybucket",
+		S3AccessKey: "test", // notsecret
+		S3SecretKey: "test", // notsecret
+		S3PathStyle: true,
+	}
+
+	store, err := NewS3BlobStore(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+
+	req, err := store.newRequest("GET", "testfile.txt", nil, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
+	if err != nil {
+		t.Fatalf("newRequest failed: %v", err)
+	}
+
+	expectedHost := "s3.amazonaws.com"
+	if req.Host != expectedHost {
+		t.Errorf("Expected Host %q, got %q", expectedHost, req.Host)
+	}
+	if req.URL.Path != "/mybucket/testfile.txt" {
+		t.Errorf("Expected URL.Path /mybucket/testfile.txt, got %q", req.URL.Path)
+	}
+}
