@@ -46,3 +46,27 @@ func TestCheckMetricsAndSwap_EdgeCases(t *testing.T) {
 		t.Errorf("Expected (-1, false) for currentIndex == -1")
 	}
 }
+
+func TestGetMetrics_NonPositiveIntervalNoPanic(t *testing.T) {
+	for _, interval := range []int{0, -1, -100} {
+		cfg := common.Configuration{
+			Global: common.ConfigurationGlobal{
+				PolymorphicSystem: true,
+				ReplicationOrder:  []int{1, 2, 3, 4},
+				AuthToken:         "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6",
+			},
+			Metrics: common.ConfigurationMetrics{
+				Interval:     interval,
+				MinThreshold: 0.2,
+				MaxThreshold: 0.8,
+			},
+			Daemons: []*common.Daemon{
+				{Host: "127.0.0.1:45697", ChangeReplication: "127.0.0.1:45696"},
+			},
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		GetMetrics(ctx, cfg, 0)
+		cancel()
+	}
+}
