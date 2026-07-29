@@ -3,11 +3,6 @@ name: Gemini AI Reviewer
 on:
   pull_request:
     types: [opened, synchronize]
-    paths:
-      - 'src/**/*.go'
-      - 'go.mod'
-      - 'go.sum'
-      - 'Makefile'
   workflow_dispatch:
     inputs:
       pr_number:
