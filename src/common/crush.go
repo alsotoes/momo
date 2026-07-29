@@ -65,8 +65,8 @@ func (m *ClusterMap) Placement(objectHash string, replicationFactor int) (nodes 
 		h.Write([]byte(objectHash))
 
 		// ⚡ Bolt: Eliminate reflection overhead and allocations by using stack-allocated buffer
-		var idBuf [4]byte
-		binary.LittleEndian.PutUint32(idBuf[:], uint32(node.ID))
+		var idBuf [8]byte
+		binary.LittleEndian.PutUint64(idBuf[:], uint64(node.ID))
 		h.Write(idBuf[:])
 
 		// ⚡ Bolt: Eliminate heap allocation of hash.Sum by using stack-allocated slice
