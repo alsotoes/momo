@@ -189,15 +189,18 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 		// Send metadata packets (192 bytes each)
 		for _, file := range files {
 			// 🛡️ Sentinel: Validate length bounds
-			if len(file.Name) > 64 || len(file.Hash) > 64 {
+			if len(file.Hash) > 64 {
 				continue
 			}
-			var packet [192]byte
-			copy(packet[0:64], common.PadString(file.Hash, 64))
 			wireName := file.Name
 			if file.RemotePath != "" {
 				wireName = file.RemotePath + "/" + file.Name
 			}
+			if len(wireName) > 64 {
+				continue
+			}
+			var packet [192]byte
+			copy(packet[0:64], common.PadString(file.Hash, 64))
 			copy(packet[64:128], common.PadString(wireName, 64))
 			if err := common.AppendPaddedInt(packet[128:], file.Size, 64); err != nil {
 				return 0, 0, fmt.Errorf("failed to format file size: %v: %w", err, syscall.EINVAL)
@@ -336,7 +339,11 @@ func (m *MomoTCPCommunicator) SendReplicationMode(mode int) (err error) {
 	}()
 
 	var repModeBuf [16]byte
-	if _, err := m.Write(strconv.AppendInt(repModeBuf[:0], int64(mode), 10)); err != nil {
+	if mode < 0 || mode > 9 {
+		return fmt.Errorf("invalid replication mode %d: %w", mode, syscall.EBADMSG)
+	}
+	repModeBuf[0] = byte(mode + '0')
+	if _, err := m.Write(repModeBuf[:1]); err != nil {
 		return fmt.Errorf("failed to send replication mode: %v: %w", err, syscall.EIO)
 	}
 	return nil
