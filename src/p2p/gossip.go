@@ -495,7 +495,9 @@ func (g *Gossiper) handleIndirectPing(rpc *RPC) {
 			Type:    MsgAck,
 			Payload: ackPayload.Encode(),
 		}
-		g.transport.Send(rpc.From, ackRPC)
+		if err := g.transport.Send(rpc.From, ackRPC); err != nil {
+			log.Printf("Gossip: failed to forward indirect ping ack to peer %d: %v (errno=%d)", rpc.From, err, syscall.EHOSTUNREACH)
+		}
 		g.removePendingPing(payload.PingID)
 	case <-time.After(g.cfg.PingTimeout):
 		g.removePendingPing(payload.PingID)

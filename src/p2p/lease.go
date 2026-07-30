@@ -35,10 +35,10 @@ type LeaseManager struct {
 	pendingMu sync.Mutex
 	pending   map[uint64]chan bool
 
-	stopMu  sync.Mutex
-	closed  bool
-	done    chan struct{}
-	wg      sync.WaitGroup
+	stopMu sync.Mutex
+	closed bool
+	done   chan struct{}
+	wg     sync.WaitGroup
 }
 
 // NewLeaseManager creates a new LeaseManager.
@@ -149,7 +149,9 @@ func (lm *LeaseManager) handleLeaseRequest(rpc *RPC) {
 		lm.grantedMu.Unlock()
 		grant := &LeasePayload{LeaseID: payload.LeaseID, Key: payload.Key, Expiry: 0}
 		resp := &RPC{From: lm.localID, Type: MsgLeaseGrant, Payload: grant.Encode()}
-		lm.transport.Send(rpc.From, resp)
+		if err := lm.transport.Send(rpc.From, resp); err != nil {
+			log.Printf("LeaseManager: failed to send denial to peer %d: %v (errno=%d)", rpc.From, err, syscall.EHOSTUNREACH)
+		}
 		return
 	}
 	lm.granted[payload.Key] = payload.Expiry
