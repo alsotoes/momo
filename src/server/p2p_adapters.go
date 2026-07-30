@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"log"
 	"syscall"
 	"time"
 
@@ -34,10 +35,12 @@ func (s *ScatterGatherLister) GlobalList(timeout time.Duration) ([]common.FileMe
 	var allLists [][]common.FileMetadata
 	for _, resp := range responses {
 		if resp.Error != "" {
+			log.Printf("AUDIT: GlobalList peer error: %s", common.SanitizeLog(resp.Error))
 			continue
 		}
 		files, err := DecodeFileMetadataList(resp.Data)
 		if err != nil {
+			log.Printf("AUDIT: GlobalList decode failed from peer: %v", common.SanitizeLog(err.Error()))
 			continue
 		}
 		allLists = append(allLists, files)
