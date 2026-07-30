@@ -55,11 +55,12 @@ func TestHasPathTraversalChars(t *testing.T) {
 		expected bool
 	}{
 		{"No special characters", "helloworld", false},
-		{"Contains dot", "hello.world", true},
+		{"Contains dot (extension)", "hello.world", false},
 		{"Contains slash", "hello/world", true},
 		{"Contains backslash", "hello\\world", true},
 		{"Path traversal", "../etc/passwd", true},
 		{"Just dots", "..", true},
+		{"Double dot in filename", "file..txt", true},
 		{"Empty string", "", false},
 	}
 
