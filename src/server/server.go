@@ -38,7 +38,14 @@ var connectToPeerStream = client.ConnectStream
 //   - ReplicationPrimarySplay: This mode is currently handled as ReplicationNone, which means no replication is performed.
 //
 // The replication mode is determined by the client, and for secondary servers, it's influenced by the timestamp of the operation.
-func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
+func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in Daemon: %v", r)
+			err = syscall.EIO
+		}
+	}()
+
 	daemons := cfg.Daemons
 	if serverId < 0 || serverId >= len(daemons) {
 		return fmt.Errorf("server id out of range")
