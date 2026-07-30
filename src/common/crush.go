@@ -79,7 +79,7 @@ func (m *ClusterMap) Placement(objectHash string, replicationFactor int) (nodes 
 		// ⚡ Bolt: Use Weighted Rendezvous Hashing (WRH) formula: -weight / log(score).
 		// This provides mathematically perfect load balancing for heterogeneous nodes.
 		var finalScore float64
-		if floatVal > 0 && node.Weight > 0 {
+		if floatVal > 0 && floatVal < 1.0 && node.Weight > 0 {
 			finalScore = -float64(node.Weight) / math.Log(floatVal)
 		} else {
 			finalScore = 0

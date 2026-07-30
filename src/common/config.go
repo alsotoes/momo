@@ -6,6 +6,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 
 	"gopkg.in/ini.v1"
@@ -118,10 +119,28 @@ func GetConfig(path string) (Configuration, error) {
 	return config, nil
 }
 
-// GetConfigFromFile is a function variable that loads the configuration from the default path "conf/momo.conf".
-// It can be overridden in tests to load a custom configuration for testing purposes.
-var GetConfigFromFile = func() (Configuration, error) {
-	return GetConfig("conf/momo.conf")
+// getConfigFromFileMu protects getConfigFromFileFn from concurrent reads/writes (Rule 471).
+var (
+	getConfigFromFileMu sync.RWMutex
+	getConfigFromFileFn = func() (Configuration, error) {
+		return GetConfig("conf/momo.conf")
+	}
+)
+
+// GetConfigFromFile loads the configuration from the default path "conf/momo.conf".
+// It is thread-safe; tests may override the implementation via SetConfigFromFile.
+func GetConfigFromFile() (Configuration, error) {
+	getConfigFromFileMu.RLock()
+	fn := getConfigFromFileFn
+	getConfigFromFileMu.RUnlock()
+	return fn()
+}
+
+// SetConfigFromFile overrides the config loader implementation (for testing).
+func SetConfigFromFile(fn func() (Configuration, error)) {
+	getConfigFromFileMu.Lock()
+	getConfigFromFileFn = fn
+	getConfigFromFileMu.Unlock()
 }
 
 // loadGlobalConfig loads the [global] section from the configuration.

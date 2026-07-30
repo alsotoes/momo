@@ -133,7 +133,6 @@ func TestS3Communicator_HashTraversalValidation(t *testing.T) {
 		"../../malicious",
 		"some/path",
 		"bad\\hash",
-		".dot",
 	}
 
 	for _, malHash := range maliciousHashes {

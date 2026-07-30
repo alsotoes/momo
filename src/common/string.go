@@ -28,12 +28,16 @@ func AppendPaddedInt(dst []byte, val int64, width int) error {
 	return nil
 }
 
-// HasPathTraversalChars returns true if the string contains '.', '/' or '\'.
+// HasPathTraversalChars returns true if the string contains path separators (/ or \)
+// or the parent directory sequence (..). Single dots (file extensions) are allowed.
 // It is inlineable and operates directly on the string bytes without any heap allocation (Rule 19).
 func HasPathTraversalChars(s string) bool {
 	for i := 0; i < len(s); i++ {
 		c := s[i]
-		if c == '.' || c == '/' || c == '\\' {
+		if c == '/' || c == '\\' {
+			return true
+		}
+		if c == '.' && i+1 < len(s) && s[i+1] == '.' {
 			return true
 		}
 	}
@@ -42,6 +46,9 @@ func HasPathTraversalChars(s string) bool {
 
 // PadString pads or truncates a string to the given length.
 func PadString(input string, length int) string {
+	if length < 0 {
+		return input
+	}
 	if len(input) >= length {
 		return input[:length]
 	}
@@ -60,9 +67,14 @@ func NormalizeVirtualPath(p string) (string, error) {
 		return "", nil
 	}
 
-	// Strictly reject parent directory references and backslashes immediately
-	if strings.Contains(p, "..") || strings.Contains(p, "\\") {
+	// Strictly reject path traversal segments (..) and backslashes
+	if strings.Contains(p, "\\") {
 		return "", syscall.EINVAL
+	}
+	for _, seg := range strings.Split(p, "/") {
+		if seg == ".." {
+			return "", syscall.EINVAL
+		}
 	}
 
 	// Resolve slashes and remove redundancies efficiently
