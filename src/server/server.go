@@ -38,7 +38,14 @@ var connectToPeerStream = client.ConnectStream
 //   - ReplicationPrimarySplay: This mode is currently handled as ReplicationNone, which means no replication is performed.
 //
 // The replication mode is determined by the client, and for secondary servers, it's influenced by the timestamp of the operation.
-func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
+func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in Daemon: %v", r)
+			err = syscall.EIO
+		}
+	}()
+
 	daemons := cfg.Daemons
 	if serverId < 0 || serverId >= len(daemons) {
 		return fmt.Errorf("server id out of range")
@@ -57,7 +64,9 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 		return fmt.Errorf("Error listening: %v", err)
 	}
 
-	defer server.Close()
+	closeOnce := sync.Once{}
+	closeServer := func() { closeOnce.Do(func() { server.Close() }) }
+	defer closeServer()
 
 	// Handle graceful shutdown via context
 	go func() {
@@ -67,7 +76,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 			}
 		}()
 		<-ctx.Done()
-		server.Close()
+		closeServer()
 	}()
 
 	log.Printf("Server primary Daemon started... at %s using %s", daemons[serverId].Host, cfg.Global.Protocol)
@@ -103,6 +112,8 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 	const maxConcurrentConnections = 1000
 	sem := make(chan struct{}, maxConcurrentConnections)
 
+	// Accept loop: server.Accept() returns errors, not panics. Per-connection
+	// goroutines below each have their own recover() block (Rule 37) for panic safety.
 	for {
 		connection, err := server.Accept()
 		if err != nil {
