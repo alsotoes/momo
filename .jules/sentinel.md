@@ -123,3 +123,8 @@
 **Vulnerability:** Path traversal in the S3 blob store client via an unsanitized `key` parameter. When configured with `pathStyle` addressing, a malicious key like `../other-bucket/secret` could allow an attacker to escape the intended bucket and access or modify objects in other buckets on the same S3 instance.
 **Learning:** The S3 client implementation (`newRequest`) was directly interpolating the user-provided `key` into the HTTP request URL without normalization or validation. Because S3 uses REST APIs over HTTP, path traversal sequences embedded in keys are interpreted by the S3 server as URL path traversal.
 **Prevention:** Always normalize user-provided paths or keys intended for HTTP APIs using `path.Clean()`. Explicitly reject normalized keys that attempt to traverse upwards (e.g., `..`, `../`) or use absolute paths (e.g., `/`).
+
+## 2026-07-30 - Path Traversal in SendMetadata
+**Vulnerability:** A path traversal vulnerability where user-supplied file names or remote paths sent during `SendMetadata` are not sanitized before transmission, potentially allowing a client to trigger path traversal writes in server handlers.
+**Learning:** Checking path traversal characters strictly at the transport or boundary layer before transmission ensures that unvalidated inputs are rejected early, preventing malicious path construction from reaching file storage or other downstream consumers.
+**Prevention:** Always validate combined/wire file names against traversal characters (using `common.HasPathTraversalChars`) directly on the `wireName` in both client-side and server-side protocol message handling.

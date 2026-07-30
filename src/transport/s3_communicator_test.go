@@ -606,3 +606,27 @@ func TestS3Communicator_HandshakeClient_CRLFInjection(t *testing.T) {
 		t.Errorf("Expected CRLF error, got: %v", err)
 	}
 }
+
+func TestS3Communicator_SendMetadataPathTraversal(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	comm := NewS3Communicator(clientConn)
+
+	// Malicious Name
+	badMeta := &common.FileMetadata{
+		Name: "../passwd",
+		Hash: "hash123",
+		Size: 100,
+	}
+	_, err := comm.SendMetadata(badMeta)
+	if err == nil {
+		t.Fatal("Expected SendMetadata to fail with path traversal name")
+	}
+	if !errors.Is(err, syscall.EBADMSG) {
+		t.Errorf("Expected EBADMSG error, got: %v", err)
+	}
+}

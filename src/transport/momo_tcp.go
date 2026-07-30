@@ -371,6 +371,9 @@ func (m *MomoTCPCommunicator) SendMetadata(meta *common.FileMetadata) (status in
 	if len(wireName) > common.FileInfoLength {
 		return 0, fmt.Errorf("metadata name exceeds limit: %w", syscall.ENAMETOOLONG)
 	}
+	if common.HasPathTraversalChars(wireName) {
+		return 0, fmt.Errorf("path traversal in wireName: %w", syscall.EBADMSG)
+	}
 	copy(metadataBuffer[hashLength:hashLength+common.FileInfoLength], common.PadString(wireName, common.FileInfoLength))
 
 	var sizeBuf [common.FileInfoLength]byte

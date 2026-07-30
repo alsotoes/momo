@@ -3,6 +3,7 @@ package transport
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"io"
 	"net"
 	"strconv"
@@ -334,4 +335,26 @@ func TestMomoTCPCommunicator_NativeGet(t *testing.T) {
 	}
 
 	runNativeTCPTest(t, common.ModeGet, clientFn, mock)
+}
+
+func TestMomoTCPCommunicator_SendMetadataPathTraversal(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	comm := NewMomoTCPCommunicator(clientConn)
+
+	// Malicious Name
+	badMeta := &common.FileMetadata{
+		Name: "../passwd",
+		Hash: "hash123",
+		Size: 100,
+	}
+	_, err := comm.SendMetadata(badMeta)
+	if err == nil {
+		t.Fatal("Expected SendMetadata to fail with path traversal name")
+	}
+	if !errors.Is(err, syscall.EBADMSG) {
+		t.Errorf("Expected EBADMSG error, got: %v", err)
+	}
 }

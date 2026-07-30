@@ -547,6 +547,10 @@ func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (status int, er
 		return 0, fmt.Errorf("invalid characters in path: %w", syscall.EBADMSG)
 	}
 
+	if common.HasPathTraversalChars(wireName) {
+		return 0, fmt.Errorf("path traversal in wireName: %w", syscall.EBADMSG)
+	}
+
 	// 🛡️ Sentinel: Validate hash, auth token, and host for CRLF to prevent HTTP header injection.
 	if strings.ContainsAny(meta.Hash, "\r\n") {
 		return 0, fmt.Errorf("invalid characters in hash: %w", syscall.EBADMSG)
