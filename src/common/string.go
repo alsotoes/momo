@@ -44,6 +44,13 @@ func HasPathTraversalChars(s string) bool {
 	return false
 }
 
+// HasPathTraversalTokens returns true if the string contains the parent directory
+// sequence (..) or backslash (\). Unlike HasPathTraversalChars, it allows forward
+// slash (/) as a legitimate path separator for composite paths like wireName.
+func HasPathTraversalTokens(s string) bool {
+	return strings.Contains(s, "..") || strings.Contains(s, "\\")
+}
+
 // PadString pads or truncates a string to the given length.
 func PadString(input string, length int) string {
 	if length < 0 {
