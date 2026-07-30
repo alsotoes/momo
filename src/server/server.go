@@ -180,7 +180,9 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 			defer func() {
 				if success {
 					log.Printf("AUDIT: Server ACK to Client %s => ACK%d", remoteAddr, serverId)
-					comm.SendACK(serverId)
+					if err := comm.SendACK(serverId); err != nil {
+						log.Printf("ERROR: Failed to send ACK to client %s: %v", remoteAddr, err)
+					}
 				}
 				comm.Close()
 			}()
