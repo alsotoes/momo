@@ -194,11 +194,14 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 			// Skip propagation if json.Marshal failed to avoid sending empty data to peers.
 			if 0 == serverId && marshalErr == nil {
 				daemons := factory.GetDaemons()
+				var propWg sync.WaitGroup
 				for i := range daemons {
 					if i == serverId {
 						continue
 					}
+					propWg.Add(1)
 					go func(id int) {
+						defer propWg.Done()
 						defer func() {
 							if r := recover(); r != nil {
 								err := fmt.Errorf("panic in propagation to node %d: %v: %w", id, r, syscall.EIO)
@@ -208,6 +211,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 						ChangeReplicationModeClient(factory, newReplicationJson, id)
 					}(i)
 				}
+				propWg.Wait()
 			}
 		}()
 	}
