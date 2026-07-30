@@ -62,10 +62,11 @@ func SetReplicationState(newMode int, timestamp int64) common.ReplicationData {
 // When a client connects, it sends a JSON object containing the new replication mode.
 // This function updates the server's replication mode and, if the server is the primary (serverId 0),
 // it propagates the change to the other servers in the cluster.
-func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, serverId int, timestamp int64) error {
+func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, serverId int, timestamp int64) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in ChangeReplicationModeServer: %v", fmt.Errorf("%v: %w", r, syscall.EIO))
+			err = fmt.Errorf("panic in ChangeReplicationModeServer: %v: %w", r, syscall.EIO)
+			log.Printf("CRITICAL: %v", err)
 		}
 	}()
 
