@@ -92,7 +92,10 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 
 	// Initialize the replication state
 	initialState := SetReplicationState(GetCurrentReplicationMode(), timestamp)
-	replicationJson, _ := json.Marshal(initialState)
+	replicationJson, err := json.Marshal(initialState)
+	if err != nil {
+		log.Printf("AUDIT: Failed to marshal initial replication state: %v", common.SanitizeLog(err.Error()))
+	}
 	log.Printf("ReplicationData struct: %s", string(replicationJson))
 
 	// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
@@ -167,7 +170,10 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 
 			// Update the replication state
 			newState := SetReplicationState(replicationJson.New, ts)
-			newReplicationJson, _ := json.Marshal(newState)
+			newReplicationJson, err := json.Marshal(newState)
+			if err != nil {
+				log.Printf("AUDIT: Failed to marshal new replication state: %v", common.SanitizeLog(err.Error()))
+			}
 			// 🛡️ Sentinel: Audit log the sensitive operation
 			log.Printf("AUDIT: Replication mode changed to %d by %s", replicationJson.New, remoteAddr)
 			log.Printf("ReplicationData new struct: %s", string(newReplicationJson))
