@@ -24,6 +24,7 @@ This document is governed by the steering rules in [`openspec/config.yaml`](../o
 - **Rule 68**: Jules PR detection — check first comment for "PR created automatically by Jules", add `jules` label
 - **Rule 69**: Jules PR reviewer protocol — comments to Jules MUST come from `alsotoes`, not `github-actions[bot]`
 - **Rule 70**: Steering rule → reviewer script sync — update `ai_reviewer.py` when adding rules that affect PR review/labeling/commenting/merge
+- **Rule 71**: Master CI gate before new work — wait for all master CI workflows to finish and pass before creating a new branch
 
 ## Pre-Flight Checklist
 
@@ -33,6 +34,14 @@ Before starting any autonomous work, verify:
 2. **Master is up to date**: `git pull` reports "Already up to date"
 3. **No uncommitted changes**: `git status` shows clean working tree
 4. **GitHub CLI authenticated**: `gh auth status` shows active account
+5. **Master CI is all-green (Rule 71)**: All CI workflows on `master` must be complete and passing before creating a new branch:
+   ```bash
+   gh run list --branch master --limit 5
+   ```
+   - If any run shows `in_progress` or `queued`: **WAIT**. Poll every 60 seconds until all runs complete.
+   - If any run shows `failure`: **STOP**. Diagnose and fix the failure on `master` (per Rule 64) before starting new work.
+   - Only proceed when all runs show `completed` with `success` conclusion.
+   - **Rationale**: After merging a PR, GitHub Actions re-runs all workflows on `master`. Branching from mid-CI `master` risks branching from code that may fail or be reverted. This gate guarantees every new branch originates from a fully validated, stable `master`.
 
 ## Per-Task Cycle (15 Steps)
 
@@ -403,6 +412,14 @@ If no script change is needed, add a PR comment explaining why.
 git merge master --no-edit
 ```
 
+### Branching Before Master CI Finishes (Rule 71)
+**Pitfall**: After merging a PR, the agent immediately starts the next task and branches from `master`. But GitHub Actions is still running CI on the new `master` commit. If a CI check fails, `master` is in a broken state, and the new branch inherits the broken code.
+**Solution**: Before creating any new branch, check that all `master` CI runs are complete and green:
+```bash
+gh run list --branch master --limit 5
+```
+If any runs are `in_progress` or `queued`, wait. If any failed, fix `master` first. Only branch from a fully validated `master`.
+
 ## Key Principles
 
 ### Never Assume (Rule 59)
@@ -432,9 +449,14 @@ When manual intervention is happening, automated agents MUST be told to STOP. No
 
 ```
 [Start]
-  │
-  ├─ 1. Create issue (label: bug|enhancement, assignee: alsotoes)
-  ├─ 2. Create branch off master (fix/ or feature/)
+   │
+   ├─ 0. Pre-Flight: verify master, clean tree, gh auth, master CI all-green (Rule 71)
+   │      │
+   │      └─ Master CI still running? → WAIT and poll until all pass
+   │         Master CI failed? → STOP, diagnose and fix on master (Rule 64)
+   │
+   ├─ 1. Create issue (label: bug|enhancement, assignee: alsotoes)
+   ├─ 2. Create branch off master (fix/ or feature/)
   ├─ 3. Implement + tests
   ├─ 4. Commit (fix: or feat:)
   ├─ 5. Validate branch (Rule 58)
