@@ -120,6 +120,16 @@ func TestGetConfig_Failures(t *testing.T) {
 			content:       strings.Replace(validConfig, "interval = 10", "", 1),
 			expectedError: "failed to load [metrics] section: failed to parse 'interval'",
 		},
+		{
+			name:          "Zero fallback_interval",
+			content:       strings.Replace(validConfig, "fallback_interval = 30", "fallback_interval = 0", 1),
+			expectedError: "failed to load [metrics] section: 'fallback_interval' must be positive",
+		},
+		{
+			name:          "Negative fallback_interval",
+			content:       strings.Replace(validConfig, "fallback_interval = 30", "fallback_interval = -5", 1),
+			expectedError: "failed to load [metrics] section: 'fallback_interval' must be positive",
+		},
 	}
 
 	for _, tc := range testCases {

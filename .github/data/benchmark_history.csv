@@ -1744,3 +1744,10 @@ a92bb3c,BenchmarkIndexDirectTracking-8,0.41,0.00,0.00
 a92bb3c,BenchmarkIndexSearch-8,2.97,0.00,0.00
 a92bb3c,BenchmarkLoadGlobalConfig-8,790.60,160.00,1.00
 a92bb3c,BenchmarkPadString-8,2.34,0.00,0.00
+5f3b3db,BenchmarkCheckMetricsAndSwap-8,7.92,0.00,0.00
+5f3b3db,BenchmarkCrushOptimized-8,408.00,0.00,0.00
+5f3b3db,BenchmarkCrushOriginal-8,463.90,164.00,3.00
+5f3b3db,BenchmarkIndexDirectTracking-8,0.37,0.00,0.00
+5f3b3db,BenchmarkIndexSearch-8,2.74,0.00,0.00
+5f3b3db,BenchmarkLoadGlobalConfig-8,1335.00,160.00,1.00
+5f3b3db,BenchmarkPadString-8,2.49,0.00,0.00

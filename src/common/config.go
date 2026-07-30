@@ -244,6 +244,9 @@ func loadMetricsConfig(section *ini.Section) (ConfigurationMetrics, error) {
 	if err != nil {
 		return ConfigurationMetrics{}, fmt.Errorf("failed to parse 'fallback_interval': %w", err)
 	}
+	if metricsCfg.FallbackInterval <= 0 {
+		return ConfigurationMetrics{}, fmt.Errorf("'fallback_interval' must be positive, got %d: %w", metricsCfg.FallbackInterval, syscall.EINVAL)
+	}
 
 	metricsCfg.PrometheusPort, err = section.Key("prometheus_port").Int()
 	if err != nil {
