@@ -211,7 +211,18 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 						ChangeReplicationModeClient(factory, newReplicationJson, id)
 					}(i)
 				}
-				propWg.Wait()
+				// Timeout-bounded wait: each peer has a 10s deadline in ChangeReplicationModeClient.
+				// Bound the wait to 11s to avoid blocking the control plane indefinitely on unresponsive peers.
+				propDone := make(chan struct{})
+				go func() {
+					propWg.Wait()
+					close(propDone)
+				}()
+				select {
+				case <-propDone:
+				case <-time.After(11 * time.Second):
+					log.Printf("AUDIT: Propagation timed out after 11s, some peers may not have received replication update from %s", remoteAddr)
+				}
 			}
 		}()
 	}
