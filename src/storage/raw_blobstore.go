@@ -79,15 +79,15 @@ func NewRawBlobStore(cfg common.ConfigurationStorage, daemon *common.Daemon) (rb
 		}
 		c := b.Cursor()
 		for k, v := c.First(); k != nil; k, v = c.Next() {
-		if len(v) == 16 {
-			offset := int64(binary.BigEndian.Uint64(v[0:8]))
-			length := int64(binary.BigEndian.Uint64(v[8:16]))
-			if offset > 0 && length > 0 && offset <= math.MaxInt64-length {
-				end := offset + length
-				if end > nextOffset {
-					nextOffset = end
+			if len(v) == 16 {
+				offset := int64(binary.BigEndian.Uint64(v[0:8]))
+				length := int64(binary.BigEndian.Uint64(v[8:16]))
+				if offset > 0 && length > 0 && offset <= math.MaxInt64-length {
+					end := offset + length
+					if end > nextOffset {
+						nextOffset = end
+					}
 				}
-			}
 			}
 		}
 		return nil
@@ -106,7 +106,9 @@ func NewRawBlobStore(cfg common.ConfigurationStorage, daemon *common.Daemon) (rb
 }
 
 func (r *RawBlobStore) Close() error {
-	r.allocDB.Close()
+	if err := r.allocDB.Close(); err != nil {
+		log.Printf("AUDIT: allocDB.Close() failed: %v", err)
+	}
 	return r.device.Close()
 }
 

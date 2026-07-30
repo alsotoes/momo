@@ -15,16 +15,16 @@ import (
 
 // MetricsCollector tracks server-level metrics for Prometheus export.
 type MetricsCollector struct {
-	connectionsTotal   atomic.Uint64
-	uploadsTotal       atomic.Uint64
-	downloadsTotal     atomic.Uint64
-	deletesTotal       atomic.Uint64
-	replicationTotal   atomic.Uint64
-	errorsTotal        atomic.Uint64
-	activeConnections  atomic.Int64
-	bytesUploaded      atomic.Uint64
-	bytesDownloaded    atomic.Uint64
-	startTime          time.Time
+	connectionsTotal  atomic.Uint64
+	uploadsTotal      atomic.Uint64
+	downloadsTotal    atomic.Uint64
+	deletesTotal      atomic.Uint64
+	replicationTotal  atomic.Uint64
+	errorsTotal       atomic.Uint64
+	activeConnections atomic.Int64
+	bytesUploaded     atomic.Uint64
+	bytesDownloaded   atomic.Uint64
+	startTime         time.Time
 }
 
 // NewMetricsCollector creates a new MetricsCollector.
@@ -34,15 +34,15 @@ func NewMetricsCollector() *MetricsCollector {
 	}
 }
 
-func (m *MetricsCollector) IncConnections()    { m.connectionsTotal.Add(1); m.activeConnections.Add(1) }
-func (m *MetricsCollector) DecConnections()    { m.activeConnections.Add(-1) }
-func (m *MetricsCollector) IncUploads()         { m.uploadsTotal.Add(1) }
-func (m *MetricsCollector) IncDownloads()       { m.downloadsTotal.Add(1) }
-func (m *MetricsCollector) IncDeletes()         { m.deletesTotal.Add(1) }
-func (m *MetricsCollector) IncReplication()     { m.replicationTotal.Add(1) }
-func (m *MetricsCollector) IncErrors()          { m.errorsTotal.Add(1) }
-func (m *MetricsCollector) AddBytesUploaded(n uint64)    { m.bytesUploaded.Add(n) }
-func (m *MetricsCollector) AddBytesDownloaded(n uint64)  { m.bytesDownloaded.Add(n) }
+func (m *MetricsCollector) IncConnections()             { m.connectionsTotal.Add(1); m.activeConnections.Add(1) }
+func (m *MetricsCollector) DecConnections()             { m.activeConnections.Add(-1) }
+func (m *MetricsCollector) IncUploads()                 { m.uploadsTotal.Add(1) }
+func (m *MetricsCollector) IncDownloads()               { m.downloadsTotal.Add(1) }
+func (m *MetricsCollector) IncDeletes()                 { m.deletesTotal.Add(1) }
+func (m *MetricsCollector) IncReplication()             { m.replicationTotal.Add(1) }
+func (m *MetricsCollector) IncErrors()                  { m.errorsTotal.Add(1) }
+func (m *MetricsCollector) AddBytesUploaded(n uint64)   { m.bytesUploaded.Add(n) }
+func (m *MetricsCollector) AddBytesDownloaded(n uint64) { m.bytesDownloaded.Add(n) }
 
 func (m *MetricsCollector) writeMetrics(w io.Writer) {
 	var memStats runtime.MemStats
@@ -106,7 +106,11 @@ func (m *MetricsCollector) writeMetrics(w io.Writer) {
 	fmt.Fprintf(w, "# TYPE momo_gc_runs_total counter\n")
 	fmt.Fprintf(w, "momo_gc_runs_total %d\n", memStats.NumGC)
 
-	hostname, _ := os.Hostname()
+	hostname, err := os.Hostname()
+	if err != nil {
+		hostname = "unknown"
+		log.Printf("AUDIT: os.Hostname() failed: %v", err)
+	}
 	fmt.Fprintf(w, "# HELP momo_build_info Build information.\n")
 	fmt.Fprintf(w, "# TYPE momo_build_info gauge\n")
 	fmt.Fprintf(w, "momo_build_info{hostname=\"%s\"} 1\n", hostname)

@@ -52,7 +52,10 @@ func decodeObjectMeta(val []byte) ObjectMeta {
 		}
 	}
 	// Legacy format: ASCII integer = size only, refCount=1, not deleted
-	size, _ := strconv.ParseInt(string(val), 10, 64)
+	size, err := strconv.ParseInt(string(val), 10, 64)
+	if err != nil {
+		log.Printf("AUDIT: legacy metadata decode failed: %v", err)
+	}
 	return ObjectMeta{Size: size, RefCount: 1}
 }
 
@@ -70,12 +73,12 @@ type Store interface {
 // It composes a pluggable BlobStore (for raw blob bytes) with a fixed
 // bbolt metadata layer (for refcounts, tombstones, namespace mappings).
 type CASStore struct {
-	mu       sync.RWMutex
-	db       *bbolt.DB
-	base     string
-	blobs    BlobStore
-	gcDone   chan struct{}
-	gcWG     sync.WaitGroup
+	mu        sync.RWMutex
+	db        *bbolt.DB
+	base      string
+	blobs     BlobStore
+	gcDone    chan struct{}
+	gcWG      sync.WaitGroup
 	closeOnce sync.Once
 }
 
@@ -93,13 +96,13 @@ func NewCASStore(dataDir string) (*CASStore, error) {
 // a bbolt metadata database in dataDir.
 func newCASStore(dataDir string, blobs BlobStore) (*CASStore, error) {
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create data dir: %w", syscall.EIO)
+		return nil, fmt.Errorf("failed to create data dir: %v: %w", err, syscall.EIO)
 	}
 
 	dbPath := filepath.Join(dataDir, "momo.db")
 	db, err := bbolt.Open(dbPath, 0600, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open bbolt: %w", syscall.EIO)
+		return nil, fmt.Errorf("failed to open bbolt: %v: %w", err, syscall.EIO)
 	}
 
 	// Initialize buckets
