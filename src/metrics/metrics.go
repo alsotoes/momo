@@ -4,6 +4,7 @@ package metrics
 import (
 	"context"
 	"log"
+	"syscall"
 	"time"
 
 	"github.com/alsotoes/momo/src/common"
@@ -65,6 +66,10 @@ func checkMetricsAndSwap(sm SystemMetrics, currentIndex int, replicationOrder []
 		log.Printf("Error getting cpu metrics: %v", common.SanitizeLog(err.Error()))
 		return currentIndex, false
 	}
+	if len(c) == 0 {
+		log.Printf("CPUPercent returned empty slice (errno=%d)", syscall.EIO)
+		return currentIndex, false
+	}
 	cpuUsed := c[0]
 
 	// ⚡ Bolt: Use pre-calculated percent thresholds to avoid division.
@@ -82,6 +87,7 @@ func checkMetricsAndSwap(sm SystemMetrics, currentIndex int, replicationOrder []
 
 	return currentIndex, false
 }
+
 // GetMetrics is the main loop for the metrics daemon.
 //
 // It periodically checks the system metrics and, if the polymorphic system is enabled,
