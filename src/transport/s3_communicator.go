@@ -543,7 +543,7 @@ func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (status int, er
 	}
 
 	// 🛡️ Sentinel: Sanitize wireName to prevent path traversal via malicious metadata.
-	if strings.Contains(wireName, "..") || strings.Contains(wireName, "\\") {
+	if common.HasPathTraversalTokens(wireName) {
 		return 0, fmt.Errorf("invalid name: %s: %w", wireName, syscall.EBADMSG)
 	}
 

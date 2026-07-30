@@ -6,16 +6,16 @@ This section is automatically updated by our GitHub Actions workflow.
 ### Comparison with previous commit
 
 ```
-                      │ /tmp/old_bench_filtered.txt │      /tmp/new_bench_filtered.txt       │
-                      │           sec/op            │    sec/op      vs base                 │
-CrushOriginal-8                       1040.0n ± ∞ ¹    480.5n ± ∞ ¹        ~ (p=1.000 n=1) ²
-CrushOptimized-8                       626.0n ± ∞ ¹    378.3n ± ∞ ¹        ~ (p=1.000 n=1) ²
-LoadGlobalConfig-8                     2.057µ ± ∞ ¹    1.092µ ± ∞ ¹        ~ (p=1.000 n=1) ²
-PadString-8                            2.681n ± ∞ ¹    2.686n ± ∞ ¹        ~ (p=1.000 n=1) ²
-CheckMetricsAndSwap-8                  15.55n ± ∞ ¹    10.23n ± ∞ ¹        ~ (p=1.000 n=1) ²
-IndexSearch-8                          2.803n ± ∞ ¹    2.215n ± ∞ ¹        ~ (p=1.000 n=1) ²
-IndexDirectTracking-8                 0.8233n ± ∞ ¹   0.6688n ± ∞ ¹        ~ (p=1.000 n=1) ²
-geomean                                38.65n          26.02n        -32.67%
+                      │ /tmp/old_bench_filtered.txt │      /tmp/new_bench_filtered.txt      │
+                      │           sec/op            │    sec/op      vs base                │
+CrushOriginal-8                        480.5n ± ∞ ¹    554.1n ± ∞ ¹       ~ (p=1.000 n=1) ²
+CrushOptimized-8                       378.3n ± ∞ ¹    483.3n ± ∞ ¹       ~ (p=1.000 n=1) ²
+LoadGlobalConfig-8                     1.092µ ± ∞ ¹    1.264µ ± ∞ ¹       ~ (p=1.000 n=1) ²
+PadString-8                            2.686n ± ∞ ¹    2.518n ± ∞ ¹       ~ (p=1.000 n=1) ²
+CheckMetricsAndSwap-8                  10.23n ± ∞ ¹    11.84n ± ∞ ¹       ~ (p=1.000 n=1) ²
+IndexSearch-8                          2.215n ± ∞ ¹    2.264n ± ∞ ¹       ~ (p=1.000 n=1) ²
+IndexDirectTracking-8                 0.6688n ± ∞ ¹   0.5485n ± ∞ ¹       ~ (p=1.000 n=1) ²
+geomean                                26.02n          27.71n        +6.47%
 ¹ need >= 6 samples for confidence interval at level 0.95
 ² need >= 4 samples to detect a difference at alpha level 0.05
 
@@ -53,13 +53,13 @@ geomean                                           ³                +0.00%      
 
 | Benchmark | Avg. Time/Op | Avg. Bytes/Op | Avg. Allocs/Op |
 |-----------|--------------|---------------|----------------|
-| BenchmarkCheckMetricsAndSwap-8 | 10.23 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkCrushOptimized-8 | 378.30 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkCrushOriginal-8 | 480.50 ns/op | 164.00 B/op | 3.00 allocs/op |
-| BenchmarkIndexDirectTracking-8 | 0.67 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkIndexSearch-8 | 2.21 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkLoadGlobalConfig-8 | 1092.00 ns/op | 160.00 B/op | 1.00 allocs/op |
-| BenchmarkPadString-8 | 2.69 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkCheckMetricsAndSwap-8 | 11.84 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkCrushOptimized-8 | 483.30 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkCrushOriginal-8 | 554.10 ns/op | 164.00 B/op | 3.00 allocs/op |
+| BenchmarkIndexDirectTracking-8 | 0.55 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkIndexSearch-8 | 2.26 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkLoadGlobalConfig-8 | 1264.00 ns/op | 160.00 B/op | 1.00 allocs/op |
+| BenchmarkPadString-8 | 2.52 ns/op | 0.00 B/op | 0.00 allocs/op |
 
 
 ### Performance History
@@ -82,14 +82,14 @@ xychart-beta
     title "Performance Trend (Avg. Time, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Time (ns/op)"
-    x-axis [a92bb3c,5f3b3db,f08ad45,b32f6ea,f372029,99882c9,3a3f433,8d08a6a,b79912d,663057b]
-    line "CheckMetricsAndSwap" [8,8,7,11,8,7,9,9,16,10]
-    line "CrushOptimized" [317,408,363,329,301,302,302,303,626,378]
-    line "CrushOriginal" [416,464,465,436,409,424,427,440,1040,480]
-    line "IndexDirectTracking" [0,0,0,1,0,0,0,0,1,1]
-    line "IndexSearch" [3,3,3,3,3,3,2,2,3,2]
-    line "LoadGlobalConfig" [791,1335,761,888,824,749,822,884,2057,1092]
-    line "PadString" [2,2,2,2,2,2,2,2,3,3]
+    x-axis [5f3b3db,f08ad45,b32f6ea,f372029,99882c9,3a3f433,8d08a6a,b79912d,663057b,1c59190]
+    line "CheckMetricsAndSwap" [8,7,11,8,7,9,9,16,10,12]
+    line "CrushOptimized" [408,363,329,301,302,302,303,626,378,483]
+    line "CrushOriginal" [464,465,436,409,424,427,440,1040,480,554]
+    line "IndexDirectTracking" [0,0,1,0,0,0,0,1,1,1]
+    line "IndexSearch" [3,3,3,3,3,2,2,3,2,2]
+    line "LoadGlobalConfig" [1335,761,888,824,749,822,884,2057,1092,1264]
+    line "PadString" [2,2,2,2,2,2,2,3,3,3]
     line "ParseReplicationOrder_NoPrealloc" [350,349,357,354,345,225,229,165,232,234]
     line "ParseReplicationOrder_Prealloc" [229,231,237,234,229,108,107,80,110,109]
 ```
@@ -99,7 +99,7 @@ xychart-beta
     title "Memory Trend (Avg. Bytes/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Bytes/Op"
-    x-axis [a92bb3c,5f3b3db,f08ad45,b32f6ea,f372029,99882c9,3a3f433,8d08a6a,b79912d,663057b]
+    x-axis [5f3b3db,f08ad45,b32f6ea,f372029,99882c9,3a3f433,8d08a6a,b79912d,663057b,1c59190]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "CrushOptimized" [0,0,0,0,0,0,0,0,0,0]
     line "CrushOriginal" [164,164,164,164,164,164,164,164,164,164]
@@ -116,7 +116,7 @@ xychart-beta
     title "Allocation Trend (Avg. Allocs/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Allocs/Op"
-    x-axis [a92bb3c,5f3b3db,f08ad45,b32f6ea,f372029,99882c9,3a3f433,8d08a6a,b79912d,663057b]
+    x-axis [5f3b3db,f08ad45,b32f6ea,f372029,99882c9,3a3f433,8d08a6a,b79912d,663057b,1c59190]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "CrushOptimized" [0,0,0,0,0,0,0,0,0,0]
     line "CrushOriginal" [3,3,3,3,3,3,3,3,3,3]
