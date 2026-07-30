@@ -105,6 +105,8 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 	const maxConcurrentConnections = 1000
 	sem := make(chan struct{}, maxConcurrentConnections)
 
+	// Accept loop: server.Accept() returns errors, not panics. Per-connection
+	// goroutines below each have their own recover() block (Rule 37) for panic safety.
 	for {
 		connection, err := server.Accept()
 		if err != nil {
