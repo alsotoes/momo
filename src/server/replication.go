@@ -80,7 +80,9 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 		return fmt.Errorf("Error listening: %v", err)
 	}
 
-	defer server.Close()
+	closeOnce := sync.Once{}
+	closeServer := func() { closeOnce.Do(func() { server.Close() }) }
+	defer closeServer()
 
 	// Handle graceful shutdown via context
 	go func() {
@@ -90,7 +92,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 			}
 		}()
 		<-ctx.Done()
-		server.Close()
+		closeServer()
 	}()
 
 	log.Printf("Server changeReplicationMode started... at %s", daemons[serverId].ChangeReplication)
