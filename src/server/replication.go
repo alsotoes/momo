@@ -63,6 +63,12 @@ func SetReplicationState(newMode int, timestamp int64) common.ReplicationData {
 // This function updates the server's replication mode and, if the server is the primary (serverId 0),
 // it propagates the change to the other servers in the cluster.
 func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, serverId int, timestamp int64) error {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in ChangeReplicationModeServer: %v", fmt.Errorf("%v: %w", r, syscall.EIO))
+		}
+	}()
+
 	daemons := cfg.Daemons
 	if serverId < 0 || serverId >= len(daemons) {
 		return fmt.Errorf("server ID %d is out of range [0, %d)", serverId, len(daemons))
