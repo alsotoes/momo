@@ -373,7 +373,7 @@ func (m *MomoTCPCommunicator) SendMetadata(meta *common.FileMetadata) (status in
 	}
 
 	// 🛡️ Sentinel: Sanitize wireName to prevent path traversal via malicious metadata.
-	if common.HasPathTraversalChars(wireName) {
+	if strings.Contains(wireName, "..") || strings.Contains(wireName, "\\") {
 		return 0, fmt.Errorf("invalid name: %s: %w", wireName, syscall.EBADMSG)
 	}
 
