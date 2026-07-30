@@ -62,7 +62,14 @@ func SetReplicationState(newMode int, timestamp int64) common.ReplicationData {
 // When a client connects, it sends a JSON object containing the new replication mode.
 // This function updates the server's replication mode and, if the server is the primary (serverId 0),
 // it propagates the change to the other servers in the cluster.
-func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, serverId int, timestamp int64) error {
+func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, serverId int, timestamp int64) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in ChangeReplicationModeServer: %v: %w", r, syscall.EIO)
+			log.Printf("CRITICAL: %v", err)
+		}
+	}()
+
 	daemons := cfg.Daemons
 	if serverId < 0 || serverId >= len(daemons) {
 		return fmt.Errorf("server ID %d is out of range [0, %d)", serverId, len(daemons))
@@ -92,7 +99,10 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 
 	// Initialize the replication state
 	initialState := SetReplicationState(GetCurrentReplicationMode(), timestamp)
-	replicationJson, _ := json.Marshal(initialState)
+	replicationJson, err := json.Marshal(initialState)
+	if err != nil {
+		log.Printf("AUDIT: Failed to marshal initial replication state: %v", fmt.Errorf("%v: %w", common.SanitizeLog(err.Error()), syscall.EIO))
+	}
 	log.Printf("ReplicationData struct: %s", string(replicationJson))
 
 	// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
@@ -167,7 +177,10 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 
 			// Update the replication state
 			newState := SetReplicationState(replicationJson.New, ts)
-			newReplicationJson, _ := json.Marshal(newState)
+			newReplicationJson, marshalErr := json.Marshal(newState)
+			if marshalErr != nil {
+				log.Printf("AUDIT: Failed to marshal new replication state: %v", fmt.Errorf("%v: %w", common.SanitizeLog(marshalErr.Error()), syscall.EIO))
+			}
 			// 🛡️ Sentinel: Audit log the sensitive operation
 			log.Printf("AUDIT: Replication mode changed to %d by %s", replicationJson.New, remoteAddr)
 			log.Printf("ReplicationData new struct: %s", string(newReplicationJson))
@@ -177,8 +190,9 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 				log.Printf("AUDIT: Failed to send ACK to %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
 			}
 
-			// If this is the primary server, propagate the change to the other servers
-			if 0 == serverId {
+			// If this is the primary server, propagate the change to the other servers.
+			// Skip propagation if json.Marshal failed to avoid sending empty data to peers.
+			if 0 == serverId && marshalErr == nil {
 				daemons := factory.GetDaemons()
 				for i := range daemons {
 					if i == serverId {
