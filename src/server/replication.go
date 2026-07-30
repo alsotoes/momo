@@ -77,7 +77,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 	factory := transport.NewProtocolFactory(cfg)
 	server, err := factory.Listen(daemons[serverId].ChangeReplication)
 	if err != nil {
-		return fmt.Errorf("Error listening: %v", err)
+		return fmt.Errorf("Error listening: %v: %w", err, syscall.EIO)
 	}
 
 	closeOnce := sync.Once{}
