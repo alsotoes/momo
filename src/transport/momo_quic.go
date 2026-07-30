@@ -372,6 +372,12 @@ func (m *MomoQUICCommunicator) SendMetadata(meta *common.FileMetadata) (status i
 	if len(wireName) > common.FileInfoLength {
 		return 0, fmt.Errorf("metadata name exceeds limit: %w", syscall.ENAMETOOLONG)
 	}
+
+	// 🛡️ Sentinel: Sanitize wireName to prevent path traversal via malicious metadata.
+	if common.HasPathTraversalChars(wireName) {
+		return 0, fmt.Errorf("invalid name: %s: %w", wireName, syscall.EBADMSG)
+	}
+
 	copy(metadataBuffer[hashLength:hashLength+common.FileInfoLength], common.PadString(wireName, common.FileInfoLength))
 
 	var sizeBuf [common.FileInfoLength]byte
