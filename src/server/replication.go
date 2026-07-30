@@ -94,7 +94,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 	initialState := SetReplicationState(GetCurrentReplicationMode(), timestamp)
 	replicationJson, err := json.Marshal(initialState)
 	if err != nil {
-		log.Printf("AUDIT: Failed to marshal initial replication state: %v", common.SanitizeLog(err.Error()))
+		log.Printf("AUDIT: Failed to marshal initial replication state: %v", fmt.Errorf("%v: %w", common.SanitizeLog(err.Error()), syscall.EIO))
 	}
 	log.Printf("ReplicationData struct: %s", string(replicationJson))
 
@@ -170,9 +170,9 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 
 			// Update the replication state
 			newState := SetReplicationState(replicationJson.New, ts)
-			newReplicationJson, err := json.Marshal(newState)
-			if err != nil {
-				log.Printf("AUDIT: Failed to marshal new replication state: %v", common.SanitizeLog(err.Error()))
+			newReplicationJson, marshalErr := json.Marshal(newState)
+			if marshalErr != nil {
+				log.Printf("AUDIT: Failed to marshal new replication state: %v", fmt.Errorf("%v: %w", common.SanitizeLog(marshalErr.Error()), syscall.EIO))
 			}
 			// 🛡️ Sentinel: Audit log the sensitive operation
 			log.Printf("AUDIT: Replication mode changed to %d by %s", replicationJson.New, remoteAddr)
@@ -183,8 +183,9 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 				log.Printf("AUDIT: Failed to send ACK to %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
 			}
 
-			// If this is the primary server, propagate the change to the other servers
-			if 0 == serverId {
+			// If this is the primary server, propagate the change to the other servers.
+			// Skip propagation if json.Marshal failed to avoid sending empty data to peers.
+			if 0 == serverId && marshalErr == nil {
 				daemons := factory.GetDaemons()
 				for i := range daemons {
 					if i == serverId {

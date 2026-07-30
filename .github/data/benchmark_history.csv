@@ -1695,3 +1695,10 @@ cfe6236,BenchmarkIndexDirectTracking-8,0.36,0.00,0.00
 cfe6236,BenchmarkIndexSearch-8,3.09,0.00,0.00
 cfe6236,BenchmarkLoadGlobalConfig-8,753.70,160.00,1.00
 cfe6236,BenchmarkPadString-8,1.92,0.00,0.00
+86a8e49,BenchmarkCheckMetricsAndSwap-8,7.70,0.00,0.00
+86a8e49,BenchmarkCrushOptimized-8,290.60,0.00,0.00
+86a8e49,BenchmarkCrushOriginal-8,396.60,164.00,3.00
+86a8e49,BenchmarkIndexDirectTracking-8,0.35,0.00,0.00
+86a8e49,BenchmarkIndexSearch-8,2.74,0.00,0.00
+86a8e49,BenchmarkLoadGlobalConfig-8,746.40,160.00,1.00
+86a8e49,BenchmarkPadString-8,2.07,0.00,0.00
