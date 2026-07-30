@@ -26,9 +26,13 @@ type ProtocolFactory struct {
 func NewProtocolFactory(cfg common.Configuration) *ProtocolFactory {
 	f := &ProtocolFactory{cfg: cfg}
 	if cfg.Global.CACertPath != "" {
+		if common.HasPathTraversalChars(cfg.Global.CACertPath) {
+			log.Printf("WARNING: CA cert path %q contains path traversal characters — falling back to InsecureSkipVerify", cfg.Global.CACertPath)
+			return f
+		}
 		pemData, err := os.ReadFile(cfg.Global.CACertPath)
 		if err != nil {
-			log.Printf("WARNING: failed to read CA cert file %s: %v — falling back to InsecureSkipVerify", cfg.Global.CACertPath, err)
+			log.Printf("WARNING: failed to read CA cert file %s: %v (errno: ENOENT) — falling back to InsecureSkipVerify", cfg.Global.CACertPath, err)
 			return f
 		}
 		pool := x509.NewCertPool()
