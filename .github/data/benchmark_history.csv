@@ -1786,3 +1786,10 @@ f372029,BenchmarkPadString-8,1.96,0.00,0.00
 3a3f433,BenchmarkIndexSearch-8,1.62,0.00,0.00
 3a3f433,BenchmarkLoadGlobalConfig-8,821.70,160.00,1.00
 3a3f433,BenchmarkPadString-8,2.04,0.00,0.00
+8d08a6a,BenchmarkCheckMetricsAndSwap-8,9.10,0.00,0.00
+8d08a6a,BenchmarkCrushOptimized-8,303.00,0.00,0.00
+8d08a6a,BenchmarkCrushOriginal-8,439.50,164.00,3.00
+8d08a6a,BenchmarkIndexDirectTracking-8,0.37,0.00,0.00
+8d08a6a,BenchmarkIndexSearch-8,1.81,0.00,0.00
+8d08a6a,BenchmarkLoadGlobalConfig-8,884.40,160.00,1.00
+8d08a6a,BenchmarkPadString-8,1.96,0.00,0.00

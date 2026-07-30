@@ -4,6 +4,7 @@ package metrics
 import (
 	"context"
 	"log"
+	"syscall"
 	"time"
 
 	"github.com/alsotoes/momo/src/common"
@@ -66,7 +67,7 @@ func checkMetricsAndSwap(sm SystemMetrics, currentIndex int, replicationOrder []
 		return currentIndex, false
 	}
 	if len(c) == 0 {
-		log.Printf("CPUPercent returned empty slice")
+		log.Printf("CPUPercent returned empty slice (errno=%d)", syscall.EIO)
 		return currentIndex, false
 	}
 	cpuUsed := c[0]
