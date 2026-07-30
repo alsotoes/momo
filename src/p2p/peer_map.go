@@ -69,6 +69,9 @@ func (m *PeerMap) Alive() []*Peer {
 
 // RandomPeers returns up to k random alive peers, excluding the peer with excludeID.
 func (m *PeerMap) RandomPeers(k int, excludeID int32) []*Peer {
+	if k <= 0 {
+		return nil
+	}
 	alive := m.Alive()
 	if len(alive) <= 1 {
 		result := make([]*Peer, 0)
