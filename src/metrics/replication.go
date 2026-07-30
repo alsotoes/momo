@@ -43,15 +43,18 @@ func pushNewReplicationMode(cfg common.Configuration, paddedAuthToken []byte, ne
 				}
 			}()
 
-		conn, err := common.DialSocket(addr)
-		if err != nil {
-			log.Printf("Dial error for node %d (%s): %v", id, addr, common.SanitizeLog(err.Error()))
-			return
-		}
-		defer conn.Close()
+			conn, err := common.DialSocket(addr)
+			if err != nil {
+				log.Printf("Dial error for node %d (%s): %v", id, addr, common.SanitizeLog(err.Error()))
+				return
+			}
+			defer conn.Close()
 
-		conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-		if _, err := conn.Write(buf); err != nil {
+			if err := conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
+				log.Printf("Failed to set write deadline for node %d: %v", id, common.SanitizeLog(err.Error()))
+				return
+			}
+			if _, err := conn.Write(buf); err != nil {
 				log.Printf("Failed to notify node %d: %v", id, common.SanitizeLog(err.Error()))
 			}
 		}(i, d.ChangeReplication)
