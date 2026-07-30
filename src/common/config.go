@@ -215,6 +215,8 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 		return ConfigurationGlobal{}, fmt.Errorf("'auth_token' length exceeds maximum allowed length of %d bytes", AuthTokenLength)
 	}
 
+	globalCfg.CACertPath = section.Key("ca_cert").String()
+
 	return globalCfg, nil
 }
 

@@ -543,19 +543,38 @@ func GenerateSelfSignedCert() (tls.Certificate, error) {
 }
 
 // DialQUIC connects to a peer using QUIC.
-func DialQUIC(ctx context.Context, address string) (*quic.Conn, *quic.Stream, error) {
+// When caCertPool is non-nil, peer certificates are verified against it.
+// When caCertPool is nil, InsecureSkipVerify is used with a warning log.
+func DialQUIC(ctx context.Context, address string, caCertPool *x509.CertPool) (conn *quic.Conn, stream *quic.Stream, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in DialQUIC for %s: %v", address, r)
+			if conn != nil {
+				conn.CloseWithError(0, "panic recovery")
+			}
+			conn = nil
+			stream = nil
+			err = fmt.Errorf("panic in DialQUIC: %v: %w", r, syscall.ECONNREFUSED)
+		}
+	}()
+
 	tlsConf := &tls.Config{
-		InsecureSkipVerify: true,
-		NextProtos:         []string{"momo-quic"},
+		NextProtos: []string{"momo-quic"},
 	}
-	conn, err := quic.DialAddr(ctx, address, tlsConf, nil)
+	if caCertPool != nil {
+		tlsConf.RootCAs = caCertPool
+	} else {
+		log.Printf("WARNING: QUIC dial to %s using InsecureSkipVerify (no CA cert configured) — vulnerable to MITM", address)
+		tlsConf.InsecureSkipVerify = true
+	}
+	conn, err = quic.DialAddr(ctx, address, tlsConf, nil)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("quic dial failed: %w", syscall.ECONNREFUSED)
 	}
-	stream, err := conn.OpenStreamSync(ctx)
+	stream, err = conn.OpenStreamSync(ctx)
 	if err != nil {
 		conn.CloseWithError(0, "failed to open stream")
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("quic stream open failed: %w", syscall.ECONNREFUSED)
 	}
 	return conn, stream, nil
 }
