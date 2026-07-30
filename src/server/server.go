@@ -119,7 +119,11 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 		}
 
 		// Acquire semaphore slot before spinning up a new goroutine
-		sem <- struct{}{}
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			return nil
+		}
 		go func(comm transport.Communicator) {
 			defer func() { <-sem }()
 			// 🛡️ Zero-Crash Hardening: Recover from any unexpected panics in the connection handler
@@ -355,21 +359,21 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 			// Handle the file based on the replication mode
 			switch replicationMode {
 			case common.ReplicationNone, common.ReplicationPrimarySplay:
-			if exists {
-				// ⚡ Bolt: Deduplication hit. Just update metadata mapping without reading payload.
-				if err := store.Put(fileName, metadata.Hash, metadata.Size, remotePath, nil); err != nil {
-					log.Printf("AUDIT: Error updating metadata for %s from %s: %v", fileName, remoteAddr, common.SanitizeLog(err.Error()))
-					metricsCollector.IncErrors()
-					return
+				if exists {
+					// ⚡ Bolt: Deduplication hit. Just update metadata mapping without reading payload.
+					if err := store.Put(fileName, metadata.Hash, metadata.Size, remotePath, nil); err != nil {
+						log.Printf("AUDIT: Error updating metadata for %s from %s: %v", fileName, remoteAddr, common.SanitizeLog(err.Error()))
+						metricsCollector.IncErrors()
+						return
+					}
+				} else {
+					if err := getFile(comm, store, fileName, metadata.Hash, metadata.Size, remotePath); err != nil {
+						log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
+						metricsCollector.IncErrors()
+						return
+					}
 				}
-			} else {
-				if err := getFile(comm, store, fileName, metadata.Hash, metadata.Size, remotePath); err != nil {
-					log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
-					metricsCollector.IncErrors()
-					return
-				}
-			}
-		case common.ReplicationChain:
+			case common.ReplicationChain:
 				// In Chain mode, we find our position in the placement list and forward to the next node.
 				myPos := -1
 				for i, n := range placement {
@@ -455,13 +459,13 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 						targetId := placement[i].ID
 						go func(id int) {
 							// ⚡ Bolt: connectToPeerStream (client.ConnectStream) handles wg.Done() internally via defer.
-						defer func() {
-							if r := recover(); r != nil {
-								log.Printf("CRITICAL: Panic recovered in Splay forwarder to node %d: %v", id, r)
-								wg.Done()
-								metricsCollector.IncErrors()
-							}
-						}()
+							defer func() {
+								if r := recover(); r != nil {
+									log.Printf("CRITICAL: Panic recovered in Splay forwarder to node %d: %v", id, r)
+									wg.Done()
+									metricsCollector.IncErrors()
+								}
+							}()
 							reader, _, err := store.Get(fileName)
 							if err != nil {
 								log.Printf("AUDIT: Failed to get blob for splay forwarding: %v", common.SanitizeLog(err.Error()))
@@ -476,14 +480,14 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 					}
 					wg.Wait()
 				} else {
-				// We are a secondary in a splay, just receive the file if needed.
-				if exists {
-					if err := store.Put(fileName, metadata.Hash, metadata.Size, remotePath, nil); err != nil {
-						log.Printf("AUDIT: Error updating metadata for %s from %s: %v", fileName, remoteAddr, common.SanitizeLog(err.Error()))
-						metricsCollector.IncErrors()
-						return
-					}
-				} else {
+					// We are a secondary in a splay, just receive the file if needed.
+					if exists {
+						if err := store.Put(fileName, metadata.Hash, metadata.Size, remotePath, nil); err != nil {
+							log.Printf("AUDIT: Error updating metadata for %s from %s: %v", fileName, remoteAddr, common.SanitizeLog(err.Error()))
+							metricsCollector.IncErrors()
+							return
+						}
+					} else {
 						if err := getFile(comm, store, fileName, metadata.Hash, metadata.Size, remotePath); err != nil {
 							log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
 							metricsCollector.IncErrors()
