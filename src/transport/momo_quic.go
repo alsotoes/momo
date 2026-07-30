@@ -543,10 +543,17 @@ func GenerateSelfSignedCert() (tls.Certificate, error) {
 }
 
 // DialQUIC connects to a peer using QUIC.
-func DialQUIC(ctx context.Context, address string) (*quic.Conn, *quic.Stream, error) {
+// When caCertPool is non-nil, peer certificates are verified against it.
+// When caCertPool is nil, InsecureSkipVerify is used with a warning log.
+func DialQUIC(ctx context.Context, address string, caCertPool *x509.CertPool) (*quic.Conn, *quic.Stream, error) {
 	tlsConf := &tls.Config{
-		InsecureSkipVerify: true,
-		NextProtos:         []string{"momo-quic"},
+		NextProtos: []string{"momo-quic"},
+	}
+	if caCertPool != nil {
+		tlsConf.RootCAs = caCertPool
+	} else {
+		log.Printf("WARNING: QUIC dial to %s using InsecureSkipVerify (no CA cert configured) — vulnerable to MITM", address)
+		tlsConf.InsecureSkipVerify = true
 	}
 	conn, err := quic.DialAddr(ctx, address, tlsConf, nil)
 	if err != nil {

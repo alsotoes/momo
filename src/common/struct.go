@@ -52,6 +52,9 @@ type ConfigurationGlobal struct {
 	ReplicationFactor int
 	// PolymorphicSystem enables or disables the polymorphic system.
 	PolymorphicSystem bool
+	// CACertPath is the path to a PEM-encoded CA certificate file used to verify
+	// QUIC peer certificates. When empty, InsecureSkipVerify is used with a warning.
+	CACertPath string
 }
 
 // ConfigurationMetrics holds the metrics configuration for the application.
