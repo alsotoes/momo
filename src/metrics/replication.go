@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/alsotoes/momo/src/common"
@@ -39,7 +40,7 @@ func pushNewReplicationMode(cfg common.Configuration, paddedAuthToken []byte, ne
 			defer wg.Done()
 			defer func() {
 				if r := recover(); r != nil {
-					log.Printf("CRITICAL: Panic recovered in Metrics broadcast to node %d: %v", id, r)
+					log.Printf("CRITICAL: Panic recovered in Metrics broadcast to node %d: %v (errno=%d)", id, r, syscall.EIO)
 				}
 			}()
 
