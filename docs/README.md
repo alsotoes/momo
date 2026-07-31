@@ -24,6 +24,7 @@ This document explains the architecture, configuration, wire protocol, replicati
 | [CONTRACT_TESTING.md](CONTRACT_TESTING.md) | TCP wire protocol contract testing strategy |
 | [POLYMORPHIC_SYSTEM.md](POLYMORPHIC_SYSTEM.md) | Dynamic replication mode switching and polymorphic engine |
 | [AI_FLYING_SOLO.md](AI_FLYING_SOLO.md) | Autonomous development workflow for AI agents (bugs and features) |
+| [../pentest/README.md](../pentest/README.md) | Security pentest toolkit — DotDotPwn fuzzing + Python exploit scripts (9 CVEs found) |
 
 ## Key Performance & Security Features (⚡ Bolt & 🛡️ Sentinel)
 

@@ -49,3 +49,4 @@ body*.txt
 # Pentest generated artifacts (regenerable)
 pentest/server-logs/
 pentest/fuzzing-reports/
+pentest-results/
