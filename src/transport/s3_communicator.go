@@ -243,15 +243,18 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 
 	authHeader := req.Header.Get("Authorization")
 	var token string
+	isSigV4 := false
 	if strings.HasPrefix(authHeader, "Bearer ") {
 		token = strings.TrimPrefix(authHeader, "Bearer ")
 	} else if strings.HasPrefix(authHeader, "AWS4-HMAC-SHA256 ") {
-		// Extract Credential
-		parts := strings.Split(authHeader, "Credential=")
-		if len(parts) > 1 {
-			credPart := strings.Split(parts[1], "/")[0]
-			token = credPart
+		isSigV4 = true
+		components, ok := parseSigV4AuthHeader(authHeader)
+		if !ok {
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			m.conn.Write([]byte("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
+			return 0, 0, syscall.EACCES
 		}
+		token = components.AccessKey
 	}
 
 	tokenBuf := []byte(common.PadString(token, common.AuthTokenLength))
@@ -259,6 +262,16 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		m.conn.Write([]byte("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
 		return 0, 0, syscall.EACCES
+	}
+
+	if isSigV4 {
+		secretKey := common.TrimNullBytesString(expectedAuthToken)
+		if !verifySigV4Signature(req, authHeader, secretKey) {
+			log.Printf("AUDIT: SigV4 signature verification failed from %s", m.conn.RemoteAddr())
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			m.conn.Write([]byte("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
+			return 0, 0, syscall.EACCES
+		}
 	}
 
 	// 🛡️ Sentinel: Reject requests containing directory traversal characters (".." or "\") to prevent path traversal attacks.

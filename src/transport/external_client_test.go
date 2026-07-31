@@ -15,11 +15,22 @@ func TestS3Communicator_ExternalClientDetection(t *testing.T) {
 	expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
 
 	t.Run("aws-cli without X-Momo-Requested-Mode is external", func(t *testing.T) {
+		amzDate := "20260604T120000Z"
+		dateStamp := "20260604"
+		region := "us-east-1"
+		payloadHash := "dummyhash"
+		signedHeaders := "host;x-amz-date"
+
+		canonicalRequest := "PUT\n/test-file.txt\n\nhost:127.0.0.1:4440\nx-amz-date:" + amzDate + "\n\n" + signedHeaders + "\n" + payloadHash
+		stringToSign := buildStringToSign(canonicalRequest, amzDate, dateStamp, region)
+		signingKey := deriveSigningKey(authToken, dateStamp, region)
+		signature := computeSignature(signingKey, stringToSign)
+
 		reqBody := "PUT /test-file.txt HTTP/1.1\r\n" +
 			"Host: 127.0.0.1:4440\r\n" +
-			"Authorization: AWS4-HMAC-SHA256 Credential=" + authToken + "/20260604/us-east-1/s3/aws4_request, SignedHeaders=host;x-amz-date, Signature=dummy\r\n" +
-			"X-Amz-Date: 20260604T120000Z\r\n" +
-			"X-Amz-Content-Sha256: dummyhash\r\n" +
+			"Authorization: AWS4-HMAC-SHA256 Credential=" + authToken + "/" + dateStamp + "/" + region + "/s3/aws4_request, SignedHeaders=" + signedHeaders + ", Signature=" + signature + "\r\n" +
+			"X-Amz-Date: " + amzDate + "\r\n" +
+			"X-Amz-Content-Sha256: " + payloadHash + "\r\n" +
 			"Content-Length: 1024\r\n\r\n"
 
 		clientConn, serverConn := net.Pipe()

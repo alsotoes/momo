@@ -89,8 +89,55 @@ func TestS3Communicator_AWSV4Auth(t *testing.T) {
 	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
 	expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
 
-	// AWS v4 style Auth header
-	authHeader := "AWS4-HMAC-SHA256 Credential=" + authToken + "/20260604/us-east-1/s3/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=dummy"
+	amzDate := "20260604T120000Z"
+	dateStamp := "20260604"
+	region := "us-east-1"
+	payloadHash := "dummyhash"
+	signedHeaders := "host;x-amz-content-sha256;x-amz-date"
+
+	canonicalRequest := "PUT\n/test-file2.txt\n\nhost:127.0.0.1:4440\nx-amz-content-sha256:" + payloadHash + "\nx-amz-date:" + amzDate + "\n\n" + signedHeaders + "\n" + payloadHash
+	stringToSign := buildStringToSign(canonicalRequest, amzDate, dateStamp, region)
+	signingKey := deriveSigningKey(authToken, dateStamp, region)
+	signature := computeSignature(signingKey, stringToSign)
+
+	authHeader := "AWS4-HMAC-SHA256 Credential=" + authToken + "/" + dateStamp + "/" + region + "/s3/aws4_request, SignedHeaders=" + signedHeaders + ", Signature=" + signature
+
+	reqBody := "PUT /test-file2.txt HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"Authorization: " + authHeader + "\r\n" +
+		"X-Amz-Date: " + amzDate + "\r\n" +
+		"X-Amz-Content-Sha256: " + payloadHash + "\r\n" +
+		"Content-Length: 2048\r\n\r\n"
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	go func() {
+		clientConn.Write([]byte(reqBody))
+		buf := make([]byte, 1024)
+		for {
+			_, err := clientConn.Read(buf)
+			if err != nil {
+				break
+			}
+		}
+	}()
+
+	comm := NewS3Communicator(serverConn)
+	_, _, err := comm.HandshakeServer(expectedAuthToken)
+	if err != nil {
+		t.Fatalf("HandshakeServer failed with AWS v4 auth: %v", err)
+	}
+}
+
+func TestS3Communicator_SigV4InvalidSignature(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
+
+	authHeader := "AWS4-HMAC-SHA256 Credential=" + authToken + "/20260604/us-east-1/s3/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=" + strings.Repeat("0", 64)
 
 	reqBody := "PUT /test-file2.txt HTTP/1.1\r\n" +
 		"Host: 127.0.0.1:4440\r\n" +
@@ -105,8 +152,6 @@ func TestS3Communicator_AWSV4Auth(t *testing.T) {
 
 	go func() {
 		clientConn.Write([]byte(reqBody))
-		// ⚡ Bolt: Read in a loop to avoid deadlock on net.Pipe.
-		// http.Response.Write performs multiple writes which will block if not fully consumed.
 		buf := make([]byte, 1024)
 		for {
 			_, err := clientConn.Read(buf)
@@ -118,8 +163,11 @@ func TestS3Communicator_AWSV4Auth(t *testing.T) {
 
 	comm := NewS3Communicator(serverConn)
 	_, _, err := comm.HandshakeServer(expectedAuthToken)
-	if err != nil {
-		t.Fatalf("HandshakeServer failed with AWS v4 auth: %v", err)
+	if err == nil {
+		t.Fatal("HandshakeServer should reject invalid SigV4 signature")
+	}
+	if !errors.Is(err, syscall.EACCES) {
+		t.Fatalf("Expected EACCES for invalid signature, got: %v", err)
 	}
 }
 

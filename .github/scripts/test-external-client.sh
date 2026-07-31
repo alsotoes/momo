@@ -75,11 +75,42 @@ echo "external-client-test-data" > $E2E_DIR/test_external.txt
 FILE_HASH=$(sha256sum $E2E_DIR/test_external.txt | awk '{print $1}')
 FILE_SIZE=$(wc -c < $E2E_DIR/test_external.txt)
 
+# Compute real SigV4 signature for the PUT request
+TOKEN="a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"  # notsecret
+AMZ_DATE="20260727T120000Z"
+DATE_STAMP="20260727"
+REGION="us-east-1"
+SIGNED_HEADERS="host;x-amz-content-sha256;x-amz-date"
+SIGNATURE=$(python3 -c "
+import hmac, hashlib, sys
+token='$TOKEN'
+amz_date='$AMZ_DATE'
+date_stamp='$DATE_STAMP'
+region='$REGION'
+payload_hash='$FILE_HASH'
+signed_headers='$SIGNED_HEADERS'
+host='127.0.0.1:4440'
+method='PUT'
+uri='/test-bucket/test_external.txt'
+canonical_request = method + '\n' + uri + '\n\n' + 'host:' + host + '\n' + 'x-amz-content-sha256:' + payload_hash + '\n' + 'x-amz-date:' + amz_date + '\n\n' + signed_headers + '\n' + payload_hash
+hashed_cr = hashlib.sha256(canonical_request.encode()).hexdigest()
+credential_scope = date_stamp + '/' + region + '/s3/aws4_request'
+string_to_sign = 'AWS4-HMAC-SHA256\n' + amz_date + '\n' + credential_scope + '\n' + hashed_cr
+def hmac_sha256(key, data):
+    return hmac.new(key, data.encode(), hashlib.sha256).digest()
+k_date = hmac_sha256(('AWS4' + token).encode(), date_stamp)
+k_region = hmac_sha256(k_date, region)
+k_service = hmac_sha256(k_region, 's3')
+k_signing = hmac_sha256(k_service, 'aws4_request')
+sig = hmac.new(k_signing, string_to_sign.encode(), hashlib.sha256).hexdigest()
+print(sig)
+")
+
 # curl PUT without X-Momo-Requested-Mode — simulates aws-cli
-AUTH_HDR="Authorization: AWS4-HMAC-SHA256 Credential=a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6/20260727/us-east-1/s3/aws4_request, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=dummy"  # notsecret
+AUTH_HDR="Authorization: AWS4-HMAC-SHA256 Credential=$TOKEN/$DATE_STAMP/$REGION/s3/aws4_request, SignedHeaders=$SIGNED_HEADERS, Signature=$SIGNATURE"  # notsecret
 curl -s -X PUT \
   -H "$AUTH_HDR" \
-  -H "X-Amz-Date: 20260727T120000Z" \
+  -H "X-Amz-Date: $AMZ_DATE" \
   -H "X-Amz-Content-Sha256: $FILE_HASH" \
   -H "Content-Type: application/octet-stream" \
   --data-binary @$E2E_DIR/test_external.txt \
