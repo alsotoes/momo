@@ -9,7 +9,7 @@ BIN := $(BIN_DIR)/momo
 MAIN := src/momo.go
 MODULES := ./src/common ./src/transport ./src/client ./src/metrics ./src/p2p ./src/server ./src/storage
 
-.PHONY: all build clean tidy vendor test vet coverage doc doc-live benchmark test-e2e smoke-tcp smoke-quic smoke-scale-cas test-contract test-load test-stress test-chaos test-metrics test-external-client monitoring-up monitoring-down
+.PHONY: all build clean tidy vendor test vet coverage doc doc-live benchmark test-e2e smoke-tcp smoke-quic smoke-scale-cas test-contract test-load test-stress test-chaos test-metrics test-external-client monitoring-up monitoring-down pentest
 
 all: build
 
@@ -111,3 +111,7 @@ monitoring-up:
 monitoring-down:
 	@echo "Stopping Grafana/Prometheus monitoring stack..."
 	docker compose -f tests/monitoring/docker-compose-monitoring.yml down
+
+pentest:
+	@echo "Running DotDotPwn pentest (requires Perl + DotDotPwn cloned at /tmp/dotdotpwn)..."
+	./.github/scripts/run-pentest.sh
