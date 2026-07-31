@@ -334,7 +334,19 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 				return
 			}
 
+			// 🛡️ CVE-005: Prevent deduplication confusion attack.
+			// Only skip payload if the name already maps to the same hash (legitimate re-upload).
+			// If the hash exists but the name is new or maps to a different hash, require the
+			// payload as proof of content knowledge before creating a new namespace alias.
+			canDedup := false
 			if exists {
+				existingHash, hashErr := store.GetHashForName(fileName)
+				if hashErr == nil && existingHash == metadata.Hash {
+					canDedup = true
+				}
+			}
+
+			if canDedup {
 				log.Printf("AUDIT: Deduplication hit for %s (hash: %s)", remoteAddr, metadata.Hash)
 				if err := comm.SendMetadataStatus(transport.MetadataStatusSkipPayload); err != nil {
 					log.Printf("AUDIT: Error sending metadata status to %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
@@ -372,7 +384,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 			// Handle the file based on the replication mode
 			switch replicationMode {
 			case common.ReplicationNone, common.ReplicationPrimarySplay:
-				if exists {
+				if canDedup {
 					// ⚡ Bolt: Deduplication hit. Just update metadata mapping without reading payload.
 					if err := store.Put(fileName, metadata.Hash, metadata.Size, remotePath, nil); err != nil {
 						log.Printf("AUDIT: Error updating metadata for %s from %s: %v", fileName, remoteAddr, common.SanitizeLog(err.Error()))
@@ -397,7 +409,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 				}
 
 				wg.Add(1)
-				if exists {
+				if canDedup {
 					// ⚡ Bolt: Deduplication hit. Just update metadata mapping without reading payload.
 					if err := store.Put(fileName, metadata.Hash, metadata.Size, remotePath, nil); err != nil {
 						log.Printf("AUDIT: Error updating metadata for %s from %s: %v", fileName, remoteAddr, common.SanitizeLog(err.Error()))
@@ -448,7 +460,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 				// In Splay mode, the primary (first node in placement) forwards to all others.
 				if placement[0].ID == serverId {
 					wg.Add(len(placement) - 1)
-					if exists {
+					if canDedup {
 						// ⚡ Bolt: Deduplication hit. Just update metadata mapping.
 						if err := store.Put(fileName, metadata.Hash, metadata.Size, remotePath, nil); err != nil {
 							log.Printf("AUDIT: Error updating metadata for %s from %s: %v", fileName, remoteAddr, common.SanitizeLog(err.Error()))
@@ -494,7 +506,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 					wg.Wait()
 				} else {
 					// We are a secondary in a splay, just receive the file if needed.
-					if exists {
+					if canDedup {
 						if err := store.Put(fileName, metadata.Hash, metadata.Size, remotePath, nil); err != nil {
 							log.Printf("AUDIT: Error updating metadata for %s from %s: %v", fileName, remoteAddr, common.SanitizeLog(err.Error()))
 							metricsCollector.IncErrors()
@@ -515,7 +527,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 			}
 			success = true
 			metricsCollector.IncUploads()
-			if !exists {
+			if !canDedup {
 				metricsCollector.AddBytesUploaded(uint64(metadata.Size))
 			}
 		}(connection)

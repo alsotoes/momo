@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/alsotoes/momo/src/common"
 	"go.uber.org/goleak"
 )
 
@@ -280,5 +281,40 @@ func TestCASStore_List(t *testing.T) {
 
 	if len(found) != 3 {
 		t.Errorf("Not all files were found in list: %+v", found)
+	}
+}
+
+func TestCASStore_GetHashForName(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	tmpDir, err := os.MkdirTemp("", "momo-hashname-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	store, err := NewCASStore(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to create CASStore: %v", err)
+	}
+	defer store.Close()
+
+	content := []byte("hello world")
+	hash := common.HashBytes(content)
+
+	if err := store.Put("fileA.txt", hash, int64(len(content)), "", bytes.NewReader(content)); err != nil {
+		t.Fatalf("Failed to Put fileA: %v", err)
+	}
+
+	gotHash, err := store.GetHashForName("fileA.txt")
+	if err != nil {
+		t.Fatalf("GetHashForName failed for existing name: %v", err)
+	}
+	if gotHash != hash {
+		t.Errorf("Expected hash %s, got %s", hash, gotHash)
+	}
+
+	_, err = store.GetHashForName("fileB.txt")
+	if err == nil {
+		t.Errorf("Expected error for non-existent name fileB.txt")
 	}
 }

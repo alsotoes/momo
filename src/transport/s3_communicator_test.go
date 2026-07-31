@@ -291,11 +291,12 @@ func TestS3Communicator_EdgeCases(t *testing.T) {
 }
 
 type mockStore struct {
-	putFunc    func(name string, hash string, size int64, remotePath string, content io.Reader) error
-	getFunc    func(name string) (io.ReadCloser, common.FileMetadata, error)
-	hasFunc    func(hash string) (bool, error)
-	deleteFunc func(name string) error
-	listFunc   func() ([]common.FileMetadata, error)
+	putFunc            func(name string, hash string, size int64, remotePath string, content io.Reader) error
+	getFunc            func(name string) (io.ReadCloser, common.FileMetadata, error)
+	hasFunc            func(hash string) (bool, error)
+	getHashForNameFunc func(name string) (string, error)
+	deleteFunc         func(name string) error
+	listFunc           func() ([]common.FileMetadata, error)
 }
 
 func (m *mockStore) Close() error { return nil }
@@ -316,6 +317,12 @@ func (m *mockStore) Has(hash string) (bool, error) {
 		return m.hasFunc(hash)
 	}
 	return false, nil
+}
+func (m *mockStore) GetHashForName(name string) (string, error) {
+	if m.getHashForNameFunc != nil {
+		return m.getHashForNameFunc(name)
+	}
+	return "", syscall.ENOENT
 }
 func (m *mockStore) Delete(name string) error {
 	if m.deleteFunc != nil {
