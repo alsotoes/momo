@@ -36,7 +36,7 @@ for pattern in "${PATTERNS[@]}"; do
             fi
             echo "VIOLATION (Rule 29): $line"
             VIOLATIONS=$((VIOLATIONS + 1))
-        done < <(rg -n "$pattern" -g "*.$ext" -g '!vendor/' --no-heading 2>/dev/null || true)
+        done < <(rg -n "$pattern" --hidden -g "*.$ext" -g '!vendor/' --no-heading 2>/dev/null || true)
     done
 done
 
