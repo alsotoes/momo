@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log"
 	"net"
 	"os"
 	"testing"
@@ -33,16 +34,27 @@ func freeAddr(t *testing.T) string {
 }
 
 func acceptReplication(l net.Listener) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in acceptReplication: %v", r)
+		}
+	}()
 	conn, err := l.Accept()
-	if err == nil {
-		defer conn.Close()
-		authBuf := make([]byte, common.AuthTokenLength+common.TimestampLength+1)
-		io.ReadFull(conn, authBuf)
-		conn.Write([]byte("0"))
-		buf := make([]byte, 1024)
-		conn.Read(buf)
-		conn.Write([]byte("OK"))
+	if err != nil {
+		return
 	}
+	defer conn.Close()
+	conn.SetDeadline(time.Now().Add(5 * time.Second))
+	authBuf := make([]byte, common.AuthTokenLength+common.TimestampLength+1)
+	if _, err := io.ReadFull(conn, authBuf); err != nil {
+		return
+	}
+	if _, err := conn.Write([]byte("0")); err != nil {
+		return
+	}
+	buf := make([]byte, 1024)
+	conn.Read(buf)
+	conn.Write([]byte("OK"))
 }
 
 func dialWithTimeout(ctx context.Context, addr string) (net.Conn, error) {
