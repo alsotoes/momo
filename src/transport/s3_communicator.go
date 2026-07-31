@@ -542,14 +542,15 @@ func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (status int, er
 		return 0, fmt.Errorf("joined remote path exceeds maximum length of %d: %w", common.FileInfoLength, syscall.ENAMETOOLONG)
 	}
 
-	// 🛡️ Sentinel: Sanitize wireName to prevent path traversal via malicious metadata.
-	if common.HasPathTraversalTokens(wireName) {
-		return 0, fmt.Errorf("invalid name: %s: %w", wireName, syscall.EBADMSG)
-	}
-
 	// 🛡️ Sentinel: Reject carriage returns or line feeds in the path to prevent HTTP Request Smuggling (CRLF Injection).
 	if strings.ContainsAny(wireName, "\r\n") {
 		return 0, fmt.Errorf("invalid characters in path: %w", syscall.EBADMSG)
+	}
+
+	for _, part := range strings.Split(wireName, "/") {
+		if common.HasPathTraversalChars(part) {
+			return 0, fmt.Errorf("path traversal in wireName: %w", syscall.EBADMSG)
+		}
 	}
 
 	// 🛡️ Sentinel: Validate hash, auth token, and host for CRLF to prevent HTTP header injection.

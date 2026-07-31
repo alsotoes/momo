@@ -371,12 +371,11 @@ func (m *MomoTCPCommunicator) SendMetadata(meta *common.FileMetadata) (status in
 	if len(wireName) > common.FileInfoLength {
 		return 0, fmt.Errorf("metadata name exceeds limit: %w", syscall.ENAMETOOLONG)
 	}
-
-	// 🛡️ Sentinel: Sanitize wireName to prevent path traversal via malicious metadata.
-	if common.HasPathTraversalTokens(wireName) {
-		return 0, fmt.Errorf("invalid name: %s: %w", wireName, syscall.EBADMSG)
+	for _, part := range strings.Split(wireName, "/") {
+		if common.HasPathTraversalChars(part) {
+			return 0, fmt.Errorf("path traversal in wireName: %w", syscall.EBADMSG)
+		}
 	}
-
 	copy(metadataBuffer[hashLength:hashLength+common.FileInfoLength], common.PadString(wireName, common.FileInfoLength))
 
 	var sizeBuf [common.FileInfoLength]byte
