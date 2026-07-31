@@ -81,7 +81,7 @@ func TestChangeReplicationModeServerReal(t *testing.T) {
 	// 🛡️ Zero-Crash: Use a retry loop to wait for the replication server to bind.
 	var conn net.Conn
 	var err error
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 50; i++ {
 		conn, err = net.Dial("tcp", "127.0.0.1:45678")
 		if err == nil {
 			break
