@@ -1989,3 +1989,10 @@ c7640ff,BenchmarkPadString-8,2.33,0.00,0.00
 4488220,BenchmarkIndexSearch-8,1.98,0.00,0.00
 4488220,BenchmarkLoadGlobalConfig-8,1212.00,160.00,1.00
 4488220,BenchmarkPadString-8,2.68,0.00,0.00
+530e62d,BenchmarkCheckMetricsAndSwap-8,8.21,0.00,0.00
+530e62d,BenchmarkCrushOptimized-8,328.90,0.00,0.00
+530e62d,BenchmarkCrushOriginal-8,451.90,164.00,3.00
+530e62d,BenchmarkIndexDirectTracking-8,0.33,0.00,0.00
+530e62d,BenchmarkIndexSearch-8,1.99,0.00,0.00
+530e62d,BenchmarkLoadGlobalConfig-8,913.00,160.00,1.00
+530e62d,BenchmarkPadString-8,2.03,0.00,0.00

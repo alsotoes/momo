@@ -16,10 +16,10 @@ import (
 // without a protocol version bump. Tests in this file assert that the server
 // adheres to these exact byte-level contracts.
 const (
-	contractAuthTokenLen  = 64
-	contractTimestampLen  = 19
-	contractModeLen       = 1
-	contractHandshakeLen  = contractAuthTokenLen + contractTimestampLen + contractModeLen // 84
+	contractAuthTokenLen = 64
+	contractTimestampLen = 19
+	contractModeLen      = 1
+	contractHandshakeLen = contractAuthTokenLen + contractTimestampLen + contractModeLen // 84
 
 	contractHashLen     = 64
 	contractFileNameLen = 64

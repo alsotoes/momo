@@ -89,10 +89,9 @@ echo "content3" > $E2E_DIR/file3.txt
 
 sleep 3
 
-# 2. Test Deduplication
-echo "Testing CAS Deduplication (uploading file1 content again as duplicate.txt)..."
-echo "content1" > $E2E_DIR/duplicate.txt
-./bin/momo -imp client -file $E2E_DIR/duplicate.txt -config $E2E_DIR/e2e.conf >> $E2E_DIR/client.log 2>&1
+# 2. Test Deduplication (same filename, same content → should dedup)
+echo "Testing CAS Deduplication (re-uploading file1.txt with same content)..."
+./bin/momo -imp client -file $E2E_DIR/file1.txt -config $E2E_DIR/e2e.conf >> $E2E_DIR/client.log 2>&1
 
 sleep 2
 
@@ -100,6 +99,18 @@ sleep 2
 echo "Verifying Deduplication logs..."
 if ! grep -q "Deduplication hit" $E2E_DIR/s*.log; then
     echo "FAILED: Deduplication hit not found in server logs"
+    exit 1
+fi
+
+# 3. Verify CVE-005 fix: same content under a NEW name must NOT dedup (requires payload)
+echo "Testing CVE-005 fix: new name with same content should not dedup..."
+DEDUP_BEFORE=$(grep -c "Deduplication hit" $E2E_DIR/s*.log 2>/dev/null || echo 0)
+echo "content1" > $E2E_DIR/duplicate.txt
+./bin/momo -imp client -file $E2E_DIR/duplicate.txt -config $E2E_DIR/e2e.conf >> $E2E_DIR/client.log 2>&1
+sleep 2
+DEDUP_AFTER=$(grep -c "Deduplication hit" $E2E_DIR/s*.log 2>/dev/null || echo 0)
+if [ "$DEDUP_AFTER" -ne "$DEDUP_BEFORE" ]; then
+    echo "FAILED: New name should not trigger dedup (CVE-005 regression)"
     exit 1
 fi
 

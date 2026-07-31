@@ -176,6 +176,15 @@ func (s *CASStore) Put(name string, hash string, size int64, remotePath string, 
 		if err := s.blobs.PutBlob(hash, content); err != nil {
 			return err
 		}
+	} else if exists && content != nil {
+		// Blob already exists, but we must still drain the content reader.
+		// Callers (e.g., getFile) wrap content in a TeeReader to compute the
+		// hash while streaming. If we skip reading, the TeeReader never reads
+		// from the underlying connection, producing an empty hash and leaving
+		// the payload data unconsumed on the wire.
+		if _, err := io.Copy(io.Discard, content); err != nil {
+			return fmt.Errorf("failed to drain content for existing blob: %w", err)
+		}
 	}
 
 	// 2. Update Metadata

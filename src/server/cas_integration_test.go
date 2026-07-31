@@ -91,9 +91,16 @@ func TestCAS_MultiNode_Integration(t *testing.T) {
 						return
 					}
 
-					// Check deduplication
+					// Check deduplication (CVE-005: require proof-of-knowledge for new names)
 					exists, _ := store.Has(meta.Hash)
+					canDedup := false
 					if exists {
+						existingHash, hashErr := store.GetHashForName(meta.Name)
+						if hashErr == nil && existingHash == meta.Hash {
+							canDedup = true
+						}
+					}
+					if canDedup {
 						comm.SendMetadataStatus(transport.MetadataStatusSkipPayload)
 						// Update metadata only
 						store.Put(meta.Name, meta.Hash, meta.Size, "", nil)
@@ -109,12 +116,14 @@ func TestCAS_MultiNode_Integration(t *testing.T) {
 
 	// 2. Simulate Client sending tiny files
 	files := []struct {
-		name    string
-		content string
+		name        string
+		content     string
+		expectDedup bool
 	}{
-		{"file1.txt", "tiny content 1"},
-		{"file2.txt", "different content"},
-		{"duplicate.txt", "tiny content 1"}, // Content identical to file1.txt
+		{"file1.txt", "tiny content 1", false},
+		{"file2.txt", "different content", false},
+		{"file1.txt", "tiny content 1", true},      // Same name, same content → dedup
+		{"duplicate.txt", "tiny content 1", false}, // New name, same content → no dedup (CVE-005)
 	}
 
 	// Pre-build ClusterMap
@@ -154,14 +163,13 @@ func TestCAS_MultiNode_Integration(t *testing.T) {
 			t.Fatalf("SendMetadata failed: %v", err)
 		}
 
-		if f.name == "duplicate.txt" {
-			// This should be a deduplication hit!
+		if f.expectDedup {
 			if status != transport.MetadataStatusSkipPayload {
-				t.Errorf("Expected SkipPayload for duplicate content, got %d", status)
+				t.Errorf("Expected SkipPayload for %s (dedup), got %d", f.name, status)
 			}
 		} else {
 			if status != transport.MetadataStatusSendPayload {
-				t.Errorf("Expected SendPayload for new content, got %d", status)
+				t.Errorf("Expected SendPayload for %s, got %d", f.name, status)
 			}
 			// Send payload
 			comm.Write(content)
