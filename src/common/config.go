@@ -6,6 +6,8 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"sync"
+	"syscall"
 
 	"gopkg.in/ini.v1"
 )
@@ -15,9 +17,17 @@ const (
 	sectionGlobal = "global"
 	// sectionMetrics is the name of the [metrics] section in the configuration file.
 	sectionMetrics = "metrics"
+	// sectionP2P is the name of the [p2p] section in the configuration file.
+	sectionP2P = "p2p"
+	// sectionStorage is the name of the [storage] section in the configuration file.
+	sectionStorage = "storage"
 	// prefixDaemon is the prefix for daemon sections in the configuration file (e.g., [daemon.0]).
 	prefixDaemon = "daemon."
 )
+
+// defaultClientSideReplicationModes is the default when client_side_replication_modes
+// is not specified in config. Defined at package level to avoid per-call allocation.
+var defaultClientSideReplicationModes = []int{ReplicationPrimarySplay}
 
 // GetConfig loads and validates the configuration from the given file path.
 func GetConfig(path string) (Configuration, error) {
@@ -38,6 +48,38 @@ func GetConfig(path string) (Configuration, error) {
 		return Configuration{}, fmt.Errorf("failed to load [%s] section: %w", sectionGlobal, err)
 	}
 
+	// Parse client_side_replication_modes: comma-separated list of mode IDs that
+	// require a momo-aware client. External S3 clients get these modes subtracted
+	// from replication_order. Defaults to [3] (ReplicationPrimarySplay) if unset.
+	clientSideStr := globalSec.Key("client_side_replication_modes").String()
+	if clientSideStr != "" {
+		csmCount := strings.Count(clientSideStr, ",") + 1
+		modes := make([]int, 0, csmCount)
+		for len(clientSideStr) > 0 {
+			csmIdx := strings.IndexByte(clientSideStr, ',')
+			var csmPart string
+			if csmIdx == -1 {
+				csmPart = clientSideStr
+				clientSideStr = ""
+			} else {
+				csmPart = clientSideStr[:csmIdx]
+				clientSideStr = clientSideStr[csmIdx+1:]
+			}
+			trimmedCSM := strings.TrimSpace(csmPart)
+			if trimmedCSM == "" {
+				continue
+			}
+			csmMode, err := strconv.Atoi(trimmedCSM)
+			if err != nil {
+				return Configuration{}, fmt.Errorf("failed to parse 'client_side_replication_modes' part %q: %w", trimmedCSM, err)
+			}
+			modes = append(modes, csmMode)
+		}
+		if len(modes) > 0 {
+			config.Global.ClientSideReplicationModes = modes
+		}
+	}
+
 	// Load [metrics] section
 	metricsSec, err := cfg.GetSection(sectionMetrics)
 	if err != nil {
@@ -54,13 +96,51 @@ func GetConfig(path string) (Configuration, error) {
 		return Configuration{}, err
 	}
 
+	// Load [p2p] section (optional, defaults to disabled)
+	p2pSec, err := cfg.GetSection(sectionP2P)
+	if err == nil {
+		config.P2P, err = loadP2PConfig(p2pSec)
+		if err != nil {
+			return Configuration{}, fmt.Errorf("failed to load [%s] section: %w", sectionP2P, err)
+		}
+	}
+
+	// Load [storage] section (optional, defaults to standard GC settings)
+	storageSec, err := cfg.GetSection(sectionStorage)
+	if err == nil {
+		config.Storage, err = loadStorageConfig(storageSec)
+		if err != nil {
+			return Configuration{}, fmt.Errorf("failed to load [%s] section: %w", sectionStorage, err)
+		}
+	} else {
+		config.Storage = defaultStorageConfig()
+	}
+
 	return config, nil
 }
 
-// GetConfigFromFile is a function variable that loads the configuration from the default path "conf/momo.conf".
-// It can be overridden in tests to load a custom configuration for testing purposes.
-var GetConfigFromFile = func() (Configuration, error) {
-	return GetConfig("conf/momo.conf")
+// getConfigFromFileMu protects getConfigFromFileFn from concurrent reads/writes (Rule 471).
+var (
+	getConfigFromFileMu sync.RWMutex
+	getConfigFromFileFn = func() (Configuration, error) {
+		return GetConfig("conf/momo.conf")
+	}
+)
+
+// GetConfigFromFile loads the configuration from the default path "conf/momo.conf".
+// It is thread-safe; tests may override the implementation via SetConfigFromFile.
+func GetConfigFromFile() (Configuration, error) {
+	getConfigFromFileMu.RLock()
+	fn := getConfigFromFileFn
+	getConfigFromFileMu.RUnlock()
+	return fn()
+}
+
+// SetConfigFromFile overrides the config loader implementation (for testing).
+func SetConfigFromFile(fn func() (Configuration, error)) {
+	getConfigFromFileMu.Lock()
+	getConfigFromFileFn = fn
+	getConfigFromFileMu.Unlock()
 }
 
 // loadGlobalConfig loads the [global] section from the configuration.
@@ -111,6 +191,12 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 		globalCfg.ReplicationOrder = append(globalCfg.ReplicationOrder, order)
 	}
 
+	if len(globalCfg.ReplicationOrder) == 0 {
+		return ConfigurationGlobal{}, fmt.Errorf("'replication_order' contains no valid entries: %w", syscall.EINVAL)
+	}
+
+	globalCfg.ClientSideReplicationModes = defaultClientSideReplicationModes
+
 	globalCfg.PolymorphicSystem, err = section.Key("polymorphic_system").Bool()
 	if err != nil {
 		return ConfigurationGlobal{}, fmt.Errorf("failed to parse 'polymorphic_system': %w", err)
@@ -148,6 +234,8 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 		return ConfigurationGlobal{}, fmt.Errorf("'auth_token' length exceeds maximum allowed length of %d bytes", AuthTokenLength)
 	}
 
+	globalCfg.CACertPath = section.Key("ca_cert").String()
+
 	return globalCfg, nil
 }
 
@@ -175,8 +263,116 @@ func loadMetricsConfig(section *ini.Section) (ConfigurationMetrics, error) {
 	if err != nil {
 		return ConfigurationMetrics{}, fmt.Errorf("failed to parse 'fallback_interval': %w", err)
 	}
+	if metricsCfg.FallbackInterval <= 0 {
+		return ConfigurationMetrics{}, fmt.Errorf("'fallback_interval' must be positive, got %d: %w", metricsCfg.FallbackInterval, syscall.EINVAL)
+	}
+
+	metricsCfg.PrometheusPort, err = section.Key("prometheus_port").Int()
+	if err != nil {
+		metricsCfg.PrometheusPort = 0
+	}
 
 	return metricsCfg, nil
+}
+
+// loadP2PConfig loads the [p2p] section from the configuration.
+func loadP2PConfig(section *ini.Section) (ConfigurationP2P, error) {
+	var p2pCfg ConfigurationP2P
+	var err error
+
+	p2pCfg.Enabled, err = section.Key("enabled").Bool()
+	if err != nil {
+		p2pCfg.Enabled = false
+	}
+
+	p2pCfg.GossipPort = section.Key("gossip_port").String()
+	if p2pCfg.GossipPort == "" {
+		p2pCfg.GossipPort = "4450"
+	}
+
+	p2pCfg.GossipInterval, err = section.Key("gossip_interval").Int()
+	if err != nil || p2pCfg.GossipInterval <= 0 {
+		p2pCfg.GossipInterval = 1
+	}
+
+	p2pCfg.SuspicionTimeout, err = section.Key("suspicion_timeout").Int()
+	if err != nil || p2pCfg.SuspicionTimeout <= 0 {
+		p2pCfg.SuspicionTimeout = 5
+	}
+
+	p2pCfg.Fanout, err = section.Key("fanout").Int()
+	if err != nil || p2pCfg.Fanout <= 0 {
+		p2pCfg.Fanout = 3
+	}
+
+	p2pCfg.PingTimeout, err = section.Key("ping_timeout").Int()
+	if err != nil || p2pCfg.PingTimeout <= 0 {
+		p2pCfg.PingTimeout = 500
+	}
+
+	p2pCfg.IndirectPingCount, err = section.Key("indirect_ping_count").Int()
+	if err != nil || p2pCfg.IndirectPingCount <= 0 {
+		p2pCfg.IndirectPingCount = 3
+	}
+	if p2pCfg.IndirectPingCount > 10 {
+		p2pCfg.IndirectPingCount = 10
+	}
+
+	p2pCfg.ScatterGatherTimeout, err = section.Key("scatter_gather_timeout").Int()
+	if err != nil || p2pCfg.ScatterGatherTimeout <= 0 {
+		p2pCfg.ScatterGatherTimeout = 5
+	}
+
+	p2pCfg.LeaseTimeout, err = section.Key("lease_timeout").Int()
+	if err != nil || p2pCfg.LeaseTimeout <= 0 {
+		p2pCfg.LeaseTimeout = 10
+	}
+
+	return p2pCfg, nil
+}
+
+// defaultStorageConfig returns the default storage configuration.
+func defaultStorageConfig() ConfigurationStorage {
+	return ConfigurationStorage{
+		Backend:            "local",
+		GCInterval:         300,
+		TombstoneRetention: 86400,
+	}
+}
+
+// loadStorageConfig loads the [storage] section from the configuration.
+func loadStorageConfig(section *ini.Section) (ConfigurationStorage, error) {
+	cfg := defaultStorageConfig()
+	var err error
+
+	cfg.Backend = section.Key("backend").String()
+	if cfg.Backend == "" {
+		cfg.Backend = "local"
+	}
+
+	cfg.GCInterval, err = section.Key("gc_interval").Int()
+	if err != nil || cfg.GCInterval <= 0 {
+		cfg.GCInterval = 300
+	}
+
+	cfg.TombstoneRetention, err = section.Key("tombstone_retention").Int()
+	if err != nil || cfg.TombstoneRetention <= 0 {
+		cfg.TombstoneRetention = 86400
+	}
+
+	cfg.S3Endpoint = section.Key("s3_endpoint").String()
+	cfg.S3Region = section.Key("s3_region").String()
+	cfg.S3Bucket = section.Key("s3_bucket").String()
+	cfg.S3AccessKey = section.Key("s3_access_key").String()
+	cfg.S3SecretKey = section.Key("s3_secret_key").String()
+	cfg.S3PathStyle, err = section.Key("s3_path_style").Bool()
+	if err != nil {
+		cfg.S3PathStyle = true
+	}
+
+	cfg.RawDevicePath = section.Key("raw_device_path").String()
+
+	return cfg, nil
 }
 
 // loadDaemons loads all [daemon.*] sections from the configuration.

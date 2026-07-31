@@ -29,9 +29,10 @@ These platforms are not officially supported. While Momo might compile or run, f
 
 ## Build Dependencies
 
--   **Go Compiler:** A recent version of the Go compiler (**1.25.10 or newer**) is required to support modern `quic-go` and atomic memory operations.
+-   **Go Compiler:** Go **1.25.10** (pinned in `go.mod`) is required to support modern `quic-go` and atomic memory operations.
 -   **Standard C Compiler:** A C compiler like GCC or Clang is needed for certain dependencies that use cgo.
--   **Protocols:** Momo natively supports **TCP**, **QUIC (UDP/TLS 1.3)**, and **S3-compatible** REST gateways.
+-   **Protocols:** Momo natively supports **TCP**, **QUIC (UDP/TLS 1.3)**, and **S3-compatible** REST gateways. The P2P gossip protocol uses a separate UDP port (default `4450`, configurable via `gossip_port` in `[p2p]` section).
+-   **Prometheus:** Built-in `/metrics` and `/health` HTTP endpoints (no external agent required). Configured via `prometheus_port` in `[metrics]` section (required section).
 
 ## Known Issues and Considerations
 

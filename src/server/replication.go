@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/alsotoes/momo/src/common"
@@ -61,15 +62,27 @@ func SetReplicationState(newMode int, timestamp int64) common.ReplicationData {
 // When a client connects, it sends a JSON object containing the new replication mode.
 // This function updates the server's replication mode and, if the server is the primary (serverId 0),
 // it propagates the change to the other servers in the cluster.
-func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, serverId int, timestamp int64) error {
+func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, serverId int, timestamp int64) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in ChangeReplicationModeServer: %v: %w", r, syscall.EIO)
+			log.Printf("CRITICAL: %v", err)
+		}
+	}()
+
 	daemons := cfg.Daemons
+	if serverId < 0 || serverId >= len(daemons) {
+		return fmt.Errorf("server ID %d is out of range [0, %d)", serverId, len(daemons))
+	}
 	factory := transport.NewProtocolFactory(cfg)
 	server, err := factory.Listen(daemons[serverId].ChangeReplication)
 	if err != nil {
-		return fmt.Errorf("Error listening: %v", err)
+		return fmt.Errorf("Error listening: %v: %w", err, syscall.EIO)
 	}
 
-	defer server.Close()
+	closeOnce := sync.Once{}
+	closeServer := func() { closeOnce.Do(func() { server.Close() }) }
+	defer closeServer()
 
 	// Handle graceful shutdown via context
 	go func() {
@@ -79,7 +92,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 			}
 		}()
 		<-ctx.Done()
-		server.Close()
+		closeServer()
 	}()
 
 	log.Printf("Server changeReplicationMode started... at %s", daemons[serverId].ChangeReplication)
@@ -88,7 +101,10 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 
 	// Initialize the replication state
 	initialState := SetReplicationState(GetCurrentReplicationMode(), timestamp)
-	replicationJson, _ := json.Marshal(initialState)
+	replicationJson, err := json.Marshal(initialState)
+	if err != nil {
+		log.Printf("AUDIT: Failed to marshal initial replication state: %v", fmt.Errorf("%v: %w", common.SanitizeLog(err.Error()), syscall.EIO))
+	}
 	log.Printf("ReplicationData struct: %s", string(replicationJson))
 
 	// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
@@ -163,7 +179,10 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 
 			// Update the replication state
 			newState := SetReplicationState(replicationJson.New, ts)
-			newReplicationJson, _ := json.Marshal(newState)
+			newReplicationJson, marshalErr := json.Marshal(newState)
+			if marshalErr != nil {
+				log.Printf("AUDIT: Failed to marshal new replication state: %v", fmt.Errorf("%v: %w", common.SanitizeLog(marshalErr.Error()), syscall.EIO))
+			}
 			// 🛡️ Sentinel: Audit log the sensitive operation
 			log.Printf("AUDIT: Replication mode changed to %d by %s", replicationJson.New, remoteAddr)
 			log.Printf("ReplicationData new struct: %s", string(newReplicationJson))
@@ -173,24 +192,39 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 				log.Printf("AUDIT: Failed to send ACK to %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
 			}
 
-			// If this is the primary server, propagate the change to the other servers
-			if 0 == serverId {
+			// If this is the primary server, propagate the change to the other servers.
+			// Skip propagation if json.Marshal failed to avoid sending empty data to peers.
+			if 0 == serverId && marshalErr == nil {
+				daemons := factory.GetDaemons()
+				var propWg sync.WaitGroup
+				for i := range daemons {
+					if i == serverId {
+						continue
+					}
+					propWg.Add(1)
+					go func(id int) {
+						defer propWg.Done()
+						defer func() {
+							if r := recover(); r != nil {
+								err := fmt.Errorf("panic in propagation to node %d: %v: %w", id, r, syscall.EIO)
+								log.Printf("CRITICAL: %v", err)
+							}
+						}()
+						ChangeReplicationModeClient(factory, newReplicationJson, id)
+					}(i)
+				}
+				// Timeout-bounded wait: each peer has a 10s deadline in ChangeReplicationModeClient.
+				// Bound the wait to 11s to avoid blocking the control plane indefinitely on unresponsive peers.
+				propDone := make(chan struct{})
 				go func() {
-					defer func() {
-						if r := recover(); r != nil {
-							log.Printf("CRITICAL: Panic recovered in propagation to node 1: %v", r)
-						}
-					}()
-					ChangeReplicationModeClient(factory, newReplicationJson, 1)
+					propWg.Wait()
+					close(propDone)
 				}()
-				go func() {
-					defer func() {
-						if r := recover(); r != nil {
-							log.Printf("CRITICAL: Panic recovered in propagation to node 2: %v", r)
-						}
-					}()
-					ChangeReplicationModeClient(factory, newReplicationJson, 2)
-				}()
+				select {
+				case <-propDone:
+				case <-time.After(11 * time.Second):
+					log.Printf("AUDIT: Propagation timed out after 11s, some peers may not have received replication update from %s", remoteAddr)
+				}
 			}
 		}()
 	}
@@ -219,7 +253,6 @@ func ChangeReplicationModeClient(factory *transport.ProtocolFactory, replication
 		return
 	}
 
-
 	// ⚡ Bolt: Use sync.Pool to minimize allocations during cluster-wide broadcasts.
 	payload := payloadPool.Get().([]byte)
 	payload = payload[:0]
@@ -232,8 +265,9 @@ func ChangeReplicationModeClient(factory *transport.ProtocolFactory, replication
 		return
 	}
 
-	// Wait for ACK to prevent premature connection termination, especially over QUIC
-	// ⚡ Bolt: Eliminate heap allocation by using a stack-allocated byte array for io.ReadFull.
+	// Wait for ACK to prevent premature connection termination, especially over QUIC.
+	// Enforce a strict 10s timeout to prevent goroutine leaks from unresponsive peers.
+	comm.SetAbsoluteDeadline(time.Now().Add(10 * time.Second))
 	var ackBuf [2]byte // We expect "OK"
 	if _, err := io.ReadFull(comm, ackBuf[:]); err != nil {
 		log.Printf("Failed to read ACK from %d: %v", serverId, common.SanitizeLog(err.Error()))

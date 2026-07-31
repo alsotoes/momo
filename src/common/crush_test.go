@@ -44,7 +44,7 @@ func TestClusterMap_Placement(t *testing.T) {
 	}
 
 	t.Logf("Load distribution over 1000 objects: %v", distribution)
-	
+
 	// Ensure all nodes got some load
 	for _, node := range nodes {
 		if distribution[node.ID] == 0 {
@@ -128,5 +128,26 @@ func TestClusterMap_Placement_Defensive(t *testing.T) {
 	}
 	if !errors.Is(err, syscall.EIO) {
 		t.Errorf("Expected error to wrap syscall.EIO, got %v", err)
+	}
+}
+
+func TestClusterMap_LargeNodeIDs(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	nodes := []*Node{
+		{ID: 1, Weight: 1, Addr: "node-a"},
+		{ID: 1 + (1 << 32), Weight: 1, Addr: "node-b"},
+	}
+	m := &ClusterMap{Nodes: nodes}
+
+	p1, err := m.Placement("test-hash", 2)
+	if err != nil {
+		t.Fatalf("Placement failed: %v", err)
+	}
+	if len(p1) != 2 {
+		t.Fatalf("Expected 2 nodes, got %d", len(p1))
+	}
+	if p1[0].ID == p1[1].ID {
+		t.Fatalf("Node IDs collided: both are %d", p1[0].ID)
 	}
 }

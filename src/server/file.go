@@ -52,11 +52,11 @@ func getMetadata(r io.Reader) (metadata common.FileMetadata, err error) {
 		return string(b)
 	}
 
-	fileHash := common.SanitizeLog(trimNull(bufferFileHash))
+	fileHash := trimNull(bufferFileHash)
 
 	// 🛡️ Sentinel: Sanitize Hash immediately to prevent path traversal in all downstream consumers.
 	if fileHash == "" || common.HasPathTraversalChars(fileHash) {
-		return metadata, fmt.Errorf("invalid hash received: %s: %w", fileHash, syscall.EBADMSG)
+		return metadata, fmt.Errorf("invalid hash received: %s: %w", common.SanitizeLog(fileHash), syscall.EBADMSG)
 	}
 
 	// 🛡️ Sentinel: Sanitize and normalize fileName to prevent path traversal attacks (Rule 4).
@@ -116,6 +116,7 @@ func getFile(comm transport.Communicator, store storage.Store, fileName string, 
 	hash := string(hexBuf[:])
 
 	if hash != expectedHash {
+		store.Delete(fileName)
 		err = fmt.Errorf("file hash mismatch: expected %s, got %s: %w", expectedHash, hash, syscall.EBADMSG)
 		return err
 	}

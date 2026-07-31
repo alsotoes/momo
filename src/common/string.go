@@ -1,6 +1,7 @@
 package common
 
 import (
+	"bytes"
 	"path"
 	"strconv"
 	"strings"
@@ -27,12 +28,16 @@ func AppendPaddedInt(dst []byte, val int64, width int) error {
 	return nil
 }
 
-// HasPathTraversalChars returns true if the string contains '.', '/' or '\'.
+// HasPathTraversalChars returns true if the string contains path separators (/ or \)
+// or the parent directory sequence (..). Single dots (file extensions) are allowed.
 // It is inlineable and operates directly on the string bytes without any heap allocation (Rule 19).
 func HasPathTraversalChars(s string) bool {
 	for i := 0; i < len(s); i++ {
 		c := s[i]
-		if c == '.' || c == '/' || c == '\\' {
+		if c == '/' || c == '\\' {
+			return true
+		}
+		if c == '.' && i+1 < len(s) && s[i+1] == '.' {
 			return true
 		}
 	}
@@ -41,17 +46,20 @@ func HasPathTraversalChars(s string) bool {
 
 // PadString pads or truncates a string to the given length.
 func PadString(input string, length int) string {
-        if len(input) >= length {
-                return input[:length]
-        }
-        b := make([]byte, length)
-        copy(b, input)
-        // ⚡ Bolt: Eliminate string allocation overhead by using unsafe.String.
-        return unsafe.String(unsafe.SliceData(b), length)
+	if length < 0 {
+		return input
+	}
+	if len(input) >= length {
+		return input[:length]
+	}
+	b := make([]byte, length)
+	copy(b, input)
+	// ⚡ Bolt: Eliminate string allocation overhead by using unsafe.String.
+	return unsafe.String(unsafe.SliceData(b), length)
 }
 
 // NormalizeVirtualPath cleans and validates virtual remote paths.
-// It trims whitespace, resolves parent directory references via path.Clean, 
+// It trims whitespace, resolves parent directory references via path.Clean,
 // and strictly rejects any directory traversal (..) sequences to prevent security escalation.
 func NormalizeVirtualPath(p string) (string, error) {
 	p = strings.TrimSpace(p)
@@ -59,9 +67,14 @@ func NormalizeVirtualPath(p string) (string, error) {
 		return "", nil
 	}
 
-	// Strictly reject parent directory references and backslashes immediately
-	if strings.Contains(p, "..") || strings.Contains(p, "\\") {
+	// Strictly reject path traversal segments (..) and backslashes
+	if strings.Contains(p, "\\") {
 		return "", syscall.EINVAL
+	}
+	for _, seg := range strings.Split(p, "/") {
+		if seg == ".." {
+			return "", syscall.EINVAL
+		}
 	}
 
 	// Resolve slashes and remove redundancies efficiently
@@ -84,4 +97,21 @@ func NormalizeVirtualPath(p string) (string, error) {
 	}
 
 	return strings.Join(validSegments, "/"), nil
+}
+
+// TrimNullBytesString finds the first null byte and returns a string up to that byte.
+func TrimNullBytesString(b []byte) string {
+	if idx := bytes.IndexByte(b, 0); idx != -1 {
+		return string(b[:idx])
+	}
+	return string(b)
+}
+
+// TrimNullBytesFromString finds the first null byte and returns a substring up to that byte
+// using strings.IndexByte. This is significantly faster than strings.TrimRight.
+func TrimNullBytesFromString(s string) string {
+	if idx := strings.IndexByte(s, 0); idx != -1 {
+		return s[:idx]
+	}
+	return s
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"time"
 
 	"github.com/alsotoes/momo/src/common"
 	"github.com/quic-go/quic-go"
@@ -23,6 +24,37 @@ const (
 	MetadataStatusSkipPayload = 2
 )
 
+// GlobalLister enables scatter-gather list queries across the cluster.
+// When set on a Communicator, list operations aggregate results from all peers.
+type GlobalLister interface {
+	GlobalList(timeout time.Duration) ([]common.FileMetadata, error)
+}
+
+// LeaseAcquirer enables lease-based consensus for destructive operations.
+// When set on a Communicator, delete operations acquire a lease before proceeding.
+type LeaseAcquirer interface {
+	AcquireLease(key string, timeout time.Duration) error
+	ReleaseLease(key string) error
+}
+
+// DeletePropagator enables P2P propagation of delete operations across the cluster.
+// When set on a Communicator, delete operations fan out to all peers.
+type DeletePropagator interface {
+	PropagateDelete(key string, timeout time.Duration) error
+}
+
+// MetricsHook enables metrics instrumentation in the transport layer.
+// When set on a Communicator, download/delete/error counters are incremented
+// directly at the point of operation, without requiring the server daemon
+// to plumb the collector through every code path.
+type MetricsHook interface {
+	IncDownloads()
+	IncDeletes()
+	AddBytesDownloaded(n uint64)
+	IncReplication()
+	IncErrors()
+}
+
 // Communicator defines a transport-agnostic interface for Momo protocol operations.
 // It encapsulates the handshake, metadata exchange, and file transfer logic.
 type Communicator interface {
@@ -38,7 +70,6 @@ type Communicator interface {
 	// HandshakeServer performs the server-side handshake: receives AuthToken + Timestamp + RequestedMode,
 	// validates the token, and returns the timestamp and requested mode.
 	HandshakeServer(expectedAuthToken []byte) (replicationMode int, timestamp int64, err error)
-
 
 	// SendReplicationMode sends the chosen replication mode back to the client.
 	SendReplicationMode(mode int) error
@@ -61,6 +92,11 @@ type Communicator interface {
 
 	// RemoteAddr returns the address of the remote peer.
 	RemoteAddr() net.Addr
+
+	// IsExternalClient returns true if the connection is from an external S3 client
+	// (e.g., aws-cli) that does not understand the momo protocol. The server uses
+	// this to determine if client-side replication modes should be downgraded.
+	IsExternalClient() bool
 }
 
 // MomoListener defines a transport-agnostic interface for accepting new Momo connections.
@@ -81,7 +117,12 @@ func (l *TCPListener) Accept() (Communicator, error) {
 	if err != nil {
 		return nil, err
 	}
-	return l.factory.NewCommunicator(conn)
+	comm, err := l.factory.NewCommunicator(conn)
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+	return comm, nil
 }
 
 // QUICListener wraps a quic.Listener to implement the MomoListener interface.
@@ -90,13 +131,22 @@ type QUICListener struct {
 	factory *ProtocolFactory
 }
 
+const (
+	quicAcceptTimeout = 30 * time.Second
+)
+
 func (l *QUICListener) Accept() (Communicator, error) {
-	conn, err := l.Listener.Accept(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), quicAcceptTimeout)
+	defer cancel()
+	conn, err := l.Listener.Accept(ctx)
 	if err != nil {
 		return nil, err
 	}
-	stream, err := conn.AcceptStream(context.Background())
+	streamCtx, streamCancel := context.WithTimeout(context.Background(), quicAcceptTimeout)
+	defer streamCancel()
+	stream, err := conn.AcceptStream(streamCtx)
 	if err != nil {
+		conn.CloseWithError(0, "accept stream timeout")
 		return nil, err
 	}
 	if l.factory.cfg.Global.Protocol == "s3-quic" {

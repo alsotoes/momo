@@ -44,10 +44,17 @@ type ConfigurationGlobal struct {
 	AuthToken string
 	// ReplicationOrder is the order of replication modes to use.
 	ReplicationOrder []int
+	// ClientSideReplicationModes lists mode IDs that require a momo-aware client.
+	// External S3 clients (e.g., aws-cli) cannot use these modes; the server
+	// downgrades to the next server-side mode in ReplicationOrder per-connection.
+	ClientSideReplicationModes []int
 	// ReplicationFactor is the number of replicas to maintain for each object.
 	ReplicationFactor int
 	// PolymorphicSystem enables or disables the polymorphic system.
 	PolymorphicSystem bool
+	// CACertPath is the path to a PEM-encoded CA certificate file used to verify
+	// QUIC peer certificates. When empty, InsecureSkipVerify is used with a warning.
+	CACertPath string
 }
 
 // ConfigurationMetrics holds the metrics configuration for the application.
@@ -60,6 +67,57 @@ type ConfigurationMetrics struct {
 	MinThreshold float64
 	// FallbackInterval is the interval at which to fall back to a lower replication mode.
 	FallbackInterval int
+	// PrometheusPort is the port for the Prometheus /metrics endpoint (0 = disabled).
+	PrometheusPort int
+}
+
+// ConfigurationP2P holds the P2P transport and gossip configuration.
+type ConfigurationP2P struct {
+	// Enabled controls whether the P2P transport starts alongside the main listener.
+	Enabled bool
+	// GossipPort is the port for P2P gossip communication.
+	GossipPort string
+	// GossipInterval is the heartbeat interval in seconds.
+	GossipInterval int
+	// SuspicionTimeout is the timeout before a peer is marked suspect, in seconds.
+	SuspicionTimeout int
+	// Fanout is the number of random peers to gossip to per heartbeat.
+	Fanout int
+	// PingTimeout is the timeout for a direct ping ack, in milliseconds.
+	PingTimeout int
+	// IndirectPingCount is the number of peers to ask for indirect pings.
+	IndirectPingCount int
+	// ScatterGatherTimeout is the timeout for scatter-gather queries, in seconds.
+	ScatterGatherTimeout int
+	// LeaseTimeout is the default lease duration for consensus operations, in seconds.
+	LeaseTimeout int
+}
+
+// ConfigurationStorage holds the storage and garbage collection configuration.
+type ConfigurationStorage struct {
+	// Backend selects the storage backend type.
+	// Valid values: "local" (default), "nfs", "s3", "raw".
+	// An empty string defaults to "local".
+	Backend string
+	// GCInterval is how often the garbage collector runs, in seconds.
+	GCInterval int
+	// TombstoneRetention is how long tombstones are kept, in seconds.
+	TombstoneRetention int
+	// S3Endpoint is the S3-compatible API endpoint URL.
+	S3Endpoint string
+	// S3Region is the S3 region name.
+	S3Region string
+	// S3Bucket is the S3 bucket name for blob storage.
+	S3Bucket string
+	// S3AccessKey is the S3 access key ID for authentication.
+	S3AccessKey string
+	// S3SecretKey is the S3 secret access key for authentication.
+	S3SecretKey string
+	// S3PathStyle uses path-style addressing (bucket in URL path) instead of virtual-host style.
+	S3PathStyle bool
+	// RawDevicePath is the path to the raw block device for blob storage.
+	// Overrides Daemon.Drive if set.
+	RawDevicePath string
 }
 
 // Configuration holds the overall configuration for the application.
@@ -70,4 +128,8 @@ type Configuration struct {
 	Global ConfigurationGlobal
 	// Metrics is the metrics configuration.
 	Metrics ConfigurationMetrics
+	// P2P is the P2P transport configuration.
+	P2P ConfigurationP2P
+	// Storage is the storage and GC configuration.
+	Storage ConfigurationStorage
 }

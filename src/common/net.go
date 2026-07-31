@@ -1,6 +1,7 @@
 package common
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -19,7 +20,7 @@ import (
 type IdleTimeoutConn struct {
 	net.Conn
 	timeout          time.Duration
-	absoluteDeadline time.Time
+	absoluteDeadline atomic.Pointer[time.Time]
 	readCalls        atomic.Uint32
 	writeCalls       atomic.Uint32
 	broken           atomic.Bool
@@ -43,7 +44,7 @@ func (c *IdleTimeoutConn) SetAbsoluteDeadline(t time.Time) {
 		}
 	}()
 
-	c.absoluteDeadline = t
+	c.absoluteDeadline.Store(&t)
 
 	// 🛡️ Sentinel: Immediately apply the new deadline to the underlying connection.
 	// Since applyDeadlines amortizes updates (skipping 63 of 64 calls), failing to
@@ -51,8 +52,8 @@ func (c *IdleTimeoutConn) SetAbsoluteDeadline(t time.Time) {
 	// handshake deadline, causing valid large file transfers to drop prematurely (DoS).
 	now := time.Now()
 	deadline := now.Add(c.timeout)
-	if !c.absoluteDeadline.IsZero() && c.absoluteDeadline.Before(deadline) {
-		deadline = c.absoluteDeadline
+	if !t.IsZero() && t.Before(deadline) {
+		deadline = t
 	}
 	c.Conn.SetDeadline(deadline)
 }
@@ -86,8 +87,8 @@ func (c *IdleTimeoutConn) applyDeadlines(isRead bool) {
 
 	now := time.Now()
 	deadline := now.Add(c.timeout)
-	if !c.absoluteDeadline.IsZero() && c.absoluteDeadline.Before(deadline) {
-		deadline = c.absoluteDeadline
+	if dp := c.absoluteDeadline.Load(); dp != nil && !dp.IsZero() && dp.Before(deadline) {
+		deadline = *dp
 	}
 
 	if isRead {
@@ -150,14 +151,21 @@ func (c *IdleTimeoutConn) Write(b []byte) (n int, err error) {
 // DialSocket connects to the given address.
 // It returns a net.Conn or an error.
 func DialSocket(servAddr string) (conn net.Conn, err error) {
+	return DialSocketWithContext(context.Background(), servAddr)
+}
+
+// DialSocketWithContext connects to the given address with a context-derived timeout.
+// If the context has a deadline, it is used; otherwise a 10s default is applied.
+func DialSocketWithContext(ctx context.Context, servAddr string) (conn net.Conn, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in DialSocket: %v", r)
+			log.Printf("CRITICAL: Panic recovered in DialSocketWithContext: %v", r)
 			err = fmt.Errorf("dial panic: %w", syscall.EIO)
 		}
 	}()
 
-	connection, dErr := net.DialTimeout("tcp", servAddr, 10*time.Second)
+	dialer := net.Dialer{Timeout: 10 * time.Second}
+	connection, dErr := dialer.DialContext(ctx, "tcp", servAddr)
 	if dErr != nil {
 		conn = nil
 		if isTimeout(dErr) {

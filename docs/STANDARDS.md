@@ -55,3 +55,37 @@ To defend against Slowloris attacks (where clients open connections and trickle 
 - **Handshake Phase:** Strictly bounded to at most **10 seconds**.
 - **Metadata Phase:** Strictly bounded to at most **60 seconds**.
 - **Data Transfer Phase:** Progressively adjusted based on active network throughput, closing stale connections automatically.
+
+### 5. Scanner-Safe Test Secrets (Rule 29)
+Automated secret scanners (e.g., GitHub Secret Scanning, TruffleHog) may flag dummy tokens used in tests, configs, and CI scripts as real secrets, triggering false-positive alerts.
+- **Rule:** All dummy tokens (e.g., `a1b2c3d4e5f6...`, `super_secret_token`, `secret`) MUST be annotated with a trailing `// notsecret` (Go code) or `# notsecret` (shell/config) comment on the same line.
+- **Enforcement:** The `.github/scripts/check-notsecret.sh` script scans the codebase for known dummy token patterns without the `notsecret` annotation. It runs in both the pre-commit hook (`hooks/pre-commit`) and CI (`.github/workflows/go.yml`).
+- **CI Step:** "Check Scanner-Safe Secrets (Rule 29)" in the Go workflow.
+
+### 6. Connection Concurrency Limit (Rule 32b)
+To prevent resource exhaustion via connection flooding, the server enforces a maximum concurrent connection limit.
+- **Rule:** The daemon accepts at most **1000 concurrent connections** via a semaphore (`maxConcurrentConnections = 1000` in `server.go`). Connections exceeding this limit block until a slot is freed.
+- **S3 Bounded Reads:** HTTP request reads are limited to **65536 bytes** via `LimitedConnReader` to prevent memory bloat from oversized S3 request headers.
+
+### 7. P2P Safety Limits
+To prevent CPU and memory exhaustion from malicious or buggy peers, the P2P subsystem enforces strict limits on incoming gossip data:
+- **Heartbeat Peer Count:** Each heartbeat message carries at most `MaxPeersInHeartbeat = 256` peer entries. Heartbeats exceeding this limit are truncated and `E2BIG` is logged.
+- **Payload Size:** All P2P RPC payloads are capped at `maxPayloadSize = 1 MiB` (1048576 bytes). Payloads exceeding this limit are rejected with `EFBIG` to prevent memory exhaustion.
+- **Suspect Marking:** Peers are marked SUSPECT based on target ack timeout (not helper contact success), ensuring accurate failure detection.
+
+### 8. Storage Backend Interface Contract
+Any new `BlobStore` implementation MUST satisfy the following:
+- **Interface:** Implement `PutBlob(hash, io.Reader)`, `GetBlob(hash) (io.ReadCloser, error)`, `DeleteBlob(hash)`, and `Close()`.
+- **POSIX Errors (Rule 10):** All errors must map to `syscall` POSIX constants (e.g., `ENOENT` for missing blobs, `EIO` for I/O failures, `ECONNREFUSED` for network errors).
+- **Panic Recovery (Rule 37):** The CASStore wrapper provides panic recovery; backends should not swallow panics.
+- **DeleteBlob Idempotency:** Deleting a non-existent blob must return `nil` (not an error).
+- **Content-Addressed (Rule 12):** Object key = content hash. No name-based storage.
+- **Zero Dependencies (Rule 1):** Backends must use only Go stdlib (no external SDKs). The S3 backend uses a minimal SigV4 client (~200 lines of stdlib code).
+
+---
+
+## See Also
+
+- [AI_FLYING_SOLO.md](AI_FLYING_SOLO.md) — Autonomous bug-fix workflow rules 51-63 (PR workflow, clean rebase, stale reviewer re-trigger, post-merge branch cleanup)
+- [CONTRIBUTING.md](CONTRIBUTING.md) — Contribution guidelines and PR process
+- [`openspec/config.yaml`](../openspec/config.yaml) — Single source of truth for all steering rules (Rule 39)

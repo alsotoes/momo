@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net"
 	"os"
 	"strconv"
@@ -23,7 +24,11 @@ const hashLength = 64
 // MomoTCPCommunicator implements the Communicator interface for the legacy Momo TCP protocol.
 type MomoTCPCommunicator struct {
 	*common.IdleTimeoutConn
-	store storage.Store
+	store            storage.Store
+	globalLister     GlobalLister
+	leaseAcquirer    LeaseAcquirer
+	deletePropagator DeletePropagator
+	metricsHook      MetricsHook
 }
 
 // NewMomoTCPCommunicator creates a new MomoTCPCommunicator wrapping a net.Conn.
@@ -35,6 +40,26 @@ func NewMomoTCPCommunicator(conn net.Conn) *MomoTCPCommunicator {
 
 func (m *MomoTCPCommunicator) SetStore(store storage.Store) {
 	m.store = store
+}
+
+// SetGlobalLister sets the scatter-gather list capability.
+func (m *MomoTCPCommunicator) SetGlobalLister(gl GlobalLister) {
+	m.globalLister = gl
+}
+
+// SetLeaseAcquirer sets the lease-based consensus capability.
+func (m *MomoTCPCommunicator) SetLeaseAcquirer(la LeaseAcquirer) {
+	m.leaseAcquirer = la
+}
+
+// SetDeletePropagator sets the P2P delete propagation capability.
+func (m *MomoTCPCommunicator) SetDeletePropagator(dp DeletePropagator) {
+	m.deletePropagator = dp
+}
+
+// SetMetricsHook sets the metrics instrumentation hook.
+func (m *MomoTCPCommunicator) SetMetricsHook(hook MetricsHook) {
+	m.metricsHook = hook
 }
 
 func (m *MomoTCPCommunicator) SetAbsoluteDeadline(t interface{}) (err error) {
@@ -71,7 +96,7 @@ func (m *MomoTCPCommunicator) HandshakeClient(authToken string, timestamp int64,
 	if err := common.AppendPaddedInt(handshakeBuf[common.AuthTokenLength:], timestamp, common.TimestampLength); err != nil {
 		return 0, fmt.Errorf("failed to format handshake timestamp: %w", err)
 	}
-	
+
 	// Write the requested mode (1 byte) at the end
 	handshakeBuf[common.AuthTokenLength+common.TimestampLength] = byte(requestedMode + '0')
 
@@ -142,7 +167,12 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 		if m.store == nil {
 			return 0, 0, fmt.Errorf("storage store not initialized")
 		}
-		files, err := m.store.List()
+		var files []common.FileMetadata
+		if m.globalLister != nil {
+			files, err = m.globalLister.GlobalList(5 * time.Second)
+		} else {
+			files, err = m.store.List()
+		}
 		if err != nil {
 			return 0, 0, fmt.Errorf("failed to list files: %w", err)
 		}
@@ -159,15 +189,18 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 		// Send metadata packets (192 bytes each)
 		for _, file := range files {
 			// 🛡️ Sentinel: Validate length bounds
-			if len(file.Name) > 64 || len(file.Hash) > 64 {
+			if len(file.Hash) > 64 {
 				continue
 			}
-			var packet [192]byte
-			copy(packet[0:64], common.PadString(file.Hash, 64))
 			wireName := file.Name
 			if file.RemotePath != "" {
 				wireName = file.RemotePath + "/" + file.Name
 			}
+			if len(wireName) > 64 {
+				continue
+			}
+			var packet [192]byte
+			copy(packet[0:64], common.PadString(file.Hash, 64))
 			copy(packet[64:128], common.PadString(wireName, 64))
 			if err := common.AppendPaddedInt(packet[128:], file.Size, 64); err != nil {
 				return 0, 0, fmt.Errorf("failed to format file size: %v: %w", err, syscall.EINVAL)
@@ -191,7 +224,7 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 		if _, err := io.ReadFull(m, fileBuf[:]); err != nil {
 			return 0, 0, fmt.Errorf("failed to read delete target: %w", err)
 		}
-		fileName := string(bytes.TrimRight(fileBuf[:], "\x00"))
+		fileName := common.TrimNullBytesString(fileBuf[:])
 
 		// 🛡️ Sentinel: Block path traversal
 		if strings.Contains(fileName, "..") || strings.Contains(fileName, "\\") {
@@ -200,11 +233,28 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 			return 0, 0, fmt.Errorf("invalid delete target traversal: %s: %w", fileName, syscall.EBADMSG)
 		}
 
+		if m.leaseAcquirer != nil {
+			if err := m.leaseAcquirer.AcquireLease(fileName, 10*time.Second); err != nil {
+				m.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				m.Write([]byte{'1'}) // error status
+				return 0, 0, fmt.Errorf("failed to acquire lease for delete: %w", err)
+			}
+			defer m.leaseAcquirer.ReleaseLease(fileName)
+		}
+
 		err = m.store.Delete(fileName)
 		m.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		if err != nil {
 			m.Write([]byte{'1'}) // error status
 			return 0, 0, fmt.Errorf("failed to delete file: %w", err)
+		}
+
+		if m.deletePropagator != nil {
+			_ = m.deletePropagator.PropagateDelete(fileName, 5*time.Second)
+		}
+
+		if m.metricsHook != nil {
+			m.metricsHook.IncDeletes()
 		}
 
 		m.Write([]byte{'0'}) // success status
@@ -221,7 +271,7 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 		if _, err := io.ReadFull(m, fileBuf[:]); err != nil {
 			return 0, 0, fmt.Errorf("failed to read get target: %w", err)
 		}
-		fileName := string(bytes.TrimRight(fileBuf[:], "\x00"))
+		fileName := common.TrimNullBytesString(fileBuf[:])
 
 		// 🛡️ Sentinel: Block path traversal
 		if strings.Contains(fileName, "..") || strings.Contains(fileName, "\\") {
@@ -256,12 +306,21 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 		copyTimeout := 5 * time.Second
 		mb := meta.Size / (1024 * 1024)
 		if mb > 0 {
+			maxMB := int64(math.MaxInt64 / int64(time.Second))
+			if mb > maxMB {
+				mb = maxMB
+			}
 			copyTimeout += time.Duration(mb) * time.Second
 		}
 		m.SetWriteDeadline(time.Now().Add(copyTimeout))
 
 		if _, err := io.Copy(m, rc); err != nil {
 			return 0, 0, fmt.Errorf("failed to stream file payload: %w", err)
+		}
+
+		if m.metricsHook != nil {
+			m.metricsHook.IncDownloads()
+			m.metricsHook.AddBytesDownloaded(uint64(meta.Size))
 		}
 
 		return 0, 0, ErrRequestHandled
@@ -280,7 +339,11 @@ func (m *MomoTCPCommunicator) SendReplicationMode(mode int) (err error) {
 	}()
 
 	var repModeBuf [16]byte
-	if _, err := m.Write(strconv.AppendInt(repModeBuf[:0], int64(mode), 10)); err != nil {
+	if mode < 0 || mode > 9 {
+		return fmt.Errorf("invalid replication mode %d: %w", mode, syscall.EBADMSG)
+	}
+	repModeBuf[0] = byte(mode + '0')
+	if _, err := m.Write(repModeBuf[:1]); err != nil {
 		return fmt.Errorf("failed to send replication mode: %v: %w", err, syscall.EIO)
 	}
 	return nil
@@ -296,7 +359,7 @@ func (m *MomoTCPCommunicator) SendMetadata(meta *common.FileMetadata) (status in
 
 	var metadataBuffer [hashLength + common.FileInfoLength + common.FileInfoLength]byte
 	copy(metadataBuffer[0:hashLength], meta.Hash)
-	
+
 	wireName := meta.Name
 	if meta.RemotePath != "" {
 		normalized, normErr := common.NormalizeVirtualPath(meta.RemotePath)
@@ -307,6 +370,11 @@ func (m *MomoTCPCommunicator) SendMetadata(meta *common.FileMetadata) (status in
 	}
 	if len(wireName) > common.FileInfoLength {
 		return 0, fmt.Errorf("metadata name exceeds limit: %w", syscall.ENAMETOOLONG)
+	}
+	for _, part := range strings.Split(wireName, "/") {
+		if common.HasPathTraversalChars(part) {
+			return 0, fmt.Errorf("path traversal in wireName: %w", syscall.EBADMSG)
+		}
 	}
 	copy(metadataBuffer[hashLength:hashLength+common.FileInfoLength], common.PadString(wireName, common.FileInfoLength))
 
@@ -346,12 +414,14 @@ func (m *MomoTCPCommunicator) ReceiveMetadata() (meta common.FileMetadata, err e
 		return metadata, fmt.Errorf("metadata buffer too small: %w", syscall.EBADMSG)
 	}
 
-	metadata.Hash = common.SanitizeLog(string(bytesTrimNull(buffer[:hashLength])))
+	// ⚡ Bolt: Use common.TrimNullBytesString to eliminate string allocation overhead
+	metadata.Hash = common.SanitizeLog(common.TrimNullBytesString(buffer[:hashLength]))
 	// 🛡️ Sentinel: Sanitize hash immediately to prevent path traversal in all downstream consumers.
 	if metadata.Hash == "" || common.HasPathTraversalChars(metadata.Hash) {
 		return common.FileMetadata{}, fmt.Errorf("invalid hash: %s: %w", metadata.Hash, syscall.EBADMSG)
 	}
-	metadata.Name = string(bytesTrimNull(buffer[hashLength : hashLength+common.FileInfoLength]))
+	// ⚡ Bolt: Use common.TrimNullBytesString to eliminate string allocation overhead
+	metadata.Name = common.TrimNullBytesString(buffer[hashLength : hashLength+common.FileInfoLength])
 
 	size, err := common.SafeParseInt(buffer[hashLength+common.FileInfoLength:])
 	if err != nil {
@@ -375,14 +445,6 @@ func (m *MomoTCPCommunicator) SendMetadataStatus(status int) (err error) {
 		return fmt.Errorf("failed to send metadata status: %v: %w", err, syscall.EIO)
 	}
 	return nil
-}
-
-// bytesTrimNull is a helper to trim null bytes from a byte slice.
-func bytesTrimNull(b []byte) []byte {
-	if i := bytes.IndexByte(b, 0); i != -1 {
-		return b[:i]
-	}
-	return b
 }
 
 func (m *MomoTCPCommunicator) SendACK(serverId int) (err error) {
@@ -431,4 +493,8 @@ func (m *MomoTCPCommunicator) ReceiveACK() (err error) {
 	}
 	m.SetDeadline(time.Time{}) // Restore default deadline
 	return nil
+}
+
+func (m *MomoTCPCommunicator) IsExternalClient() bool {
+	return false
 }

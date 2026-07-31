@@ -26,6 +26,28 @@ func TestSanitizeLog(t *testing.T) {
 	}
 }
 
+func TestTrimNullBytesFromString(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"With null bytes", "hello\x00\x00\x00", "hello"},
+		{"Without null bytes", "world", "world"},
+		{"Empty string", "", ""},
+		{"Only null bytes", "\x00\x00\x00", ""},
+		{"Null byte in middle", "hello\x00world", "hello"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := TrimNullBytesFromString(tt.input); got != tt.expected {
+				t.Errorf("TrimNullBytesFromString(%q) = %q, want %q", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestHasPathTraversalChars(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -33,11 +55,12 @@ func TestHasPathTraversalChars(t *testing.T) {
 		expected bool
 	}{
 		{"No special characters", "helloworld", false},
-		{"Contains dot", "hello.world", true},
+		{"Contains dot (extension)", "hello.world", false},
 		{"Contains slash", "hello/world", true},
 		{"Contains backslash", "hello\\world", true},
 		{"Path traversal", "../etc/passwd", true},
 		{"Just dots", "..", true},
+		{"Double dot in filename", "file..txt", true},
 		{"Empty string", "", false},
 	}
 
@@ -134,5 +157,17 @@ func TestNormalizeVirtualPath(t *testing.T) {
 				t.Errorf("NormalizeVirtualPath(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestTrimNullBytesString_BufferReuse(t *testing.T) {
+	buf := []byte("hello\x00world")
+	result := TrimNullBytesString(buf)
+	if result != "hello" {
+		t.Fatalf("expected 'hello', got %q", result)
+	}
+	buf[0] = 'X'
+	if result != "hello" {
+		t.Fatalf("result changed after buffer reuse: got %q, expected 'hello'", result)
 	}
 }

@@ -3,6 +3,7 @@ package transport
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"io"
 	"net"
 	"strconv"
@@ -105,7 +106,7 @@ func TestMomoTCPCommunicator_Deadline(t *testing.T) {
 	conn, _ := net.Pipe()
 	defer conn.Close()
 	comm := NewMomoTCPCommunicator(conn)
-	
+
 	err := comm.SetAbsoluteDeadline(time.Now().Add(time.Second))
 	if err != nil {
 		t.Errorf("SetAbsoluteDeadline failed: %v", err)
@@ -115,7 +116,7 @@ func TestMomoTCPCommunicator_Deadline(t *testing.T) {
 func TestMomoTCPCommunicator_EdgeCases(t *testing.T) {
 	// 1. Panic recovery tests (Rule 4) via nil communicator
 	var nilComm *MomoTCPCommunicator
-	
+
 	_, _, err := nilComm.HandshakeServer([]byte("token"))
 	if err == nil {
 		t.Errorf("Expected HandshakeServer on nilComm to fail")
@@ -236,9 +237,9 @@ func TestMomoTCPCommunicator_NativeList(t *testing.T) {
 		if _, err := io.ReadFull(conn, packet[:]); err != nil {
 			t.Fatalf("Failed to read metadata packet: %v", err)
 		}
-		hash := string(bytes.TrimRight(packet[0:64], "\x00"))
-		name := string(bytes.TrimRight(packet[64:128], "\x00"))
-		sizeStr := string(bytes.TrimRight(packet[128:192], "\x00"))
+		hash := common.TrimNullBytesString(packet[0:64])
+		name := common.TrimNullBytesString(packet[64:128])
+		sizeStr := common.TrimNullBytesString(packet[128:192])
 
 		if hash != "hash456" {
 			t.Errorf("Expected hash 'hash456', got %q", hash)
@@ -317,7 +318,7 @@ func TestMomoTCPCommunicator_NativeGet(t *testing.T) {
 			t.Fatalf("Expected status '0' (success), got %q", respBuf[0])
 		}
 
-		sizeStr := string(bytes.TrimRight(respBuf[1:65], "\x00"))
+		sizeStr := common.TrimNullBytesString(respBuf[1:65])
 		size, _ := strconv.ParseInt(sizeStr, 10, 64)
 		if size != int64(len(fileContent)) {
 			t.Errorf("Expected size %d, got %d", len(fileContent), size)
@@ -334,4 +335,26 @@ func TestMomoTCPCommunicator_NativeGet(t *testing.T) {
 	}
 
 	runNativeTCPTest(t, common.ModeGet, clientFn, mock)
+}
+
+func TestMomoTCPCommunicator_SendMetadataPathTraversal(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	comm := NewMomoTCPCommunicator(clientConn)
+
+	// Malicious Name
+	badMeta := &common.FileMetadata{
+		Name: "../passwd",
+		Hash: "hash123",
+		Size: 100,
+	}
+	_, err := comm.SendMetadata(badMeta)
+	if err == nil {
+		t.Fatal("Expected SendMetadata to fail with path traversal name")
+	}
+	if !errors.Is(err, syscall.EBADMSG) {
+		t.Errorf("Expected EBADMSG error, got: %v", err)
+	}
 }

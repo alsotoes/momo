@@ -4,31 +4,60 @@ Momo is a high-performance, transport-agnostic file replication playground writt
 
 This document explains the architecture, configuration, wire protocol, replication modes, and how to run the client and servers.
 
+## Documentation Index
+
+| Document | Description |
+|---|---|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | System architecture, storage layer, replication, P2P, metrics |
+| [CONFIGURATION.md](CONFIGURATION.md) | Complete configuration reference for `momo.conf` |
+| [STANDARDS.md](STANDARDS.md) | ⚡ Bolt (performance) and 🛡️ Sentinel (security) coding standards |
+| [PROTOCOL.md](PROTOCOL.md) | Wire protocol specification (handshake, metadata, replication) |
+| [REPLICATION_STRATEGIES.md](REPLICATION_STRATEGIES.md) | Chain, Splay, Primary-Splay replication modes |
+| [CRUSH.md](CRUSH.md) | CRUSH-lite placement algorithm (Weighted Rendezvous Hashing) |
+| [P2P.md](P2P.md) | P2P gossip, SWIM failure detection, scatter-gather, lease consensus |
+| [TESTING.md](TESTING.md) | Test suites, CI pipeline, contract testing, E2E tests |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guidelines and PR workflow |
+| [ROADMAP.md](ROADMAP.md) | Project roadmap with milestones and GitHub issues |
+| [ERROR_CODES.md](ERROR_CODES.md) | POSIX error codes and exit statuses reference |
+| [PERFORMANCE.md](PERFORMANCE.md) | Auto-generated benchmark results and performance history |
+| [COMPATIBILITY.md](COMPATIBILITY.md) | Go version, platform compatibility, dependencies |
+| [CONTRACT_TESTING.md](CONTRACT_TESTING.md) | TCP wire protocol contract testing strategy |
+| [POLYMORPHIC_SYSTEM.md](POLYMORPHIC_SYSTEM.md) | Dynamic replication mode switching and polymorphic engine |
+| [AI_FLYING_SOLO.md](AI_FLYING_SOLO.md) | Autonomous development workflow for AI agents (bugs and features) |
+
 ## Key Performance & Security Features (⚡ Bolt & 🛡️ Sentinel)
 
 - **Balanced Primary Architecture**: Removes central bottlenecks by deterministically selecting primary nodes for each object using the CRUSH-lite algorithm.
 - **Automated AI Governance**: Pull Requests are automatically reviewed and merged by a Gemini-powered audit engine that enforces strict architectural steering rules.
 - **Content-Addressable Storage (CAS)**: Saves disk space and bandwidth by identifying files by their SHA-256 content hash, with built-in server-side deduplication.
+- **Pluggable Storage Backends**: Configurable blob storage via `[storage] backend` — supports `local` (default), `nfs`, `s3` (zero-dep SigV4 client), and `raw` (direct block I/O). Bbolt metadata stays local per-node.
 - **Pluggable Transport Layer**: Communicate seamlessly over raw TCP, encrypted QUIC (TLS 1.3), or S3-compatible REST gateways via a modular `ProtocolFactory`.
 - **Zero-Allocation Hashing & Encoding**: SHA-256 sums and hex encoding use stack-allocated buffers to eliminate heap escapes.
 - **Phased Absolute Deadlines**: Continuous protection against Slowloris attacks with strict bounds for handshake (10s), metadata (60s), and dynamic transfer phases.
 - **Bitwise Deadline Amortization**: Reduces `SetDeadline` system calls by ~98% in hot paths.
 - **Consolidated Network I/O**: Merges authentication tokens, timestamps, and payloads into unified writes to minimize syscalls and Nagle delays.
 - **Security Hardening**: Mandatory 64-byte AuthToken validation, CRLF log injection protection, and comprehensive `AUDIT:` logging for all sensitive operations.
+- **P2P Cluster Coordination**: Gossip-based membership with SWIM-style failure detection (direct ping/ack, indirect ping, adaptive RTT timeouts), scatter-gather queries, and lease-based consensus for deletes.
+- **Prometheus Metrics Exporter**: Built-in `/metrics` and `/health` endpoints with `sync/atomic` counters — zero-overhead on hot path, no external dependencies. All uploads, downloads, deletes, replication, errors, and bytes transferred are instrumented via a `MetricsHook` interface injected into the transport layer.
 
 ## Repository Layout
 
 - `.github/scripts/`: Automation and governance scripts.
   - `ai_reviewer.py`: Python-based Gemini AI code review engine.
   - `test-e2e.sh`: End-to-end integration test runner.
+  - `test-e2e-p2p.sh`: P2P gossip convergence and failure detection E2E test.
+  - `test-scale-cas.sh`: CAS storage scale test with CRUSH placement.
+  - `test-metrics.sh`: Prometheus metrics E2E test (start, upload, scrape, verify).
+  - `check-notsecret.sh`: Rule 29 scanner-safe secrets enforcement.
   - `update_readme_with_benchmarks.sh`: Automated documentation updater.
 - `src/momo.go`: Entry point (client/server runner and metrics bootstrap).
 - `src/transport/`: Pluggable communication layers and protocol implementations.
-  - `communicator.go`: Central `Communicator` and `MomoListener` interfaces.
+  - `communicator.go`: Central `Communicator` and `MomoListener` interfaces, `MetricsHook` interface.
   - `factory.go`: `ProtocolFactory` for instantiating transports.
   - `momo_tcp.go`: Legacy TCP implementation.
   - `momo_quic.go`: Modern QUIC implementation using `quic-go`.
   - `s3_communicator.go`: S3-compatible REST API mapping.
+  - `quic_net_conn.go`: Adapts `quic.Stream` + `Dialer.DialContext`.
 - `src/client/`: Client-side logic for cluster replication and file forwarding.
   - `client.go`: Main cluster connection and parallel file transmission logic.
 - `src/common/`: Agnostic, shared utilities.
@@ -37,14 +66,37 @@ This document explains the architecture, configuration, wire protocol, replicati
   - `log.go`: Secure logging with CRLF sanitization.
   - `string.go`: Performance-tuned string padding.
   - `constants.go`: Shared system-wide protocol constants.
+  - `struct.go`: Configuration and metadata type definitions.
+  - `crush.go`: CRUSH-lite placement algorithm.
+  - `net.go`: Network utilities (`DialSocket`, `DialSocketWithContext`, `IdleTimeoutConn`).
+  - `parse.go`: Safe integer parsing helpers.
+  - `contains.go`: String containment checks for path traversal validation.
 - `src/server/`: Server daemon and file reception logic.
   - `server.go`: Core Daemon loop utilizing pluggable transports.
   - `file.go`: Secure metadata parsing and file writing.
   - `replication.go`: Dynamic replication mode control server.
+  - `metrics_exporter.go`: Prometheus `/metrics` and `/health` endpoint with `MetricsCollector`.
+  - `contract_test.go`: Wire protocol contract tests (handshake, metadata, round-trip, RPC framing).
+  - `query_handler.go`: LIST/DELETE/GET query handlers for native protocol.
+  - `p2p_adapters.go`: Adapters bridging P2P scatter-gather/lease to server interfaces.
 - `src/storage/`: Content-Addressable Storage (CAS) engine.
   - `storage.go`: Bbolt-backed object store with tiered directory layout.
+  - `gc.go`: Garbage collection for orphaned blobs and expired tombstones.
+- `src/p2p/`: P2P transport layer with gossip membership protocol.
+  - `types.go`: Peer, RPC, HeartbeatPayload, PingPayload with binary length-prefixed encoding.
+  - `transport.go`: Transport interface (Listen, Dial, Consume, Broadcast, Send).
+  - `tcp_transport.go`: TCPTransport implementation with connection tracking.
+  - `peer_map.go`: Thread-safe PeerMap with RandomPeers for gossip fanout.
+  - `gossip.go`: Gossiper with heartbeat, SWIM ping/ack, indirect ping, adaptive RTT timeouts, suspicion.
+  - `scatter_gather.go`: Parallel scatter-gather query fan-out and response collection.
+  - `lease.go`: Lease-based consensus for destructive operations.
 - `src/metrics/`: Performance monitoring and polymorphic control loop.
+  - `metrics.go`: CPU/memory sampling via gopsutil.
+  - `replication.go`: Polymorphic replication mode broadcast and control.
 - `conf/momo.conf`: Secure configuration example.
+- `conf/smoke.conf`: Smoke test configuration (3-node cluster).
+
+All packages include corresponding `*_test.go` files for unit and integration tests.
 
 ## Replication Modes & Handshake Actions
 
@@ -93,6 +145,12 @@ make test
 
 # Run a specific smoke test
 make smoke-scale-cas
+
+# Run Prometheus metrics E2E test
+make test-metrics
+
+# Run contract tests
+make test-contract
 ```
 
 Momo includes a built-in benchmarking suite and performance history tracking. Refer to the [Performance Guide](PERFORMANCE.md) for the latest metrics.

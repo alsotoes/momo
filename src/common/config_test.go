@@ -120,6 +120,16 @@ func TestGetConfig_Failures(t *testing.T) {
 			content:       strings.Replace(validConfig, "interval = 10", "", 1),
 			expectedError: "failed to load [metrics] section: failed to parse 'interval'",
 		},
+		{
+			name:          "Zero fallback_interval",
+			content:       strings.Replace(validConfig, "fallback_interval = 30", "fallback_interval = 0", 1),
+			expectedError: "failed to load [metrics] section: 'fallback_interval' must be positive",
+		},
+		{
+			name:          "Negative fallback_interval",
+			content:       strings.Replace(validConfig, "fallback_interval = 30", "fallback_interval = -5", 1),
+			expectedError: "failed to load [metrics] section: 'fallback_interval' must be positive",
+		},
 	}
 
 	for _, tc := range testCases {
@@ -154,5 +164,63 @@ func TestGetConfig_FileErrors(t *testing.T) {
 	_, err = GetConfig(tmpDir)
 	if err == nil {
 		t.Errorf("Expected error for directory path, got nil")
+	}
+}
+
+func TestGetConfig_ClientSideReplicationModes_Default(t *testing.T) {
+	// When client_side_replication_modes is absent, it should default to [3]
+	tmpDir := t.TempDir()
+	tmpfile := filepath.Join(tmpDir, "momo.conf")
+	if err := os.WriteFile(tmpfile, []byte(validConfig), 0666); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	config, err := GetConfig(tmpfile)
+	if err != nil {
+		t.Fatalf("GetConfig failed: %v", err)
+	}
+
+	expected := []int{ReplicationPrimarySplay}
+	if !reflect.DeepEqual(config.Global.ClientSideReplicationModes, expected) {
+		t.Errorf("Expected default ClientSideReplicationModes %v, got %v", expected, config.Global.ClientSideReplicationModes)
+	}
+}
+
+func TestGetConfig_ClientSideReplicationModes_Explicit(t *testing.T) {
+	configContent := `
+[global]
+debug = true
+auth_token = a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6 # notsecret
+replication_order = 4,3,2,1
+client_side_replication_modes = 3,4
+polymorphic_system = true
+
+[metrics]
+interval = 10
+min_threshold = 0.1
+max_threshold = 0.9
+fallback_interval = 30
+
+[daemon.0]
+host = localhost:8080
+change_replication = localhost:2222
+data = /data/0
+drive = /dev/sda1
+`
+
+	tmpDir := t.TempDir()
+	tmpfile := filepath.Join(tmpDir, "momo.conf")
+	if err := os.WriteFile(tmpfile, []byte(configContent), 0666); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	config, err := GetConfig(tmpfile)
+	if err != nil {
+		t.Fatalf("GetConfig failed: %v", err)
+	}
+
+	expected := []int{3, 4}
+	if !reflect.DeepEqual(config.Global.ClientSideReplicationModes, expected) {
+		t.Errorf("Expected ClientSideReplicationModes %v, got %v", expected, config.Global.ClientSideReplicationModes)
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"math/big"
 	"net"
 	"os"
@@ -29,8 +30,12 @@ import (
 // MomoQUICCommunicator implements the Communicator interface for the Momo protocol over QUIC.
 type MomoQUICCommunicator struct {
 	*quic.Stream
-	conn  *quic.Conn
-	store storage.Store
+	conn             *quic.Conn
+	store            storage.Store
+	globalLister     GlobalLister
+	leaseAcquirer    LeaseAcquirer
+	deletePropagator DeletePropagator
+	metricsHook      MetricsHook
 }
 
 // NewMomoQUICCommunicator creates a new MomoQUICCommunicator.
@@ -43,6 +48,26 @@ func NewMomoQUICCommunicator(stream *quic.Stream, conn *quic.Conn) *MomoQUICComm
 
 func (m *MomoQUICCommunicator) SetStore(store storage.Store) {
 	m.store = store
+}
+
+// SetGlobalLister sets the scatter-gather list capability.
+func (m *MomoQUICCommunicator) SetGlobalLister(gl GlobalLister) {
+	m.globalLister = gl
+}
+
+// SetLeaseAcquirer sets the lease-based consensus capability.
+func (m *MomoQUICCommunicator) SetLeaseAcquirer(la LeaseAcquirer) {
+	m.leaseAcquirer = la
+}
+
+// SetDeletePropagator sets the P2P delete propagation capability.
+func (m *MomoQUICCommunicator) SetDeletePropagator(dp DeletePropagator) {
+	m.deletePropagator = dp
+}
+
+// SetMetricsHook sets the metrics instrumentation hook.
+func (m *MomoQUICCommunicator) SetMetricsHook(hook MetricsHook) {
+	m.metricsHook = hook
 }
 
 func (m *MomoQUICCommunicator) SetAbsoluteDeadline(t interface{}) (err error) {
@@ -151,7 +176,12 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 		if m.store == nil {
 			return 0, 0, fmt.Errorf("storage store not initialized")
 		}
-		files, err := m.store.List()
+		var files []common.FileMetadata
+		if m.globalLister != nil {
+			files, err = m.globalLister.GlobalList(5 * time.Second)
+		} else {
+			files, err = m.store.List()
+		}
 		if err != nil {
 			return 0, 0, fmt.Errorf("failed to list files: %w", err)
 		}
@@ -168,15 +198,18 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 		// Send metadata packets (192 bytes each)
 		for _, file := range files {
 			// 🛡️ Sentinel: Validate length bounds
-			if len(file.Name) > 64 || len(file.Hash) > 64 {
+			if len(file.Hash) > 64 {
 				continue
 			}
-			var packet [192]byte
-			copy(packet[0:64], common.PadString(file.Hash, 64))
 			wireName := file.Name
 			if file.RemotePath != "" {
 				wireName = file.RemotePath + "/" + file.Name
 			}
+			if len(wireName) > 64 {
+				continue
+			}
+			var packet [192]byte
+			copy(packet[0:64], common.PadString(file.Hash, 64))
 			copy(packet[64:128], common.PadString(wireName, 64))
 			if err := common.AppendPaddedInt(packet[128:], file.Size, 64); err != nil {
 				return 0, 0, fmt.Errorf("failed to format file size: %v: %w", err, syscall.EINVAL)
@@ -200,7 +233,7 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 		if _, err := io.ReadFull(m, fileBuf[:]); err != nil {
 			return 0, 0, fmt.Errorf("failed to read delete target: %w", err)
 		}
-		fileName := string(bytes.TrimRight(fileBuf[:], "\x00"))
+		fileName := common.TrimNullBytesString(fileBuf[:])
 
 		// 🛡️ Sentinel: Block path traversal
 		if strings.Contains(fileName, "..") || strings.Contains(fileName, "\\") {
@@ -209,11 +242,28 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 			return 0, 0, fmt.Errorf("invalid delete target traversal: %s: %w", fileName, syscall.EBADMSG)
 		}
 
+		if m.leaseAcquirer != nil {
+			if err := m.leaseAcquirer.AcquireLease(fileName, 10*time.Second); err != nil {
+				m.Stream.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				m.Write([]byte{'1'}) // error status
+				return 0, 0, fmt.Errorf("failed to acquire lease for delete: %w", err)
+			}
+			defer m.leaseAcquirer.ReleaseLease(fileName)
+		}
+
 		err = m.store.Delete(fileName)
 		m.Stream.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		if err != nil {
 			m.Write([]byte{'1'}) // error status
 			return 0, 0, fmt.Errorf("failed to delete file: %w", err)
+		}
+
+		if m.deletePropagator != nil {
+			_ = m.deletePropagator.PropagateDelete(fileName, 5*time.Second)
+		}
+
+		if m.metricsHook != nil {
+			m.metricsHook.IncDeletes()
 		}
 
 		m.Write([]byte{'0'}) // success status
@@ -230,7 +280,7 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 		if _, err := io.ReadFull(m, fileBuf[:]); err != nil {
 			return 0, 0, fmt.Errorf("failed to read get target: %w", err)
 		}
-		fileName := string(bytes.TrimRight(fileBuf[:], "\x00"))
+		fileName := common.TrimNullBytesString(fileBuf[:])
 
 		// 🛡️ Sentinel: Block path traversal
 		if strings.Contains(fileName, "..") || strings.Contains(fileName, "\\") {
@@ -265,12 +315,21 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 		copyTimeout := 5 * time.Second
 		mb := meta.Size / (1024 * 1024)
 		if mb > 0 {
+			maxMB := int64(math.MaxInt64 / int64(time.Second))
+			if mb > maxMB {
+				mb = maxMB
+			}
 			copyTimeout += time.Duration(mb) * time.Second
 		}
 		m.Stream.SetWriteDeadline(time.Now().Add(copyTimeout))
 
 		if _, err := io.Copy(m, rc); err != nil {
 			return 0, 0, fmt.Errorf("failed to stream file payload: %w", err)
+		}
+
+		if m.metricsHook != nil {
+			m.metricsHook.IncDownloads()
+			m.metricsHook.AddBytesDownloaded(uint64(meta.Size))
 		}
 
 		return 0, 0, ErrRequestHandled
@@ -288,7 +347,11 @@ func (m *MomoQUICCommunicator) SendReplicationMode(mode int) (err error) {
 	}()
 
 	var repModeBuf [16]byte
-	if _, err := m.Write(strconv.AppendInt(repModeBuf[:0], int64(mode), 10)); err != nil {
+	if mode < 0 || mode > 9 {
+		return fmt.Errorf("invalid replication mode %d: %w", mode, syscall.EBADMSG)
+	}
+	repModeBuf[0] = byte(mode + '0')
+	if _, err := m.Write(repModeBuf[:1]); err != nil {
 		return fmt.Errorf("failed to send replication mode: %v: %w", err, syscall.EIO)
 	}
 	return nil
@@ -304,7 +367,7 @@ func (m *MomoQUICCommunicator) SendMetadata(meta *common.FileMetadata) (status i
 
 	var metadataBuffer [hashLength + common.FileInfoLength + common.FileInfoLength]byte
 	copy(metadataBuffer[0:hashLength], meta.Hash)
-	
+
 	wireName := meta.Name
 	if meta.RemotePath != "" {
 		normalized, normErr := common.NormalizeVirtualPath(meta.RemotePath)
@@ -315,6 +378,11 @@ func (m *MomoQUICCommunicator) SendMetadata(meta *common.FileMetadata) (status i
 	}
 	if len(wireName) > common.FileInfoLength {
 		return 0, fmt.Errorf("metadata name exceeds limit: %w", syscall.ENAMETOOLONG)
+	}
+	for _, part := range strings.Split(wireName, "/") {
+		if common.HasPathTraversalChars(part) {
+			return 0, fmt.Errorf("path traversal in wireName: %w", syscall.EBADMSG)
+		}
 	}
 	copy(metadataBuffer[hashLength:hashLength+common.FileInfoLength], common.PadString(wireName, common.FileInfoLength))
 
@@ -354,12 +422,14 @@ func (m *MomoQUICCommunicator) ReceiveMetadata() (meta common.FileMetadata, err 
 		return metadata, fmt.Errorf("metadata buffer too small: %w", syscall.EBADMSG)
 	}
 
-	metadata.Hash = common.SanitizeLog(string(bytesTrimNull(buffer[:hashLength])))
+	// ⚡ Bolt: Use common.TrimNullBytesString to eliminate string allocation overhead
+	metadata.Hash = common.SanitizeLog(common.TrimNullBytesString(buffer[:hashLength]))
 	// 🛡️ Sentinel: Sanitize hash immediately to prevent path traversal in all downstream consumers.
 	if common.HasPathTraversalChars(metadata.Hash) {
 		return common.FileMetadata{}, fmt.Errorf("invalid hash: %s: %w", metadata.Hash, syscall.EBADMSG)
 	}
-	metadata.Name = string(bytesTrimNull(buffer[hashLength : hashLength+common.FileInfoLength]))
+	// ⚡ Bolt: Use common.TrimNullBytesString to eliminate string allocation overhead
+	metadata.Name = common.TrimNullBytesString(buffer[hashLength : hashLength+common.FileInfoLength])
 
 	size, err := common.SafeParseInt(buffer[hashLength+common.FileInfoLength:])
 	if err != nil {
@@ -437,6 +507,10 @@ func (m *MomoQUICCommunicator) RemoteAddr() net.Addr {
 	return m.conn.RemoteAddr()
 }
 
+func (m *MomoQUICCommunicator) IsExternalClient() bool {
+	return false
+}
+
 func (m *MomoQUICCommunicator) Close() (err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -444,7 +518,12 @@ func (m *MomoQUICCommunicator) Close() (err error) {
 			err = fmt.Errorf("panic in Close: %v: %w", r, syscall.EIO)
 		}
 	}()
-	return m.Stream.Close()
+	streamErr := m.Stream.Close()
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		m.conn.CloseWithError(0, "")
+	}()
+	return streamErr
 }
 
 // GenerateSelfSignedCert generates a self-signed TLS certificate for testing and internal use.
@@ -476,19 +555,38 @@ func GenerateSelfSignedCert() (tls.Certificate, error) {
 }
 
 // DialQUIC connects to a peer using QUIC.
-func DialQUIC(ctx context.Context, address string) (*quic.Conn, *quic.Stream, error) {
+// When caCertPool is non-nil, peer certificates are verified against it.
+// When caCertPool is nil, InsecureSkipVerify is used with a warning log.
+func DialQUIC(ctx context.Context, address string, caCertPool *x509.CertPool) (conn *quic.Conn, stream *quic.Stream, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in DialQUIC for %s: %v", address, r)
+			if conn != nil {
+				conn.CloseWithError(0, "panic recovery")
+			}
+			conn = nil
+			stream = nil
+			err = fmt.Errorf("panic in DialQUIC: %v: %w", r, syscall.ECONNREFUSED)
+		}
+	}()
+
 	tlsConf := &tls.Config{
-		InsecureSkipVerify: true,
-		NextProtos:         []string{"momo-quic"},
+		NextProtos: []string{"momo-quic"},
 	}
-	conn, err := quic.DialAddr(ctx, address, tlsConf, nil)
+	if caCertPool != nil {
+		tlsConf.RootCAs = caCertPool
+	} else {
+		log.Printf("WARNING: QUIC dial to %s using InsecureSkipVerify (no CA cert configured) — vulnerable to MITM", address)
+		tlsConf.InsecureSkipVerify = true
+	}
+	conn, err = quic.DialAddr(ctx, address, tlsConf, nil)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("quic dial failed: %w", syscall.ECONNREFUSED)
 	}
-	stream, err := conn.OpenStreamSync(ctx)
+	stream, err = conn.OpenStreamSync(ctx)
 	if err != nil {
 		conn.CloseWithError(0, "failed to open stream")
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("quic stream open failed: %w", syscall.ECONNREFUSED)
 	}
 	return conn, stream, nil
 }

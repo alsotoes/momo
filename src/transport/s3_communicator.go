@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -60,9 +61,22 @@ type S3Communicator struct {
 
 	// Server state
 	meta common.FileMetadata
+	// isExternalClient is true when the client did not send X-Momo-Requested-Mode,
+	// indicating it is an external S3 client (e.g., aws-cli) that cannot perform
+	// client-side replication.
+	isExternalClient bool
 
 	// Storage store for list, get, and delete operations
 	store storage.Store
+
+	// GlobalLister for scatter-gather list queries (optional)
+	globalLister GlobalLister
+	// LeaseAcquirer for lease-based consensus on deletes (optional)
+	leaseAcquirer LeaseAcquirer
+	// DeletePropagator for P2P delete fan-out (optional)
+	deletePropagator DeletePropagator
+	// MetricsHook for instrumentation (optional)
+	metricsHook MetricsHook
 }
 
 func NewS3Communicator(conn net.Conn) *S3Communicator {
@@ -77,6 +91,26 @@ func NewS3Communicator(conn net.Conn) *S3Communicator {
 
 func (m *S3Communicator) SetStore(store storage.Store) {
 	m.store = store
+}
+
+// SetGlobalLister sets the scatter-gather list capability.
+func (m *S3Communicator) SetGlobalLister(gl GlobalLister) {
+	m.globalLister = gl
+}
+
+// SetLeaseAcquirer sets the lease-based consensus capability.
+func (m *S3Communicator) SetLeaseAcquirer(la LeaseAcquirer) {
+	m.leaseAcquirer = la
+}
+
+// SetDeletePropagator sets the P2P delete propagation capability.
+func (m *S3Communicator) SetDeletePropagator(dp DeletePropagator) {
+	m.deletePropagator = dp
+}
+
+// SetMetricsHook sets the metrics instrumentation hook.
+func (m *S3Communicator) SetMetricsHook(hook MetricsHook) {
+	m.metricsHook = hook
 }
 
 func (m *S3Communicator) Read(p []byte) (n int, err error) {
@@ -137,6 +171,13 @@ func (m *S3Communicator) HandshakeClient(authToken string, timestamp int64, requ
 	host := "127.0.0.1"
 	if m.remoteAddr != nil {
 		host = m.remoteAddr.String()
+	}
+
+	if strings.ContainsAny(authToken, "\r\n") {
+		return 0, fmt.Errorf("auth token contains CRLF characters: %w", syscall.EINVAL)
+	}
+	if strings.ContainsAny(host, "\r\n") {
+		return 0, fmt.Errorf("host contains CRLF characters: %w", syscall.EINVAL)
 	}
 
 	// ⚡ Bolt: Eliminate fmt.Sprintf and string allocations using stack-allocated buffer
@@ -242,7 +283,12 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		isList := (key == "") || (q.Get("list-type") == "2")
 
 		if isList {
-			files, err := m.store.List()
+			var files []common.FileMetadata
+			if m.globalLister != nil {
+				files, err = m.globalLister.GlobalList(5 * time.Second)
+			} else {
+				files, err = m.store.List()
+			}
 			if err != nil {
 				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 				m.conn.Write([]byte("HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
@@ -302,6 +348,10 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		copyTimeout := 5 * time.Second
 		mb := meta.Size / (1024 * 1024)
 		if mb > 0 {
+			maxMB := int64(math.MaxInt64 / int64(time.Second))
+			if mb > maxMB {
+				mb = maxMB
+			}
 			copyTimeout += time.Duration(mb) * time.Second
 		}
 		m.conn.SetWriteDeadline(time.Now().Add(copyTimeout))
@@ -321,6 +371,11 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			return 0, 0, fmt.Errorf("failed to stream GET body: %v: %w", err, syscall.EPIPE)
 		}
 
+		if m.metricsHook != nil {
+			m.metricsHook.IncDownloads()
+			m.metricsHook.AddBytesDownloaded(uint64(meta.Size))
+		}
+
 		return 0, 0, ErrRequestHandled
 	}
 
@@ -338,11 +393,29 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			return 0, 0, fmt.Errorf("missing key in DELETE request")
 		}
 
+		if m.leaseAcquirer != nil {
+			if err := m.leaseAcquirer.AcquireLease(key, 10*time.Second); err != nil {
+				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				m.conn.Write([]byte("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
+				return 0, 0, fmt.Errorf("failed to acquire lease for delete %q: %w", key, err)
+			}
+			defer m.leaseAcquirer.ReleaseLease(key)
+		}
+
 		err := m.store.Delete(key)
 		if err != nil {
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			m.conn.Write([]byte("HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
 			return 0, 0, fmt.Errorf("failed to delete file %q: %w", key, err)
+		}
+
+		// Propagate delete to all peers via scatter-gather (best-effort).
+		if m.deletePropagator != nil {
+			_ = m.deletePropagator.PropagateDelete(key, 5*time.Second)
+		}
+
+		if m.metricsHook != nil {
+			m.metricsHook.IncDeletes()
 		}
 
 		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
@@ -378,6 +451,12 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		if err != nil {
 			return 0, 0, fmt.Errorf("invalid requested mode: %s: %w", requestedModeStr, syscall.EBADMSG)
 		}
+	} else {
+		// External S3 client (e.g., aws-cli) — no X-Momo-Requested-Mode header.
+		// Force DummyEpoch so the server treats this as a direct client connection
+		// and uses its configured replication mode, then downgrades if needed.
+		m.isExternalClient = true
+		timestamp = common.DummyEpoch
 	}
 
 	// Parse Metadata if it's a PUT request
@@ -463,6 +542,28 @@ func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (status int, er
 		return 0, fmt.Errorf("joined remote path exceeds maximum length of %d: %w", common.FileInfoLength, syscall.ENAMETOOLONG)
 	}
 
+	// 🛡️ Sentinel: Reject carriage returns or line feeds in the path to prevent HTTP Request Smuggling (CRLF Injection).
+	if strings.ContainsAny(wireName, "\r\n") {
+		return 0, fmt.Errorf("invalid characters in path: %w", syscall.EBADMSG)
+	}
+
+	for _, part := range strings.Split(wireName, "/") {
+		if common.HasPathTraversalChars(part) {
+			return 0, fmt.Errorf("path traversal in wireName: %w", syscall.EBADMSG)
+		}
+	}
+
+	// 🛡️ Sentinel: Validate hash, auth token, and host for CRLF to prevent HTTP header injection.
+	if strings.ContainsAny(meta.Hash, "\r\n") {
+		return 0, fmt.Errorf("invalid characters in hash: %w", syscall.EBADMSG)
+	}
+	if strings.ContainsAny(m.clientAuthToken, "\r\n") {
+		return 0, fmt.Errorf("invalid characters in auth token: %w", syscall.EBADMSG)
+	}
+	if strings.ContainsAny(host, "\r\n") {
+		return 0, fmt.Errorf("invalid characters in host: %w", syscall.EBADMSG)
+	}
+
 	// ⚡ Bolt: Eliminate fmt.Sprintf and string allocations using stack-allocated buffer
 	var buf [512]byte
 	b := buf[:0]
@@ -472,7 +573,7 @@ func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (status int, er
 		b = append(b, norm...)
 		b = append(b, '/')
 	}
-	b = append(b, strings.TrimRight(meta.Name, "\x00")...)
+	b = append(b, common.TrimNullBytesFromString(meta.Name)...)
 	b = append(b, " HTTP/1.1\r\nHost: "...)
 	b = append(b, host...)
 	b = append(b, "\r\nAuthorization: Bearer "...)
@@ -480,7 +581,7 @@ func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (status int, er
 	b = append(b, "\r\nX-Momo-Timestamp: "...)
 	b = strconv.AppendInt(b, m.clientTimestamp, 10)
 	b = append(b, "\r\nX-Amz-Content-Sha256: "...)
-	b = append(b, strings.TrimRight(meta.Hash, "\x00")...)
+	b = append(b, common.TrimNullBytesFromString(meta.Hash)...)
 	b = append(b, "\r\nContent-Length: "...)
 	b = strconv.AppendInt(b, meta.Size, 10)
 	b = append(b, "\r\n\r\n"...)
@@ -645,6 +746,10 @@ func (m *S3Communicator) RemoteAddr() net.Addr {
 	return m.remoteAddr
 }
 
+func (m *S3Communicator) IsExternalClient() bool {
+	return m.isExternalClient
+}
+
 // extractS3BucketAndKey parses the bucket name and key path from an S3 HTTP request.
 // It supports both virtual-host style and path-style S3 URL schemas.
 func extractS3BucketAndKey(req *http.Request) (bucket string, key string) {
@@ -719,10 +824,9 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, f
 	buf.Write(strconv.AppendInt(intBuf[:0], int64(maxKeys), 10))
 	buf.WriteString(`</MaxKeys>`)
 
-	buf.WriteString(`<IsTruncated>false</IsTruncated>`)
-
 	commonPrefixes := make(map[string]bool)
 	keyCount := 0
+	truncated := false
 
 	for _, file := range files {
 		// 🛡️ Sentinel: Validate that the metadata fields conform to the project's strict size limits (64 bytes)
@@ -753,6 +857,11 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, f
 			}
 		}
 
+		if maxKeys > 0 && keyCount >= maxKeys {
+			truncated = true
+			break
+		}
+
 		buf.WriteString(`<Contents>`)
 		buf.WriteString(`<Key>`)
 		xmlEscape(&buf, key)
@@ -767,10 +876,6 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, f
 		buf.WriteString(`<StorageClass>STANDARD</StorageClass>`)
 		buf.WriteString(`</Contents>`)
 		keyCount++
-
-		if maxKeys > 0 && keyCount >= maxKeys {
-			break
-		}
 	}
 
 	for cp := range commonPrefixes {
@@ -781,6 +886,14 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, f
 		buf.WriteString(`</CommonPrefixes>`)
 		keyCount++
 	}
+
+	buf.WriteString(`<IsTruncated>`)
+	if truncated {
+		buf.WriteString(`true`)
+	} else {
+		buf.WriteString(`false`)
+	}
+	buf.WriteString(`</IsTruncated>`)
 
 	buf.WriteString(`<KeyCount>`)
 	buf.Write(strconv.AppendInt(intBuf[:0], int64(keyCount), 10))

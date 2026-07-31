@@ -1,0 +1,30 @@
+name: Metrics Test
+
+on:
+  push:
+    branches: [ "master" ]
+    paths:
+      - 'src/**/*.go'
+      - '.github/scripts/test-metrics.sh'
+      - 'Makefile'
+  pull_request:
+    branches: [ "master" ]
+    paths:
+      - 'src/**/*.go'
+      - '.github/scripts/test-metrics.sh'
+      - 'Makefile'
+
+jobs:
+  metrics-test:
+    name: Prometheus Metrics E2E Test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version: '1.25.x'
+    - name: Build momo
+      run: make build
+    - name: Run Metrics E2E Test
+      run: make test-metrics

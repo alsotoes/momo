@@ -3,21 +3,46 @@ package transport
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
+	"log"
 	"net"
+	"os"
+	"time"
 
 	"github.com/alsotoes/momo/src/common"
 	"github.com/quic-go/quic-go"
 )
 
+const quicDialTimeout = 10 * time.Second
+
 // ProtocolFactory is responsible for creating Communicator instances based on configuration.
 type ProtocolFactory struct {
-	cfg common.Configuration
+	cfg      common.Configuration
+	certPool *x509.CertPool
 }
 
 // NewProtocolFactory creates a new ProtocolFactory.
 func NewProtocolFactory(cfg common.Configuration) *ProtocolFactory {
-	return &ProtocolFactory{cfg: cfg}
+	f := &ProtocolFactory{cfg: cfg}
+	if cfg.Global.CACertPath != "" {
+		if common.HasPathTraversalChars(cfg.Global.CACertPath) {
+			log.Printf("WARNING: CA cert path %q contains path traversal characters — falling back to InsecureSkipVerify", cfg.Global.CACertPath)
+			return f
+		}
+		pemData, err := os.ReadFile(cfg.Global.CACertPath)
+		if err != nil {
+			log.Printf("WARNING: failed to read CA cert file %s: %v (errno: ENOENT) — falling back to InsecureSkipVerify", cfg.Global.CACertPath, err)
+			return f
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(pemData) {
+			log.Printf("WARNING: failed to parse CA cert from %s — falling back to InsecureSkipVerify", cfg.Global.CACertPath)
+			return f
+		}
+		f.certPool = pool
+	}
+	return f
 }
 
 // NewCommunicator creates a new Communicator for the given connection based on the global protocol setting.
@@ -42,7 +67,9 @@ func (f *ProtocolFactory) Dial(address string) (Communicator, error) {
 		}
 		return f.NewCommunicator(conn)
 	case "momo-quic", "s3-quic":
-		conn, stream, err := DialQUIC(context.Background(), address)
+		ctx, cancel := context.WithTimeout(context.Background(), quicDialTimeout)
+		defer cancel()
+		conn, stream, err := DialQUIC(ctx, address, f.certPool)
 		if err != nil {
 			return nil, err
 		}

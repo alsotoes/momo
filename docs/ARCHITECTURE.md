@@ -4,7 +4,7 @@ This document provides a high-level overview of the Momo architecture, its compo
 
 ## System Overview
 
-Momo is a TCP-based file replication system that consists of a client and a cluster of servers. The client sends files to the servers, and the servers replicate the files to each other based on a configured replication strategy. The system is designed to be polymorphic, meaning it can change its replication strategy at runtime based on system metrics.
+Momo is a polymorphic file replication system that consists of a client and a cluster of servers. The client sends files to the servers, and the servers replicate the files to each other based on a configured replication strategy. The system supports multiple transport protocols (TCP, QUIC, and S3-compatible REST) and is designed to be polymorphic, meaning it can change its replication strategy at runtime based on system metrics.
 
 ### Components
 
@@ -34,6 +34,16 @@ Momo utilizes a **Shared-Nothing Partitioned Architecture** for its object stora
 - **Data Placement (CRUSH)**: We use a simplified Go implementation of the **CRUSH** (Controlled Replication Under Scalable Hashing) algorithm, originally designed by **Sage Weil** (the creator of Ceph). CRUSH allows us to calculate data locations deterministically, eliminating the need for a central metadata server or coordinator. Given a file hash and the cluster map, both the client and all nodes can calculate exactly which nodes should store the data.
 - **Metadata Management (Bbolt)**: High-speed, transactional metadata is stored in local Bbolt databases on each node. Metadata is partitioned across the cluster using the same algorithmic placement as the data itself.
 - **Automatic Deduplication**: By using content-addressing (SHA-256), Momo ensures that any specific piece of data is only stored once per node, regardless of the filenames associated with it.
+- **Garbage Collection & Tombstones**: The `src/storage/gc.go` module implements reference-counted garbage collection with tombstone retention. When an object's refcount drops to zero, a tombstone is written with a configurable retention period (`tombstone_retention`, default 86400s). Tombstones are propagated across the cluster via P2P delete messages. GC runs periodically (`gc_interval`, default 300s) and reaps expired tombstones. See [P2P.md](P2P.md) for details on delete propagation.
+
+### 4b. P2P Subsystem (Gossip & SWIM)
+Momo includes a fully decentralized P2P subsystem (`src/p2p/`) for cluster membership, failure detection, and coordinated operations. See [P2P.md](P2P.md) for the complete protocol specification.
+
+- **Gossip Membership**: Each node maintains a peer table and exchanges heartbeat messages containing peer state (ALIVE/SUSPECT/DEAD) via the gossip protocol. Heartbeats carry up to `MaxPeersInHeartbeat=256` peer entries per message.
+- **SWIM Failure Detection**: Direct ping/ack probes with indirect ping (asking K random peers to probe the target) and adaptive RTT-based timeouts. Suspect marking is based on target ack timeout, not helper contact success.
+- **Lease Consensus**: Lease-based consensus for coordinated operations. Leases require a quorum of `(peerCount+1)/2 + 1` peers and expire after a configurable timeout.
+- **Scatter-Gather Queries**: Decentralized query mechanism for list/get/has/delete operations across the cluster without a central coordinator.
+- **Transport**: P2P communication runs on a separate UDP port (default `4450`, configurable via `gossip_port`). The P2P transport supports both TCP and QUIC underlying connections.
 
 ### 5. Automated Governance & AI Reviewer
 To maintain high integrity in a single-contributor environment, Momo employs an automated governance layer:
@@ -45,6 +55,53 @@ The system is backed by a multi-stage automated testing pipeline:
 - **Distributed Simulation**: End-to-end smoke tests simulate various cluster sizes (up to 5 nodes) and protocols.
 - **Placement Validation**: Automated checks verify that the CRUSH algorithm distributes data correctly and respects the `replication_factor`.
 - **Integrity Checks**: Every test suite verifies data consistency and metadata accuracy across all participating nodes.
+- **Contract Tests**: Wire protocol contract tests verify handshake framing (84 bytes), metadata framing (192 bytes), round-trip integrity, and RPC framing.
+- **Prometheus Metrics E2E**: Automated test starts a node, uploads a file, scrapes `/metrics`, and verifies Prometheus format + counter increments.
+
+### 7. Observability (Prometheus Metrics Exporter)
+Momo includes a built-in Prometheus metrics exporter (`src/server/metrics_exporter.go`) that runs as a separate goroutine on a configurable port. No external dependencies — all counters use `sync/atomic` on integer types.
+
+**Architecture:**
+- `MetricsCollector` struct holds `atomic.Uint64`/`atomic.Int64` counters — ~5ns per increment, no locks, no allocations.
+- `MetricsHook` interface (defined in `src/transport/communicator.go`) is injected into each `Communicator` via `SetMetricsHook`, enabling transport-layer instrumentation for downloads, deletes, and errors that bypass the server daemon's main handler (e.g., S3 GET/DELETE returning `ErrRequestHandled`).
+- `MetricsCollector` is also used directly in `server.go` for connection, upload, replication, and error counters on the main request path.
+- Runtime gauges (goroutines, memory, GC runs) are computed only at scrape time via `runtime.ReadMemStats` — zero per-request overhead.
+
+**Currently exported metrics (15):**
+
+| Metric | Type | Description |
+|---|---|---|
+| `momo_connections_total` | counter | Total connections accepted |
+| `momo_active_connections` | gauge | Current active connections |
+| `momo_uploads_total` | counter | Total file uploads |
+| `momo_downloads_total` | counter | Total file downloads |
+| `momo_deletes_total` | counter | Total file deletes |
+| `momo_replication_total` | counter | Total replication operations |
+| `momo_errors_total` | counter | Total errors (all error paths) |
+| `momo_bytes_uploaded_total` | counter | Total bytes uploaded (excludes dedup hits) |
+| `momo_bytes_downloaded_total` | counter | Total bytes downloaded |
+| `momo_uptime_seconds` | gauge | Server uptime in seconds |
+| `momo_goroutines` | gauge | Current goroutine count |
+| `momo_memory_alloc_bytes` | gauge | Allocated memory in bytes |
+| `momo_memory_sys_bytes` | gauge | System memory in bytes |
+| `momo_gc_runs_total` | counter | Total GC runs |
+| `momo_build_info{hostname}` | gauge | Build info with hostname label |
+
+**Metrics not yet implemented (planned for Phase 2-4):**
+
+| Category | Metrics | Phase | Priority |
+|---|---|---|---|
+| **Storage** | `momo_disk_used_bytes`, `momo_disk_free_bytes`, `momo_blob_count`, `momo_stored_bytes_total` | 2 | High |
+| **CAS** | `momo_dedup_hits_total`, `momo_cas_gc_runs_total`, `momo_cas_gc_evicted_bytes` | 2 | Medium |
+| **Replication** | `momo_replication_bytes_total`, `momo_replication_failures_total`, `momo_replication_latency_seconds` | 3 | High |
+| **P2P** | `momo_cluster_peers`, `momo_swim_alive_count`, `momo_swim_suspect_count`, `momo_swim_ping_latency_seconds` | 3 | Medium |
+| **Leases** | `momo_leases_active`, `momo_lease_contentions_total` | 3 | Low |
+| **Scatter/Gather** | `momo_scatter_queries_total`, `momo_scatter_timeout_total` | 3 | Low |
+| **Latency Histograms** | `momo_request_latency_seconds{operation}`, `momo_replication_latency_seconds` | 4 | Medium (opt-in) |
+
+**Configuration:** Add `prometheus_port = 9100` to the `[metrics]` section of `momo.conf`. Set to `0` or omit to disable. The metrics server runs on a separate port from the data plane — it does not share the accept loop, connection pool, or semaphore with the main daemon.
+
+**Overhead guarantees:** All counters use `sync/atomic` (~5ns per op). Heavy operations (`runtime.ReadMemStats`, disk stats) run only at scrape time (every 15-60s). No `prometheus/client_golang` dependency. Target: <1% throughput regression.
 
 ## High-Level Architecture
 
@@ -137,6 +194,34 @@ In this mode, the client sends the file to all servers in the cluster simultaneo
                            \
                             +------>      ...
 ```
+
+## Pluggable Storage Backend
+
+Momo's storage layer uses a two-layer architecture:
+
+### BlobStore (Pluggable)
+Raw blob bytes keyed by content hash. The backend is selected via `[storage] backend` config field:
+
+| Backend | Description |
+|---------|-------------|
+| `local` (default) | Local filesystem with tiered directory layout (`blobs/ab/cd/ef/<hash>`) |
+| `nfs` | Local filesystem on an NFS mount (functionally identical to `local`) |
+| `s3` | S3-compatible API via zero-dependency SigV4 HTTP client |
+| `raw` | Raw block device with bump allocator and bbolt allocation table |
+
+A `StorageFactory` (`NewStore`) mirrors the transport `ProtocolFactory`, switching on the configured backend. All backends implement the `BlobStore` interface (`PutBlob`/`GetBlob`/`DeleteBlob`).
+
+### MetadataStore (Fixed)
+Per-node bbolt metadata database (`momo.db`) handles:
+- **Namespace mapping**: file name → content hash
+- **Reference counting**: deduplication with refcount tracking
+- **Tombstones**: deletion tracking with retention-based GC
+- **P2P exchange**: tombstone propagation via scatter-gather
+
+The metadata layer is always local (bbolt in `daemon.data`), regardless of blob backend. This keeps GC, refcounting, and P2P tombstone exchange logic unchanged for all backends.
+
+### Streaming Replication Forward
+Replication forwarding (Chain/Splay) uses `store.Get()` → `connectToPeerStream(io.Reader)` to stream blobs to peers. This is backend-agnostic — no local filesystem path is required, enabling S3 and raw device backends to forward blobs seamlessly.
 
 ## Polymorphic System: Dual-Dimensional Adaptability
 

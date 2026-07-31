@@ -3,11 +3,6 @@ name: Gemini AI Reviewer
 on:
   pull_request:
     types: [opened, synchronize]
-    paths:
-      - 'src/**/*.go'
-      - 'go.mod'
-      - 'go.sum'
-      - 'Makefile'
   workflow_dispatch:
     inputs:
       pr_number:
@@ -63,6 +58,12 @@ jobs:
           if [[ -n "$REVIEW_OUTPUT" && "$REVIEW_OUTPUT" != "No relevant changes to review." ]]; then
             echo "$REVIEW_OUTPUT" > review_comment.txt
 
-            # Post review as github-actions[bot] using BOT_TOKEN
-            GH_TOKEN="$BOT_TOKEN" gh pr review "$PR_NUMBER" --comment --body-file review_comment.txt
+            # Rule 69: If PR has 'jules' label, post as alsotoes (PAT) so Jules can act on it.
+            # Otherwise, post as github-actions[bot] using BOT_TOKEN.
+            if gh pr view "$PR_NUMBER" --json labels --jq '.labels[].name' 2>/dev/null | grep -q "jules"; then
+              echo "PR has 'jules' label — posting review as alsotoes (Rule 69)"
+              gh pr review "$PR_NUMBER" --comment --body-file review_comment.txt
+            else
+              GH_TOKEN="$BOT_TOKEN" gh pr review "$PR_NUMBER" --comment --body-file review_comment.txt
+            fi
           fi

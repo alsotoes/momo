@@ -189,30 +189,38 @@ func runServer(ctx context.Context, cfg common.Configuration, serverId int) (err
 	}()
 
 	errChan := make(chan error, 3)
+	var wg sync.WaitGroup
+	wg.Add(3)
 
 	go func() {
+		defer wg.Done()
 		if e := runMetricsLoop(ctx, cfg, serverId); e != nil {
 			errChan <- e
 		}
 	}()
 
 	go func() {
+		defer wg.Done()
 		errChan <- runReplicationServer(ctx, cfg, serverId, timestamp)
 	}()
 
 	go func() {
+		defer wg.Done()
 		errChan <- runMainDaemon(ctx, cfg, serverId)
 	}()
 
-	// Wait for any component to return an error or for the program to be interrupted
-	// In a real application, we might want to catch SIGINT/SIGTERM here.
-	select {
-	case e := <-errChan:
-		if e != nil {
-			cancel() // Shut down other components
-			return e
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	var firstErr error
+	for e := range errChan {
+		if e != nil && firstErr == nil {
+			firstErr = e
+			cancel()
 		}
 	}
 
-	return nil
+	return firstErr
 }

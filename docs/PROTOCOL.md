@@ -105,11 +105,18 @@ When `RequestedMode` is `ModeGet` (`'G'`), the client requests the raw binary pa
 2.  **Target Name (Client sends):** Client sends the 64-byte null-padded name of the file to retrieve.
 3.  **Server Response (ACK/Payload):**
     -   If the file does not exist, the server writes a 1-byte `'1'` (Not Found) code and closes.
+    -   If a server error occurs, the server writes a 1-byte `'2'` (Server Error) code and closes.
     -   If the file exists, the server writes a 1-byte `'0'` (Success) code, followed by a 64-byte null-padded `FileSize` string, followed by the raw binary stream of the file until EOF.
 
 ### Payload
 
 The file payload is streamed until EOF. The server reads exactly the number of bytes specified in the `fileSize` metadata field.
+
+### Limits
+
+- **MaxFileSize:** 1 GB (`1024 * 1024 * 1024` bytes). Files exceeding this limit are rejected with `EBADMSG` at `server.go:283`.
+- **MaxPathLength:** 4096 bytes. Virtual paths exceeding this limit are rejected with `EBADMSG` in `DecodeFileMetadataList`.
+- **FileInfoLength:** 64 bytes. Hash and name fields exceeding this length are rejected with `EBADMSG` in `DecodeFileMetadataList`.
 
 ## Replication Modes in Detail
 
@@ -252,6 +259,79 @@ When a Momo cluster node acts as an S3 client to forward and replicate files to 
 ## Security & Resilience
 
 -   **Authentication:** Every connection requires a valid 64-byte AuthToken.
--   **Timeouts:** Connections are protected by rolling idle timeouts (30s) and phased absolute deadlines (10s for handshake, 60s for metadata) to prevent Slowloris attacks.
+-   **Timeouts:** Connections are protected by rolling idle timeouts (30s, TCP only) and phased absolute deadlines (10s for handshake, 60s for metadata) to prevent Slowloris attacks.
 -   **Sanitization:** All network inputs and error messages are sanitized before logging to prevent CRLF injection.
 -   **Error Handling:** If an error occurs (e.g., hash mismatch, disk full, or connection reset), the connection is closed. Hash mismatches return `EBADMSG`.
+
+## P2P Gossip Protocol
+
+When P2P is enabled, nodes exchange gossip membership and failure detection RPCs over a separate port (default 4450). All RPCs use a binary, length-prefixed frame format:
+
+```
+[4 bytes: total length] [1 byte: msg type] [4 bytes: from ID] [N bytes: payload]
+```
+
+### Message Types
+
+| Type | Value | Description |
+|------|-------|-------------|
+| `MsgHeartbeat` | 1 | Periodic heartbeat with sender's peer list |
+| `MsgMembership` | 2 | Node join/leave announcement |
+| `MsgSuspect` | 3 | Suspicion announcement about a peer |
+| `MsgQuery` | 4 | Scatter-gather query request |
+| `MsgQueryResponse` | 5 | Scatter-gather query response |
+| `MsgLeaseRequest` | 6 | Lease request for consensus |
+| `MsgLeaseGrant` | 7 | Lease grant or deny response |
+| `MsgLeaseRelease` | 8 | Lease release notification |
+| `MsgPing` | 9 | Direct ping for SWIM failure detection |
+| `MsgAck` | 10 | Ack response to a ping |
+| `MsgIndirectPing` | 11 | Indirect ping request via intermediary |
+
+### Ping Payload (MsgPing / MsgAck / MsgIndirectPing)
+
+```
+[8 bytes: ping ID] [4 bytes: target ID] [8 bytes: timestamp unixnano]
+```
+
+- **PingID**: Unique identifier for matching acks to pings
+- **TargetID**: The peer being pinged (for indirect pings, the ultimate target)
+- **Timestamp**: Send time for RTT calculation
+
+### Heartbeat Payload (MsgHeartbeat)
+
+```
+[4 bytes: peer count] [for each peer: [4 bytes: peer ID] [2 bytes: addr len] [N bytes: addr]]
+```
+
+- **Peer count**: Number of peers in the heartbeat (max `MaxPeersInHeartbeat=256`)
+- **Per peer**: Peer ID (int32) + address string length + address bytes
+
+### Query Payload (MsgQuery)
+
+```
+[1 byte: query type] [8 bytes: request ID] [N bytes: data]
+```
+
+- **QueryType**: `QueryList=1`, `QueryGet=2`, `QueryHas=3`, `QueryDelete=4`
+- **RequestID**: Unique ID for matching responses to requests
+- **Data**: Query-specific data (e.g., file name for QueryGet)
+
+### Query Response Payload (MsgQueryResponse)
+
+```
+[8 bytes: request ID] [4 bytes: data len] [N bytes: data] [2 bytes: err len] [M bytes: err]
+```
+
+- **RequestID**: Matches the originating query
+- **Data**: Response data (e.g., file list for QueryList)
+- **Error**: Error string (empty if successful)
+
+### Lease Payload (MsgLeaseRequest / MsgLeaseGrant / MsgLeaseRelease)
+
+```
+[8 bytes: lease ID] [4 bytes: key len] [N bytes: key] [8 bytes: expiry unixnano]
+```
+
+- **LeaseID**: Unique lease identifier
+- **Key**: Resource key being leased
+- **Expiry**: Lease expiration timestamp (unix nano)

@@ -22,7 +22,7 @@ jobs:
     steps:
     - uses: actions/checkout@v7
     - name: Set up Go
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@v7
       with:
         go-version: '1.25.x'
 
@@ -46,6 +46,9 @@ jobs:
           git status --porcelain vendor/
           exit 1
         fi
+
+    - name: Check Scanner-Safe Secrets (Rule 29)
+      run: .github/scripts/check-notsecret.sh
 
     - name: Test
       run: make test

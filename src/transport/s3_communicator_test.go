@@ -44,7 +44,7 @@ func TestS3Communicator_HandshakeServer(t *testing.T) {
 
 	go func() {
 		clientConn.Write([]byte(reqBody))
-		// ⚡ Bolt: Read in a loop to avoid deadlock on net.Pipe. 
+		// ⚡ Bolt: Read in a loop to avoid deadlock on net.Pipe.
 		// http.Response.Write performs multiple writes which will block if not fully consumed.
 		buf := make([]byte, 1024)
 		for {
@@ -105,7 +105,7 @@ func TestS3Communicator_AWSV4Auth(t *testing.T) {
 
 	go func() {
 		clientConn.Write([]byte(reqBody))
-		// ⚡ Bolt: Read in a loop to avoid deadlock on net.Pipe. 
+		// ⚡ Bolt: Read in a loop to avoid deadlock on net.Pipe.
 		// http.Response.Write performs multiple writes which will block if not fully consumed.
 		buf := make([]byte, 1024)
 		for {
@@ -133,7 +133,6 @@ func TestS3Communicator_HashTraversalValidation(t *testing.T) {
 		"../../malicious",
 		"some/path",
 		"bad\\hash",
-		".dot",
 	}
 
 	for _, malHash := range maliciousHashes {
@@ -181,7 +180,7 @@ func TestS3Communicator_EdgeCases(t *testing.T) {
 
 	// 1. Panic recovery tests (Rule 4) via nil communicator
 	var nilComm *S3Communicator
-	
+
 	_, err := nilComm.Read(make([]byte, 10))
 	if err == nil {
 		t.Errorf("Expected Read on nilComm to fail")
@@ -244,12 +243,11 @@ func TestS3Communicator_EdgeCases(t *testing.T) {
 }
 
 type mockStore struct {
-	putFunc     func(name string, hash string, size int64, remotePath string, content io.Reader) error
-	getFunc     func(name string) (io.ReadCloser, common.FileMetadata, error)
-	hasFunc     func(hash string) (bool, error)
-	deleteFunc  func(name string) error
-	listFunc    func() ([]common.FileMetadata, error)
-	getBlobPath func(name string) (string, error)
+	putFunc    func(name string, hash string, size int64, remotePath string, content io.Reader) error
+	getFunc    func(name string) (io.ReadCloser, common.FileMetadata, error)
+	hasFunc    func(hash string) (bool, error)
+	deleteFunc func(name string) error
+	listFunc   func() ([]common.FileMetadata, error)
 }
 
 func (m *mockStore) Close() error { return nil }
@@ -283,15 +281,9 @@ func (m *mockStore) List() ([]common.FileMetadata, error) {
 	}
 	return nil, nil
 }
-func (m *mockStore) GetBlobPath(name string) (string, error) {
-	if m.getBlobPath != nil {
-		return m.getBlobPath(name)
-	}
-	return "", nil
-}
 
 func runS3TestRequest(t *testing.T, reqStr string, mock storage.Store) string {
-	expectedAuthToken := []byte(common.PadString("a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6", common.AuthTokenLength))
+	expectedAuthToken := []byte(common.PadString("a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6", common.AuthTokenLength)) // notsecret
 
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -404,7 +396,7 @@ func TestS3Communicator_URLParsing(t *testing.T) {
 func TestS3Communicator_KeyTraversalValidation(t *testing.T) {
 	defer verifyNoLeaks(t)
 
-	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
 	expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
 
 	maliciousKeys := []string{
@@ -513,7 +505,7 @@ func TestS3Communicator_XMLFormatting(t *testing.T) {
 func TestS3Communicator_GET_ListObjectsV2(t *testing.T) {
 	defer verifyNoLeaks(t)
 
-	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
 	reqStr := "GET /?list-type=2 HTTP/1.1\r\n" +
 		"Host: 127.0.0.1:4440\r\n" +
 		"Authorization: Bearer " + authToken + "\r\n\r\n"
@@ -542,7 +534,7 @@ func TestS3Communicator_GET_ListObjectsV2(t *testing.T) {
 func TestS3Communicator_GET_GetObject(t *testing.T) {
 	defer verifyNoLeaks(t)
 
-	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
 	reqStr := "GET /bucket/hello.txt HTTP/1.1\r\n" +
 		"Host: 127.0.0.1:4440\r\n" +
 		"Authorization: Bearer " + authToken + "\r\n\r\n"
@@ -573,7 +565,7 @@ func TestS3Communicator_GET_GetObject(t *testing.T) {
 func TestS3Communicator_DELETE(t *testing.T) {
 	defer verifyNoLeaks(t)
 
-	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
 	reqStr := "DELETE /bucket/mydeletedfile.txt HTTP/1.1\r\n" +
 		"Host: 127.0.0.1:4440\r\n" +
 		"Authorization: Bearer " + authToken + "\r\n\r\n"
@@ -594,5 +586,47 @@ func TestS3Communicator_DELETE(t *testing.T) {
 
 	if !strings.Contains(respStr, "HTTP/1.1 204 No Content") {
 		t.Errorf("Expected 204 No Content, got: %s", respStr)
+	}
+}
+
+func TestS3Communicator_HandshakeClient_CRLFInjection(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	comm := NewS3Communicator(serverConn)
+
+	_, err := comm.HandshakeClient("evil\r\nX-Injected: true", 12345, 1)
+	if err == nil {
+		t.Fatal("Expected error for CRLF in auth token, got nil")
+	}
+	if !strings.Contains(err.Error(), "CRLF") {
+		t.Errorf("Expected CRLF error, got: %v", err)
+	}
+}
+
+func TestS3Communicator_SendMetadataPathTraversal(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	comm := NewS3Communicator(clientConn)
+
+	// Malicious Name
+	badMeta := &common.FileMetadata{
+		Name: "../passwd",
+		Hash: "hash123",
+		Size: 100,
+	}
+	_, err := comm.SendMetadata(badMeta)
+	if err == nil {
+		t.Fatal("Expected SendMetadata to fail with path traversal name")
+	}
+	if !errors.Is(err, syscall.EBADMSG) {
+		t.Errorf("Expected EBADMSG error, got: %v", err)
 	}
 }

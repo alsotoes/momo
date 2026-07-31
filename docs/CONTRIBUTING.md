@@ -7,7 +7,7 @@ Momo is developed with a focus on high-performance, security, and architectural 
 1.  **Spec First**: All significant changes must start with an **OpenSpec** proposal in `openspec/changes/`.
 2.  **Issue Linkage**: Every spec must be linked to a mirrored GitHub Issue to maintain traceability.
 3.  **Feature Branching**: Work is performed in dedicated branches named `feature/<issue-number>-<description>`.
-4.  **⚡ Bolt & 🛡️ Sentinel**: Code must adhere to the performance (Bolt) and security (Sentinel) patterns defined in the `.jules/` directory.
+4.  **⚡ Bolt & 🛡️ Sentinel**: Code must adhere to the performance (Bolt) and security (Sentinel) patterns defined in `openspec/config.yaml` (the single source of truth for all steering rules, per Rule 39). Cumulative learnings are recorded in `.jules/bolt.md` and `.jules/sentinel.md`.
 
 ## Automated Code Review & Merge
 
@@ -34,11 +34,24 @@ To satisfy **Steering Rule #11**, the Gemini AI Reviewer is authorized to autono
 
 ## CI/CD Pipeline
 
-Every Pull Request must pass the full suite of validations before merging:
-- **Unit & Fuzz Tests**: All tests in `src/` must pass with `-race` enabled.
-- **Benchmark Gate**: Geomean performance must not degrade by more than 5%.
-- **Smoke Tests**: Physical file replication verified across 5 suites (**TCP, QUIC, S3-TCP, S3-QUIC, and Scale/CAS**).
+Every Pull Request must pass the full suite of validations before merging. See **[docs/TESTING.md](TESTING.md)** for a complete breakdown of every workflow, test suite, and step.
+
+Summary:
+- **Unit Tests**: All tests in `src/` (including `src/p2p/`) must pass with `-race` enabled.
+- **Benchmark Gate**: Performance must not degrade by more than 5% (via `benchstat` comparison).
+- **E2E Tests**: File replication across 3 nodes (all protocols) + P2P gossip convergence and failure detection.
+- **Smoke Tests**: Physical file replication verified across 4 suites (**TCP, QUIC, S3-TCP, S3-QUIC**).
+- **Scale & CAS**: Content-addressable storage scale testing with CRUSH placement.
+- **Contract Tests**: Wire protocol contract verification (handshake, metadata, round-trip, RPC framing).
+- **Metrics E2E**: Prometheus `/metrics` endpoint format and counter increment verification.
+- **Scanner-Safe Secrets (Rule 29)**: All dummy tokens must be annotated with `// notsecret` or `# notsecret`. Enforced by `.github/scripts/check-notsecret.sh` in both the pre-commit hook and CI.
 - **Version Consistency**: Go versions must be synchronized across all config files.
+
+## Pre-Commit Hook
+
+Install the pre-commit hook with `make install-hooks`. It runs:
+1. **Rule 29 check** (`check-notsecret.sh`) — fails if any dummy token lacks the `notsecret` annotation.
+2. **Benchmark sync** — regenerates `docs/PERFORMANCE.md` and `.github/data/benchmark_history.csv` with latest benchmark results.
 
 ---
 *Momo is a collaborative effort between human developers and AI agents (Gemini CLI, @google-labs-jules).*

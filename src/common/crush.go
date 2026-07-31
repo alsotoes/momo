@@ -65,21 +65,21 @@ func (m *ClusterMap) Placement(objectHash string, replicationFactor int) (nodes 
 		h.Write([]byte(objectHash))
 
 		// ⚡ Bolt: Eliminate reflection overhead and allocations by using stack-allocated buffer
-		var idBuf [4]byte
-		binary.LittleEndian.PutUint32(idBuf[:], uint32(node.ID))
+		var idBuf [8]byte
+		binary.LittleEndian.PutUint64(idBuf[:], uint64(node.ID))
 		h.Write(idBuf[:])
 
 		// ⚡ Bolt: Eliminate heap allocation of hash.Sum by using stack-allocated slice
 		var sumBuf [sha256.Size]byte
 		sum := h.Sum(sumBuf[:0])
-		
+
 		val := binary.LittleEndian.Uint64(sum[:8])
 		floatVal := float64(val) / float64(math.MaxUint64)
 
 		// ⚡ Bolt: Use Weighted Rendezvous Hashing (WRH) formula: -weight / log(score).
 		// This provides mathematically perfect load balancing for heterogeneous nodes.
 		var finalScore float64
-		if floatVal > 0 && node.Weight > 0 {
+		if floatVal > 0 && floatVal < 1.0 && node.Weight > 0 {
 			finalScore = -float64(node.Weight) / math.Log(floatVal)
 		} else {
 			finalScore = 0

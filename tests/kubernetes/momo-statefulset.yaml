@@ -1,0 +1,160 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: momo-config
+  labels:
+    app: momo
+data:
+  momo.conf: |
+    [global]
+    auth_token=k8s-momo-token # notsecret
+    debug=false
+    replication_order=3,2,1
+    polymorphic_system=false
+
+    [metrics]
+    interval=1000
+    min_threshold=0.1
+    max_threshold=0.9
+    fallback_interval=30
+    prometheus_port=9100
+
+    [daemon.0]
+    host=momo-0.momo-headless:3333
+    change_replication=momo-0.momo-headless:2223
+    data=/data/0
+    drive=/dev/sda1
+
+    [daemon.1]
+    host=momo-1.momo-headless:3333
+    change_replication=momo-1.momo-headless:2223
+    data=/data/1
+    drive=/dev/sdb1
+
+    [daemon.2]
+    host=momo-2.momo-headless:3333
+    change_replication=momo-2.momo-headless:2223
+    data=/data/2
+    drive=/dev/sdc1
+
+    [p2p]
+    enabled=true
+    gossip_port=4450
+    gossip_interval=1
+    suspicion_timeout=5
+    fanout=3
+    ping_timeout=500
+    indirect_ping_count=3
+    scatter_gather_timeout=5
+    lease_timeout=10
+
+    [storage]
+    gc_interval=300
+    tombstone_retention=86400
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: momo
+  labels:
+    app: momo
+spec:
+  serviceName: momo-headless
+  replicas: 3
+  selector:
+    matchLabels:
+      app: momo
+  template:
+    metadata:
+      labels:
+        app: momo
+    spec:
+      containers:
+        - name: momo
+          image: momo:latest
+          ports:
+            - containerPort: 3333
+              name: data
+            - containerPort: 2223
+              name: replication
+            - containerPort: 9100
+              name: metrics
+            - containerPort: 4450
+              name: gossip
+          volumeMounts:
+            - name: config
+              mountPath: /app/conf
+              readOnly: true
+            - name: data
+              mountPath: /data
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9100
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 9100
+            initialDelaySeconds: 3
+            periodSeconds: 5
+      volumes:
+        - name: config
+          configMap:
+            name: momo-config
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: momo-headless
+  labels:
+    app: momo
+spec:
+  clusterIP: None
+  selector:
+    app: momo
+  ports:
+    - port: 3333
+      name: data
+    - port: 2223
+      name: replication
+    - port: 4450
+      name: gossip
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: momo
+  labels:
+    app: momo
+spec:
+  type: LoadBalancer
+  selector:
+    app: momo
+  ports:
+    - port: 3333
+      name: data
+    - port: 9100
+      name: metrics
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: momo-metrics
+  labels:
+    app: momo
+spec:
+  selector:
+    app: momo
+  ports:
+    - port: 9100
+      name: metrics

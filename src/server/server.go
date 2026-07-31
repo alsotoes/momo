@@ -5,7 +5,9 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -13,12 +15,17 @@ import (
 
 	"github.com/alsotoes/momo/src/client"
 	"github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/p2p"
 	"github.com/alsotoes/momo/src/storage"
 	"github.com/alsotoes/momo/src/transport"
 )
 
 // connectToPeer is an alias for the client.Connect function, used to connect to other servers in the cluster for data replication.
 var connectToPeer = client.Connect
+
+// connectToPeerStream is an alias for client.ConnectStream, used for streaming
+// replication forwarding from a store reader instead of a local file path.
+var connectToPeerStream = client.ConnectStream
 
 // Daemon is the core of the momo server.
 // It listens for incoming connections and handles file uploads and replication.
@@ -31,15 +38,22 @@ var connectToPeer = client.Connect
 //   - ReplicationPrimarySplay: This mode is currently handled as ReplicationNone, which means no replication is performed.
 //
 // The replication mode is determined by the client, and for secondary servers, it's influenced by the timestamp of the operation.
-func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
+func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in Daemon: %v", r)
+			err = syscall.EIO
+		}
+	}()
+
 	daemons := cfg.Daemons
 	if serverId < 0 || serverId >= len(daemons) {
 		return fmt.Errorf("server id out of range")
 	}
 	factory := transport.NewProtocolFactory(cfg)
 
-	// Initialize CAS Storage
-	store, err := storage.NewCASStore(daemons[serverId].Data)
+	// Initialize storage with configured backend
+	store, err := storage.NewStore(cfg.Storage, daemons[serverId])
 	if err != nil {
 		return fmt.Errorf("failed to initialize storage: %w", err)
 	}
@@ -50,7 +64,9 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 		return fmt.Errorf("Error listening: %v", err)
 	}
 
-	defer server.Close()
+	closeOnce := sync.Once{}
+	closeServer := func() { closeOnce.Do(func() { server.Close() }) }
+	defer closeServer()
 
 	// Handle graceful shutdown via context
 	go func() {
@@ -60,11 +76,15 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 			}
 		}()
 		<-ctx.Done()
-		server.Close()
+		closeServer()
 	}()
 
 	log.Printf("Server primary Daemon started... at %s using %s", daemons[serverId].Host, cfg.Global.Protocol)
 	log.Printf("...Waiting for connections...")
+
+	// Start Prometheus metrics endpoint if configured
+	metricsCollector := NewMetricsCollector()
+	StartMetricsServer(ctx, cfg.Metrics.PrometheusPort, metricsCollector)
 
 	// 🛡️ Zero-Crash: Log a warning if the cluster cannot meet the desired durability goal.
 	if cfg.Global.ReplicationFactor > len(daemons) {
@@ -81,10 +101,19 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 	}
 	cmap := &common.ClusterMap{Nodes: nodes}
 
+	// P2P Transport & Gossip (coexists with existing listener when enabled)
+	var scatterGather *p2p.ScatterGather
+	var leaseManager *p2p.LeaseManager
+	if cfg.P2P.Enabled {
+		scatterGather, leaseManager = bootstrapP2P(ctx, cfg, serverId, daemons, store)
+	}
+
 	// 🛡️ Sentinel: Enforce a limit on concurrent connections to prevent resource exhaustion (DoS).
 	const maxConcurrentConnections = 1000
 	sem := make(chan struct{}, maxConcurrentConnections)
 
+	// Accept loop: server.Accept() returns errors, not panics. Per-connection
+	// goroutines below each have their own recover() block (Rule 37) for panic safety.
 	for {
 		connection, err := server.Accept()
 		if err != nil {
@@ -101,7 +130,11 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 		}
 
 		// Acquire semaphore slot before spinning up a new goroutine
-		sem <- struct{}{}
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			return nil
+		}
 		go func(comm transport.Communicator) {
 			defer func() { <-sem }()
 			// 🛡️ Zero-Crash Hardening: Recover from any unexpected panics in the connection handler
@@ -109,8 +142,12 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 			defer func() {
 				if r := recover(); r != nil {
 					log.Printf("CRITICAL: Panic recovered in Daemon for %s: %v", comm.RemoteAddr(), r)
+					metricsCollector.IncErrors()
 				}
 			}()
+
+			metricsCollector.IncConnections()
+			defer metricsCollector.DecConnections()
 
 			var replicationMode int
 			var success bool
@@ -123,13 +160,40 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 				s3Comm.SetStore(store)
 			}
 
+			// Inject metrics hook for download/delete/error instrumentation
+			if mhComm, ok := comm.(interface{ SetMetricsHook(transport.MetricsHook) }); ok {
+				mhComm.SetMetricsHook(metricsCollector)
+			}
+
+			// Inject scatter-gather and lease capabilities if P2P is enabled
+			if scatterGather != nil {
+				if glComm, ok := comm.(interface{ SetGlobalLister(transport.GlobalLister) }); ok {
+					glComm.SetGlobalLister(NewScatterGatherLister(scatterGather,
+						time.Duration(cfg.P2P.ScatterGatherTimeout)*time.Second))
+				}
+				if dpComm, ok := comm.(interface {
+					SetDeletePropagator(transport.DeletePropagator)
+				}); ok {
+					dpComm.SetDeletePropagator(NewScatterGatherDeleter(scatterGather,
+						time.Duration(cfg.P2P.ScatterGatherTimeout)*time.Second))
+				}
+			}
+			if leaseManager != nil {
+				if laComm, ok := comm.(interface{ SetLeaseAcquirer(transport.LeaseAcquirer) }); ok {
+					laComm.SetLeaseAcquirer(NewLeaseAcquirerAdapter(leaseManager,
+						time.Duration(cfg.P2P.LeaseTimeout)*time.Second))
+				}
+			}
+
 			// 🛡️ Sentinel: Apply a strict absolute deadline for the handshake phase to prevent Slowloris trickle attacks.
 			comm.SetAbsoluteDeadline(time.Now().Add(10 * time.Second))
 
 			defer func() {
 				if success {
 					log.Printf("AUDIT: Server ACK to Client %s => ACK%d", remoteAddr, serverId)
-					comm.SendACK(serverId)
+					if err := comm.SendACK(serverId); err != nil {
+						log.Printf("ERROR: Failed to send ACK to client %s: %v", remoteAddr, err)
+					}
 				}
 				comm.Close()
 			}()
@@ -146,6 +210,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 					return
 				}
 				log.Printf("AUDIT: Handshake failed from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
+				metricsCollector.IncErrors()
 				return
 			}
 
@@ -179,12 +244,29 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 				replicationMode = common.ReplicationNone
 			}
 
+			// Downgrade client-side replication modes for external S3 clients.
+			// External clients (e.g., aws-cli) cannot perform client-side replication
+			// (primary-splay). If the selected mode is in ClientSideReplicationModes,
+			// walk ReplicationOrder forward to find the next server-side mode.
+			// This is a per-transaction downgrade — global polymorphic state is unchanged.
+			if comm.IsExternalClient() {
+				for _, csm := range cfg.Global.ClientSideReplicationModes {
+					if replicationMode == csm {
+						originalMode := replicationMode
+						replicationMode = downgradeToServerSideMode(replicationMode, cfg.Global.ReplicationOrder, cfg.Global.ClientSideReplicationModes)
+						log.Printf("AUDIT: External client detected — downgraded replication mode %d → %d (per-transaction, global state unchanged)", originalMode, replicationMode)
+						break
+					}
+				}
+			}
+
 			log.Printf("Cluster object global timestamp: %d", finalTs)
 			log.Printf("Server Daemon replicationMode: %d", replicationMode)
 
 			// Send the selected replication mode back to the client
 			if err := comm.SendReplicationMode(replicationMode); err != nil {
 				log.Printf("AUDIT: Error sending replication mode to %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
+				metricsCollector.IncErrors()
 				return
 			}
 
@@ -195,6 +277,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 			metadata, err := comm.ReceiveMetadata()
 			if err != nil {
 				log.Printf("AUDIT: Error getting metadata from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
+				metricsCollector.IncErrors()
 				return
 			}
 
@@ -203,6 +286,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 				log.Printf("AUDIT: Invalid hash received from %s: %v", remoteAddr, common.SanitizeLog(metadata.Hash))
 				// ⚡ Bolt: Map to syscall.EBADMSG for POSIX compliance.
 				success = false
+				metricsCollector.IncErrors()
 				return
 			}
 
@@ -211,6 +295,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 			if rawFileName == "" || rawFileName == "." || rawFileName == ".." || strings.Contains(rawFileName, "../") || strings.Contains(rawFileName, "\\") {
 				log.Printf("AUDIT: Invalid filename received from %s: %v", remoteAddr, common.SanitizeLog(rawFileName))
 				success = false
+				metricsCollector.IncErrors()
 				return
 			}
 			remotePath := ""
@@ -221,6 +306,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 			if fileName == "" || fileName == "." || fileName == ".." || fileName == "/" || fileName == "\\" {
 				log.Printf("AUDIT: Invalid filename received from %s: %v", remoteAddr, common.SanitizeLog(fileName))
 				success = false
+				metricsCollector.IncErrors()
 				return
 			}
 
@@ -229,12 +315,14 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 				log.Printf("AUDIT: Invalid file size received from %s: %d (max: %d)", remoteAddr, metadata.Size, common.MaxFileSize)
 				// ⚡ Bolt: Map to syscall.EBADMSG for POSIX compliance.
 				success = false
+				metricsCollector.IncErrors()
 				return
 			}
 
 			// 🛡️ Zero-Crash: Defensive check for storage initialization.
 			if store == nil {
 				log.Printf("AUDIT: Storage error for %s: store not initialized: %v", remoteAddr, syscall.EIO)
+				metricsCollector.IncErrors()
 				return
 			}
 
@@ -242,6 +330,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 			exists, err := store.Has(metadata.Hash)
 			if err != nil {
 				log.Printf("AUDIT: Storage error checking hash %s: %v", metadata.Hash, common.SanitizeLog(err.Error()))
+				metricsCollector.IncErrors()
 				return
 			}
 
@@ -249,11 +338,13 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 				log.Printf("AUDIT: Deduplication hit for %s (hash: %s)", remoteAddr, metadata.Hash)
 				if err := comm.SendMetadataStatus(transport.MetadataStatusSkipPayload); err != nil {
 					log.Printf("AUDIT: Error sending metadata status to %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
+					metricsCollector.IncErrors()
 					return
 				}
 			} else {
 				if err := comm.SendMetadataStatus(transport.MetadataStatusSendPayload); err != nil {
 					log.Printf("AUDIT: Error sending metadata status to %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
+					metricsCollector.IncErrors()
 					return
 				}
 			}
@@ -268,6 +359,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 			placement, err := cmap.Placement(metadata.Hash, factor)
 			if err != nil {
 				log.Printf("AUDIT: Placement failed for %s: %v", metadata.Hash, err)
+				metricsCollector.IncErrors()
 				return
 			}
 
@@ -284,10 +376,13 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 					// ⚡ Bolt: Deduplication hit. Just update metadata mapping without reading payload.
 					if err := store.Put(fileName, metadata.Hash, metadata.Size, remotePath, nil); err != nil {
 						log.Printf("AUDIT: Error updating metadata for %s from %s: %v", fileName, remoteAddr, common.SanitizeLog(err.Error()))
+						metricsCollector.IncErrors()
+						return
 					}
 				} else {
 					if err := getFile(comm, store, fileName, metadata.Hash, metadata.Size, remotePath); err != nil {
 						log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
+						metricsCollector.IncErrors()
 						return
 					}
 				}
@@ -306,30 +401,44 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 					// ⚡ Bolt: Deduplication hit. Just update metadata mapping without reading payload.
 					if err := store.Put(fileName, metadata.Hash, metadata.Size, remotePath, nil); err != nil {
 						log.Printf("AUDIT: Error updating metadata for %s from %s: %v", fileName, remoteAddr, common.SanitizeLog(err.Error()))
+						wg.Done()
+						metricsCollector.IncErrors()
+						return
 					}
 				} else {
 					if err := getFile(comm, store, fileName, metadata.Hash, metadata.Size, remotePath); err != nil {
 						log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
 						wg.Done()
+						metricsCollector.IncErrors()
 						return
 					}
 				}
 
 				if myPos != -1 && myPos < len(placement)-1 {
 					nextHop := placement[myPos+1]
-					blobPath, _ := store.GetBlobPath(fileName)
 					log.Printf("AUDIT: Chain forwarding from Node %d to Node %d", serverId, nextHop.ID)
-					
+
 					// 🛡️ Zero-Crash: Wrap Chain forwarding in a goroutine with recovery for consistency and safety.
-					go func(id int, path string) {
+					go func(id int) {
 						defer func() {
 							if r := recover(); r != nil {
 								log.Printf("CRITICAL: Panic recovered in Chain forwarder to node %d: %v", id, r)
+								wg.Done()
+								metricsCollector.IncErrors()
 							}
 						}()
-						// ⚡ Bolt: connectToPeer (client.Connect) handles wg.Done() internally via defer.
-						connectToPeer(&wg, cfg, path, "", id, finalTs, replicationMode, factor)
-					}(nextHop.ID, blobPath)
+						reader, _, err := store.Get(fileName)
+						if err != nil {
+							log.Printf("AUDIT: Failed to get blob for chain forwarding: %v", common.SanitizeLog(err.Error()))
+							wg.Done()
+							metricsCollector.IncErrors()
+							return
+						}
+						defer reader.Close()
+						// ⚡ Bolt: connectToPeerStream (client.ConnectStream) handles wg.Done() internally via defer.
+						connectToPeerStream(&wg, cfg, reader, fileName, metadata.Hash, metadata.Size, remotePath, id, finalTs, replicationMode, factor)
+						metricsCollector.IncReplication()
+					}(nextHop.ID)
 				} else {
 					wg.Done()
 				}
@@ -343,6 +452,11 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 						// ⚡ Bolt: Deduplication hit. Just update metadata mapping.
 						if err := store.Put(fileName, metadata.Hash, metadata.Size, remotePath, nil); err != nil {
 							log.Printf("AUDIT: Error updating metadata for %s from %s: %v", fileName, remoteAddr, common.SanitizeLog(err.Error()))
+							for i := 0; i < len(placement)-1; i++ {
+								wg.Done()
+							}
+							metricsCollector.IncErrors()
+							return
 						}
 					} else {
 						if err := getFile(comm, store, fileName, metadata.Hash, metadata.Size, remotePath); err != nil {
@@ -350,22 +464,31 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 							for i := 0; i < len(placement)-1; i++ {
 								wg.Done()
 							}
+							metricsCollector.IncErrors()
 							return
 						}
 					}
-					blobPath, _ := store.GetBlobPath(fileName)
 					for i := 1; i < len(placement); i++ {
 						targetId := placement[i].ID
 						go func(id int) {
-							// ⚡ Bolt: connectToPeer (client.Connect) handles wg.Done() internally via defer.
-							// Wait, if connectToPeer handles wg.Done(), we MUST NOT call it here.
-							// client.Connect DOES call wg.Done().
+							// ⚡ Bolt: connectToPeerStream (client.ConnectStream) handles wg.Done() internally via defer.
 							defer func() {
 								if r := recover(); r != nil {
 									log.Printf("CRITICAL: Panic recovered in Splay forwarder to node %d: %v", id, r)
+									wg.Done()
+									metricsCollector.IncErrors()
 								}
 							}()
-							connectToPeer(&wg, cfg, blobPath, "", id, finalTs, replicationMode, factor)
+							reader, _, err := store.Get(fileName)
+							if err != nil {
+								log.Printf("AUDIT: Failed to get blob for splay forwarding: %v", common.SanitizeLog(err.Error()))
+								wg.Done()
+								metricsCollector.IncErrors()
+								return
+							}
+							defer reader.Close()
+							connectToPeerStream(&wg, cfg, reader, fileName, metadata.Hash, metadata.Size, remotePath, id, finalTs, replicationMode, factor)
+							metricsCollector.IncReplication()
 						}(targetId)
 					}
 					wg.Wait()
@@ -374,19 +497,151 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) error {
 					if exists {
 						if err := store.Put(fileName, metadata.Hash, metadata.Size, remotePath, nil); err != nil {
 							log.Printf("AUDIT: Error updating metadata for %s from %s: %v", fileName, remoteAddr, common.SanitizeLog(err.Error()))
+							metricsCollector.IncErrors()
+							return
 						}
 					} else {
 						if err := getFile(comm, store, fileName, metadata.Hash, metadata.Size, remotePath); err != nil {
 							log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
+							metricsCollector.IncErrors()
 							return
 						}
 					}
 				}
 			default:
 				log.Printf("AUDIT: *** ERROR: Unknown replication type from %s", remoteAddr)
+				metricsCollector.IncErrors()
 				return
 			}
 			success = true
+			metricsCollector.IncUploads()
+			if !exists {
+				metricsCollector.AddBytesUploaded(uint64(metadata.Size))
+			}
 		}(connection)
 	}
+}
+
+// bootstrapP2P starts the P2P transport and gossip protocol alongside the main daemon.
+// It connects to all configured daemon peers as bootstrap seeds and begins
+// exchanging heartbeats for dynamic membership discovery.
+// Returns the ScatterGather and LeaseManager instances for use by the server.
+func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, daemons []*common.Daemon, store storage.Store) (*p2p.ScatterGather, *p2p.LeaseManager) {
+	gossipAddr := daemons[serverId].Host
+	host, _, err := net.SplitHostPort(gossipAddr)
+	if err != nil {
+		host = "0.0.0.0"
+	}
+
+	basePort, err := strconv.Atoi(cfg.P2P.GossipPort)
+	if err != nil {
+		basePort = 4450
+	}
+	gossipPort := basePort + serverId
+	gossipAddr = net.JoinHostPort(host, strconv.Itoa(gossipPort))
+
+	transport := p2p.NewTCPTransport(p2p.TCPTransportConfig{
+		LocalID: int32(serverId),
+	})
+
+	if err := transport.Listen(gossipAddr); err != nil {
+		log.Printf("P2P: failed to listen on %s: %v", gossipAddr, err)
+		return nil, nil
+	}
+
+	gossipCfg := p2p.GossipConfig{
+		LocalID:           int32(serverId),
+		HeartbeatInterval: time.Duration(cfg.P2P.GossipInterval) * time.Second,
+		SuspicionTimeout:  time.Duration(cfg.P2P.SuspicionTimeout) * time.Second,
+		Fanout:            cfg.P2P.Fanout,
+		PingTimeout:       time.Duration(cfg.P2P.PingTimeout) * time.Millisecond,
+		IndirectPingCount: cfg.P2P.IndirectPingCount,
+		RTTAlpha:          0.25,
+	}
+
+	gossip := p2p.NewGossiper(gossipCfg, transport)
+	gossip.OnJoin(func(peer *p2p.Peer) {
+		log.Printf("P2P: peer %d joined cluster from %s", peer.ID, peer.Addr)
+	})
+	gossip.OnLeave(func(peerID int32) {
+		log.Printf("P2P: peer %d left cluster", peerID)
+	})
+
+	queryHandler := NewStorageQueryHandler(store)
+	scatterGather := p2p.NewScatterGather(int32(serverId), transport, queryHandler)
+	leaseManager := p2p.NewLeaseManager(int32(serverId), transport)
+
+	gossip.SetScatterGather(scatterGather)
+	gossip.SetLeaseManager(leaseManager)
+
+	for i, d := range daemons {
+		if i == serverId {
+			continue
+		}
+		dHost, _, _ := net.SplitHostPort(d.Host)
+		peerPort := basePort + i
+		peerAddr := net.JoinHostPort(dHost, strconv.Itoa(peerPort))
+		if _, err := transport.Dial(int32(i), peerAddr); err != nil {
+			log.Printf("P2P: failed to dial bootstrap peer %d at %s: %v", i, peerAddr, err)
+		}
+	}
+
+	leaseManager.Start()
+	gossip.Run()
+
+	log.Printf("P2P: gossip started, node %d, %d peers connected", serverId, transport.Peers().Count())
+
+	go func() {
+		<-ctx.Done()
+		leaseManager.Stop()
+		gossip.Close()
+		transport.Close()
+	}()
+
+	return scatterGather, leaseManager
+}
+
+// downgradeToServerSideMode finds the next mode in replicationOrder that is NOT
+// in clientSideModes, starting from the position after the current mode.
+// If the current mode is already server-side (not in clientSideModes), it is
+// returned as-is. If no suitable mode is found, falls back to ReplicationNone (0)
+// to ensure the file is at least stored locally.
+func downgradeToServerSideMode(currentMode int, replicationOrder []int, clientSideModes []int) int {
+	isClientSide := func(mode int) bool {
+		for _, csm := range clientSideModes {
+			if mode == csm {
+				return true
+			}
+		}
+		return false
+	}
+
+	// If the current mode is already server-side, no downgrade needed.
+	if !isClientSide(currentMode) {
+		return currentMode
+	}
+
+	// Find the position of currentMode in replicationOrder and walk forward.
+	startIdx := 0
+	for i, mode := range replicationOrder {
+		if mode == currentMode {
+			startIdx = i + 1
+			break
+		}
+	}
+
+	for i := startIdx; i < len(replicationOrder); i++ {
+		if !isClientSide(replicationOrder[i]) {
+			return replicationOrder[i]
+		}
+	}
+
+	// No server-side mode found after current position — scan from the beginning.
+	for i := 0; i < startIdx && i < len(replicationOrder); i++ {
+		if !isClientSide(replicationOrder[i]) {
+			return replicationOrder[i]
+		}
+	}
+
+	return common.ReplicationNone
 }
