@@ -23,7 +23,7 @@ PATTERNS=(
 )
 
 # File extensions to scan
-EXTENSIONS=('go' 'sh' 'yml' 'yaml' 'js' 'conf' 'json' 'py')
+EXTENSIONS=('go' 'sh' 'yml' 'yaml' 'js' 'conf' 'json' 'py' 'txt' 'md')
 
 for pattern in "${PATTERNS[@]}"; do
     for ext in "${EXTENSIONS[@]}"; do

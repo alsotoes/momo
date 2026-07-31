@@ -35,7 +35,7 @@ func TestCreateUser(t *testing.T) {
     `, &resp,
         client.Var("email", "alice@example.com"),
         client.Var("name", "Alice"),
-        client.AddHeader("Authorization", "Bearer test-token"),
+        client.AddHeader("Authorization", "Bearer test-token"), // notsecret
     )
 
     require.Empty(t, resp.CreateUser.Errors)
