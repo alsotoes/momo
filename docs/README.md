@@ -24,6 +24,8 @@ This document explains the architecture, configuration, wire protocol, replicati
 | [CONTRACT_TESTING.md](CONTRACT_TESTING.md) | TCP wire protocol contract testing strategy |
 | [POLYMORPHIC_SYSTEM.md](POLYMORPHIC_SYSTEM.md) | Dynamic replication mode switching and polymorphic engine |
 | [AI_FLYING_SOLO.md](AI_FLYING_SOLO.md) | Autonomous development workflow for AI agents (bugs and features) |
+| [EXTERNAL_CLIENT_REPLICATION.md](EXTERNAL_CLIENT_REPLICATION.md) | External S3 client replication mode downgrade handling |
+| [PENTESTING.md](PENTESTING.md) | Pentesting Momo with DotDotPwn — traversal fuzzing overview |
 | [../pentest/README.md](../pentest/README.md) | Security pentest toolkit — DotDotPwn fuzzing + Python exploit scripts (9 CVEs found) |
 
 ## Key Performance & Security Features (⚡ Bolt & 🛡️ Sentinel)
@@ -48,9 +50,27 @@ This document explains the architecture, configuration, wire protocol, replicati
   - `test-e2e.sh`: End-to-end integration test runner.
   - `test-e2e-p2p.sh`: P2P gossip convergence and failure detection E2E test.
   - `test-scale-cas.sh`: CAS storage scale test with CRUSH placement.
+  - `test-external-client.sh`: External S3 client replication mode downgrade test.
   - `test-metrics.sh`: Prometheus metrics E2E test (start, upload, scrape, verify).
+  - `run-pentest.sh`: Pentest orchestration script (Docker-based DotDotPwn scans).
+  - `Dockerfile.dotdotpwn`: DotDotPwn container image for pentest pipeline.
   - `check-notsecret.sh`: Rule 29 scanner-safe secrets enforcement.
   - `update_readme_with_benchmarks.sh`: Automated documentation updater.
+- `.github/workflows/`: CI/CD pipeline definitions (14 workflows).
+  - `go.yml`: Build, test, benchmark, coverage, secrets check.
+  - `smoke_test.yml`: Multi-protocol replication smoke tests (TCP, QUIC, S3-TCP, S3-QUIC).
+  - `scale_cas_test.yml`: CAS storage scale E2E test.
+  - `p2p_test.yml`: P2P gossip convergence + failure detection E2E.
+  - `distributed_test.yml`: TCP contract, k6 load, chaos node-crash.
+  - `metrics_test.yml`: Prometheus metrics endpoint E2E verification.
+  - `external_client_test.yml`: External S3 client replication downgrade test.
+  - `storage_backends_test.yml`: S3 and raw device storage backend E2E tests.
+  - `benchmark_compare.yml`: Benchmark regression detection (>5% threshold).
+  - `verify_go_version.yml`: Go version sync across all config files.
+  - `pentest.yml`: Security pentest pipeline (DotDotPwn + Python exploits, 6 phases).
+  - `gemini_reviewer.yml`: AI code review (security, performance, architecture).
+  - `auto_reviewer.yml`: Initial automated review on PR open/reopen.
+  - `weekly_sanity.yml`: Weekly full suite + security audit (Sun 00:00 UTC).
 - `src/momo.go`: Entry point (client/server runner and metrics bootstrap).
 - `src/transport/`: Pluggable communication layers and protocol implementations.
   - `communicator.go`: Central `Communicator` and `MomoListener` interfaces, `MetricsHook` interface.
@@ -80,8 +100,13 @@ This document explains the architecture, configuration, wire protocol, replicati
   - `contract_test.go`: Wire protocol contract tests (handshake, metadata, round-trip, RPC framing).
   - `query_handler.go`: LIST/DELETE/GET query handlers for native protocol.
   - `p2p_adapters.go`: Adapters bridging P2P scatter-gather/lease to server interfaces.
-- `src/storage/`: Content-Addressable Storage (CAS) engine.
-  - `storage.go`: Bbolt-backed object store with tiered directory layout.
+- `src/storage/`: Content-Addressable Storage (CAS) engine with pluggable backends.
+  - `storage.go`: Metadata store (Bbolt-backed) with namespace mapping, refcounting, tombstones.
+  - `blobstore.go`: `BlobStore` interface defining `PutBlob`/`GetBlob`/`DeleteBlob`.
+  - `factory.go`: `StorageFactory` (`NewStore`) — backend selection via `[storage] backend` config.
+  - `local_blobstore.go`: Local filesystem backend with tiered directory layout (`blobs/ab/cd/ef/<hash>`).
+  - `s3_blobstore.go`: S3-compatible backend via zero-dependency SigV4 HTTP client.
+  - `raw_blobstore.go`: Raw block device backend with bump allocator and bbolt allocation table.
   - `gc.go`: Garbage collection for orphaned blobs and expired tombstones.
 - `src/p2p/`: P2P transport layer with gossip membership protocol.
   - `types.go`: Peer, RPC, HeartbeatPayload, PingPayload with binary length-prefixed encoding.
@@ -94,8 +119,16 @@ This document explains the architecture, configuration, wire protocol, replicati
 - `src/metrics/`: Performance monitoring and polymorphic control loop.
   - `metrics.go`: CPU/memory sampling via gopsutil.
   - `replication.go`: Polymorphic replication mode broadcast and control.
+- `pentest/`: Security pentest toolkit (DotDotPwn fuzzing + Python exploit scripts).
+  - `configs/`: Momo configs for pentest runs (native, S3, S3 test).
+  - `payloads/`: DotDotPwn payload templates with `TRAVERSAL` token.
+  - `scripts/`: Python exploit toolkit (`momo_exploit.py`) and native fuzzer bridge (`momo_native_fuzz.py`).
+  - `reports/`: Assessment reports (9 CVEs documented).
+  - `README.md`, `COMMANDS.md`: Reproduction guide.
 - `conf/momo.conf`: Secure configuration example.
 - `conf/smoke.conf`: Smoke test configuration (3-node cluster).
+- `conf/pentest.conf`: Pentest cluster configuration.
+- `docker-compose.pentest.yml`: Docker Compose for pentest cluster.
 
 All packages include corresponding `*_test.go` files for unit and integration tests.
 
@@ -137,6 +170,7 @@ Momo has a highly mature local verification framework composed of unit, integrat
     *   **CRUSH-lite Placement**: Deterministic data distribution across heterogeneous nodes.
     *   **Content-Aware Deduplication**: Server-side "Deduplication hits" that skip redundant uploads.
     *   **Bbolt Persistence**: Transactional metadata integrity across multiple virtual daemons.
+6.  **Security Pentest (`pentest`)**: DotDotPwn fuzzing + Python exploit toolkit against S3 and native TCP protocols. Found 9 CVEs (1 critical, 4 high, 3 medium, 1 low). See [pentest/README.md](../pentest/README.md).
 
 ### Running Tests Locally
 
@@ -152,6 +186,9 @@ make test-metrics
 
 # Run contract tests
 make test-contract
+
+# Run security pentest (DotDotPwn + Python exploits)
+make pentest
 ```
 
 Momo includes a built-in benchmarking suite and performance history tracking. Refer to the [Performance Guide](PERFORMANCE.md) for the latest metrics.

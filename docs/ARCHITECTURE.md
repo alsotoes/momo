@@ -32,7 +32,8 @@ The metrics component runs on every node. It is responsible for monitoring local
 Momo utilizes a **Shared-Nothing Partitioned Architecture** for its object storage layer, encapsulated in the `src/storage` package:
 
 - **Data Placement (CRUSH)**: We use a simplified Go implementation of the **CRUSH** (Controlled Replication Under Scalable Hashing) algorithm, originally designed by **Sage Weil** (the creator of Ceph). CRUSH allows us to calculate data locations deterministically, eliminating the need for a central metadata server or coordinator. Given a file hash and the cluster map, both the client and all nodes can calculate exactly which nodes should store the data.
-- **Metadata Management (Bbolt)**: High-speed, transactional metadata is stored in local Bbolt databases on each node. Metadata is partitioned across the cluster using the same algorithmic placement as the data itself.
+- **Pluggable Blob Storage**: Raw blob bytes are stored via a `BlobStore` interface (`blobstore.go`) with a `StorageFactory` (`factory.go`) that selects the backend via `[storage] backend` config. Backends: `local` (filesystem, default), `nfs`, `s3` (zero-dep SigV4 client), `raw` (block device with bump allocator).
+- **Metadata Management (Bbolt)**: High-speed, transactional metadata is stored in local Bbolt databases on each node (`storage.go`). Metadata is partitioned across the cluster using the same algorithmic placement as the data itself.
 - **Automatic Deduplication**: By using content-addressing (SHA-256), Momo ensures that any specific piece of data is only stored once per node, regardless of the filenames associated with it.
 - **Garbage Collection & Tombstones**: The `src/storage/gc.go` module implements reference-counted garbage collection with tombstone retention. When an object's refcount drops to zero, a tombstone is written with a configurable retention period (`tombstone_retention`, default 86400s). Tombstones are propagated across the cluster via P2P delete messages. GC runs periodically (`gc_interval`, default 300s) and reaps expired tombstones. See [P2P.md](P2P.md) for details on delete propagation.
 
@@ -57,6 +58,7 @@ The system is backed by a multi-stage automated testing pipeline:
 - **Integrity Checks**: Every test suite verifies data consistency and metadata accuracy across all participating nodes.
 - **Contract Tests**: Wire protocol contract tests verify handshake framing (84 bytes), metadata framing (192 bytes), round-trip integrity, and RPC framing.
 - **Prometheus Metrics E2E**: Automated test starts a node, uploads a file, scrapes `/metrics`, and verifies Prometheus format + counter increments.
+- **Security Pentest**: DotDotPwn fuzzing (5526 traversal patterns) + Python exploit toolkit against S3 and native TCP protocols. 9 CVEs found (1 critical, 4 high, 3 medium, 1 low). See [pentest/README.md](../pentest/README.md).
 
 ### 7. Observability (Prometheus Metrics Exporter)
 Momo includes a built-in Prometheus metrics exporter (`src/server/metrics_exporter.go`) that runs as a separate goroutine on a configurable port. No external dependencies — all counters use `sync/atomic` on integer types.

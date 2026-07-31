@@ -19,6 +19,7 @@ This document describes every test suite and validation step that runs in the Mo
 | Weekly Sanity | `weekly_sanity.yml` | Weekly cron (Sun 00:00 UTC) | Full suite + security audit |
 | Storage Backend E2E | `storage_backends_test.yml` | PRs touching `src/storage/` | S3 and raw device backend E2E tests (`-race`) |
 | External Client Replication | `external_client_test.yml` | push to master, PRs (path-filtered) | External S3 client replication mode downgrade |
+| Pentest | `pentest.yml` | push to master, PRs, manual dispatch | DotDotPwn fuzzing + Python exploit toolkit (9 CVEs found) |
 
 ---
 
@@ -249,6 +250,9 @@ make vendor
 # Install git pre-commit hook
 make install-hooks
 
+# Security pentest (DotDotPwn + Python exploits)
+make pentest
+
 # Clean build artifacts
 make clean
 
@@ -258,6 +262,48 @@ make doc
 # Sync go workspace
 make tidy
 ```
+
+---
+
+## Pentest Workflow (`pentest.yml`)
+
+Runs DotDotPwn fuzzing and Python exploit scripts against Momo's S3 REST gateway and native TCP wire protocol. Triggers on push/PR to master (path-filtered to `src/**/*.go`, `pentest/**`, etc.) and manual dispatch.
+
+### Pipeline Phases (6 phases, ~25 steps)
+
+| Phase | What it does |
+|---|---|
+| 1. Build | Set up Go 1.25 / Perl / Python 3, clone DotDotPwn, build Momo binary |
+| 2. S3 fuzzing | Start S3 server, run DotDotPwn 4x (5526 patterns each), stop |
+| 3. Native fuzzing | Start TCP server, pipe DotDotPwn patterns into Momo wire protocol via Python bridge |
+| 4. Exploitation | Run Python exploit toolkit (8 CVEs), stop native server |
+| 5. SigV4 bypass | Start S3 on port 8083, test invalid signature GET + PUT, stop |
+| 6. Reports | Collect artifacts, upload, generate summary, security gates |
+
+### Security Gates
+
+Security gates **only fail on `workflow_dispatch`** (manual trigger), not on PR/push. This allows the pentest tooling to merge even though CVE-008 (SigV4 bypass) is a known, documented vulnerability.
+
+| Gate | Condition | Failure means |
+|---|---|---|
+| SigV4 bypass | `SIGV4_BYPASS=true` | CVE-008 confirmed — S3 gateway accepts invalid signatures |
+| Filesystem traversal | `RUN_B_ROOT != 0` | /etc/passwd content leaked via S3 gateway |
+
+### Findings (9 CVEs)
+
+| CVE | Vulnerability | Severity | Issue |
+|---|---|---|---|
+| CVE-008 | S3 SigV4 signature bypass | Critical | #539 |
+| CVE-005 | Deduplication confusion attack | High | #540 |
+| CVE-007 | Peer impersonation | High | #541 |
+| CVE-002 | Arbitrary file download (GET) | High | #542 |
+| CVE-003 | Arbitrary file deletion (DELETE) | High | #543 |
+| CVE-001 | Arbitrary file enumeration (LIST) | Medium | #544 |
+| CVE-006 | Blob pollution / disk waste | Medium | #545 |
+| CVE-009 | Plaintext auth token (no TLS) | Medium | #546 |
+| CVE-004 | Virtual path traversal via upload | Low | #547 |
+
+**Run:** `make pentest` or see [pentest/README.md](../pentest/README.md) for full reproduction guide.
 
 ---
 
