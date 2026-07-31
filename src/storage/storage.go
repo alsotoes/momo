@@ -65,6 +65,7 @@ type Store interface {
 	Put(name string, hash string, size int64, remotePath string, content io.Reader) error
 	Get(name string) (io.ReadCloser, common.FileMetadata, error)
 	Has(hash string) (bool, error)
+	GetHashForName(name string) (string, error)
 	Delete(name string) error
 	List() ([]common.FileMetadata, error)
 }
@@ -174,6 +175,15 @@ func (s *CASStore) Put(name string, hash string, size int64, remotePath string, 
 	if !exists && content != nil {
 		if err := s.blobs.PutBlob(hash, content); err != nil {
 			return err
+		}
+	} else if exists && content != nil {
+		// Blob already exists, but we must still drain the content reader.
+		// Callers (e.g., getFile) wrap content in a TeeReader to compute the
+		// hash while streaming. If we skip reading, the TeeReader never reads
+		// from the underlying connection, producing an empty hash and leaving
+		// the payload data unconsumed on the wire.
+		if _, err := io.Copy(io.Discard, content); err != nil {
+			return fmt.Errorf("failed to drain content for existing blob: %w", err)
 		}
 	}
 
@@ -324,6 +334,34 @@ func (s *CASStore) hasInternal(hash string) (bool, error) {
 		return nil
 	})
 	return exists, err
+}
+
+// GetHashForName returns the content hash associated with the given name,
+// or syscall.ENOENT if the name does not exist in the namespace.
+// This is a lightweight metadata-only lookup that does not read the blob.
+func (s *CASStore) GetHashForName(name string) (hash string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in CASStore.GetHashForName for %s: %v", name, r)
+			err = fmt.Errorf("internal storage panic: %w", syscall.EIO)
+		}
+	}()
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	err = s.db.View(func(tx *bbolt.Tx) error {
+		if ts := tx.Bucket(bucketTombstones).Get([]byte(name)); ts != nil {
+			return syscall.ENOENT
+		}
+		h := tx.Bucket(bucketNamespace).Get([]byte(name))
+		if h == nil {
+			return syscall.ENOENT
+		}
+		hash = string(h)
+		return nil
+	})
+	return
 }
 
 func (s *CASStore) Delete(name string) (err error) {

@@ -21,11 +21,11 @@ type mockMetricsHook struct {
 	errors      atomic.Uint64
 }
 
-func (m *mockMetricsHook) IncDownloads()         { m.downloads.Add(1) }
-func (m *mockMetricsHook) IncDeletes()           { m.deletes.Add(1) }
+func (m *mockMetricsHook) IncDownloads()               { m.downloads.Add(1) }
+func (m *mockMetricsHook) IncDeletes()                 { m.deletes.Add(1) }
 func (m *mockMetricsHook) AddBytesDownloaded(n uint64) { m.bytesDL.Add(n) }
-func (m *mockMetricsHook) IncReplication()       { m.replication.Add(1) }
-func (m *mockMetricsHook) IncErrors()            { m.errors.Add(1) }
+func (m *mockMetricsHook) IncReplication()             { m.replication.Add(1) }
+func (m *mockMetricsHook) IncErrors()                  { m.errors.Add(1) }
 
 func runS3TestRequestWithMetrics(t *testing.T, reqStr string, mock storage.Store, hook *mockMetricsHook) string {
 	expectedAuthToken := []byte(common.PadString("a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6", common.AuthTokenLength)) // notsecret

@@ -15,7 +15,7 @@ import (
 
 func TestConnect_PrimarySplay(t *testing.T) {
 	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
-	
+
 	file, err := os.CreateTemp("", "test_splay_*.txt")
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
@@ -49,7 +49,7 @@ func TestConnect_PrimarySplay(t *testing.T) {
 
 func TestConnect_PrimarySplay_Failures(t *testing.T) {
 	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
-	
+
 	file, err := os.CreateTemp("", "test_splay_fail_*.txt")
 	if err != nil {
 		t.Fatalf("Failed to create temp file: %v", err)
@@ -103,7 +103,7 @@ func startMockServerS3(t *testing.T, authToken string, mode int) (string, net.Li
 
 func handleMockConn(conn net.Conn, authToken string, mode int) {
 	defer conn.Close()
-	
+
 	// Handshake
 	buf := make([]byte, common.AuthTokenLength+common.TimestampLength)
 	if _, err := io.ReadFull(conn, buf); err != nil {

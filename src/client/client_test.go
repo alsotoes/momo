@@ -363,7 +363,7 @@ func TestSendFile_DeduplicationHit(t *testing.T) {
 	}()
 
 	// Server side
-	buf := make([]byte, 64 + common.FileInfoLength + common.FileInfoLength)
+	buf := make([]byte, 64+common.FileInfoLength+common.FileInfoLength)
 	if _, err := io.ReadFull(serverConn, buf); err != nil {
 		t.Fatalf("Server failed to read metadata: %v", err)
 	}

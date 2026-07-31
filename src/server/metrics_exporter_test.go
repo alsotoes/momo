@@ -25,15 +25,15 @@ func TestMetricsCollector_Counters(t *testing.T) {
 	output := captureMetricsOutput(mc)
 
 	checks := map[string]string{
-		"momo_connections_total 2":       "connections",
-		"momo_active_connections 1":      "active connections",
-		"momo_uploads_total 3":           "uploads",
-		"momo_bytes_uploaded_total 1024": "bytes uploaded",
-		"momo_downloads_total 1":         "downloads",
+		"momo_connections_total 2":        "connections",
+		"momo_active_connections 1":       "active connections",
+		"momo_uploads_total 3":            "uploads",
+		"momo_bytes_uploaded_total 1024":  "bytes uploaded",
+		"momo_downloads_total 1":          "downloads",
 		"momo_bytes_downloaded_total 512": "bytes downloaded",
-		"momo_deletes_total 1":           "deletes",
-		"momo_replication_total 2":       "replication",
-		"momo_errors_total 1":            "errors",
+		"momo_deletes_total 1":            "deletes",
+		"momo_replication_total 2":        "replication",
+		"momo_errors_total 1":             "errors",
 	}
 
 	for expected, name := range checks {
