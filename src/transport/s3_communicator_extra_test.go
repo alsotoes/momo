@@ -12,7 +12,7 @@ import (
 func TestS3Communicator_FullFlow(t *testing.T) {
 	defer verifyNoLeaks(t)
 
-	authToken := "test-token-1234567890123456789012345678901234567890123456789012345"
+	authToken := "test-token-1234567890123456789012345678901234567890123456789012345" // notsecret
 	expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
 	addr := "127.0.0.1:45698"
 

@@ -67,7 +67,7 @@ func TestProtocolFactory_Dial_TCP_Error(t *testing.T) {
 }
 
 func TestMomoQUICCommunicator_Handshake(t *testing.T) {
-	authToken := "test-token"
+	authToken := "test-token" // notsecret
 	timestamp := time.Now().UnixNano()
 	addr := "127.0.0.1:45684"
 
@@ -130,7 +130,7 @@ func TestMomoQUICCommunicator_Handshake(t *testing.T) {
 }
 
 func TestMomoQUICCommunicator_Metadata_And_Payload(t *testing.T) {
-	authToken := "test-token"
+	authToken := "test-token" // notsecret
 	addr := "127.0.0.1:45685"
 	testMeta := &common.FileMetadata{
 		Name: "quic-test.txt",
@@ -284,7 +284,7 @@ func TestMomoQUICCommunicator_EdgeCases(t *testing.T) {
 }
 
 func runNativeQUICTest(t *testing.T, requestedMode int, clientFn func(Communicator), mock *mockStore) {
-	authToken := "test-token"
+	authToken := "test-token" // notsecret
 	expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
 	addr := "127.0.0.1:0"
 

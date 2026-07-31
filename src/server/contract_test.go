@@ -52,7 +52,7 @@ func TestContract_HandshakeRoundTrip(t *testing.T) {
 	}
 	defer ln.Close()
 
-	authToken := "test-token-for-contract"
+	authToken := "test-token-for-contract" // notsecret
 	paddedToken := common.PadString(authToken, common.AuthTokenLength)
 
 	go func() {
