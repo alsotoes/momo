@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log"
 	"net"
 	"os"
 	"testing"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/alsotoes/momo/src/common"
 	"github.com/alsotoes/momo/src/transport"
+	"go.uber.org/goleak"
 )
 
 func padTestString(input string, length int) string {
@@ -20,11 +22,77 @@ func padTestString(input string, length int) string {
 	return input + string(make([]byte, length-len(input)))
 }
 
+func freeAddr(t *testing.T) string {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to get free port: %v", err)
+	}
+	addr := l.Addr().String()
+	l.Close()
+	return addr
+}
+
+func acceptReplication(l net.Listener) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in acceptReplication: %v", r)
+		}
+	}()
+	conn, err := l.Accept()
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+	conn.SetDeadline(time.Now().Add(5 * time.Second))
+	authBuf := make([]byte, common.AuthTokenLength+common.TimestampLength+1)
+	if _, err := io.ReadFull(conn, authBuf); err != nil {
+		return
+	}
+	if _, err := conn.Write([]byte("0")); err != nil {
+		return
+	}
+	buf := make([]byte, 1024)
+	conn.Read(buf)
+	conn.Write([]byte("OK"))
+}
+
+func dialWithTimeout(ctx context.Context, addr string) (net.Conn, error) {
+	var conn net.Conn
+	var err error
+	for {
+		select {
+		case <-ctx.Done():
+			if conn != nil {
+				return conn, nil
+			}
+			return nil, ctx.Err()
+		default:
+		}
+		conn, err = net.Dial("tcp", addr)
+		if err == nil {
+			return conn, nil
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
 func TestChangeReplicationModeServerReal(t *testing.T) {
+	defer goleak.VerifyNone(t,
+		goleak.IgnoreAnyFunction("github.com/quic-go/quic-go.(*Transport).runSendQueue"),
+		goleak.IgnoreAnyFunction("github.com/quic-go/quic-go.(*Transport).listen"),
+		goleak.IgnoreAnyFunction("github.com/quic-go/quic-go.(*Conn).run"),
+		goleak.IgnoreAnyFunction("github.com/quic-go/quic-go.(*sendQueue).Run"),
+	)
+
+	addr0 := freeAddr(t)
+	addr1 := freeAddr(t)
+	addr2 := freeAddr(t)
+
 	daemons := []*common.Daemon{
-		{ChangeReplication: "127.0.0.1:45678"},
-		{ChangeReplication: "127.0.0.1:45679"},
-		{ChangeReplication: "127.0.0.1:45680"},
+		{ChangeReplication: addr0},
+		{ChangeReplication: addr1},
+		{ChangeReplication: addr2},
 	}
 	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
 	cfg := common.Configuration{
@@ -38,59 +106,27 @@ func TestChangeReplicationModeServerReal(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	l1, _ := net.Listen("tcp", "127.0.0.1:45679")
+	l1, err := net.Listen("tcp", addr1)
+	if err != nil {
+		t.Fatalf("failed to listen on %s: %v", addr1, err)
+	}
 	defer l1.Close()
-	go func() {
-		conn, err := l1.Accept()
-		if err == nil {
-			defer conn.Close()
-			// ⚡ Bolt: Read the full 84-byte handshake
-			authBuf := make([]byte, common.AuthTokenLength+common.TimestampLength+1)
-			io.ReadFull(conn, authBuf)
-			// Send back a replication mode to complete handshake
-			conn.Write([]byte("0"))
+	go acceptReplication(l1)
 
-			// ⚡ Bolt: Consume the JSON payload and send OK
-			buf := make([]byte, 1024)
-			conn.Read(buf)
-			conn.Write([]byte("OK"))
-		}
-	}()
-
-	l2, _ := net.Listen("tcp", "127.0.0.1:45680")
+	l2, err := net.Listen("tcp", addr2)
+	if err != nil {
+		t.Fatalf("failed to listen on %s: %v", addr2, err)
+	}
 	defer l2.Close()
-	go func() {
-		conn, err := l2.Accept()
-		if err == nil {
-			defer conn.Close()
-			// ⚡ Bolt: Read the full 84-byte handshake
-			authBuf := make([]byte, common.AuthTokenLength+common.TimestampLength+1)
-			io.ReadFull(conn, authBuf)
-			// Send back a replication mode to complete handshake
-			conn.Write([]byte("0"))
-
-			// ⚡ Bolt: Consume the JSON payload and send OK
-			buf := make([]byte, 1024)
-			conn.Read(buf)
-			conn.Write([]byte("OK"))
-		}
-	}()
+	go acceptReplication(l2)
 
 	go ChangeReplicationModeServer(ctx, cfg, 0, time.Now().UnixNano())
 
-	// 🛡️ Zero-Crash: Use a retry loop to wait for the replication server to bind.
-	var conn net.Conn
-	var err error
-	for i := 0; i < 10; i++ {
-		conn, err = net.Dial("tcp", "127.0.0.1:45678")
-		if err == nil {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-
+	dialCtx, dialCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer dialCancel()
+	conn, err := dialWithTimeout(dialCtx, addr0)
 	if err != nil {
-		t.Fatalf("Failed to dial test server after retries: %v", err)
+		t.Fatalf("Failed to dial test server: %v", err)
 	}
 	defer conn.Close()
 
