@@ -97,6 +97,12 @@ type Communicator interface {
 	// (e.g., aws-cli) that does not understand the momo protocol. The server uses
 	// this to determine if client-side replication modes should be downgraded.
 	IsExternalClient() bool
+
+	// IsPeer returns true if the connection was authenticated using the derived
+	// peer token rather than the client auth token. The server uses this to
+	// distinguish peer-to-peer connections (Secondary role) from direct client
+	// connections (Primary role), replacing the insecure timestamp-based check.
+	IsPeer() bool
 }
 
 // MomoListener defines a transport-agnostic interface for accepting new Momo connections.

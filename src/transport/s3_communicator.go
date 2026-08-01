@@ -77,6 +77,8 @@ type S3Communicator struct {
 	deletePropagator DeletePropagator
 	// MetricsHook for instrumentation (optional)
 	metricsHook MetricsHook
+	// isPeer is always false for S3 connections (S3 clients are never peers).
+	isPeer bool
 }
 
 func NewS3Communicator(conn net.Conn) *S3Communicator {
@@ -258,7 +260,11 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 	}
 
 	tokenBuf := []byte(common.PadString(token, common.AuthTokenLength))
-	if subtle.ConstantTimeCompare(tokenBuf, expectedAuthToken) != 1 {
+	if subtle.ConstantTimeCompare(tokenBuf, expectedAuthToken) == 1 {
+		m.isPeer = false
+	} else if peerToken := common.DerivePeerToken(expectedAuthToken); subtle.ConstantTimeCompare(tokenBuf, peerToken) == 1 {
+		m.isPeer = true
+	} else {
 		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		m.conn.Write([]byte("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
 		return 0, 0, syscall.EACCES
@@ -761,6 +767,10 @@ func (m *S3Communicator) RemoteAddr() net.Addr {
 
 func (m *S3Communicator) IsExternalClient() bool {
 	return m.isExternalClient
+}
+
+func (m *S3Communicator) IsPeer() bool {
+	return m.isPeer
 }
 
 // extractS3BucketAndKey parses the bucket name and key path from an S3 HTTP request.

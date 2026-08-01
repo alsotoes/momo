@@ -218,12 +218,14 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 			log.Printf("AUDIT: Successful authentication from %s", remoteAddr)
 
 			// Determine the replication mode based on whether we are the Primary or a Secondary.
-			// ⚡ Bolt: Use the DummyEpoch marker to identify direct client connections (Primary role).
+			// 🛡️ CVE-007: Use cryptographic peer authentication (IsPeer) instead of the
+			// insecure DummyEpoch timestamp check. An attacker who knows the auth token
+			// can no longer impersonate a peer by sending a fake timestamp.
 			repState := GetReplicationState()
 			var finalTs int64
 
-			if ts == common.DummyEpoch {
-				// We are the Primary for this transaction.
+			if !comm.IsPeer() {
+				// We are the Primary for this transaction (direct client connection).
 				now := time.Now()
 				finalTs = now.UnixNano()
 				// Use local state for new transactions.

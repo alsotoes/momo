@@ -246,9 +246,12 @@ func ChangeReplicationModeClient(factory *transport.ProtocolFactory, replication
 	// For now, we still need to perform the handshake.
 	// This will need more refactoring if we want to truly consolidate the writes across protocols.
 	authToken := factory.GetAuthToken()
+	// 🛡️ CVE-007: Use the derived peer token for peer-to-peer connections so the
+	// receiving server can cryptographically distinguish peers from clients.
+	peerToken := common.DerivePeerTokenString(authToken)
 	timestamp := time.Now().UnixNano()
 	// Perform handshake
-	if _, err := comm.HandshakeClient(authToken, timestamp, 0); err != nil {
+	if _, err := comm.HandshakeClient(peerToken, timestamp, 0); err != nil {
 		log.Printf("Handshake failed with peer %d: %v", serverId, common.SanitizeLog(err.Error()))
 		return
 	}

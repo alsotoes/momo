@@ -29,6 +29,7 @@ type MomoTCPCommunicator struct {
 	leaseAcquirer    LeaseAcquirer
 	deletePropagator DeletePropagator
 	metricsHook      MetricsHook
+	isPeer           bool
 }
 
 // NewMomoTCPCommunicator creates a new MomoTCPCommunicator wrapping a net.Conn.
@@ -142,7 +143,13 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 	bufferTimestamp := handshakeBuf[common.AuthTokenLength : common.AuthTokenLength+common.TimestampLength]
 	requestedModeByte := handshakeBuf[common.AuthTokenLength+common.TimestampLength]
 
-	if subtle.ConstantTimeCompare(bufferAuthToken, expectedAuthToken) != 1 {
+	if subtle.ConstantTimeCompare(bufferAuthToken, expectedAuthToken) == 1 {
+		// Client connection — authenticated with the regular auth token.
+		m.isPeer = false
+	} else if peerToken := common.DerivePeerToken(expectedAuthToken); subtle.ConstantTimeCompare(bufferAuthToken, peerToken) == 1 {
+		// Peer connection — authenticated with the derived peer token.
+		m.isPeer = true
+	} else {
 		return 0, 0, syscall.EACCES
 	}
 
@@ -497,4 +504,8 @@ func (m *MomoTCPCommunicator) ReceiveACK() (err error) {
 
 func (m *MomoTCPCommunicator) IsExternalClient() bool {
 	return false
+}
+
+func (m *MomoTCPCommunicator) IsPeer() bool {
+	return m.isPeer
 }

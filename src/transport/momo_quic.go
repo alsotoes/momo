@@ -36,6 +36,7 @@ type MomoQUICCommunicator struct {
 	leaseAcquirer    LeaseAcquirer
 	deletePropagator DeletePropagator
 	metricsHook      MetricsHook
+	isPeer           bool
 }
 
 // NewMomoQUICCommunicator creates a new MomoQUICCommunicator.
@@ -151,7 +152,11 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 	bufferTimestamp := handshakeBuf[common.AuthTokenLength : common.AuthTokenLength+common.TimestampLength]
 	requestedModeByte := handshakeBuf[common.AuthTokenLength+common.TimestampLength]
 
-	if subtle.ConstantTimeCompare(bufferAuthToken, expectedAuthToken) != 1 {
+	if subtle.ConstantTimeCompare(bufferAuthToken, expectedAuthToken) == 1 {
+		m.isPeer = false
+	} else if peerToken := common.DerivePeerToken(expectedAuthToken); subtle.ConstantTimeCompare(bufferAuthToken, peerToken) == 1 {
+		m.isPeer = true
+	} else {
 		return 0, 0, syscall.EACCES
 	}
 
@@ -509,6 +514,10 @@ func (m *MomoQUICCommunicator) RemoteAddr() net.Addr {
 
 func (m *MomoQUICCommunicator) IsExternalClient() bool {
 	return false
+}
+
+func (m *MomoQUICCommunicator) IsPeer() bool {
+	return m.isPeer
 }
 
 func (m *MomoQUICCommunicator) Close() (err error) {
