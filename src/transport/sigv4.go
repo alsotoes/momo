@@ -4,10 +4,13 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"sort"
 	"strings"
+	"syscall"
 )
 
 type sigV4Components struct {
@@ -55,10 +58,11 @@ func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
 	return c, true
 }
 
-func sigV4Escape(s string, encodeSlash bool) string {
+func sigV4Escape(s string, encodeSlash bool) (string, error) {
 	// 🛡️ Rule 35: Validate input string bounds to prevent potential memory exhaustion via excessive capacity growth.
+	// 🛡️ Rule 37: Truncation without error breaks canonical signatures. Reject the input if it exceeds limits.
 	if len(s) > 1024 {
-		s = s[:1024]
+		return "", fmt.Errorf("sigV4 escape input length exceeds bounds (1024 bytes): %w", syscall.EINVAL)
 	}
 
 	hexCount := 0
@@ -74,7 +78,7 @@ func sigV4Escape(s string, encodeSlash bool) string {
 	}
 
 	if hexCount == 0 {
-		return s
+		return s, nil
 	}
 
 	var sb strings.Builder
@@ -89,17 +93,29 @@ func sigV4Escape(s string, encodeSlash bool) string {
 			sb.WriteByte("0123456789ABCDEF"[c&15])
 		}
 	}
-	return sb.String()
+	return sb.String(), nil
 }
 
-func buildCanonicalRequest(req *http.Request, signedHeaders, payloadHash string) string {
+func buildCanonicalRequest(req *http.Request, signedHeaders, payloadHash string) (string, error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in buildCanonicalRequest: %v", r)
+		}
+	}()
+
 	canonicalURI := req.URL.Path
 	if canonicalURI == "" {
 		canonicalURI = "/"
 	}
-	canonicalURI = encodeCanonicalURI(canonicalURI)
+	canonicalURI, err := encodeCanonicalURI(canonicalURI)
+	if err != nil {
+		return "", err
+	}
 
-	canonicalQueryString := buildCanonicalQueryString(req.URL.Query())
+	canonicalQueryString, err := buildCanonicalQueryString(req.URL.Query())
+	if err != nil {
+		return "", err
+	}
 
 	canonicalHeaders := buildCanonicalHeaders(req, signedHeaders)
 
@@ -108,14 +124,14 @@ func buildCanonicalRequest(req *http.Request, signedHeaders, payloadHash string)
 		canonicalQueryString + "\n" +
 		canonicalHeaders + "\n" +
 		signedHeaders + "\n" +
-		payloadHash
+		payloadHash, nil
 }
 
-func encodeCanonicalURI(uri string) string {
+func encodeCanonicalURI(uri string) (string, error) {
 	return sigV4Escape(uri, false)
 }
 
-func buildCanonicalQueryString(values url.Values) string {
+func buildCanonicalQueryString(values url.Values) (string, error) {
 	keys := make([]string, 0, len(values))
 	for k := range values {
 		keys = append(keys, k)
@@ -127,7 +143,10 @@ func buildCanonicalQueryString(values url.Values) string {
 		if i > 0 {
 			sb.WriteByte('&')
 		}
-		encodedKey := sigV4Escape(k, true)
+		encodedKey, err := sigV4Escape(k, true)
+		if err != nil {
+			return "", err
+		}
 		sb.WriteString(encodedKey)
 		sb.WriteByte('=')
 		for j, v := range values[k] {
@@ -136,11 +155,14 @@ func buildCanonicalQueryString(values url.Values) string {
 				sb.WriteString(encodedKey)
 				sb.WriteByte('=')
 			}
-			encodedVal := sigV4Escape(v, true)
+			encodedVal, err := sigV4Escape(v, true)
+			if err != nil {
+				return "", err
+			}
 			sb.WriteString(encodedVal)
 		}
 	}
-	return sb.String()
+	return sb.String(), nil
 }
 
 func buildCanonicalHeaders(req *http.Request, signedHeadersStr string) string {
@@ -214,7 +236,12 @@ func verifySigV4Signature(req *http.Request, authHeader, secretKey string) bool 
 		payloadHash = emptyStringSHA256
 	}
 
-	canonicalRequest := buildCanonicalRequest(req, components.SignedHeaders, payloadHash)
+	canonicalRequest, err := buildCanonicalRequest(req, components.SignedHeaders, payloadHash)
+	if err != nil {
+		log.Printf("AUDIT: Failed to build canonical request during SigV4 verification: %v", err)
+		return false
+	}
+
 	stringToSign := buildStringToSign(canonicalRequest, amzDate, components.DateStamp, components.Region)
 	signingKey := deriveSigningKey(secretKey, components.DateStamp, components.Region)
 	expectedSig := computeSignature(signingKey, stringToSign)
