@@ -108,13 +108,13 @@ func buildCanonicalRequest(req *http.Request, signedHeaders, payloadHash string)
 	if canonicalURI == "" {
 		canonicalURI = "/"
 	}
-	uri, uriErr := encodeCanonicalURI(canonicalURI)
+
+	canonicalURIEscaped, uriErr := encodeCanonicalURI(canonicalURI)
 	if uriErr != nil {
 		return "", uriErr
 	}
-	canonicalURI = uri
 
-	qs, qsErr := buildCanonicalQueryString(req.URL.Query())
+	canonicalQueryString, qsErr := buildCanonicalQueryString(req.URL.Query())
 	if qsErr != nil {
 		return "", qsErr
 	}
@@ -122,8 +122,8 @@ func buildCanonicalRequest(req *http.Request, signedHeaders, payloadHash string)
 	canonicalHeaders := buildCanonicalHeaders(req, signedHeaders)
 
 	return req.Method + "\n" +
-		canonicalURI + "\n" +
-		qs + "\n" +
+		canonicalURIEscaped + "\n" +
+		canonicalQueryString + "\n" +
 		canonicalHeaders + "\n" +
 		signedHeaders + "\n" +
 		payloadHash, nil
