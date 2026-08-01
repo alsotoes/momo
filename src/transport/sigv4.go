@@ -56,6 +56,11 @@ func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
 }
 
 func sigV4Escape(s string, encodeSlash bool) string {
+	// 🛡️ Rule 35: Validate input string bounds to prevent potential memory exhaustion via excessive capacity growth.
+	if len(s) > 1024 {
+		s = s[:1024]
+	}
+
 	hexCount := 0
 	for i := 0; i < len(s); i++ {
 		c := s[i]
