@@ -60,9 +60,8 @@ jobs:
         echo '```' >> $GITHUB_STEP_SUMMARY
         
         # Ignore sub-10ns micro-benchmarks known to be extremely noisy on virtualization.
-        # Also ignore P2P gossip micro-benchmarks (RPC_Encode, HeartbeatPayload, PeerMap) — noisy on CI virtualization.
         # Also ignore geomean as it's skewed by micro-benchmarks.
-        if grep -v -E 'IndexSearch|CheckMetricsAndSwap|IndexDirectTracking|PadString|LoadGlobalConfig|RPC_Encode|HeartbeatPayload|PeerMap|geomean' /tmp/bench_comparison.txt | awk '/\+[0-9]+\.[0-9]+%/ {
+        if grep -v -E 'IndexSearch|CheckMetricsAndSwap|IndexDirectTracking|PadString|LoadGlobalConfig|geomean|RPC_Encode|HeartbeatPayload_Encode|PeerMap_' /tmp/bench_comparison.txt | awk '/\+[0-9]+\.[0-9]+%/ {
             match($0, /\+([0-9]+\.[0-9]+)%/, arr)
             if (arr[1] + 0 > 5.0) {
                 print "❌ Performance degradation > 5% detected: +" arr[1] "%"

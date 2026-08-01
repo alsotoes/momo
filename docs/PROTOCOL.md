@@ -91,11 +91,19 @@ When `RequestedMode` is `ModeList` (`'L'`), the client queries the list of all f
 
 ### Native File Deletion (DELETE - `'D'`)
 
-When `RequestedMode` is `ModeDelete` (`'D'`), the client requests the deletion of a specific file.
+When `RequestedMode` is `ModeDelete` (`'D'`), the client requests the deletion of a specific file. The client must provide a proof-of-knowledge (content hash) to prevent unauthorized file deletion by name alone (CVE-003).
 
 1.  **Handshake:** Completed with `'D'`.
-2.  **Target Name (Client sends):** Client sends the 64-byte null-padded name of the file to delete.
-3.  **Server Response (ACK):** Server deletes the mapping on BoltDB and responds with a 1-byte status code (`'0'` for success, `'1'` for error).
+2.  **Target Name + Hash Proof (Client sends):** Client sends a 128-byte request containing:
+    -   **File Name:** 64-byte ASCII string, null-padded (`\x00`).
+    -   **Content Hash:** 64-byte hexadecimal SHA-256 checksum, null-padded (`\x00`).
+
+    ```
+    |------------------|-----------------|
+    | File Name (64)   | Content Hash (64)|
+    |------------------|-----------------|
+    ```
+3.  **Server Response (ACK):** Server verifies the content hash matches the namespace mapping, then deletes the mapping on BoltDB and responds with a 1-byte status code (`'0'` for success, `'1'` for error/unauthorized).
 
 ### Native File Retrieval (GET - `'G'`)
 
