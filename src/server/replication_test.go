@@ -159,9 +159,9 @@ func TestChangeReplicationModeClient(t *testing.T) {
 	// Assert: Verify the mock server received the correct data.
 	select {
 	case auth := <-receivedAuth:
-		expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
-		if subtle.ConstantTimeCompare(auth, expectedAuthToken) != 1 {
-			t.Errorf("Expected AuthToken '%s' (padded), but got '%s'", authToken, string(auth))
+		expectedPeerToken := common.DerivePeerToken([]byte(common.PadString(authToken, common.AuthTokenLength)))
+		if subtle.ConstantTimeCompare(auth, expectedPeerToken) != 1 {
+			t.Errorf("Expected peer token (derived from '%s'), but got '%s'", authToken, string(auth))
 		}
 	case <-time.After(1 * time.Second):
 		t.Fatal("Test timed out, no AuthToken received by the server.")
