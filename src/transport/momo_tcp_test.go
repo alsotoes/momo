@@ -290,6 +290,7 @@ func TestMomoTCPCommunicator_NativeDelete(t *testing.T) {
 
 func TestMomoTCPCommunicator_NativeGet(t *testing.T) {
 	fileContent := []byte("download native payload!")
+	fileHash := common.HashBytes(fileContent)
 	mock := &mockStore{
 		getFunc: func(name string) (io.ReadCloser, common.FileMetadata, error) {
 			if name != "native-get.txt" {
@@ -297,15 +298,23 @@ func TestMomoTCPCommunicator_NativeGet(t *testing.T) {
 			}
 			return io.NopCloser(bytes.NewReader(fileContent)), common.FileMetadata{
 				Name: "native-get.txt",
+				Hash: fileHash,
 				Size: int64(len(fileContent)),
 			}, nil
+		},
+		getHashForNameFunc: func(name string) (string, error) {
+			if name != "native-get.txt" {
+				return "", syscall.ENOENT
+			}
+			return fileHash, nil
 		},
 	}
 
 	clientFn := func(conn net.Conn) {
-		// Write target get file (64 bytes padded)
+		// Write target get file (64 bytes padded) + content hash (64 bytes padded)
 		target := common.PadString("native-get.txt", 64)
-		if _, err := conn.Write([]byte(target)); err != nil {
+		hash := common.PadString(fileHash, 64)
+		if _, err := conn.Write([]byte(target + hash)); err != nil {
 			t.Fatalf("Failed to write target: %v", err)
 		}
 

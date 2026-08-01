@@ -424,6 +424,7 @@ func TestMomoQUICCommunicator_NativeDelete(t *testing.T) {
 
 func TestMomoQUICCommunicator_NativeGet(t *testing.T) {
 	fileContent := []byte("download native quic payload!")
+	fileHash := common.HashBytes(fileContent)
 	mock := &mockStore{
 		getFunc: func(name string) (io.ReadCloser, common.FileMetadata, error) {
 			if name != "native-quic-get.txt" {
@@ -431,15 +432,23 @@ func TestMomoQUICCommunicator_NativeGet(t *testing.T) {
 			}
 			return io.NopCloser(bytes.NewReader(fileContent)), common.FileMetadata{
 				Name: "native-quic-get.txt",
+				Hash: fileHash,
 				Size: int64(len(fileContent)),
 			}, nil
+		},
+		getHashForNameFunc: func(name string) (string, error) {
+			if name != "native-quic-get.txt" {
+				return "", syscall.ENOENT
+			}
+			return fileHash, nil
 		},
 	}
 
 	clientFn := func(comm Communicator) {
-		// Write target get file (64 bytes padded)
+		// Write target get file (64 bytes padded) + content hash (64 bytes padded)
 		target := common.PadString("native-quic-get.txt", 64)
-		if _, err := comm.Write([]byte(target)); err != nil {
+		hash := common.PadString(fileHash, 64)
+		if _, err := comm.Write([]byte(target + hash)); err != nil {
 			t.Fatalf("Failed to write target: %v", err)
 		}
 
