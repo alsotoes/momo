@@ -257,17 +257,25 @@ func TestMomoTCPCommunicator_NativeList(t *testing.T) {
 
 func TestMomoTCPCommunicator_NativeDelete(t *testing.T) {
 	deletedKey := ""
+	fileHash := common.HashBytes([]byte("delete-me-content"))
 	mock := &mockStore{
 		deleteFunc: func(name string) error {
 			deletedKey = name
 			return nil
 		},
+		getHashForNameFunc: func(name string) (string, error) {
+			if name != "target-to-delete.txt" {
+				return "", syscall.ENOENT
+			}
+			return fileHash, nil
+		},
 	}
 
 	clientFn := func(conn net.Conn) {
-		// Write target delete file (64 bytes padded)
+		// Write target delete file (64 bytes padded) + content hash (64 bytes padded)
 		target := common.PadString("target-to-delete.txt", 64)
-		if _, err := conn.Write([]byte(target)); err != nil {
+		hash := common.PadString(fileHash, 64)
+		if _, err := conn.Write([]byte(target + hash)); err != nil {
 			t.Fatalf("Failed to write target: %v", err)
 		}
 

@@ -225,19 +225,31 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 		if m.store == nil {
 			return 0, 0, fmt.Errorf("storage store not initialized")
 		}
-		// Read 64-byte file name
+		// Read 64-byte file name + 64-byte content hash (proof of knowledge)
 		m.SetReadDeadline(time.Now().Add(5 * time.Second))
-		var fileBuf [64]byte
-		if _, err := io.ReadFull(m, fileBuf[:]); err != nil {
+		var requestBuf [128]byte
+		if _, err := io.ReadFull(m, requestBuf[:]); err != nil {
 			return 0, 0, fmt.Errorf("failed to read delete target: %w", err)
 		}
-		fileName := common.TrimNullBytesString(fileBuf[:])
+		fileName := common.TrimNullBytesString(requestBuf[:64])
+		providedHash := common.TrimNullBytesString(requestBuf[64:128])
 
 		// 🛡️ Sentinel: Block path traversal
 		if strings.Contains(fileName, "..") || strings.Contains(fileName, "\\") {
 			m.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			m.Write([]byte{'1'}) // error status
 			return 0, 0, fmt.Errorf("invalid delete target traversal: %s: %w", fileName, syscall.EBADMSG)
+		}
+
+		// 🛡️ CVE-003: Require proof-of-knowledge (content hash) for DELETE.
+		// The client must provide the file's content hash, which is verified
+		// against the namespace mapping. This prevents deleting files by
+		// name alone without knowing the content hash.
+		expectedHash, hashErr := m.store.GetHashForName(fileName)
+		if hashErr != nil || expectedHash != providedHash {
+			m.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			m.Write([]byte{'1'}) // not found / unauthorized
+			return 0, 0, ErrRequestHandled
 		}
 
 		if m.leaseAcquirer != nil {

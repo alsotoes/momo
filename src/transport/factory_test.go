@@ -391,17 +391,25 @@ func TestMomoQUICCommunicator_NativeList(t *testing.T) {
 
 func TestMomoQUICCommunicator_NativeDelete(t *testing.T) {
 	deletedKey := ""
+	fileHash := common.HashBytes([]byte("delete-me-quic-content"))
 	mock := &mockStore{
 		deleteFunc: func(name string) error {
 			deletedKey = name
 			return nil
 		},
+		getHashForNameFunc: func(name string) (string, error) {
+			if name != "target-to-delete-quic.txt" {
+				return "", syscall.ENOENT
+			}
+			return fileHash, nil
+		},
 	}
 
 	clientFn := func(comm Communicator) {
-		// Write target delete file (64 bytes padded)
+		// Write target delete file (64 bytes padded) + content hash (64 bytes padded)
 		target := common.PadString("target-to-delete-quic.txt", 64)
-		if _, err := comm.Write([]byte(target)); err != nil {
+		hash := common.PadString(fileHash, 64)
+		if _, err := comm.Write([]byte(target + hash)); err != nil {
 			t.Fatalf("Failed to write target: %v", err)
 		}
 
