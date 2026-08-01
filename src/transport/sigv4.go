@@ -55,6 +55,38 @@ func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
 	return c, true
 }
 
+func sigV4Escape(s string, encodeSlash bool) string {
+	hexCount := 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '~' {
+			continue
+		}
+		if !encodeSlash && c == '/' {
+			continue
+		}
+		hexCount++
+	}
+
+	if hexCount == 0 {
+		return s
+	}
+
+	var sb strings.Builder
+	sb.Grow(len(s) + 2*hexCount)
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '~' || (!encodeSlash && c == '/') {
+			sb.WriteByte(c)
+		} else {
+			sb.WriteByte('%')
+			sb.WriteByte("0123456789ABCDEF"[c>>4])
+			sb.WriteByte("0123456789ABCDEF"[c&15])
+		}
+	}
+	return sb.String()
+}
+
 func buildCanonicalRequest(req *http.Request, signedHeaders, payloadHash string) string {
 	canonicalURI := req.URL.Path
 	if canonicalURI == "" {
@@ -75,13 +107,7 @@ func buildCanonicalRequest(req *http.Request, signedHeaders, payloadHash string)
 }
 
 func encodeCanonicalURI(uri string) string {
-	segments := strings.Split(uri, "/")
-	for i, seg := range segments {
-		segments[i] = url.QueryEscape(seg)
-	}
-	encoded := strings.Join(segments, "/")
-	encoded = strings.ReplaceAll(encoded, "+", "%20")
-	return encoded
+	return sigV4Escape(uri, false)
 }
 
 func buildCanonicalQueryString(values url.Values) string {
@@ -96,8 +122,7 @@ func buildCanonicalQueryString(values url.Values) string {
 		if i > 0 {
 			sb.WriteByte('&')
 		}
-		encodedKey := url.QueryEscape(k)
-		encodedKey = strings.ReplaceAll(encodedKey, "+", "%20")
+		encodedKey := sigV4Escape(k, true)
 		sb.WriteString(encodedKey)
 		sb.WriteByte('=')
 		for j, v := range values[k] {
@@ -106,8 +131,7 @@ func buildCanonicalQueryString(values url.Values) string {
 				sb.WriteString(encodedKey)
 				sb.WriteByte('=')
 			}
-			encodedVal := url.QueryEscape(v)
-			encodedVal = strings.ReplaceAll(encodedVal, "+", "%20")
+			encodedVal := sigV4Escape(v, true)
 			sb.WriteString(encodedVal)
 		}
 	}

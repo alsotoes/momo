@@ -173,3 +173,7 @@
 ## 2026-07-25 - [Optimize trailing null byte trimming in strings]
 **Learning:** Using `strings.TrimRight(s, "\x00")` checks characters sequentially from the right and is relatively slow. Using `strings.IndexByte(s, 0)` to locate the first null byte and slicing the string is substantially faster since `IndexByte` uses highly optimized assembly routines.
 **Action:** When truncating trailing null bytes from strings, use `strings.IndexByte(s, 0)` to find the boundary and slice the string instead of `strings.TrimRight`.
+
+## 2026-07-28 - [Optimize SigV4 URI and Query escaping]
+**Learning:** Using `url.QueryEscape` combined with `strings.ReplaceAll(..., "+", "%20")` or splitting and joining segments to handle AWS SigV4 encoding causes unnecessary allocations and CPU overhead.
+**Action:** When performing custom URI or query escaping for specific protocols like SigV4, implement a single-pass custom escape function that pre-allocates the `strings.Builder` and encodes characters in place.
