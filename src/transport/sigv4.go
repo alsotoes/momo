@@ -96,10 +96,11 @@ func sigV4Escape(s string, encodeSlash bool) (string, error) {
 	return sb.String(), nil
 }
 
-func buildCanonicalRequest(req *http.Request, signedHeaders, payloadHash string) (string, error) {
+func buildCanonicalRequest(req *http.Request, signedHeaders, payloadHash string) (result string, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Recovered from panic in buildCanonicalRequest: %v", r)
+			err = fmt.Errorf("panic in buildCanonicalRequest: %v: %w", r, syscall.EIO)
 		}
 	}()
 
@@ -107,21 +108,22 @@ func buildCanonicalRequest(req *http.Request, signedHeaders, payloadHash string)
 	if canonicalURI == "" {
 		canonicalURI = "/"
 	}
-	canonicalURI, err := encodeCanonicalURI(canonicalURI)
-	if err != nil {
-		return "", err
+	uri, uriErr := encodeCanonicalURI(canonicalURI)
+	if uriErr != nil {
+		return "", uriErr
 	}
+	canonicalURI = uri
 
-	canonicalQueryString, err := buildCanonicalQueryString(req.URL.Query())
-	if err != nil {
-		return "", err
+	qs, qsErr := buildCanonicalQueryString(req.URL.Query())
+	if qsErr != nil {
+		return "", qsErr
 	}
 
 	canonicalHeaders := buildCanonicalHeaders(req, signedHeaders)
 
 	return req.Method + "\n" +
 		canonicalURI + "\n" +
-		canonicalQueryString + "\n" +
+		qs + "\n" +
 		canonicalHeaders + "\n" +
 		signedHeaders + "\n" +
 		payloadHash, nil
