@@ -99,14 +99,23 @@ When `RequestedMode` is `ModeDelete` (`'D'`), the client requests the deletion o
 
 ### Native File Retrieval (GET - `'G'`)
 
-When `RequestedMode` is `ModeGet` (`'G'`), the client requests the raw binary payload download of a specific file.
+When `RequestedMode` is `ModeGet` (`'G'`), the client requests the raw binary payload download of a specific file. The client must provide a proof-of-knowledge (content hash) to prevent unauthorized file discovery by name alone (CVE-009).
 
 1.  **Handshake:** Completed with `'G'`.
-2.  **Target Name (Client sends):** Client sends the 64-byte null-padded name of the file to retrieve.
+2.  **Target Name + Hash Proof (Client sends):** Client sends a 128-byte request containing:
+    -   **File Name:** 64-byte ASCII string, null-padded (`\x00`).
+    -   **Content Hash:** 64-byte hexadecimal SHA-256 checksum, null-padded (`\x00`).
+
+    ```
+    |------------------|-----------------|
+    | File Name (64)   | Content Hash (64)|
+    |------------------|-----------------|
+    ```
 3.  **Server Response (ACK/Payload):**
+    -   If the content hash does not match the namespace mapping for the given name, the server writes a 1-byte `'1'` (Unauthorized/Not Found) code and closes.
     -   If the file does not exist, the server writes a 1-byte `'1'` (Not Found) code and closes.
     -   If a server error occurs, the server writes a 1-byte `'2'` (Server Error) code and closes.
-    -   If the file exists, the server writes a 1-byte `'0'` (Success) code, followed by a 64-byte null-padded `FileSize` string, followed by the raw binary stream of the file until EOF.
+    -   If the file exists and the hash matches, the server writes a 1-byte `'0'` (Success) code, followed by a 64-byte null-padded `FileSize` string, followed by the raw binary stream of the file until EOF.
 
 ### Payload
 
