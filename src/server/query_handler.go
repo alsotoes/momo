@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log"
+	"strings"
 	"syscall"
 
 	"github.com/alsotoes/momo/src/common"
@@ -60,8 +61,9 @@ func (h *StorageQueryHandler) handleGet(data []byte) (result []byte, err error) 
 		return nil, fmt.Errorf("empty file name: %w", syscall.EINVAL)
 	}
 	name := string(data)
-	// 🛡️ Sentinel: Sanitize name immediately to prevent path traversal in local storage queries.
-	if common.HasPathTraversalChars(name) {
+	// 🛡️ Sentinel: Sanitize name to prevent path traversal. Allow forward slashes
+	// for full virtual paths (e.g., "dirA/file.txt") but reject ".." and backslashes.
+	if strings.Contains(name, "..") || strings.Contains(name, "\\") {
 		return nil, fmt.Errorf("invalid name: %w", syscall.EBADMSG)
 	}
 	rc, meta, err := h.store.Get(name)
@@ -116,8 +118,9 @@ func (h *StorageQueryHandler) handleDelete(data []byte) (result []byte, err erro
 		return nil, fmt.Errorf("empty file name: %w", syscall.EINVAL)
 	}
 	name := string(data)
-	// 🛡️ Sentinel: Sanitize name immediately to prevent path traversal in local storage queries.
-	if common.HasPathTraversalChars(name) {
+	// 🛡️ Sentinel: Sanitize name to prevent path traversal. Allow forward slashes
+	// for full virtual paths (e.g., "dirA/file.txt") but reject ".." and backslashes.
+	if strings.Contains(name, "..") || strings.Contains(name, "\\") {
 		return nil, fmt.Errorf("invalid name: %w", syscall.EBADMSG)
 	}
 	if err := h.store.Delete(name); err != nil {
@@ -235,7 +238,7 @@ func DecodeFileMetadataList(data []byte) (result []common.FileMetadata, err erro
 		if common.HasPathTraversalChars(hash) {
 			return nil, fmt.Errorf("invalid hash at entry %d: %w", i, syscall.EBADMSG)
 		}
-		if common.HasPathTraversalChars(name) {
+		if strings.Contains(name, "..") || strings.Contains(name, "\\") {
 			return nil, fmt.Errorf("invalid name at entry %d: %w", i, syscall.EBADMSG)
 		}
 		if fileSize < 0 || fileSize > common.MaxFileSize {

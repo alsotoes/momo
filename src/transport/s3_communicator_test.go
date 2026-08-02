@@ -498,8 +498,8 @@ func TestS3Communicator_KeyTraversalValidation(t *testing.T) {
 func TestS3Communicator_XMLFormatting(t *testing.T) {
 	files := []common.FileMetadata{
 		{Name: "file1.txt", Hash: "hash1", Size: 100, RemotePath: ""},
-		{Name: "file2.txt", Hash: "hash2", Size: 200, RemotePath: "docs"},
-		{Name: "file3.txt", Hash: "hash3", Size: 300, RemotePath: "docs/nested"},
+		{Name: "docs/file2.txt", Hash: "hash2", Size: 200, RemotePath: "docs"},
+		{Name: "docs/nested/file3.txt", Hash: "hash3", Size: 300, RemotePath: "docs/nested"},
 		{Name: "oversized-filename-exceeding-sixty-four-characters-limit-should-be-skipped-entirely.txt", Hash: "hash4", Size: 400},
 		{Name: "valid.txt", Hash: "oversized-hash-exceeding-sixty-four-characters-limit-should-be-skipped-entirely", Size: 500},
 	}

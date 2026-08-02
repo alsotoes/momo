@@ -358,3 +358,93 @@ func TestCASStoreDeleteRemovesBlobImmediately(t *testing.T) {
 		t.Fatal("Has should return false after Delete removed the blob")
 	}
 }
+
+func TestCASStore_NamespaceCollision(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	tmpDir, err := os.MkdirTemp("", "momo-ns-collision-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	store, err := NewCASStore(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to create CASStore: %v", err)
+	}
+	defer store.Close()
+
+	contentA := []byte("content from dirA")
+	contentB := []byte("content from dirB")
+	hashA := common.HashBytes(contentA)
+	hashB := common.HashBytes(contentB)
+
+	keyA := "dirA/file.txt"
+	keyB := "dirB/file.txt"
+
+	if err := store.Put(keyA, hashA, int64(len(contentA)), "dirA", bytes.NewReader(contentA)); err != nil {
+		t.Fatalf("Failed to Put %s: %v", keyA, err)
+	}
+	if err := store.Put(keyB, hashB, int64(len(contentB)), "dirB", bytes.NewReader(contentB)); err != nil {
+		t.Fatalf("Failed to Put %s: %v", keyB, err)
+	}
+
+	readerA, metaA, err := store.Get(keyA)
+	if err != nil {
+		t.Fatalf("Failed to Get %s: %v", keyA, err)
+	}
+	defer readerA.Close()
+	if metaA.Hash != hashA {
+		t.Errorf("Expected hash %s for %s, got %s", hashA, keyA, metaA.Hash)
+	}
+	gotA, _ := io.ReadAll(readerA)
+	if string(gotA) != string(contentA) {
+		t.Errorf("Expected content %q for %s, got %q", contentA, keyA, gotA)
+	}
+
+	readerB, metaB, err := store.Get(keyB)
+	if err != nil {
+		t.Fatalf("Failed to Get %s: %v", keyB, err)
+	}
+	defer readerB.Close()
+	if metaB.Hash != hashB {
+		t.Errorf("Expected hash %s for %s, got %s", hashB, keyB, metaB.Hash)
+	}
+	gotB, _ := io.ReadAll(readerB)
+	if string(gotB) != string(contentB) {
+		t.Errorf("Expected content %q for %s, got %q", contentB, keyB, gotB)
+	}
+
+	list, err := store.List()
+	if err != nil {
+		t.Fatalf("List failed: %v", err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("Expected 2 entries in list, got %d", len(list))
+	}
+
+	names := make(map[string]bool)
+	for _, f := range list {
+		names[f.Name] = true
+	}
+	if !names[keyA] {
+		t.Errorf("Expected %s in list", keyA)
+	}
+	if !names[keyB] {
+		t.Errorf("Expected %s in list", keyB)
+	}
+
+	hashA2, err := store.GetHashForName(keyA)
+	if err != nil {
+		t.Fatalf("GetHashForName failed for %s: %v", keyA, err)
+	}
+	if hashA2 != hashA {
+		t.Errorf("Expected hash %s for %s, got %s", hashA, keyA, hashA2)
+	}
+	hashB2, err := store.GetHashForName(keyB)
+	if err != nil {
+		t.Fatalf("GetHashForName failed for %s: %v", keyB, err)
+	}
+	if hashB2 != hashB {
+		t.Errorf("Expected hash %s for %s, got %s", hashB, keyB, hashB2)
+	}
+}

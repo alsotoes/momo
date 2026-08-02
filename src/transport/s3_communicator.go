@@ -860,9 +860,6 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, f
 		}
 
 		key := file.Name
-		if file.RemotePath != "" {
-			key = file.RemotePath + "/" + file.Name
-		}
 
 		if prefix != "" && !strings.HasPrefix(key, prefix) {
 			continue
