@@ -247,9 +247,8 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 	}
 
 	if key, err := section.GetKey("tls_insecure"); err == nil {
-		globalCfg.TLSInsecure, err = key.Bool()
-		if err != nil {
-			globalCfg.TLSInsecure = false
+		if v, e := key.Bool(); e == nil {
+			globalCfg.TLSInsecure = v
 		}
 	}
 
