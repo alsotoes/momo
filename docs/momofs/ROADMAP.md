@@ -65,9 +65,9 @@
 | Bucket | Key | Value | Scope |
 |--------|-----|-------|-------|
 | `objects` | content hash | 24B ObjectMeta | Local |
-| `namespace` | file name | content hash | Local |
-| `paths` | file name | remote path | Local |
-| `tombstones` | file name | 8B timestamp | Local (+P2P sync) |
+| `namespace` | full virtual path | content hash | Local |
+| `paths` | full virtual path | remote path | Local |
+| `tombstones` | full virtual path | 8B timestamp | Local (+P2P sync) |
 | `raw_alloc` | content hash | 16B [offset][len] | Local |
 
 ### Target Buckets (Distributed + Multi-Tenant)

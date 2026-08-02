@@ -6,7 +6,7 @@
 
 | Missing | Impact |
 |---------|--------|
-| **Global namespace** | If client writes `foo.txt` to node A, node B doesn't know it exists unless B is a replica target |
+| **Global namespace** | If client writes `foo.txt` to node A, node B doesn't know it exists unless B is a replica target. Note: namespace collision (same base name in different directories) is fixed — namespace is keyed by full virtual path (#548). |
 | **Global directory tree** | No cluster-wide `List("/")` — each node only lists its own local files |
 | **Metadata replication** | Namespace mappings, refcounts, paths are local-only — no metadata replication strategy |
 | **Cluster-wide object index** | No way to find which node holds a given object without asking all nodes (scatter-gather) |

@@ -215,7 +215,7 @@ A `StorageFactory` (`NewStore`) mirrors the transport `ProtocolFactory`, switchi
 
 ### MetadataStore (Fixed)
 Per-node bbolt metadata database (`momo.db`) handles:
-- **Namespace mapping**: file name → content hash
+- **Namespace mapping**: full virtual path → content hash
 - **Reference counting**: deduplication with refcount tracking
 - **Tombstones**: deletion tracking with retention-based GC
 - **P2P exchange**: tombstone propagation via scatter-gather

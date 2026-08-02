@@ -30,6 +30,15 @@ This document outlines the high-level roadmap for the Momo project, tracking maj
 | **Pluggable Storage Backends** | [#226](https://github.com/alsotoes/momo/issues/226) | ✅ Merged | Configurable blob storage (local, NFS, S3, raw) via `BlobStore` interface with zero-dep SigV4 client and bbolt metadata. |
 | **Storage Backend E2E Tests** | [#409](https://github.com/alsotoes/momo/issues/409) | ✅ Merged | E2E integration tests for S3 and raw device backends with CI workflow. |
 | **Path Traversal Hardening** | [#410](https://github.com/alsotoes/momo/issues/410) | ✅ Merged | Sanitized scatter-gather query handlers with bounds validation (Rule 32) and panic recovery (Rule 37). |
+| **CVE-008: SigV4 Bypass** | [#539](https://github.com/alsotoes/momo/issues/539) | ✅ Merged | S3 SigV4 signature verification — custom URI/query escaping, canonical request validation. |
+| **CVE-005: Dedup Confusion** | [#540](https://github.com/alsotoes/momo/issues/540) | ✅ Merged | Proof-of-knowledge required for new namespace aliases — prevents dedup confusion attack. |
+| **CVE-007: Peer Impersonation** | [#541](https://github.com/alsotoes/momo/issues/541) | ✅ Merged | Cryptographic peer token (SHA-256 derivation) replaces timestamp check in peer handshakes. |
+| **CVE-002: Native GET** | [#542](https://github.com/alsotoes/momo/issues/542) | ✅ Merged | Native GET requires content hash proof-of-knowledge — prevents arbitrary file download. |
+| **CVE-003: Native DELETE** | [#543](https://github.com/alsotoes/momo/issues/543) | ✅ Merged | Native DELETE requires content hash proof-of-knowledge — prevents arbitrary file deletion. |
+| **CVE-001: Native LIST** | [#544](https://github.com/alsotoes/momo/issues/544) | ✅ Merged | Native LIST restricted to peer connections only — prevents file enumeration by clients. |
+| **CVE-006: Blob Pollution** | [#545](https://github.com/alsotoes/momo/issues/545) | ✅ Merged | Immediate blob cleanup on Delete when refcount reaches 0 — prevents disk waste. |
+| **CVE-004: Path Traversal Upload** | [#547](https://github.com/alsotoes/momo/issues/547) | ✅ Merged | Virtual path traversal via upload blocked by sanitization and normalization. |
+| **Namespace Collision Fix** | [#548](https://github.com/alsotoes/momo/issues/548) | ✅ Merged | Namespace bucket keyed by full virtual path instead of base filename — prevents silent overwrite. |
 
 ## 🟡 In Progress / Upcoming
 
@@ -45,4 +54,4 @@ This document outlines the high-level roadmap for the Momo project, tracking maj
 - **Client SDKs**: Native SDKs for Python and Rust.
 
 ---
-*Last Updated: 2026-07-26*
+*Last Updated: 2026-08-02*
