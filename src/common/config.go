@@ -234,13 +234,23 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 		return ConfigurationGlobal{}, fmt.Errorf("'auth_token' length exceeds maximum allowed length of %d bytes", AuthTokenLength)
 	}
 
-	globalCfg.CACertPath = section.Key("ca_cert").String()
+	if key, err := section.GetKey("ca_cert"); err == nil {
+		globalCfg.CACertPath = key.String()
+	}
 
-	globalCfg.TLSCertPath = section.Key("tls_cert").String()
-	globalCfg.TLSKeyPath = section.Key("tls_key").String()
-	globalCfg.TLSInsecure, err = section.Key("tls_insecure").Bool()
-	if err != nil {
-		globalCfg.TLSInsecure = false
+	if key, err := section.GetKey("tls_cert"); err == nil {
+		globalCfg.TLSCertPath = key.String()
+	}
+
+	if key, err := section.GetKey("tls_key"); err == nil {
+		globalCfg.TLSKeyPath = key.String()
+	}
+
+	if key, err := section.GetKey("tls_insecure"); err == nil {
+		globalCfg.TLSInsecure, err = key.Bool()
+		if err != nil {
+			globalCfg.TLSInsecure = false
+		}
 	}
 
 	return globalCfg, nil
