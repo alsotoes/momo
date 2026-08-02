@@ -70,9 +70,9 @@ The metadata consists of three fixed-size fields:
 
 ### Native Directory Listing (LIST - `'L'`)
 
-When `RequestedMode` is `ModeList` (`'L'`), the client queries the list of all file metadata stored on the server.
+When `RequestedMode` is `ModeList` (`'L'`), the client queries the list of all file metadata stored on the server. This operation is restricted to peer connections only (authenticated with the derived peer token) to prevent file enumeration by direct clients (CVE-001). Non-peer connections receive a 0-count empty list.
 
-1.  **Handshake:** Completed with `'L'`.
+1.  **Handshake:** Completed with `'L'`. Must use the derived peer token.
 2.  **Server Response (File Count):** Server writes a 4-byte big-endian integer representing the number of files:
     ```
     |-----------------|
