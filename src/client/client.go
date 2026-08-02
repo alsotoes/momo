@@ -86,6 +86,17 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 	// so peak memory is chunk-sized rather than file-sized.
 	var fileHash string
 	if encCipher != nil {
+		// 🛡️ Zero-Crash: Validate file size before encryption to prevent
+		// unbounded buffer growth (Rule 4).
+		fileInfo, rErr := os.Stat(filePath)
+		if rErr != nil {
+			log.Printf("Failed to stat file %s: %v", common.SanitizeLog(filePath), common.SanitizeLog(rErr.Error()))
+			return
+		}
+		if fileInfo.Size() > common.MaxFileSize {
+			log.Printf("File %s size %d exceeds maximum %d: %v", common.SanitizeLog(filePath), fileInfo.Size(), common.MaxFileSize, syscall.EFBIG)
+			return
+		}
 		file, rErr := os.Open(filePath)
 		if rErr != nil {
 			log.Printf("Failed to open file %s: %v", common.SanitizeLog(filePath), common.SanitizeLog(rErr.Error()))
