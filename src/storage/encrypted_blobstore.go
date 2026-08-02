@@ -64,13 +64,21 @@ func (e *EncryptedBlobStore) PutBlob(hash string, content io.Reader) error {
 // GetBlob retrieves the ciphertext from the underlying BlobStore and
 // returns a streaming reader that decrypts on read. The caller must
 // close the returned ReadCloser.
-func (e *EncryptedBlobStore) GetBlob(hash string) (io.ReadCloser, error) {
-	if r := recover(); r != nil {
-		log.Printf("CRITICAL: Panic recovered in EncryptedBlobStore.GetBlob: %v", r)
-		return nil, fmt.Errorf("panic in GetBlob: %v: %w", r, syscall.EIO)
-	}
+func (e *EncryptedBlobStore) GetBlob(hash string) (result io.ReadCloser, err error) {
+	// 🛡️ Zero-Crash: If a panic occurs after opening the inner reader,
+	// close it to prevent zombie file descriptors (Rule 43).
+	var innerRC io.ReadCloser
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in EncryptedBlobStore.GetBlob: %v", r)
+			if innerRC != nil {
+				innerRC.Close()
+			}
+			err = fmt.Errorf("panic in GetBlob: %v: %w", r, syscall.EIO)
+		}
+	}()
 
-	rc, err := e.inner.GetBlob(hash)
+	innerRC, err = e.inner.GetBlob(hash)
 	if err != nil {
 		return nil, err
 	}
@@ -80,9 +88,9 @@ func (e *EncryptedBlobStore) GetBlob(hash string) (io.ReadCloser, error) {
 	// chunks without buffering the entire blob in memory.
 	pr, pw := io.Pipe()
 	go func() {
-		defer rc.Close()
-		if err := e.cipher.DecryptStream(rc, pw); err != nil {
-			pw.CloseWithError(fmt.Errorf("decryption failed: %w", err))
+		defer innerRC.Close()
+		if decErr := e.cipher.DecryptStream(innerRC, pw); decErr != nil {
+			pw.CloseWithError(fmt.Errorf("decryption failed: %w", decErr))
 			return
 		}
 		pw.Close()
