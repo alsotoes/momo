@@ -37,6 +37,7 @@ type MomoQUICCommunicator struct {
 	deletePropagator DeletePropagator
 	metricsHook      MetricsHook
 	isPeer           bool
+	useChallengeResp bool
 }
 
 // NewMomoQUICCommunicator creates a new MomoQUICCommunicator.
@@ -45,6 +46,11 @@ func NewMomoQUICCommunicator(stream *quic.Stream, conn *quic.Conn) *MomoQUICComm
 		Stream: stream,
 		conn:   conn,
 	}
+}
+
+// SetChallengeResponse enables or disables challenge-response authentication.
+func (m *MomoQUICCommunicator) SetChallengeResponse(enabled bool) {
+	m.useChallengeResp = enabled
 }
 
 func (m *MomoQUICCommunicator) SetStore(store storage.Store) {
@@ -98,20 +104,33 @@ func (m *MomoQUICCommunicator) HandshakeClient(authToken string, timestamp int64
 		}
 	}()
 
-	var handshakeBuf [common.AuthTokenLength + common.TimestampLength + 1]byte
-	copy(handshakeBuf[0:common.AuthTokenLength], common.PadString(authToken, common.AuthTokenLength))
+	if m.useChallengeResp {
+		var handshakeBuf [common.TimestampLength + 1]byte
+		if err := common.AppendPaddedInt(handshakeBuf[:common.TimestampLength], timestamp, common.TimestampLength); err != nil {
+			return 0, fmt.Errorf("failed to format handshake timestamp: %w", err)
+		}
+		handshakeBuf[common.TimestampLength] = byte(requestedMode + '0')
 
-	// ⚡ Bolt: Use PadString to ensure the timestamp is exactly 19 bytes and correctly placed.
-	// We optimize this using a common helper to avoid intermediate string allocations.
-	if err := common.AppendPaddedInt(handshakeBuf[common.AuthTokenLength:], timestamp, common.TimestampLength); err != nil {
-		return 0, fmt.Errorf("failed to format handshake timestamp: %w", err)
-	}
+		if _, err := m.Write(handshakeBuf[:]); err != nil {
+			return 0, fmt.Errorf("failed to send handshake: %v: %w", err, syscall.EIO)
+		}
 
-	// Write the requested mode (1 byte) at the end
-	handshakeBuf[common.AuthTokenLength+common.TimestampLength] = byte(requestedMode + '0')
+		if err := common.ChallengeResponseClient(m, authToken); err != nil {
+			return 0, err
+		}
+	} else {
+		var handshakeBuf [common.AuthTokenLength + common.TimestampLength + 1]byte
+		copy(handshakeBuf[0:common.AuthTokenLength], common.PadString(authToken, common.AuthTokenLength))
 
-	if _, err := m.Write(handshakeBuf[:]); err != nil {
-		return 0, fmt.Errorf("failed to send handshake: %v: %w", err, syscall.EIO)
+		if err := common.AppendPaddedInt(handshakeBuf[common.AuthTokenLength:], timestamp, common.TimestampLength); err != nil {
+			return 0, fmt.Errorf("failed to format handshake timestamp: %w", err)
+		}
+
+		handshakeBuf[common.AuthTokenLength+common.TimestampLength] = byte(requestedMode + '0')
+
+		if _, err := m.Write(handshakeBuf[:]); err != nil {
+			return 0, fmt.Errorf("failed to send handshake: %v: %w", err, syscall.EIO)
+		}
 	}
 
 	var respBuf [1]byte
@@ -138,41 +157,68 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 		}
 	}()
 
-	var handshakeBuf [common.AuthTokenLength + common.TimestampLength + 1]byte
-	if _, err := io.ReadFull(io.LimitReader(m, common.AuthTokenLength+common.TimestampLength+1), handshakeBuf[:]); err != nil {
-		return 0, 0, fmt.Errorf("failed to read handshake: %v: %w", err, syscall.EBADMSG)
-	}
+	if m.useChallengeResp {
+		var handshakeBuf [common.TimestampLength + 1]byte
+		if _, err := io.ReadFull(io.LimitReader(m, common.TimestampLength+1), handshakeBuf[:]); err != nil {
+			return 0, 0, fmt.Errorf("failed to read handshake: %v: %w", err, syscall.EBADMSG)
+		}
 
-	// 🛡️ Zero-Crash: Verify handshake buffer length bounds before slicing (Rule 4)
-	if len(handshakeBuf) < common.AuthTokenLength+common.TimestampLength+1 {
-		return 0, 0, fmt.Errorf("handshake buffer too small: %w", syscall.EBADMSG)
-	}
+		bufferTimestamp := handshakeBuf[:common.TimestampLength]
+		requestedModeByte := handshakeBuf[common.TimestampLength]
 
-	bufferAuthToken := handshakeBuf[:common.AuthTokenLength]
-	bufferTimestamp := handshakeBuf[common.AuthTokenLength : common.AuthTokenLength+common.TimestampLength]
-	requestedModeByte := handshakeBuf[common.AuthTokenLength+common.TimestampLength]
+		isPeer, authErr := common.ChallengeResponseServerPeer(m, expectedAuthToken)
+		if authErr != nil {
+			return 0, 0, authErr
+		}
+		m.isPeer = isPeer
 
-	if subtle.ConstantTimeCompare(bufferAuthToken, expectedAuthToken) == 1 {
-		m.isPeer = false
-	} else if peerToken := common.DerivePeerToken(expectedAuthToken); subtle.ConstantTimeCompare(bufferAuthToken, peerToken) == 1 {
-		m.isPeer = true
+		timestamp, err = common.SafeParseInt(bufferTimestamp)
+		if err != nil {
+			return 0, 0, fmt.Errorf("failed to parse timestamp: %v: %w", err, syscall.EBADMSG)
+		}
+
+		if requestedModeByte == 'L' || requestedModeByte == 'D' || requestedModeByte == 'G' {
+			requestedMode = int(requestedModeByte)
+		} else {
+			requestedMode = int(requestedModeByte - '0')
+			if requestedMode < 0 || requestedMode > 9 {
+				return 0, 0, fmt.Errorf("invalid requested mode: %d: %w", requestedMode, syscall.EBADMSG)
+			}
+		}
 	} else {
-		return 0, 0, syscall.EACCES
-	}
+		var handshakeBuf [common.AuthTokenLength + common.TimestampLength + 1]byte
+		if _, err := io.ReadFull(io.LimitReader(m, common.AuthTokenLength+common.TimestampLength+1), handshakeBuf[:]); err != nil {
+			return 0, 0, fmt.Errorf("failed to read handshake: %v: %w", err, syscall.EBADMSG)
+		}
 
-	timestamp, err = common.SafeParseInt(bufferTimestamp)
-	if err != nil {
-		return 0, 0, fmt.Errorf("failed to parse timestamp: %v: %w", err, syscall.EBADMSG)
-	}
+		if len(handshakeBuf) < common.AuthTokenLength+common.TimestampLength+1 {
+			return 0, 0, fmt.Errorf("handshake buffer too small: %w", syscall.EBADMSG)
+		}
 
-	// Decode requestedModeByte polymorphically: characters 'L', 'D', 'G' represent file actions
-	// while numeric bytes '0'-'9' represent replication strategies, separating namespaces.
-	if requestedModeByte == 'L' || requestedModeByte == 'D' || requestedModeByte == 'G' {
-		requestedMode = int(requestedModeByte)
-	} else {
-		requestedMode = int(requestedModeByte - '0')
-		if requestedMode < 0 || requestedMode > 9 {
-			return 0, 0, fmt.Errorf("invalid requested mode: %d: %w", requestedMode, syscall.EBADMSG)
+		bufferAuthToken := handshakeBuf[:common.AuthTokenLength]
+		bufferTimestamp := handshakeBuf[common.AuthTokenLength : common.AuthTokenLength+common.TimestampLength]
+		requestedModeByte := handshakeBuf[common.AuthTokenLength+common.TimestampLength]
+
+		if subtle.ConstantTimeCompare(bufferAuthToken, expectedAuthToken) == 1 {
+			m.isPeer = false
+		} else if peerToken := common.DerivePeerToken(expectedAuthToken); subtle.ConstantTimeCompare(bufferAuthToken, peerToken) == 1 {
+			m.isPeer = true
+		} else {
+			return 0, 0, syscall.EACCES
+		}
+
+		timestamp, err = common.SafeParseInt(bufferTimestamp)
+		if err != nil {
+			return 0, 0, fmt.Errorf("failed to parse timestamp: %v: %w", err, syscall.EBADMSG)
+		}
+
+		if requestedModeByte == 'L' || requestedModeByte == 'D' || requestedModeByte == 'G' {
+			requestedMode = int(requestedModeByte)
+		} else {
+			requestedMode = int(requestedModeByte - '0')
+			if requestedMode < 0 || requestedMode > 9 {
+				return 0, 0, fmt.Errorf("invalid requested mode: %d: %w", requestedMode, syscall.EBADMSG)
+			}
 		}
 	}
 
@@ -596,8 +642,9 @@ func GenerateSelfSignedCert() (tls.Certificate, error) {
 
 // DialQUIC connects to a peer using QUIC.
 // When caCertPool is non-nil, peer certificates are verified against it.
-// When caCertPool is nil, InsecureSkipVerify is used with a warning log.
-func DialQUIC(ctx context.Context, address string, caCertPool *x509.CertPool) (conn *quic.Conn, stream *quic.Stream, err error) {
+// When caCertPool is nil and tlsInsecure is false, the connection fails.
+// When caCertPool is nil and tlsInsecure is true, InsecureSkipVerify is used with a warning.
+func DialQUIC(ctx context.Context, address string, caCertPool *x509.CertPool, tlsInsecure bool) (conn *quic.Conn, stream *quic.Stream, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Panic recovered in DialQUIC for %s: %v", address, r)
@@ -615,9 +662,11 @@ func DialQUIC(ctx context.Context, address string, caCertPool *x509.CertPool) (c
 	}
 	if caCertPool != nil {
 		tlsConf.RootCAs = caCertPool
-	} else {
-		log.Printf("WARNING: QUIC dial to %s using InsecureSkipVerify (no CA cert configured) — vulnerable to MITM", address)
+	} else if tlsInsecure {
+		log.Printf("WARNING: QUIC dial to %s using InsecureSkipVerify (tls_insecure=true) — vulnerable to MITM", address)
 		tlsConf.InsecureSkipVerify = true
+	} else {
+		return nil, nil, fmt.Errorf("QUIC peer verification requires ca_cert or tls_insecure=true: %w", syscall.EACCES)
 	}
 	conn, err = quic.DialAddr(ctx, address, tlsConf, nil)
 	if err != nil {

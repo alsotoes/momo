@@ -158,5 +158,7 @@ func (l *QUICListener) Accept() (Communicator, error) {
 	if l.factory.cfg.Global.Protocol == "s3-quic" {
 		return NewS3Communicator(NewQUICNetConn(stream, conn)), nil
 	}
-	return NewMomoQUICCommunicator(stream, conn), nil
+	m := NewMomoQUICCommunicator(stream, conn)
+	m.SetChallengeResponse(l.factory.useChallengeResp)
+	return m, nil
 }

@@ -12,9 +12,19 @@ It consists of a handshake, metadata exchange, and a file transfer phase. The pr
 
 Whether running over raw TCP sockets or encrypted UDP QUIC streams, the byte-level protocol remains identical. For `momo-quic`, TLS 1.3 is automatically configured with self-signed certificates for node-to-node security, and a dedicated, isolated stream is opened for each client transaction.
 
+## Transport TLS (Phase 1 — E2EE)
+
+When `tls_cert` and `tls_key` are configured, TCP-based protocols (`momo-tcp`, `s3-tcp`) wrap connections in TLS 1.2+ before any application data is exchanged. QUIC protocols already use TLS 1.3 via QUIC.
+
+QUIC peer verification defaults to strict: either `ca_cert` must be configured or `tls_insecure = true` must be explicitly set. This prevents accidental MitM vulnerabilities.
+
+When TLS is enabled, the momo handshake uses **challenge-response authentication** instead of sending the auth token in plaintext.
+
 ## Handshake
 
 The handshake is initiated by the client and is used to authenticate the connection and establish the replication mode.
+
+### Plaintext Mode (default, backward compatible)
 
 1.  **Transport Connection**: The client opens a network connection (TCP socket, QUIC stream, or S3 HTTP session).
 2.  **Handshake Packet**: The client sends a combined authentication, timestamp, and mode packet (84 bytes):
@@ -40,6 +50,27 @@ The handshake is initiated by the client and is used to authenticate the connect
 |-----------------|-----------------|------|
 |  AuthToken (64) | Timestamp (19)  | M (1)|
 |-----------------|-----------------|------|
+```
+
+### Challenge-Response Mode (when TLS is enabled)
+
+1.  **Transport Connection**: TLS handshake completes first.
+2.  **Handshake Packet**: The client sends timestamp + mode (20 bytes, no auth token):
+    -   **Timestamp:** 19-byte ASCII string.
+    -   **RequestedMode:** 1-byte.
+3.  **Challenge**: The server generates a 32-byte cryptographically secure random nonce and sends it to the client.
+4.  **Response**: The client computes `HMAC-SHA256(PadString(authToken, 64), nonce)` and sends the 32-byte response.
+5.  **Validation**: The server computes the expected HMAC using its stored token and compares using `hmac.Equal` (constant-time). The auth token is **never transmitted**.
+6.  **Peer Detection**: The server also checks `HMAC-SHA256(DerivePeerToken(authToken), nonce)` to distinguish peer connections from client connections.
+7.  **Confirmation**: The server responds with a 1-byte replication mode.
+
+**Challenge-Response Handshake Layout:**
+
+```
+Client → Server:  | Timestamp (19) | M (1) |         (20 bytes)
+Server → Client:  | Nonce (32) |                          (32 bytes)
+Client → Server:  | HMAC-SHA256 Response (32) |           (32 bytes)
+Server → Client:  | Replication Mode (1) |                (1 byte)
 ```
 
 ## Message Framing
