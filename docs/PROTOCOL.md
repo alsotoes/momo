@@ -135,6 +135,10 @@ The file payload is streamed until EOF. The server reads exactly the number of b
 - **MaxPathLength:** 4096 bytes. Virtual paths exceeding this limit are rejected with `EBADMSG` in `DecodeFileMetadataList`.
 - **FileInfoLength:** 64 bytes. Hash and name fields exceeding this length are rejected with `EBADMSG` in `DecodeFileMetadataList`.
 
+### Namespace Keying
+
+The namespace bucket is keyed by the **full virtual path** (e.g., `dirA/file.txt`), not the base filename. This means `dirA/file.txt` and `dirB/file.txt` are distinct namespace entries pointing to potentially different content hashes. The full virtual path is sent over the wire as the `fileName` field (constructed by the client as `remotePath + "/" + baseName`). The server uses this full path directly as the storage key, preventing namespace collisions between files with the same base name in different virtual directories.
+
 ## Replication Modes in Detail
 
 The following diagrams illustrate the message flow for each replication mode.

@@ -311,6 +311,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 				metricsCollector.IncErrors()
 				return
 			}
+			storageKey := rawFileName
 
 			// 🛡️ Sentinel: Enforce maximum file size to prevent Denial of Service via resource exhaustion
 			if metadata.Size < 0 || metadata.Size > common.MaxFileSize {
@@ -342,7 +343,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 			// payload as proof of content knowledge before creating a new namespace alias.
 			canDedup := false
 			if exists {
-				existingHash, hashErr := store.GetHashForName(fileName)
+				existingHash, hashErr := store.GetHashForName(storageKey)
 				if hashErr == nil && existingHash == metadata.Hash {
 					canDedup = true
 				}
@@ -388,13 +389,13 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 			case common.ReplicationNone, common.ReplicationPrimarySplay:
 				if canDedup {
 					// ⚡ Bolt: Deduplication hit. Just update metadata mapping without reading payload.
-					if err := store.Put(fileName, metadata.Hash, metadata.Size, remotePath, nil); err != nil {
+					if err := store.Put(storageKey, metadata.Hash, metadata.Size, remotePath, nil); err != nil {
 						log.Printf("AUDIT: Error updating metadata for %s from %s: %v", fileName, remoteAddr, common.SanitizeLog(err.Error()))
 						metricsCollector.IncErrors()
 						return
 					}
 				} else {
-					if err := getFile(comm, store, fileName, metadata.Hash, metadata.Size, remotePath); err != nil {
+					if err := getFile(comm, store, storageKey, metadata.Hash, metadata.Size, remotePath); err != nil {
 						log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
 						metricsCollector.IncErrors()
 						return
@@ -413,14 +414,14 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 				wg.Add(1)
 				if canDedup {
 					// ⚡ Bolt: Deduplication hit. Just update metadata mapping without reading payload.
-					if err := store.Put(fileName, metadata.Hash, metadata.Size, remotePath, nil); err != nil {
+					if err := store.Put(storageKey, metadata.Hash, metadata.Size, remotePath, nil); err != nil {
 						log.Printf("AUDIT: Error updating metadata for %s from %s: %v", fileName, remoteAddr, common.SanitizeLog(err.Error()))
 						wg.Done()
 						metricsCollector.IncErrors()
 						return
 					}
 				} else {
-					if err := getFile(comm, store, fileName, metadata.Hash, metadata.Size, remotePath); err != nil {
+					if err := getFile(comm, store, storageKey, metadata.Hash, metadata.Size, remotePath); err != nil {
 						log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
 						wg.Done()
 						metricsCollector.IncErrors()
@@ -441,7 +442,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 								metricsCollector.IncErrors()
 							}
 						}()
-						reader, _, err := store.Get(fileName)
+						reader, _, err := store.Get(storageKey)
 						if err != nil {
 							log.Printf("AUDIT: Failed to get blob for chain forwarding: %v", common.SanitizeLog(err.Error()))
 							wg.Done()
@@ -450,7 +451,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 						}
 						defer reader.Close()
 						// ⚡ Bolt: connectToPeerStream (client.ConnectStream) handles wg.Done() internally via defer.
-						connectToPeerStream(&wg, cfg, reader, fileName, metadata.Hash, metadata.Size, remotePath, id, finalTs, replicationMode, factor)
+						connectToPeerStream(&wg, cfg, reader, storageKey, metadata.Hash, metadata.Size, "", id, finalTs, replicationMode, factor)
 						metricsCollector.IncReplication()
 					}(nextHop.ID)
 				} else {
@@ -464,7 +465,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 					wg.Add(len(placement) - 1)
 					if canDedup {
 						// ⚡ Bolt: Deduplication hit. Just update metadata mapping.
-						if err := store.Put(fileName, metadata.Hash, metadata.Size, remotePath, nil); err != nil {
+						if err := store.Put(storageKey, metadata.Hash, metadata.Size, remotePath, nil); err != nil {
 							log.Printf("AUDIT: Error updating metadata for %s from %s: %v", fileName, remoteAddr, common.SanitizeLog(err.Error()))
 							for i := 0; i < len(placement)-1; i++ {
 								wg.Done()
@@ -473,7 +474,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 							return
 						}
 					} else {
-						if err := getFile(comm, store, fileName, metadata.Hash, metadata.Size, remotePath); err != nil {
+						if err := getFile(comm, store, storageKey, metadata.Hash, metadata.Size, remotePath); err != nil {
 							log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
 							for i := 0; i < len(placement)-1; i++ {
 								wg.Done()
@@ -493,7 +494,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 									metricsCollector.IncErrors()
 								}
 							}()
-							reader, _, err := store.Get(fileName)
+							reader, _, err := store.Get(storageKey)
 							if err != nil {
 								log.Printf("AUDIT: Failed to get blob for splay forwarding: %v", common.SanitizeLog(err.Error()))
 								wg.Done()
@@ -501,7 +502,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 								return
 							}
 							defer reader.Close()
-							connectToPeerStream(&wg, cfg, reader, fileName, metadata.Hash, metadata.Size, remotePath, id, finalTs, replicationMode, factor)
+							connectToPeerStream(&wg, cfg, reader, storageKey, metadata.Hash, metadata.Size, "", id, finalTs, replicationMode, factor)
 							metricsCollector.IncReplication()
 						}(targetId)
 					}
@@ -509,13 +510,13 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 				} else {
 					// We are a secondary in a splay, just receive the file if needed.
 					if canDedup {
-						if err := store.Put(fileName, metadata.Hash, metadata.Size, remotePath, nil); err != nil {
+						if err := store.Put(storageKey, metadata.Hash, metadata.Size, remotePath, nil); err != nil {
 							log.Printf("AUDIT: Error updating metadata for %s from %s: %v", fileName, remoteAddr, common.SanitizeLog(err.Error()))
 							metricsCollector.IncErrors()
 							return
 						}
 					} else {
-						if err := getFile(comm, store, fileName, metadata.Hash, metadata.Size, remotePath); err != nil {
+						if err := getFile(comm, store, storageKey, metadata.Hash, metadata.Size, remotePath); err != nil {
 							log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
 							metricsCollector.IncErrors()
 							return
