@@ -444,3 +444,38 @@ No changes to `src/server/` or `src/storage/` are required for E2EE:
 - The content-addressable store keys on the ciphertext hash, enabling dedup.
 - The namespace stores the HMAC-encrypted filename, not the plaintext.
 - The server never sees plaintext content or filenames.
+
+## Server-Side Encryption at Rest (SSE)
+
+When `encryption_enabled = true`, the server wraps its `BlobStore` with
+`EncryptedBlobStore` — a decorator that encrypts blob content with
+AES-GCM-256 before writing to the underlying storage backend (local, S3,
+or raw device). This provides defense-in-depth: even if an attacker gains
+access to the storage medium, blob content remains encrypted at rest.
+
+### Architecture
+
+```
+Client → [E2EE encryption] → Server → EncryptedBlobStore → Underlying BlobStore
+                                         (AES-GCM-256)         (local/S3/raw)
+```
+
+- **Decorator pattern:** `EncryptedBlobStore` implements the `BlobStore` interface, wrapping any underlying implementation.
+- **Streaming AEAD:** `PutBlob` uses `EncryptStream` (4KB chunks); `GetBlob` uses `DecryptStream` via `io.Pipe` for zero-copy streaming.
+- **Dedup preserved:** The hash key remains the plaintext content hash (computed by `CASStore` before calling `PutBlob`), so CAS dedup works on plaintext content.
+- **Delete passthrough:** `DeleteBlob` delegates directly to the underlying store — encryption does not affect deletion semantics.
+- **S3 metadata (filenames) remain plaintext** — only blob content is encrypted at rest.
+
+### Configuration
+
+```ini
+[global]
+encryption_enabled = true
+encryption_key = <64-char hex string (32 bytes)>
+encryption_tenant = default
+```
+
+When `encryption_enabled = true` and `encryption_key` is set, the storage
+factory (`NewStore`) wraps the blob store with `EncryptedBlobStore` before
+passing it to `CASStore`. No changes to S3 key handling or S3 communicator
+logic are required.

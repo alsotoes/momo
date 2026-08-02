@@ -41,15 +41,15 @@
 
 ## Phase 4: SSE S3 Fallback — Server-Side Encryption at Rest
 
-- [ ] 4.1 Create `EncryptedBlobStore` decorator in `src/storage/` implementing `BlobStore` interface.
-- [ ] 4.2 `PutBlob`: encrypt data with server-side derived key before writing to underlying store.
-- [ ] 4.3 `GetBlob`: decrypt data after reading from underlying store.
-- [ ] 4.4 `DeleteBlob`: passthrough to underlying store.
-- [ ] 4.5 Wire `EncryptedBlobStore` into server initialization when `encryption_enabled` and protocol is `s3-tcp` or `s3-quic`.
-- [ ] 4.6 S3 metadata (filenames) remain plaintext — no changes to S3 key handling.
-- [ ] 4.7 Dedup works on plaintext hash (server computes hash before encryption) — no convergent encryption for S3.
-- [ ] 4.8 Write integration tests: SSE PUT/GET round-trip, SSE with S3 client (aws-cli compatible), SSE backward compatibility (disabled = plaintext).
-- [ ] 4.9 Update `docs/PROTOCOL.md` with SSE fallback documentation.
+- [x] 4.1 Create `EncryptedBlobStore` decorator in `src/storage/` implementing `BlobStore` interface.
+- [x] 4.2 `PutBlob`: encrypt data with server-side derived key before writing to underlying store.
+- [x] 4.3 `GetBlob`: decrypt data after reading from underlying store.
+- [x] 4.4 `DeleteBlob`: passthrough to underlying store.
+- [x] 4.5 Wire `EncryptedBlobStore` into server initialization when `encryption_enabled` and protocol is `s3-tcp` or `s3-quic`.
+- [x] 4.6 S3 metadata (filenames) remain plaintext — no changes to S3 key handling.
+- [x] 4.7 Dedup works on plaintext hash (server computes hash before encryption) — no convergent encryption for S3.
+- [x] 4.8 Write integration tests: SSE PUT/GET round-trip, SSE with S3 client (aws-cli compatible), SSE backward compatibility (disabled = plaintext).
+- [x] 4.9 Update `docs/PROTOCOL.md` with SSE fallback documentation.
 
 ## Phase 5: Per-Tenant Key Derivation
 

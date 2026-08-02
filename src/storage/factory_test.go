@@ -19,7 +19,7 @@ func TestNewStore_LocalDefault(t *testing.T) {
 	cfg := common.ConfigurationStorage{Backend: "local", GCInterval: 300, TombstoneRetention: 86400}
 	daemon := &common.Daemon{Data: tmpDir}
 
-	store, err := NewStore(cfg, daemon)
+	store, err := NewStore(cfg, daemon, "")
 	if err != nil {
 		t.Fatalf("NewStore failed: %v", err)
 	}
@@ -41,7 +41,7 @@ func TestNewStore_EmptyBackendDefaultsToLocal(t *testing.T) {
 	cfg := common.ConfigurationStorage{Backend: "", GCInterval: 300, TombstoneRetention: 86400}
 	daemon := &common.Daemon{Data: tmpDir}
 
-	store, err := NewStore(cfg, daemon)
+	store, err := NewStore(cfg, daemon, "")
 	if err != nil {
 		t.Fatalf("NewStore failed: %v", err)
 	}
@@ -59,7 +59,7 @@ func TestNewStore_NFS(t *testing.T) {
 	cfg := common.ConfigurationStorage{Backend: "nfs", GCInterval: 300, TombstoneRetention: 86400}
 	daemon := &common.Daemon{Data: tmpDir}
 
-	store, err := NewStore(cfg, daemon)
+	store, err := NewStore(cfg, daemon, "")
 	if err != nil {
 		t.Fatalf("NewStore failed: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestNewStore_S3MissingConfig(t *testing.T) {
 	cfg := common.ConfigurationStorage{Backend: "s3"}
 	daemon := &common.Daemon{Data: "/tmp"}
 
-	_, err := NewStore(cfg, daemon)
+	_, err := NewStore(cfg, daemon, "")
 	if err == nil {
 		t.Fatalf("Expected error for s3 backend with missing config")
 	}
@@ -80,7 +80,7 @@ func TestNewStore_RawMissingConfig(t *testing.T) {
 	cfg := common.ConfigurationStorage{Backend: "raw"}
 	daemon := &common.Daemon{Data: "/tmp"}
 
-	_, err := NewStore(cfg, daemon)
+	_, err := NewStore(cfg, daemon, "")
 	if err == nil {
 		t.Fatalf("Expected error for raw backend with missing device path")
 	}
@@ -90,7 +90,7 @@ func TestNewStore_UnsupportedBackend(t *testing.T) {
 	cfg := common.ConfigurationStorage{Backend: "quantum"}
 	daemon := &common.Daemon{Data: "/tmp"}
 
-	_, err := NewStore(cfg, daemon)
+	_, err := NewStore(cfg, daemon, "")
 	if err == nil {
 		t.Fatalf("Expected error for unsupported backend")
 	}

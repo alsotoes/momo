@@ -236,7 +236,7 @@ func TestNewStore_S3Backend(t *testing.T) {
 	}
 	daemon := &common.Daemon{Data: tmpDir}
 
-	store, err := NewStore(cfg, daemon)
+	store, err := NewStore(cfg, daemon, "")
 	if err != nil {
 		t.Fatalf("NewStore with s3 backend failed: %v", err)
 	}
