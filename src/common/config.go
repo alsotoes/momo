@@ -2,6 +2,7 @@
 package common
 
 import (
+	"encoding/hex"
 	"fmt"
 	"log"
 	"strconv"
@@ -250,6 +251,33 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 		if v, e := key.Bool(); e == nil {
 			globalCfg.TLSInsecure = v
 		}
+	}
+
+	if key, err := section.GetKey("encryption_enabled"); err == nil {
+		if v, e := key.Bool(); e == nil {
+			globalCfg.EncryptionEnabled = v
+		}
+	}
+
+	if key, err := section.GetKey("encryption_key"); err == nil {
+		globalCfg.EncryptionKey = key.String()
+	}
+
+	if key, err := section.GetKey("encryption_tenant"); err == nil {
+		globalCfg.EncryptionTenant = key.String()
+	}
+
+	if globalCfg.EncryptionEnabled {
+		if len(globalCfg.EncryptionKey) != 64 {
+			return ConfigurationGlobal{}, fmt.Errorf("'encryption_key' must be 64 hex characters (256-bit) when encryption is enabled: %w", syscall.EINVAL)
+		}
+		if _, err := hex.DecodeString(globalCfg.EncryptionKey); err != nil {
+			return ConfigurationGlobal{}, fmt.Errorf("'encryption_key' must be valid hex: %w", err)
+		}
+	}
+
+	if globalCfg.EncryptionTenant == "" {
+		globalCfg.EncryptionTenant = "default"
 	}
 
 	return globalCfg, nil
