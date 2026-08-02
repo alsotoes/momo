@@ -387,3 +387,60 @@ When P2P is enabled, nodes exchange gossip membership and failure detection RPCs
 - **LeaseID**: Unique lease identifier
 - **Key**: Resource key being leased
 - **Expiry**: Lease expiration timestamp (unix nano)
+
+## E2EE Content Encryption (Phase 3)
+
+When `encryption_enabled = true` and a valid `encryption_key` (64-char hex, 256-bit) is configured, the client applies end-to-end encryption before sending any content or metadata to the server. The server remains **zero-knowledge** — it stores ciphertext and opaque metadata without ever seeing plaintext.
+
+### Content Encryption
+
+1. **Client reads the file** into memory.
+2. **Encrypts with AES-GCM-256** (`crypto.Encrypt`): random 12-byte nonce prepended to ciphertext + 16-byte auth tag.
+3. **Computes SHA-256 of ciphertext** → this is the content hash used for CAS dedup and CRUSH placement.
+4. **Sends metadata** with the ciphertext hash and ciphertext size.
+5. **Writes ciphertext** to the communicator (replaces `io.Copy` with direct write of encrypted bytes).
+
+### Metadata Encryption (Filename Obfuscation)
+
+The `wireName` (virtual path + filename) is obfuscated using **HMAC-SHA256** with the tenant-derived key:
+
+```
+encryptedName = hex(HMAC-SHA256(tenantKey, wireName))
+```
+
+This produces a deterministic 64-character hex string that:
+- Fits within the `FileInfoLength` (64) limit
+- Is opaque to the server (no plaintext filename stored)
+- Is deterministic (same file → same encrypted name, enabling re-download)
+
+**Limitation**: HMAC is one-way, so LIST responses return opaque hashes. The client can match known files by recomputing `HMAC(tenantKey, knownName)` for each file it knows about.
+
+### Per-Tenant Key Isolation
+
+The master encryption key is never used directly for content encryption. Instead, a **tenant-specific key** is derived using HKDF-SHA256:
+
+```
+tenantKey = HKDF-SHA256(masterKey, salt=nil, info=tenantID)
+```
+
+Different tenants produce different derived keys, ensuring content encrypted by one tenant cannot be decrypted by another.
+
+### Download (GET) with Decryption
+
+The `Download` function:
+1. Connects to the server and sends a GET request with the encrypted name + ciphertext hash.
+2. Reads the ciphertext from the server.
+3. Decrypts with AES-GCM-256 (`cipher.Decrypt`).
+4. Writes plaintext to the destination.
+
+### Replication (ConnectStream)
+
+Server-to-server replication forwards **ciphertext** as-is (passthrough). The server does not have the encryption key and cannot decrypt. Replicated copies remain encrypted.
+
+### Server-Side (Zero Knowledge)
+
+No changes to `src/server/` or `src/storage/` are required for E2EE:
+- The server's `TeeReader` hashes the wire bytes (ciphertext), producing `SHA-256(ciphertext)` which matches the client-provided hash.
+- The content-addressable store keys on the ciphertext hash, enabling dedup.
+- The namespace stores the HMAC-encrypted filename, not the plaintext.
+- The server never sees plaintext content or filenames.

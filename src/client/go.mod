@@ -4,10 +4,13 @@ go 1.25.10
 
 replace github.com/alsotoes/momo/src/common => ../common
 
+replace github.com/alsotoes/momo/src/crypto => ../crypto
+
 replace github.com/alsotoes/momo/src/transport => ../transport
 
 require (
 	github.com/alsotoes/momo/src/common v0.0.0-00010101000000-000000000000
+	github.com/alsotoes/momo/src/crypto v0.0.0-00010101000000-000000000000
 	github.com/alsotoes/momo/src/transport v0.0.0-00010101000000-000000000000
 	go.uber.org/goleak v1.3.0
 )
