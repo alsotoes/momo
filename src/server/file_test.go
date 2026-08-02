@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/alsotoes/momo/src/common"
@@ -194,6 +195,47 @@ func TestGetFileTraversal(t *testing.T) {
 	}
 	if _, err := os.Stat(safeFilePath); os.IsNotExist(err) {
 		t.Errorf("Expected file to be created at %s, but it was not", safeFilePath)
+	}
+}
+
+func TestGetFileHashMismatchCleansUpBlob(t *testing.T) {
+	server, client := net.Pipe()
+
+	tempDir, err := os.MkdirTemp("", "test-getfile-hashmismatch")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	storageDir := filepath.Join(tempDir, "storage")
+	store, err := storage.NewCASStore(storageDir)
+	if err != nil {
+		t.Fatalf("Failed to create CAS store: %v", err)
+	}
+	defer store.Close()
+
+	fileContent := "fake hash content"
+	fakeHash := strings.Repeat("a", 64) // notsecret
+	fileSize := int64(len(fileContent))
+
+	go func() {
+		defer client.Close()
+		client.Write([]byte(fileContent))
+	}()
+
+	comm := transport.NewMomoTCPCommunicator(server)
+	err = getFile(comm, store, "fake_hash_file.txt", fakeHash, fileSize, "")
+
+	if err == nil {
+		t.Fatal("Expected error for hash mismatch, got nil")
+	}
+	if !strings.Contains(err.Error(), "hash mismatch") {
+		t.Errorf("Expected 'hash mismatch' in error, got: %v", err)
+	}
+
+	exists, _ := store.Has(fakeHash)
+	if exists {
+		t.Fatal("Blob should be cleaned up immediately after hash mismatch (CVE-006)")
 	}
 }
 

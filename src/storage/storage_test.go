@@ -318,3 +318,43 @@ func TestCASStore_GetHashForName(t *testing.T) {
 		t.Errorf("Expected error for non-existent name fileB.txt")
 	}
 }
+
+func TestCASStoreDeleteRemovesBlobImmediately(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	tmpDir, err := os.MkdirTemp("", "momo-cve006-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	store, err := NewCASStore(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to create CASStore: %v", err)
+	}
+	defer store.Close()
+
+	content := []byte("orphan me")
+	hash := common.HashBytes(content)
+
+	if err := store.Put("orphan.txt", hash, int64(len(content)), "", bytes.NewReader(content)); err != nil {
+		t.Fatalf("Failed to Put: %v", err)
+	}
+
+	blobPath := store.getBlobPath(hash)
+	if _, err := os.Stat(blobPath); os.IsNotExist(err) {
+		t.Fatal("Blob file should exist before Delete")
+	}
+
+	if err := store.Delete("orphan.txt"); err != nil {
+		t.Fatalf("Delete failed: %v", err)
+	}
+
+	if _, err := os.Stat(blobPath); !os.IsNotExist(err) {
+		t.Fatal("Blob file should be removed immediately by Delete (CVE-006)")
+	}
+
+	exists, _ := store.Has(hash)
+	if exists {
+		t.Fatal("Has should return false after Delete removed the blob")
+	}
+}

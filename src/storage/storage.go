@@ -376,8 +376,9 @@ func (s *CASStore) Delete(name string) (err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	var orphanedHash string
 	now := time.Now().UnixNano()
-	return s.db.Update(func(tx *bbolt.Tx) error {
+	err = s.db.Update(func(tx *bbolt.Tx) error {
 		ns := tx.Bucket(bucketNamespace)
 		obj := tx.Bucket(bucketObjects)
 		paths := tx.Bucket(bucketPaths)
@@ -400,6 +401,7 @@ func (s *CASStore) Delete(name string) (err error) {
 				if meta.RefCount <= 0 {
 					meta.RefCount = 0
 					meta.DeletedAt = now
+					orphanedHash = hash
 				}
 				if err := obj.Put([]byte(hash), meta.encode()); err != nil {
 					return fmt.Errorf("metadata error: %w", syscall.EIO)
@@ -416,6 +418,24 @@ func (s *CASStore) Delete(name string) (err error) {
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+
+	// 🛡️ CVE-006: Immediately delete blob content when refcount reaches 0.
+	// Don't wait for GC — the blob is already orphaned. Blob deletion is
+	// performed outside the bbolt transaction (same pattern as GC) to avoid
+	// blocking all db operations during potential network I/O (S3 backends).
+	if orphanedHash != "" {
+		if delErr := s.blobs.DeleteBlob(orphanedHash); delErr != nil {
+			log.Printf("AUDIT: Failed to delete orphaned blob %s: %v", orphanedHash, delErr)
+		} else {
+			_ = s.db.Update(func(tx *bbolt.Tx) error {
+				return tx.Bucket(bucketObjects).Delete([]byte(orphanedHash))
+			})
+		}
+	}
+	return nil
 }
 
 // List retrieves all file metadata entries in the store.
