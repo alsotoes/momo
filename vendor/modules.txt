@@ -9,6 +9,8 @@
 ## explicit; go 1.25.10
 # github.com/alsotoes/momo/src/common v0.0.0-20260610224110-df9547453bcd => ./src/common
 ## explicit; go 1.25.10
+# github.com/alsotoes/momo/src/crypto v0.0.0-00010101000000-000000000000 => ./src/crypto
+## explicit; go 1.25.10
 # github.com/alsotoes/momo/src/metrics v0.0.0-20260610224110-df9547453bcd
 ## explicit; go 1.25.10
 # github.com/alsotoes/momo/src/p2p v0.0.0-00010101000000-000000000000 => ./src/p2p
@@ -31,8 +33,6 @@ github.com/lufia/plan9stats
 # github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c
 ## explicit; go 1.14
 github.com/power-devops/perfstat
-# github.com/quic-go/quic-go v0.60.0
-## explicit; go 1.25.0
 # github.com/quic-go/quic-go v0.61.0
 ## explicit; go 1.25.0
 github.com/quic-go/quic-go
@@ -80,16 +80,12 @@ go.etcd.io/bbolt/internal/freelist
 ## explicit; go 1.20
 go.uber.org/goleak
 go.uber.org/goleak/internal/stack
-# golang.org/x/crypto v0.52.0
-## explicit; go 1.25.0
 # golang.org/x/crypto v0.54.0
 ## explicit; go 1.25.0
 golang.org/x/crypto/chacha20
 golang.org/x/crypto/chacha20poly1305
 golang.org/x/crypto/internal/alias
 golang.org/x/crypto/internal/poly1305
-# golang.org/x/net v0.55.0
-## explicit; go 1.25.0
 # golang.org/x/net v0.56.0
 ## explicit; go 1.25.0
 golang.org/x/net/bpf
@@ -97,7 +93,7 @@ golang.org/x/net/internal/iana
 golang.org/x/net/internal/socket
 golang.org/x/net/ipv4
 golang.org/x/net/ipv6
-# golang.org/x/sys v0.45.0
+# golang.org/x/sync v0.22.0
 ## explicit; go 1.25.0
 # golang.org/x/sys v0.47.0
 ## explicit; go 1.25.0

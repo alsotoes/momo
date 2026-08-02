@@ -267,7 +267,7 @@ func TestSendFile(t *testing.T) {
 	}
 
 	comm := transport.NewMomoTCPCommunicator(conn)
-	sendFile(&wg, comm, file.Name(), meta)
+	sendFile(&wg, comm, file.Name(), meta, nil)
 	wg.Wait()
 }
 
@@ -359,7 +359,7 @@ func TestSendFile_DeduplicationHit(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		comm := transport.NewMomoTCPCommunicator(clientConn)
-		sendFile(&wg, comm, file.Name(), meta)
+	sendFile(&wg, comm, file.Name(), meta, nil)
 	}()
 
 	// Server side
@@ -387,6 +387,6 @@ func TestSendFile_PanicRecovery(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	// Passing nil communicator with a valid file will trigger a panic when comm is used
-	sendFile(&wg, nil, file.Name(), &common.FileMetadata{})
+	sendFile(&wg, nil, file.Name(), &common.FileMetadata{}, nil)
 	wg.Wait()
 }

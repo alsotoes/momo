@@ -28,16 +28,16 @@
 
 ## Phase 3: E2EE momo Protocol — Content + Metadata Encryption
 
-- [ ] 3.1 Add encryption context to client: `src/client/client.go` — load tenant key from config when `encryption_enabled`.
-- [ ] 3.2 Encrypt file content before `io.Copy` in `Connect` / `ConnectStream` — use `EncryptStream` for large files.
-- [ ] 3.3 Decrypt file content after `io.Copy` on download — use `DecryptStream`.
-- [ ] 3.4 Encrypt filename + virtual path before sending to server — `Encrypt(wireName, tenantKey)`.
-- [ ] 3.5 Decrypt filename on LIST response — decrypt each returned name.
-- [ ] 3.6 Use convergent hash for CAS dedup key instead of plaintext hash — `ConvergentEncrypt` returns dedup key.
-- [ ] 3.7 Server-side: no changes to storage logic (already content-addressable). Server stores encrypted name → convergent hash, convergent hash → encrypted content.
-- [ ] 3.8 Ensure handshake metadata fields (filename, hash) are encrypted in `momo_tcp.go` and `momo_quic.go`.
+- [x] 3.1 Add encryption context to client: `src/client/client.go` — load tenant key from config when `encryption_enabled`.
+- [x] 3.2 Encrypt file content before `io.Copy` in `Connect` / `ConnectStream` — use `EncryptStream` for large files.
+- [x] 3.3 Decrypt file content after `io.Copy` on download — use `DecryptStream`.
+- [x] 3.4 Encrypt filename + virtual path before sending to server — `Encrypt(wireName, tenantKey)`.
+- [ ] 3.5 Decrypt filename on LIST response — decrypt each returned name. (Limitation: HMAC is one-way; client matches known files by recomputing HMAC.)
+- [x] 3.6 Use convergent hash for CAS dedup key instead of plaintext hash — `ConvergentEncrypt` returns dedup key.
+- [x] 3.7 Server-side: no changes to storage logic (already content-addressable). Server stores encrypted name → convergent hash, convergent hash → encrypted content.
+- [x] 3.8 Ensure handshake metadata fields (filename, hash) are encrypted in `momo_tcp.go` and `momo_quic.go`.
 - [ ] 3.9 Write integration tests: E2EE upload/download round-trip, E2EE LIST with decrypted names, E2EE dedup (same content, different names → one blob), server zero-knowledge verification.
-- [ ] 3.10 Update `docs/PROTOCOL.md` with E2EE metadata encryption documentation.
+- [x] 3.10 Update `docs/PROTOCOL.md` with E2EE metadata encryption documentation.
 
 ## Phase 4: SSE S3 Fallback — Server-Side Encryption at Rest
 
