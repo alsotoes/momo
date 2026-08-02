@@ -65,6 +65,15 @@ type ConfigurationGlobal struct {
 	// When true, QUIC InsecureSkipVerify is used and TCP TLS skip verification.
 	// Must be explicitly set to true to opt in; not recommended for production.
 	TLSInsecure bool
+	// EncryptionEnabled controls whether E2EE encryption is applied to content.
+	// When true, all content is encrypted with AES-GCM-256 before storage/transfer.
+	EncryptionEnabled bool
+	// EncryptionKey is the 64-char hex-encoded 256-bit master encryption key.
+	// Required when EncryptionEnabled is true.
+	EncryptionKey string
+	// EncryptionTenant is the tenant identifier for per-tenant key derivation.
+	// Defaults to "default" when empty. Used with HKDF-SHA256 to derive per-tenant keys.
+	EncryptionTenant string
 }
 
 // ConfigurationMetrics holds the metrics configuration for the application.

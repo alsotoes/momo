@@ -4,6 +4,7 @@ use (
 	.
 	./src/client
 	./src/common
+	./src/crypto
 	./src/metrics
 	./src/p2p
 	./src/server

@@ -14,17 +14,17 @@
 
 ## Phase 2: Crypto Package — AES-GCM-256, Convergent, Streaming
 
-- [ ] 2.1 Create `src/crypto/` package with `go.mod`.
-- [ ] 2.2 Implement `Encrypt(plaintext, key []byte) ([]byte, error)` — AES-GCM-256, 12-byte random IV, IV prepended to output.
-- [ ] 2.3 Implement `Decrypt(ciphertext, key []byte) ([]byte, error)` — extract IV, AES-GCM authenticated decryption.
-- [ ] 2.4 Implement `EncryptStream(reader io.Reader, key []byte) (io.Reader, error)` — 4KB chunked streaming AEAD.
-- [ ] 2.5 Implement `DecryptStream(reader io.Reader, key []byte) (io.Reader, error)` — streaming decryption with per-chunk auth tag verification.
-- [ ] 2.6 Implement `ConvergentEncrypt(plaintext []byte) (ciphertext, dedupKey []byte, err error)` — content-derived key via SHA-256, then AES-GCM-256.
-- [ ] 2.7 Implement `DeriveKey(masterKey []byte, tenantID string) ([]byte, error)` — HKDF-SHA256.
-- [ ] 2.8 Add config fields: `encryption_enabled`, `encryption_key`, `encryption_tenant` to `ConfigurationGlobal`.
-- [ ] 2.9 Parse and validate new config fields (64-char hex key, non-empty when enabled).
-- [ ] 2.10 Write unit tests: encrypt/decrypt round-trip, streaming round-trip, convergent dedup (identical plaintext → identical ciphertext), tamper detection, key derivation determinism, key derivation tenant isolation.
-- [ ] 2.11 Write benchmarks: encrypt/decrypt throughput, streaming overhead, convergent encryption overhead.
+- [x] 2.1 Create `src/crypto/` package with `go.mod`.
+- [x] 2.2 Implement `Encrypt(plaintext, key []byte) ([]byte, error)` — AES-GCM-256, 12-byte random IV, IV prepended to output.
+- [x] 2.3 Implement `Decrypt(ciphertext, key []byte) ([]byte, error)` — extract IV, AES-GCM authenticated decryption.
+- [x] 2.4 Implement `EncryptStream(reader io.Reader, key []byte) (io.Reader, error)` — 4KB chunked streaming AEAD.
+- [x] 2.5 Implement `DecryptStream(reader io.Reader, key []byte) (io.Reader, error)` — streaming decryption with per-chunk auth tag verification.
+- [x] 2.6 Implement `ConvergentEncrypt(plaintext []byte) (ciphertext, dedupKey []byte, err error)` — content-derived key via SHA-256, then AES-GCM-256.
+- [x] 2.7 Implement `DeriveKey(masterKey []byte, tenantID string) ([]byte, error)` — HKDF-SHA256.
+- [x] 2.8 Add config fields: `encryption_enabled`, `encryption_key`, `encryption_tenant` to `ConfigurationGlobal`.
+- [x] 2.9 Parse and validate new config fields (64-char hex key, non-empty when enabled).
+- [x] 2.10 Write unit tests: encrypt/decrypt round-trip, streaming round-trip, convergent dedup (identical plaintext → identical ciphertext), tamper detection, key derivation determinism, key derivation tenant isolation.
+- [x] 2.11 Write benchmarks: encrypt/decrypt throughput, streaming overhead, convergent encryption overhead.
 
 ## Phase 3: E2EE momo Protocol — Content + Metadata Encryption
 
