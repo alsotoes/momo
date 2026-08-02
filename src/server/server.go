@@ -52,8 +52,14 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 	}
 	factory := transport.NewProtocolFactory(cfg)
 
-	// Initialize storage with configured backend
-	store, err := storage.NewStore(cfg.Storage, daemons[serverId])
+	// Initialize storage with configured backend.
+	// When E2EE is enabled, pass the encryption key for server-side
+	// encryption at rest (SSE).
+	encKeyHex := ""
+	if cfg.Global.EncryptionEnabled {
+		encKeyHex = cfg.Global.EncryptionKey
+	}
+	store, err := storage.NewStore(cfg.Storage, daemons[serverId], encKeyHex)
 	if err != nil {
 		return fmt.Errorf("failed to initialize storage: %w", err)
 	}

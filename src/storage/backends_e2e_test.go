@@ -66,7 +66,7 @@ func s3TestStores(t *testing.T, n int) ([]Store, *httptest.Server, func()) {
 			TombstoneRetention: 86400,
 		}
 		daemon := &common.Daemon{Data: dataDir}
-		s, err := NewStore(cfg, daemon)
+		s, err := NewStore(cfg, daemon, "")
 		if err != nil {
 			t.Fatalf("NewStore s3 node %d failed: %v", i, err)
 		}
@@ -97,7 +97,7 @@ func rawTestStores(t *testing.T, n int, tempDir string) ([]Store, func()) {
 			TombstoneRetention: 86400,
 		}
 		daemon := &common.Daemon{Data: dataDir}
-		s, err := NewStore(cfg, daemon)
+		s, err := NewStore(cfg, daemon, "")
 		if err != nil {
 			t.Fatalf("NewStore raw node %d failed: %v", i, err)
 		}
@@ -127,7 +127,7 @@ func rawTestStoresReopen(t *testing.T, n int, tempDir string) ([]Store, func()) 
 			TombstoneRetention: 86400,
 		}
 		daemon := &common.Daemon{Data: dataDir}
-		s, err := NewStore(cfg, daemon)
+		s, err := NewStore(cfg, daemon, "")
 		if err != nil {
 			t.Fatalf("NewStore raw reopen node %d failed: %v", i, err)
 		}
@@ -421,7 +421,7 @@ func TestBackendE2E_MixedBackendForward(t *testing.T) {
 		Backend:            "local",
 		GCInterval:         300,
 		TombstoneRetention: 86400,
-	}, &common.Daemon{Data: filepath.Join(tempDir, "local")})
+	}, &common.Daemon{Data: filepath.Join(tempDir, "local")}, "")
 	if err != nil {
 		t.Fatalf("NewStore local failed: %v", err)
 	}
@@ -433,7 +433,7 @@ func TestBackendE2E_MixedBackendForward(t *testing.T) {
 		RawDevicePath:      filepath.Join(tempDir, "raw-device"),
 		GCInterval:         300,
 		TombstoneRetention: 86400,
-	}, &common.Daemon{Data: filepath.Join(tempDir, "raw-data")})
+	}, &common.Daemon{Data: filepath.Join(tempDir, "raw-data")}, "")
 	if err != nil {
 		t.Fatalf("NewStore raw failed: %v", err)
 	}

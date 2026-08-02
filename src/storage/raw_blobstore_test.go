@@ -300,7 +300,7 @@ func TestNewStore_RawBackend(t *testing.T) {
 	}
 	daemon := &common.Daemon{Data: dataDir}
 
-	store, err := NewStore(cfg, daemon)
+	store, err := NewStore(cfg, daemon, "")
 	if err != nil {
 		t.Fatalf("NewStore with raw backend failed: %v", err)
 	}

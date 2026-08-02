@@ -15,9 +15,11 @@ import (
 //   - "s3": S3-compatible remote storage (Phase 4)
 //   - "raw": raw block device (Phase 5)
 //
+// When encKeyHex is non-empty, the blob store is wrapped with
+// EncryptedBlobStore (AES-GCM-256 server-side encryption at rest).
 // Garbage collection is started automatically with the configured intervals.
 // The bbolt metadata database is always stored locally in daemon.Data.
-func NewStore(cfg common.ConfigurationStorage, daemon *common.Daemon) (Store, error) {
+func NewStore(cfg common.ConfigurationStorage, daemon *common.Daemon, encKeyHex string) (Store, error) {
 	var blobs BlobStore
 	var err error
 
@@ -33,6 +35,16 @@ func NewStore(cfg common.ConfigurationStorage, daemon *common.Daemon) (Store, er
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize %s blob store: %w", cfg.Backend, err)
+	}
+
+	// Wrap with server-side encryption at rest when enabled.
+	if encKeyHex != "" {
+		encBlobs, encErr := NewEncryptedBlobStore(blobs, encKeyHex)
+		if encErr != nil {
+			blobs.Close()
+			return nil, fmt.Errorf("failed to initialize encrypted blob store: %w", encErr)
+		}
+		blobs = encBlobs
 	}
 
 	s, err := newCASStore(daemon.Data, blobs)
