@@ -171,6 +171,16 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 
 	// 🛡️ Sentinel: Handle non-replication API queries (LIST, DELETE, GET) natively on Momo-TCP.
 	if requestedMode == common.ModeList {
+		// 🛡️ CVE-001: Restrict LIST to peer connections only.
+		// Direct clients cannot enumerate all files. Peers need LIST for
+		// replication (scatter-gather). Clients should track their own files.
+		if !m.isPeer {
+			m.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			var emptyCount [4]byte
+			binary.BigEndian.PutUint32(emptyCount[:], 0)
+			m.Write(emptyCount[:])
+			return 0, 0, ErrRequestHandled
+		}
 		if m.store == nil {
 			return 0, 0, fmt.Errorf("storage store not initialized")
 		}

@@ -283,7 +283,7 @@ func TestMomoQUICCommunicator_EdgeCases(t *testing.T) {
 	}
 }
 
-func runNativeQUICTest(t *testing.T, requestedMode int, clientFn func(Communicator), mock *mockStore) {
+func runNativeQUICTest(t *testing.T, requestedMode int, clientFn func(Communicator), mock *mockStore, usePeerToken bool) {
 	authToken := "test-token" // notsecret
 	expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
 	addr := "127.0.0.1:0"
@@ -330,8 +330,12 @@ func runNativeQUICTest(t *testing.T, requestedMode int, clientFn func(Communicat
 	defer clientComm.Close()
 
 	// Write Handshake manually to bypass HandshakeClient's ACK expectation
+	tokenToSend := authToken
+	if usePeerToken {
+		tokenToSend = string(common.DerivePeerToken(expectedAuthToken))
+	}
 	var handshakeBuf [common.AuthTokenLength + common.TimestampLength + 1]byte
-	copy(handshakeBuf[0:common.AuthTokenLength], common.PadString(authToken, common.AuthTokenLength))
+	copy(handshakeBuf[0:common.AuthTokenLength], common.PadString(tokenToSend, common.AuthTokenLength))
 	copy(handshakeBuf[common.AuthTokenLength:], common.PadString("1557906926566451195", common.TimestampLength))
 	handshakeBuf[common.AuthTokenLength+common.TimestampLength] = byte(requestedMode)
 
@@ -386,7 +390,29 @@ func TestMomoQUICCommunicator_NativeList(t *testing.T) {
 		}
 	}
 
-	runNativeQUICTest(t, common.ModeList, clientFn, mock)
+	runNativeQUICTest(t, common.ModeList, clientFn, mock, true)
+}
+
+func TestMomoQUICCommunicator_NativeListDeniedForClient(t *testing.T) {
+	mock := &mockStore{
+		listFunc: func() ([]common.FileMetadata, error) {
+			return []common.FileMetadata{
+				{Name: "secret-quic-file.txt", Hash: "secret-quic-hash", Size: 999},
+			}, nil
+		},
+	}
+
+	clientFn := func(comm Communicator) {
+		var fileCount int32
+		if err := binary.Read(comm, binary.BigEndian, &fileCount); err != nil {
+			t.Fatalf("Failed to read file count: %v", err)
+		}
+		if fileCount != 0 {
+			t.Fatalf("Expected file count 0 for non-peer client, got %d", fileCount)
+		}
+	}
+
+	runNativeQUICTest(t, common.ModeList, clientFn, mock, false)
 }
 
 func TestMomoQUICCommunicator_NativeDelete(t *testing.T) {
@@ -423,7 +449,7 @@ func TestMomoQUICCommunicator_NativeDelete(t *testing.T) {
 		}
 	}
 
-	runNativeQUICTest(t, common.ModeDelete, clientFn, mock)
+	runNativeQUICTest(t, common.ModeDelete, clientFn, mock, false)
 
 	if deletedKey != "target-to-delete-quic.txt" {
 		t.Errorf("Expected store.Delete to be called with 'target-to-delete-quic.txt', got %q", deletedKey)
@@ -485,5 +511,5 @@ func TestMomoQUICCommunicator_NativeGet(t *testing.T) {
 		}
 	}
 
-	runNativeQUICTest(t, common.ModeGet, clientFn, mock)
+	runNativeQUICTest(t, common.ModeGet, clientFn, mock, false)
 }

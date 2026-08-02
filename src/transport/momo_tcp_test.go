@@ -158,7 +158,7 @@ func TestMomoTCPCommunicator_EdgeCases(t *testing.T) {
 	}
 }
 
-func runNativeTCPTest(t *testing.T, requestedMode int, clientFn func(net.Conn), mock *mockStore) {
+func runNativeTCPTest(t *testing.T, requestedMode int, clientFn func(net.Conn), mock *mockStore, usePeerToken bool) {
 	authToken := "test-token-1234567890123456789012345678901234567890123456789012345" // notsecret
 	expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
 	addr := "127.0.0.1:0"
@@ -196,8 +196,12 @@ func runNativeTCPTest(t *testing.T, requestedMode int, clientFn func(net.Conn), 
 	defer conn.Close()
 
 	// Write Handshake
+	tokenToSend := authToken
+	if usePeerToken {
+		tokenToSend = string(common.DerivePeerToken(expectedAuthToken))
+	}
 	var handshakeBuf [common.AuthTokenLength + common.TimestampLength + 1]byte
-	copy(handshakeBuf[0:common.AuthTokenLength], common.PadString(authToken, common.AuthTokenLength))
+	copy(handshakeBuf[0:common.AuthTokenLength], common.PadString(tokenToSend, common.AuthTokenLength))
 	copy(handshakeBuf[common.AuthTokenLength:], common.PadString("1557906926566451195", common.TimestampLength))
 	handshakeBuf[common.AuthTokenLength+common.TimestampLength] = byte(requestedMode)
 
@@ -252,7 +256,29 @@ func TestMomoTCPCommunicator_NativeList(t *testing.T) {
 		}
 	}
 
-	runNativeTCPTest(t, common.ModeList, clientFn, mock)
+	runNativeTCPTest(t, common.ModeList, clientFn, mock, true)
+}
+
+func TestMomoTCPCommunicator_NativeListDeniedForClient(t *testing.T) {
+	mock := &mockStore{
+		listFunc: func() ([]common.FileMetadata, error) {
+			return []common.FileMetadata{
+				{Name: "secret-file.txt", Hash: "secret-hash", Size: 999},
+			}, nil
+		},
+	}
+
+	clientFn := func(conn net.Conn) {
+		var fileCount int32
+		if err := binary.Read(conn, binary.BigEndian, &fileCount); err != nil {
+			t.Fatalf("Failed to read file count: %v", err)
+		}
+		if fileCount != 0 {
+			t.Fatalf("Expected file count 0 for non-peer client, got %d", fileCount)
+		}
+	}
+
+	runNativeTCPTest(t, common.ModeList, clientFn, mock, false)
 }
 
 func TestMomoTCPCommunicator_NativeDelete(t *testing.T) {
@@ -289,7 +315,7 @@ func TestMomoTCPCommunicator_NativeDelete(t *testing.T) {
 		}
 	}
 
-	runNativeTCPTest(t, common.ModeDelete, clientFn, mock)
+	runNativeTCPTest(t, common.ModeDelete, clientFn, mock, false)
 
 	if deletedKey != "target-to-delete.txt" {
 		t.Errorf("Expected store.Delete to be called with 'target-to-delete.txt', got %q", deletedKey)
@@ -351,7 +377,7 @@ func TestMomoTCPCommunicator_NativeGet(t *testing.T) {
 		}
 	}
 
-	runNativeTCPTest(t, common.ModeGet, clientFn, mock)
+	runNativeTCPTest(t, common.ModeGet, clientFn, mock, false)
 }
 
 func TestMomoTCPCommunicator_SendMetadataPathTraversal(t *testing.T) {
