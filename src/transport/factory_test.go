@@ -73,8 +73,9 @@ func TestMomoQUICCommunicator_Handshake(t *testing.T) {
 
 	cfg := common.Configuration{
 		Global: common.ConfigurationGlobal{
-			AuthToken: authToken,
-			Protocol:  "momo-quic",
+			AuthToken:   authToken,
+			Protocol:    "momo-quic",
+			TLSInsecure: true,
 		},
 	}
 	factory := NewProtocolFactory(cfg)
@@ -141,8 +142,9 @@ func TestMomoQUICCommunicator_Metadata_And_Payload(t *testing.T) {
 
 	cfg := common.Configuration{
 		Global: common.ConfigurationGlobal{
-			AuthToken: authToken,
-			Protocol:  "momo-quic",
+			AuthToken:   authToken,
+			Protocol:    "momo-quic",
+			TLSInsecure: true,
 		},
 	}
 	factory := NewProtocolFactory(cfg)
@@ -290,8 +292,9 @@ func runNativeQUICTest(t *testing.T, requestedMode int, clientFn func(Communicat
 
 	cfg := common.Configuration{
 		Global: common.ConfigurationGlobal{
-			AuthToken: authToken,
-			Protocol:  "momo-quic",
+			AuthToken:   authToken,
+			Protocol:    "momo-quic",
+			TLSInsecure: true,
 		},
 	}
 	factory := NewProtocolFactory(cfg)

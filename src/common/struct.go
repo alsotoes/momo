@@ -55,6 +55,16 @@ type ConfigurationGlobal struct {
 	// CACertPath is the path to a PEM-encoded CA certificate file used to verify
 	// QUIC peer certificates. When empty, InsecureSkipVerify is used with a warning.
 	CACertPath string
+	// TLSCertPath is the path to a PEM-encoded TLS certificate for TCP protocols.
+	// When empty, TCP connections use plaintext (backward compatible).
+	TLSCertPath string
+	// TLSKeyPath is the path to a PEM-encoded TLS private key for TCP protocols.
+	// When empty, TCP connections use plaintext (backward compatible).
+	TLSKeyPath string
+	// TLSInsecure skips TLS certificate verification. Defaults to false.
+	// When true, QUIC InsecureSkipVerify is used and TCP TLS skip verification.
+	// Must be explicitly set to true to opt in; not recommended for production.
+	TLSInsecure bool
 }
 
 // ConfigurationMetrics holds the metrics configuration for the application.

@@ -18,13 +18,16 @@ const quicDialTimeout = 10 * time.Second
 
 // ProtocolFactory is responsible for creating Communicator instances based on configuration.
 type ProtocolFactory struct {
-	cfg      common.Configuration
-	certPool *x509.CertPool
+	cfg              common.Configuration
+	certPool         *x509.CertPool
+	tlsConfig        *tls.Config
+	useChallengeResp bool
 }
 
 // NewProtocolFactory creates a new ProtocolFactory.
 func NewProtocolFactory(cfg common.Configuration) *ProtocolFactory {
 	f := &ProtocolFactory{cfg: cfg}
+
 	if cfg.Global.CACertPath != "" {
 		if common.HasPathTraversalChars(cfg.Global.CACertPath) {
 			log.Printf("WARNING: CA cert path %q contains path traversal characters — falling back to InsecureSkipVerify", cfg.Global.CACertPath)
@@ -42,6 +45,20 @@ func NewProtocolFactory(cfg common.Configuration) *ProtocolFactory {
 		}
 		f.certPool = pool
 	}
+
+	if cfg.Global.TLSCertPath != "" && cfg.Global.TLSKeyPath != "" {
+		cert, err := tls.LoadX509KeyPair(cfg.Global.TLSCertPath, cfg.Global.TLSKeyPath)
+		if err != nil {
+			log.Printf("WARNING: failed to load TLS cert/key: %v — TCP connections will use plaintext", err)
+			return f
+		}
+		f.tlsConfig = &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			MinVersion:   tls.VersionTLS12,
+		}
+		f.useChallengeResp = true
+	}
+
 	return f
 }
 
@@ -49,7 +66,9 @@ func NewProtocolFactory(cfg common.Configuration) *ProtocolFactory {
 func (f *ProtocolFactory) NewCommunicator(conn net.Conn) (Communicator, error) {
 	switch f.cfg.Global.Protocol {
 	case "momo-tcp":
-		return NewMomoTCPCommunicator(conn), nil
+		m := NewMomoTCPCommunicator(conn)
+		m.SetChallengeResponse(f.useChallengeResp)
+		return m, nil
 	case "s3-tcp":
 		return NewS3Communicator(conn), nil
 	default:
@@ -65,18 +84,28 @@ func (f *ProtocolFactory) Dial(address string) (Communicator, error) {
 		if err != nil {
 			return nil, err
 		}
+		if f.tlsConfig != nil {
+			tlsConn := tls.Client(conn, f.tlsConfig)
+			if err := tlsConn.Handshake(); err != nil {
+				conn.Close()
+				return nil, fmt.Errorf("TLS handshake failed: %w", err)
+			}
+			conn = tlsConn
+		}
 		return f.NewCommunicator(conn)
 	case "momo-quic", "s3-quic":
 		ctx, cancel := context.WithTimeout(context.Background(), quicDialTimeout)
 		defer cancel()
-		conn, stream, err := DialQUIC(ctx, address, f.certPool)
+		conn, stream, err := DialQUIC(ctx, address, f.certPool, f.cfg.Global.TLSInsecure)
 		if err != nil {
 			return nil, err
 		}
 		if f.cfg.Global.Protocol == "s3-quic" {
 			return NewS3Communicator(NewQUICNetConn(stream, conn)), nil
 		}
-		return NewMomoQUICCommunicator(stream, conn), nil
+		m := NewMomoQUICCommunicator(stream, conn)
+		m.SetChallengeResponse(f.useChallengeResp)
+		return m, nil
 	default:
 		return nil, fmt.Errorf("unsupported protocol for dialing: %q", f.cfg.Global.Protocol)
 	}
@@ -89,6 +118,9 @@ func (f *ProtocolFactory) Listen(address string) (MomoListener, error) {
 		l, err := net.Listen("tcp", address)
 		if err != nil {
 			return nil, err
+		}
+		if f.tlsConfig != nil {
+			l = tls.NewListener(l, f.tlsConfig)
 		}
 		return &TCPListener{Listener: l, factory: f}, nil
 	case "momo-quic", "s3-quic":

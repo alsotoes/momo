@@ -236,6 +236,13 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 
 	globalCfg.CACertPath = section.Key("ca_cert").String()
 
+	globalCfg.TLSCertPath = section.Key("tls_cert").String()
+	globalCfg.TLSKeyPath = section.Key("tls_key").String()
+	globalCfg.TLSInsecure, err = section.Key("tls_insecure").Bool()
+	if err != nil {
+		globalCfg.TLSInsecure = false
+	}
+
 	return globalCfg, nil
 }
 

@@ -30,6 +30,7 @@ type MomoTCPCommunicator struct {
 	deletePropagator DeletePropagator
 	metricsHook      MetricsHook
 	isPeer           bool
+	useChallengeResp bool
 }
 
 // NewMomoTCPCommunicator creates a new MomoTCPCommunicator wrapping a net.Conn.
@@ -37,6 +38,13 @@ func NewMomoTCPCommunicator(conn net.Conn) *MomoTCPCommunicator {
 	return &MomoTCPCommunicator{
 		IdleTimeoutConn: common.NewIdleTimeoutConn(conn, 30*time.Second),
 	}
+}
+
+// SetChallengeResponse enables or disables challenge-response authentication.
+// When true, the handshake uses HMAC-SHA256 challenge-response instead of
+// sending the auth token in plaintext.
+func (m *MomoTCPCommunicator) SetChallengeResponse(enabled bool) {
+	m.useChallengeResp = enabled
 }
 
 func (m *MomoTCPCommunicator) SetStore(store storage.Store) {
@@ -89,20 +97,33 @@ func (m *MomoTCPCommunicator) HandshakeClient(authToken string, timestamp int64,
 		}
 	}()
 
-	var handshakeBuf [common.AuthTokenLength + common.TimestampLength + 1]byte
-	copy(handshakeBuf[0:common.AuthTokenLength], common.PadString(authToken, common.AuthTokenLength))
+	if m.useChallengeResp {
+		var handshakeBuf [common.TimestampLength + 1]byte
+		if err := common.AppendPaddedInt(handshakeBuf[:common.TimestampLength], timestamp, common.TimestampLength); err != nil {
+			return 0, fmt.Errorf("failed to format handshake timestamp: %w", err)
+		}
+		handshakeBuf[common.TimestampLength] = byte(requestedMode + '0')
 
-	// ⚡ Bolt: Use PadString to ensure the timestamp is exactly 19 bytes and correctly placed.
-	// We optimize this using a common helper to avoid intermediate string allocations.
-	if err := common.AppendPaddedInt(handshakeBuf[common.AuthTokenLength:], timestamp, common.TimestampLength); err != nil {
-		return 0, fmt.Errorf("failed to format handshake timestamp: %w", err)
-	}
+		if _, err := m.Write(handshakeBuf[:]); err != nil {
+			return 0, fmt.Errorf("failed to send handshake: %v: %w", err, syscall.EIO)
+		}
 
-	// Write the requested mode (1 byte) at the end
-	handshakeBuf[common.AuthTokenLength+common.TimestampLength] = byte(requestedMode + '0')
+		if err := common.ChallengeResponseClient(m, authToken); err != nil {
+			return 0, err
+		}
+	} else {
+		var handshakeBuf [common.AuthTokenLength + common.TimestampLength + 1]byte
+		copy(handshakeBuf[0:common.AuthTokenLength], common.PadString(authToken, common.AuthTokenLength))
 
-	if _, err := m.Write(handshakeBuf[:]); err != nil {
-		return 0, fmt.Errorf("failed to send handshake: %v: %w", err, syscall.EIO)
+		if err := common.AppendPaddedInt(handshakeBuf[common.AuthTokenLength:], timestamp, common.TimestampLength); err != nil {
+			return 0, fmt.Errorf("failed to format handshake timestamp: %w", err)
+		}
+
+		handshakeBuf[common.AuthTokenLength+common.TimestampLength] = byte(requestedMode + '0')
+
+		if _, err := m.Write(handshakeBuf[:]); err != nil {
+			return 0, fmt.Errorf("failed to send handshake: %v: %w", err, syscall.EIO)
+		}
 	}
 
 	var bufferReplicationMode [1]byte
@@ -129,43 +150,68 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 		}
 	}()
 
-	var handshakeBuf [common.AuthTokenLength + common.TimestampLength + 1]byte
-	if _, err := io.ReadFull(io.LimitReader(m, common.AuthTokenLength+common.TimestampLength+1), handshakeBuf[:]); err != nil {
-		return 0, 0, fmt.Errorf("failed to read handshake: %v: %w", err, syscall.EBADMSG)
-	}
+	if m.useChallengeResp {
+		var handshakeBuf [common.TimestampLength + 1]byte
+		if _, err := io.ReadFull(io.LimitReader(m, common.TimestampLength+1), handshakeBuf[:]); err != nil {
+			return 0, 0, fmt.Errorf("failed to read handshake: %v: %w", err, syscall.EBADMSG)
+		}
 
-	// 🛡️ Zero-Crash: Verify handshake buffer length bounds before slicing (Rule 4)
-	if len(handshakeBuf) < common.AuthTokenLength+common.TimestampLength+1 {
-		return 0, 0, fmt.Errorf("handshake buffer too small: %w", syscall.EBADMSG)
-	}
+		bufferTimestamp := handshakeBuf[:common.TimestampLength]
+		requestedModeByte := handshakeBuf[common.TimestampLength]
 
-	bufferAuthToken := handshakeBuf[:common.AuthTokenLength]
-	bufferTimestamp := handshakeBuf[common.AuthTokenLength : common.AuthTokenLength+common.TimestampLength]
-	requestedModeByte := handshakeBuf[common.AuthTokenLength+common.TimestampLength]
+		isPeer, authErr := common.ChallengeResponseServerPeer(m, expectedAuthToken)
+		if authErr != nil {
+			return 0, 0, authErr
+		}
+		m.isPeer = isPeer
 
-	if subtle.ConstantTimeCompare(bufferAuthToken, expectedAuthToken) == 1 {
-		// Client connection — authenticated with the regular auth token.
-		m.isPeer = false
-	} else if peerToken := common.DerivePeerToken(expectedAuthToken); subtle.ConstantTimeCompare(bufferAuthToken, peerToken) == 1 {
-		// Peer connection — authenticated with the derived peer token.
-		m.isPeer = true
+		timestamp, err = common.SafeParseInt(bufferTimestamp)
+		if err != nil {
+			return 0, 0, fmt.Errorf("failed to parse timestamp: %v: %w", err, syscall.EBADMSG)
+		}
+
+		if requestedModeByte == 'L' || requestedModeByte == 'D' || requestedModeByte == 'G' {
+			requestedMode = int(requestedModeByte)
+		} else {
+			requestedMode = int(requestedModeByte - '0')
+			if requestedMode < 0 || requestedMode > 9 {
+				return 0, 0, fmt.Errorf("invalid requested mode: %d: %w", requestedMode, syscall.EBADMSG)
+			}
+		}
 	} else {
-		return 0, 0, syscall.EACCES
-	}
+		var handshakeBuf [common.AuthTokenLength + common.TimestampLength + 1]byte
+		if _, err := io.ReadFull(io.LimitReader(m, common.AuthTokenLength+common.TimestampLength+1), handshakeBuf[:]); err != nil {
+			return 0, 0, fmt.Errorf("failed to read handshake: %v: %w", err, syscall.EBADMSG)
+		}
 
-	timestamp, err = common.SafeParseInt(bufferTimestamp)
-	if err != nil {
-		return 0, 0, fmt.Errorf("failed to parse timestamp: %v: %w", err, syscall.EBADMSG)
-	}
+		if len(handshakeBuf) < common.AuthTokenLength+common.TimestampLength+1 {
+			return 0, 0, fmt.Errorf("handshake buffer too small: %w", syscall.EBADMSG)
+		}
 
-	// Decode requestedModeByte polymorphically: characters 'L', 'D', 'G' represent file actions
-	// while numeric bytes '0'-'9' represent replication strategies, separating namespaces.
-	if requestedModeByte == 'L' || requestedModeByte == 'D' || requestedModeByte == 'G' {
-		requestedMode = int(requestedModeByte)
-	} else {
-		requestedMode = int(requestedModeByte - '0')
-		if requestedMode < 0 || requestedMode > 9 {
-			return 0, 0, fmt.Errorf("invalid requested mode: %d: %w", requestedMode, syscall.EBADMSG)
+		bufferAuthToken := handshakeBuf[:common.AuthTokenLength]
+		bufferTimestamp := handshakeBuf[common.AuthTokenLength : common.AuthTokenLength+common.TimestampLength]
+		requestedModeByte := handshakeBuf[common.AuthTokenLength+common.TimestampLength]
+
+		if subtle.ConstantTimeCompare(bufferAuthToken, expectedAuthToken) == 1 {
+			m.isPeer = false
+		} else if peerToken := common.DerivePeerToken(expectedAuthToken); subtle.ConstantTimeCompare(bufferAuthToken, peerToken) == 1 {
+			m.isPeer = true
+		} else {
+			return 0, 0, syscall.EACCES
+		}
+
+		timestamp, err = common.SafeParseInt(bufferTimestamp)
+		if err != nil {
+			return 0, 0, fmt.Errorf("failed to parse timestamp: %v: %w", err, syscall.EBADMSG)
+		}
+
+		if requestedModeByte == 'L' || requestedModeByte == 'D' || requestedModeByte == 'G' {
+			requestedMode = int(requestedModeByte)
+		} else {
+			requestedMode = int(requestedModeByte - '0')
+			if requestedMode < 0 || requestedMode > 9 {
+				return 0, 0, fmt.Errorf("invalid requested mode: %d: %w", requestedMode, syscall.EBADMSG)
+			}
 		}
 	}
 
