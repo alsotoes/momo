@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -80,18 +81,24 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 	}
 
 	// Compute file hash and optionally encrypt content.
+	// ⚡ Bolt: Use streaming encryption to avoid loading the entire plaintext
+	// into memory. EncryptStream reads in 4KB chunks and writes to a buffer,
+	// so peak memory is chunk-sized rather than file-sized.
 	var fileHash string
 	if encCipher != nil {
-		plaintext, rErr := os.ReadFile(filePath)
+		file, rErr := os.Open(filePath)
 		if rErr != nil {
-			log.Printf("Failed to read file %s: %v", common.SanitizeLog(filePath), common.SanitizeLog(rErr.Error()))
+			log.Printf("Failed to open file %s: %v", common.SanitizeLog(filePath), common.SanitizeLog(rErr.Error()))
 			return
 		}
-		encryptedContent, err = encCipher.Encrypt(plaintext)
-		if err != nil {
+		var encBuf bytes.Buffer
+		if err = encCipher.EncryptStream(file, &encBuf); err != nil {
+			file.Close()
 			log.Printf("Failed to encrypt file %s: %v", common.SanitizeLog(filePath), err)
 			return
 		}
+		file.Close()
+		encryptedContent = encBuf.Bytes()
 		h := sha256.New()
 		h.Write(encryptedContent)
 		fileHash = hex.EncodeToString(h.Sum(nil))
@@ -341,7 +348,15 @@ func sendFileStream(comm transport.Communicator, content io.Reader, meta *common
 // the plaintext to dst. The encryptedName and contentHash must be the values
 // computed during upload (HMAC of wireName and SHA-256 of ciphertext).
 // If encryption is disabled, the content is written directly to dst.
-func Download(cfg common.Configuration, encryptedName string, contentHash string, serverId int, dst io.Writer) error {
+func Download(cfg common.Configuration, encryptedName string, contentHash string, serverId int, dst io.Writer) (err error) {
+	// 🛡️ Zero-Crash: Unified panic recovery for all network-facing methods (Rule 37/43).
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in client.Download: %v", r)
+			err = fmt.Errorf("panic in Download: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	daemons := cfg.Daemons
 	if serverId < 0 || serverId >= len(daemons) {
 		return fmt.Errorf("server ID %d out of range: %w", serverId, syscall.EINVAL)
@@ -391,28 +406,26 @@ func Download(cfg common.Configuration, encryptedName string, contentHash string
 		return fmt.Errorf("failed to parse file size: %w", err)
 	}
 
-	// Read ciphertext.
-	ciphertext := make([]byte, size)
-	if _, err := io.ReadFull(comm, ciphertext); err != nil {
-		return fmt.Errorf("failed to read ciphertext: %w", err)
+	// 🛡️ Zero-Crash: Validate size against MaxFileSize to prevent unbounded
+	// allocation (Rule 4). An attacker could send a maliciously large size.
+	if size < 0 || size > common.MaxFileSize {
+		return fmt.Errorf("file size %d exceeds maximum %d: %w", size, common.MaxFileSize, syscall.EFBIG)
 	}
 
-	// Decrypt if E2EE is enabled.
+	// ⚡ Bolt: Stream content directly from network to decryptor to output.
+	// No intermediate buffer allocation — peak memory is chunk-sized.
 	if cfg.Global.EncryptionEnabled {
 		cipher, err := momocrypto.NewCipherFromHex(cfg.Global.EncryptionKey)
 		if err != nil {
 			return fmt.Errorf("failed to create decryption cipher: %w", err)
 		}
-		plaintext, err := cipher.Decrypt(ciphertext)
-		if err != nil {
+		limited := io.LimitReader(comm, size)
+		if err := cipher.DecryptStream(limited, dst); err != nil {
 			return fmt.Errorf("failed to decrypt content: %w", err)
 		}
-		if _, err := dst.Write(plaintext); err != nil {
-			return fmt.Errorf("failed to write plaintext: %w", err)
-		}
 	} else {
-		if _, err := dst.Write(ciphertext); err != nil {
-			return fmt.Errorf("failed to write content: %w", err)
+		if _, err := io.CopyN(dst, comm, size); err != nil {
+			return fmt.Errorf("failed to read content: %w", err)
 		}
 	}
 
