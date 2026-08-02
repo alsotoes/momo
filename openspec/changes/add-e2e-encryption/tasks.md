@@ -1,16 +1,16 @@
 ## Phase 1: Transport TLS + Challenge-Response Auth
 
-- [ ] 1.1 Add config fields: `tls_cert`, `tls_key`, `tls_insecure` to `ConfigurationGlobal` struct.
-- [ ] 1.2 Parse new config fields in `loadGlobalConfig()`.
-- [ ] 1.3 Add TLS listener support to `src/transport/factory.go` — wrap `net.Listener` in `tls.Listener` when `tls_cert`/`tls_key` are set.
-- [ ] 1.4 Add TLS dial support to `src/transport/factory.go` — wrap `net.Conn` in `tls.Conn` for TCP protocols.
-- [ ] 1.5 Fix QUIC `InsecureSkipVerify` default to `false` — require `ca_cert` or explicit `tls_insecure = true`.
-- [ ] 1.6 Implement `ChallengeResponseServer(conn, authToken)` — generate 32-byte nonce, send, read HMAC response, verify with `hmac.Equal`.
-- [ ] 1.7 Implement `ChallengeResponseClient(conn, authToken)` — read nonce, compute `HMAC-SHA256(authToken, nonce)`, send response.
-- [ ] 1.8 Integrate challenge-response into `HandshakeServer` / `HandshakeClient` for momo-tcp and momo-quic.
-- [ ] 1.9 Write unit tests: TLS handshake, challenge-response success/failure, nonce replay protection, backward compatibility (no TLS = plaintext).
-- [ ] 1.10 Update `docs/PROTOCOL.md` with TLS and challenge-response handshake documentation.
-- [ ] 1.11 Run benchmarks to measure TLS handshake overhead.
+- [x] 1.1 Add config fields: `tls_cert`, `tls_key`, `tls_insecure` to `ConfigurationGlobal` struct.
+- [x] 1.2 Parse new config fields in `loadGlobalConfig()`.
+- [x] 1.3 Add TLS listener support to `src/transport/factory.go` — wrap `net.Listener` in `tls.Listener` when `tls_cert`/`tls_key` are set.
+- [x] 1.4 Add TLS dial support to `src/transport/factory.go` — wrap `net.Conn` in `tls.Conn` for TCP protocols.
+- [x] 1.5 Fix QUIC `InsecureSkipVerify` default to `false` — require `ca_cert` or explicit `tls_insecure = true`.
+- [x] 1.6 Implement `ChallengeResponseServer(conn, authToken)` — generate 32-byte nonce, send, read HMAC response, verify with `hmac.Equal`.
+- [x] 1.7 Implement `ChallengeResponseClient(conn, authToken)` — read nonce, compute `HMAC-SHA256(authToken, nonce)`, send response.
+- [x] 1.8 Integrate challenge-response into `HandshakeServer` / `HandshakeClient` for momo-tcp and momo-quic.
+- [x] 1.9 Write unit tests: TLS handshake, challenge-response success/failure, nonce replay protection, backward compatibility (no TLS = plaintext).
+- [x] 1.10 Update `docs/PROTOCOL.md` with TLS and challenge-response handshake documentation.
+- [x] 1.11 Run benchmarks to measure TLS handshake overhead.
 
 ## Phase 2: Crypto Package — AES-GCM-256, Convergent, Streaming
 
