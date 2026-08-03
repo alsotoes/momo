@@ -36,7 +36,7 @@
 - [x] 3.6 Use convergent hash for CAS dedup key instead of plaintext hash — `ConvergentEncrypt` returns dedup key.
 - [x] 3.7 Server-side: no changes to storage logic (already content-addressable). Server stores encrypted name → convergent hash, convergent hash → encrypted content.
 - [x] 3.8 Ensure handshake metadata fields (filename, hash) are encrypted in `momo_tcp.go` and `momo_quic.go`.
-- [ ] 3.9 Write integration tests: E2EE upload/download round-trip, E2EE LIST with decrypted names, E2EE dedup (same content, different names → one blob), server zero-knowledge verification.
+- [x] 3.9 Write integration tests: E2EE upload/download round-trip, E2EE LIST with decrypted names, E2EE dedup (same content, different names → one blob), server zero-knowledge verification.
 - [x] 3.10 Update `docs/PROTOCOL.md` with E2EE metadata encryption documentation.
 
 ## Phase 4: SSE S3 Fallback — Server-Side Encryption at Rest
