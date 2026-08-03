@@ -1,0 +1,30 @@
+name: Encryption Smoke Test
+
+on:
+  push:
+    branches: [ "master" ]
+    paths: ['src/**/*.go', 'go.mod', 'go.sum', 'Makefile', '.github/scripts/test-e2e-encryption.sh']
+  pull_request:
+    branches: [ "master" ]
+    paths: ['src/**/*.go', 'go.mod', 'go.sum', 'Makefile', '.github/scripts/test-e2e-encryption.sh']
+
+jobs:
+  encryption-tcp:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+    - uses: actions/setup-go@v7
+      with:
+        go-version: '1.25.x'
+    - run: make build
+    - run: make smoke-encryption-tcp
+
+  encryption-quic:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+    - uses: actions/setup-go@v7
+      with:
+        go-version: '1.25.x'
+    - run: make build
+    - run: make smoke-encryption-quic
