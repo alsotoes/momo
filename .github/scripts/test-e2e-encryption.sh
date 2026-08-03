@@ -1,6 +1,7 @@
 #!/bin/bash
 set -e
 
+# Resolves #577
 # Usage: ./test-e2e-encryption.sh [momo-tcp|momo-quic]
 # Tests E2EE encryption end-to-end:
 #   1. Boots 3 daemons with encryption_enabled=true
