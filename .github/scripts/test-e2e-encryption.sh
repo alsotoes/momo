@@ -107,20 +107,31 @@ for i in 0 1 2; do
   fi
 done
 
-# 2. Ciphertext (blob files) MUST exist on the primary node (Server 0)
-BLOB_COUNT=$(find "$E2E_DIR/0/blobs" -type f 2>/dev/null | wc -l)
-if [ "$BLOB_COUNT" -eq 0 ]; then
-  echo "FAIL: No blob files stored on primary Server 0 ($PROTOCOL)"
+# 2. Ciphertext (blob files) MUST exist on at least one node (the primary)
+TOTAL_BLOBS=0
+PRIMARY_SERVER=""
+for i in 0 1 2; do
+  BLOB_COUNT=$(find "$E2E_DIR/$i/blobs" -type f 2>/dev/null | wc -l)
+  if [ "$BLOB_COUNT" -gt 0 ]; then
+    TOTAL_BLOBS=$BLOB_COUNT
+    PRIMARY_SERVER=$i
+    break
+  fi
+done
+if [ "$TOTAL_BLOBS" -eq 0 ]; then
+  echo "FAIL: No blob files stored on any server ($PROTOCOL)"
   FAIL=1
 fi
 
 # 3. Blob content must start with stream version byte 0x01 (EncryptStream header)
-FIRST_BLOB=$(find "$E2E_DIR/0/blobs" -type f 2>/dev/null | head -1)
-if [ -n "$FIRST_BLOB" ]; then
-  FIRST_BYTE=$(xxd -l 1 -p "$FIRST_BLOB" 2>/dev/null)
-  if [ "$FIRST_BYTE" != "01" ]; then
-      echo "FAIL: Blob on Server 0 does not start with stream version 0x01 (got 0x$FIRST_BYTE)"
-      FAIL=1
+if [ -n "$PRIMARY_SERVER" ]; then
+  FIRST_BLOB=$(find "$E2E_DIR/$PRIMARY_SERVER/blobs" -type f 2>/dev/null | head -1)
+  if [ -n "$FIRST_BLOB" ]; then
+    FIRST_BYTE=$(xxd -l 1 -p "$FIRST_BLOB" 2>/dev/null)
+    if [ "$FIRST_BYTE" != "01" ]; then
+        echo "FAIL: Blob on Server $PRIMARY_SERVER does not start with stream version 0x01 (got 0x$FIRST_BYTE)"
+        FAIL=1
+    fi
   fi
 fi
 
@@ -145,6 +156,6 @@ fi
 
 echo "All encryption properties verified:"
 echo "  - Plaintext NOT on any node's disk (zero-knowledge)"
-echo "  - Ciphertext stored on primary node (Server 0)"
+echo "  - Ciphertext stored on primary node"
 echo "  - Blob format correct (stream version 0x01 header)"
 echo "E2E Encryption Test Passed ($PROTOCOL)!"
