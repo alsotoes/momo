@@ -281,6 +281,7 @@ func ConnectStream(cfg common.Configuration, content io.Reader, name string, has
 		return
 	}
 	authToken := cfg.Global.AuthToken
+	peerToken := common.DerivePeerTokenString(authToken)
 	factory := transport.NewProtocolFactory(cfg)
 
 	comm, err := factory.Dial(daemons[serverId].Host)
@@ -290,7 +291,7 @@ func ConnectStream(cfg common.Configuration, content io.Reader, name string, has
 	}
 	defer comm.Close()
 
-	_, err = comm.HandshakeClient(authToken, timestamp, requestedMode)
+	_, err = comm.HandshakeClient(peerToken, timestamp, requestedMode)
 	if err != nil {
 		log.Printf("Handshake failed with %s: %v", daemons[serverId].Host, common.SanitizeLog(err.Error()))
 		return
