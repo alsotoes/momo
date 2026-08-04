@@ -274,8 +274,7 @@ func sendFile(wg *sync.WaitGroup, comm transport.Communicator, filePath string, 
 // from an io.Reader with pre-computed metadata. This is used by the server
 // for replication forwarding when the blob may not be on the local filesystem
 // (e.g., S3 or raw device backends).
-func ConnectStream(wg *sync.WaitGroup, cfg common.Configuration, content io.Reader, name string, hash string, size int64, remotePath string, serverId int, timestamp int64, requestedMode int, replicationFactor int) {
-	defer wg.Done()
+func ConnectStream(cfg common.Configuration, content io.Reader, name string, hash string, size int64, remotePath string, serverId int, timestamp int64, requestedMode int, replicationFactor int) {
 	daemons := cfg.Daemons
 	if serverId < 0 || serverId >= len(daemons) {
 		log.Printf("Server ID %d is out of range", serverId)
