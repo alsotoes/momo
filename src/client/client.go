@@ -54,7 +54,8 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 		}
 		masterKey, decErr := hex.DecodeString(cfg.Global.EncryptionKey)
 		if decErr != nil {
-			log.Printf("Failed to decode encryption key: %v", decErr)
+			err = fmt.Errorf("failed to decode encryption key: %w", decErr)
+			log.Printf("%v", err)
 			return
 		}
 		tenantKey, err = momocrypto.DeriveKey(masterKey, cfg.Global.EncryptionTenant, nil)
