@@ -174,8 +174,8 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 			// Inject scatter-gather and lease capabilities if P2P is enabled
 			if scatterGather != nil {
 				if glComm, ok := comm.(interface{ SetGlobalLister(transport.GlobalLister) }); ok {
-				glComm.SetGlobalLister(NewScatterGatherLister(scatterGather, store,
-					time.Duration(cfg.P2P.ScatterGatherTimeout)*time.Second))
+					glComm.SetGlobalLister(NewScatterGatherLister(scatterGather, store,
+						time.Duration(cfg.P2P.ScatterGatherTimeout)*time.Second))
 				}
 				if dpComm, ok := comm.(interface {
 					SetDeletePropagator(transport.DeletePropagator)
@@ -441,23 +441,21 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 
 					// 🛡️ Zero-Crash: Wrap Chain forwarding in a goroutine with recovery for consistency and safety.
 					go func(id int) {
+						defer wg.Done()
 						defer func() {
 							if r := recover(); r != nil {
 								log.Printf("CRITICAL: Panic recovered in Chain forwarder to node %d: %v", id, r)
-								wg.Done()
 								metricsCollector.IncErrors()
 							}
 						}()
 						reader, _, err := store.Get(storageKey)
 						if err != nil {
 							log.Printf("AUDIT: Failed to get blob for chain forwarding: %v", common.SanitizeLog(err.Error()))
-							wg.Done()
 							metricsCollector.IncErrors()
 							return
 						}
 						defer reader.Close()
-						// ⚡ Bolt: connectToPeerStream (client.ConnectStream) handles wg.Done() internally via defer.
-						connectToPeerStream(&wg, cfg, reader, storageKey, metadata.Hash, metadata.Size, "", id, finalTs, replicationMode, factor)
+						connectToPeerStream(cfg, reader, storageKey, metadata.Hash, metadata.Size, "", id, finalTs, replicationMode, factor)
 						metricsCollector.IncReplication()
 					}(nextHop.ID)
 				} else {
@@ -492,23 +490,21 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 					for i := 1; i < len(placement); i++ {
 						targetId := placement[i].ID
 						go func(id int) {
-							// ⚡ Bolt: connectToPeerStream (client.ConnectStream) handles wg.Done() internally via defer.
+							defer wg.Done()
 							defer func() {
 								if r := recover(); r != nil {
 									log.Printf("CRITICAL: Panic recovered in Splay forwarder to node %d: %v", id, r)
-									wg.Done()
 									metricsCollector.IncErrors()
 								}
 							}()
 							reader, _, err := store.Get(storageKey)
 							if err != nil {
 								log.Printf("AUDIT: Failed to get blob for splay forwarding: %v", common.SanitizeLog(err.Error()))
-								wg.Done()
 								metricsCollector.IncErrors()
 								return
 							}
 							defer reader.Close()
-							connectToPeerStream(&wg, cfg, reader, storageKey, metadata.Hash, metadata.Size, "", id, finalTs, replicationMode, factor)
+							connectToPeerStream(cfg, reader, storageKey, metadata.Hash, metadata.Size, "", id, finalTs, replicationMode, factor)
 							metricsCollector.IncReplication()
 						}(targetId)
 					}
