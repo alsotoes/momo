@@ -213,13 +213,13 @@ func (s *CASStore) Put(name string, hash string, size int64, remotePath string, 
 		}
 
 		// Store RemotePath
+		if len(name) > common.FileInfoLength {
+			return fmt.Errorf("name exceeds maximum length: %w", syscall.ENAMETOOLONG)
+		}
 		if remotePath != "" {
 			normalized, err := common.NormalizeVirtualPath(remotePath)
 			if err != nil {
 				return fmt.Errorf("invalid virtual path %q: %w", remotePath, err)
-			}
-			if len(name) > common.FileInfoLength {
-				return fmt.Errorf("name exceeds maximum length: %w", syscall.ENAMETOOLONG)
 			}
 			paths := tx.Bucket(bucketPaths)
 			if err := paths.Put([]byte(name), []byte(normalized)); err != nil {
