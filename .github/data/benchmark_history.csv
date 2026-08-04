@@ -2178,3 +2178,10 @@ ea32943,BenchmarkIndexDirectTracking-8,0.33,0.00,0.00
 ea32943,BenchmarkIndexSearch-8,1.62,0.00,0.00
 ea32943,BenchmarkLoadGlobalConfig-8,4514.00,1056.00,29.00
 ea32943,BenchmarkPadString-8,1.95,0.00,0.00
+c82aafa,BenchmarkCheckMetricsAndSwap-8,8.26,0.00,0.00
+c82aafa,BenchmarkCrushOptimized-8,294.80,0.00,0.00
+c82aafa,BenchmarkCrushOriginal-8,419.30,164.00,3.00
+c82aafa,BenchmarkIndexDirectTracking-8,0.34,0.00,0.00
+c82aafa,BenchmarkIndexSearch-8,1.64,0.00,0.00
+c82aafa,BenchmarkLoadGlobalConfig-8,4627.00,1056.00,29.00
+c82aafa,BenchmarkPadString-8,2.31,0.00,0.00

@@ -36,11 +36,13 @@ func NewEncryptedBlobStore(inner BlobStore, encKeyHex string) (*EncryptedBlobSto
 // PutBlob encrypts the content stream and stores the ciphertext in the
 // underlying BlobStore. The hash is the plaintext content hash, preserving
 // CAS dedup semantics.
-func (e *EncryptedBlobStore) PutBlob(hash string, content io.Reader) error {
-	if r := recover(); r != nil {
-		log.Printf("CRITICAL: Panic recovered in EncryptedBlobStore.PutBlob: %v", r)
-		return fmt.Errorf("panic in PutBlob: %v: %w", r, syscall.EIO)
-	}
+func (e *EncryptedBlobStore) PutBlob(hash string, content io.Reader) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in EncryptedBlobStore.PutBlob: %v", r)
+			err = fmt.Errorf("panic in PutBlob: %v: %w", r, syscall.EIO)
+		}
+	}()
 
 	// ⚡ Bolt: Stream encryption avoids loading the entire plaintext into
 	// memory. EncryptStream reads in 4KB chunks and writes to a pipe,
