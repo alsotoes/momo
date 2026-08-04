@@ -85,7 +85,8 @@ func (s *S3BlobStore) PutBlob(hash string, content io.Reader) (err error) {
 		}
 	}()
 
-	boundedContent := io.LimitReader(content, common.MaxFileSize)
+	cr := &countingReader{r: content}
+	boundedContent := io.LimitReader(cr, common.MaxFileSize+1)
 
 	req, err := s.newRequest("PUT", hash, boundedContent, "UNSIGNED-PAYLOAD")
 	if err != nil {
@@ -102,7 +103,24 @@ func (s *S3BlobStore) PutBlob(hash string, content io.Reader) (err error) {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("s3: PUT failed with status %d: %w", resp.StatusCode, syscall.EIO)
 	}
+
+	if cr.n > common.MaxFileSize {
+		_ = s.DeleteBlob(hash)
+		return fmt.Errorf("s3: blob exceeds MaxFileSize (%d bytes): %w", common.MaxFileSize, syscall.EFBIG)
+	}
+
 	return nil
+}
+
+type countingReader struct {
+	r io.Reader
+	n int64
+}
+
+func (cr *countingReader) Read(p []byte) (int, error) {
+	n, err := cr.r.Read(p)
+	cr.n += int64(n)
+	return n, err
 }
 
 // GetBlob downloads a blob from S3 using HTTP GET with SigV4 authentication.
