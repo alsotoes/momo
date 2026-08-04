@@ -54,7 +54,7 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 		}
 		masterKey, decErr := hex.DecodeString(cfg.Global.EncryptionKey)
 		if decErr != nil {
-			err = fmt.Errorf("failed to decode encryption key: %w", decErr)
+			err = fmt.Errorf("failed to decode encryption key: %v: %w", decErr, syscall.EINVAL)
 			log.Printf("%v", err)
 			return
 		}
