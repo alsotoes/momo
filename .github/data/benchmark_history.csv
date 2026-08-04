@@ -2304,3 +2304,10 @@ ee5caeb,BenchmarkIndexDirectTracking-8,0.32,0.00,0.00
 ee5caeb,BenchmarkIndexSearch-8,1.50,0.00,0.00
 ee5caeb,BenchmarkLoadGlobalConfig-8,4517.00,1056.00,29.00
 ee5caeb,BenchmarkPadString-8,1.91,0.00,0.00
+6acd872,BenchmarkCheckMetricsAndSwap-8,7.75,0.00,0.00
+6acd872,BenchmarkCrushOptimized-8,314.60,0.00,0.00
+6acd872,BenchmarkCrushOriginal-8,408.10,164.00,3.00
+6acd872,BenchmarkIndexDirectTracking-8,0.33,0.00,0.00
+6acd872,BenchmarkIndexSearch-8,1.53,0.00,0.00
+6acd872,BenchmarkLoadGlobalConfig-8,4463.00,1056.00,29.00
+6acd872,BenchmarkPadString-8,1.99,0.00,0.00
