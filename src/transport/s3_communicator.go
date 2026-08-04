@@ -484,6 +484,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		rawPath := req.URL.Path
 		cleanPath := path.Clean(rawPath)
 		if cleanPath == "." || cleanPath == ".." || strings.HasPrefix(cleanPath, "../") || cleanPath == "/" {
+			m.conn.Write([]byte("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
 			return 0, 0, fmt.Errorf("invalid S3 path: %s: %w", rawPath, syscall.EBADMSG)
 		}
 
@@ -496,6 +497,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 
 		// 🛡️ Sentinel: Sanitize S3 hash to prevent directory traversal via malicious metadata.
 		if m.meta.Hash != "" && common.HasPathTraversalChars(m.meta.Hash) {
+			m.conn.Write([]byte("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
 			return 0, 0, fmt.Errorf("invalid hash: %s: %w", m.meta.Hash, syscall.EBADMSG)
 		}
 	}
