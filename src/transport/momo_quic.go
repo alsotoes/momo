@@ -670,12 +670,12 @@ func DialQUIC(ctx context.Context, address string, caCertPool *x509.CertPool, tl
 	}
 	conn, err = quic.DialAddr(ctx, address, tlsConf, nil)
 	if err != nil {
-		return nil, nil, fmt.Errorf("quic dial failed: %w", syscall.ECONNREFUSED)
+		return nil, nil, fmt.Errorf("quic dial failed: %v: %w", err, syscall.ECONNREFUSED)
 	}
 	stream, err = conn.OpenStreamSync(ctx)
 	if err != nil {
 		conn.CloseWithError(0, "failed to open stream")
-		return nil, nil, fmt.Errorf("quic stream open failed: %w", syscall.ECONNREFUSED)
+		return nil, nil, fmt.Errorf("quic stream open failed: %v: %w", err, syscall.ECONNREFUSED)
 	}
 	return conn, stream, nil
 }
