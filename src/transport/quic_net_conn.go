@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"fmt"
 	"net"
 	"time"
 
@@ -40,8 +41,13 @@ func (c *QUICNetConn) SetWriteDeadline(t time.Time) error {
 	return c.Stream.SetWriteDeadline(t)
 }
 
-func (c *QUICNetConn) Close() error {
-	err := c.Stream.Close()
+func (c *QUICNetConn) Close() (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in QUICNetConn.Close: %v", r)
+		}
+	}()
+	err = c.Stream.Close()
 	c.conn.CloseWithError(0, "")
 	return err
 }
