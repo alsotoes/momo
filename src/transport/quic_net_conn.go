@@ -39,3 +39,9 @@ func (c *QUICNetConn) SetReadDeadline(t time.Time) error {
 func (c *QUICNetConn) SetWriteDeadline(t time.Time) error {
 	return c.Stream.SetWriteDeadline(t)
 }
+
+func (c *QUICNetConn) Close() error {
+	err := c.Stream.Close()
+	c.conn.CloseWithError(0, "")
+	return err
+}
