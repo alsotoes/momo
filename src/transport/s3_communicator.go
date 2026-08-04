@@ -242,6 +242,9 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to read handshake request: %v: %w", err, syscall.EBADMSG)
 	}
+	if req.Method != "PUT" {
+		req.Body.Close()
+	}
 
 	authHeader := req.Header.Get("Authorization")
 	var token string
@@ -650,6 +653,9 @@ func (m *S3Communicator) ReceiveMetadata() (meta common.FileMetadata, err error)
 		m.connReader.ClearLimit()
 		if err != nil {
 			return common.FileMetadata{}, fmt.Errorf("ReceiveMetadata ReadRequest failed: %v: %w", err, syscall.EBADMSG)
+		}
+		if req.Method != "PUT" {
+			req.Body.Close()
 		}
 
 		// 🛡️ Sentinel: Sanitize S3 path to prevent traversal attacks.
