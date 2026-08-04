@@ -2241,3 +2241,10 @@ b2d21a7,BenchmarkPadString-8,2.37,0.00,0.00
 0abe3fd,BenchmarkIndexSearch-8,1.62,0.00,0.00
 0abe3fd,BenchmarkLoadGlobalConfig-8,5015.00,1056.00,29.00
 0abe3fd,BenchmarkPadString-8,2.41,0.00,0.00
+0801871,BenchmarkCheckMetricsAndSwap-8,11.43,0.00,0.00
+0801871,BenchmarkCrushOptimized-8,341.90,0.00,0.00
+0801871,BenchmarkCrushOriginal-8,405.40,164.00,3.00
+0801871,BenchmarkIndexDirectTracking-8,0.67,0.00,0.00
+0801871,BenchmarkIndexSearch-8,2.12,0.00,0.00
+0801871,BenchmarkLoadGlobalConfig-8,4683.00,1056.00,29.00
+0801871,BenchmarkPadString-8,2.11,0.00,0.00
