@@ -8,31 +8,43 @@ import (
 
 	"github.com/alsotoes/momo/src/common"
 	"github.com/alsotoes/momo/src/p2p"
+	"github.com/alsotoes/momo/src/storage"
 )
 
 // ScatterGatherLister adapts p2p.ScatterGather to the transport.GlobalLister interface.
 type ScatterGatherLister struct {
 	sg      *p2p.ScatterGather
+	store   storage.Store
 	timeout time.Duration
 }
 
 // NewScatterGatherLister creates a new ScatterGatherLister adapter.
-func NewScatterGatherLister(sg *p2p.ScatterGather, timeout time.Duration) *ScatterGatherLister {
-	return &ScatterGatherLister{sg: sg, timeout: timeout}
+func NewScatterGatherLister(sg *p2p.ScatterGather, store storage.Store, timeout time.Duration) *ScatterGatherLister {
+	return &ScatterGatherLister{sg: sg, store: store, timeout: timeout}
 }
 
-// GlobalList queries all peers for their local file lists and: merges and deduplicates results.
+// GlobalList queries all peers for their local file lists, includes the local node's files, and merges and deduplicates results.
 func (s *ScatterGatherLister) GlobalList(timeout time.Duration) ([]common.FileMetadata, error) {
 	if s.sg == nil {
 		return nil, fmt.Errorf("scatter-gather not initialized")
 	}
 
+	var allLists [][]common.FileMetadata
+
+	if s.store != nil {
+		localFiles, err := s.store.List()
+		if err != nil {
+			log.Printf("AUDIT: GlobalList local store error: %v", common.SanitizeLog(err.Error()))
+		} else if len(localFiles) > 0 {
+			allLists = append(allLists, localFiles)
+		}
+	}
+
 	responses, count := s.sg.Query(p2p.QueryList, nil, timeout)
-	if count == 0 {
+	if count == 0 && len(allLists) == 0 {
 		return nil, nil
 	}
 
-	var allLists [][]common.FileMetadata
 	for _, resp := range responses {
 		if resp.Error != "" {
 			log.Printf("AUDIT: GlobalList peer error: %s", common.SanitizeLog(resp.Error))

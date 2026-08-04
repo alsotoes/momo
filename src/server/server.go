@@ -174,8 +174,8 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 			// Inject scatter-gather and lease capabilities if P2P is enabled
 			if scatterGather != nil {
 				if glComm, ok := comm.(interface{ SetGlobalLister(transport.GlobalLister) }); ok {
-					glComm.SetGlobalLister(NewScatterGatherLister(scatterGather,
-						time.Duration(cfg.P2P.ScatterGatherTimeout)*time.Second))
+				glComm.SetGlobalLister(NewScatterGatherLister(scatterGather, store,
+					time.Duration(cfg.P2P.ScatterGatherTimeout)*time.Second))
 				}
 				if dpComm, ok := comm.(interface {
 					SetDeletePropagator(transport.DeletePropagator)
