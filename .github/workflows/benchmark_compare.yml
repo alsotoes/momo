@@ -1,6 +1,7 @@
 name: Performance Comparison
 
 on:
+  workflow_dispatch:
   pull_request:
     branches: [ "master" ]
     paths:
