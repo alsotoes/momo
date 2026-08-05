@@ -40,14 +40,15 @@ func GenerateOPRFShares(t, n int) ([]OPRFSharePair, error) {
 		// f(point) = sum_{k} coeffs[k] * point^k
 		out := oprfGroup.NewScalar().Zero()
 		p := oprfGroup.NewScalar().One()
+		pointScalar := scalarFromInt(point)
 		for _, c := range coeffs {
 			term := p.Copy().Multiply(c)
-			out = out.Copy().Add(term)
-			p = p.Copy().Multiply(scalarFromInt(point))
+			out.Add(term)
+			p.Multiply(pointScalar)
 		}
 		shares[point-1] = OPRFSharePair{
 			ShareIndex: point,
-			Share:      out.Copy().Encode(),
+			Share:      out.Encode(),
 		}
 	}
 	return shares, nil
@@ -132,7 +133,11 @@ func OPRFCombineUnblind(evaluations []OPRFEvaluation, blind []byte, threshold in
 		if err := verifyUniqueEvaluations(evaluations); err != nil {
 			return nil, err
 		}
-		return oprfFinalize(evaluations[0].Eval, blind)
+		e, err := decodeElement(evaluations[0].Eval)
+		if err != nil {
+			return nil, err
+		}
+		return oprfFinalizeElement(e, blind)
 	}
 
 	// Compute Lagrange coefficients L_i(0) = prod_{j!=i} (x_j)/(x_j - x_i).
@@ -143,37 +148,35 @@ func OPRFCombineUnblind(evaluations []OPRFEvaluation, blind []byte, threshold in
 	}
 
 	// combined = sum_i coeff_i * eval_i  (additive group).
+	// In-place arithmetic: each e is freshly allocated and combined is owned.
 	var combined *crypto.Element
 	for i, eval := range evaluations {
 		e := oprfGroup.NewElement()
 		if err := e.Decode(eval.Eval); err != nil {
 			return nil, fmt.Errorf("oprf: failed to decode evaluation: %w", err)
 		}
-		scaled := e.Copy().Multiply(coefficients[i])
+		e.Multiply(coefficients[i])
 		if combined == nil {
-			combined = scaled
+			combined = e
 		} else {
-			combined = combined.Copy().Add(scaled)
+			combined.Add(e)
 		}
 	}
 
-	return oprfFinalize(combined.Encode(), blind)
+	return oprfFinalizeElement(combined, blind)
 }
 
-// oprfFinalize unblinds an interpolated element by the client's blind inverse
-// and reduces it to a 32-byte content key.
-func oprfFinalize(interpolated []byte, blind []byte) ([]byte, error) {
-	e, err := decodeElement(interpolated)
-	if err != nil {
-		return nil, err
-	}
+// oprfFinalizeElement unblinds an interpolated element by the client's blind
+// inverse and reduces it to a 32-byte content key. The element is consumed
+// (modified in-place) by the unblinding multiplication.
+func oprfFinalizeElement(e *crypto.Element, blind []byte) ([]byte, error) {
 	b, err := decodeScalar(blind)
 	if err != nil {
 		return nil, err
 	}
-	bInv := b.Copy().Invert()
-	unblinded := e.Copy().Multiply(bInv)
-	digest := sha256.Sum256(unblinded.Encode())
+	b.Invert()
+	e.Multiply(b)
+	digest := sha256.Sum256(e.Encode())
 	return digest[:], nil
 }
 
@@ -198,7 +201,10 @@ func lagrangeAtZero(evaluations []OPRFEvaluation) ([]*crypto.Scalar, error) {
 		}
 	}
 
-	coeffs := make([]*crypto.Scalar, len(points))
+	n := len(points)
+	nums := make([]*crypto.Scalar, n)
+	dens := make([]*crypto.Scalar, n)
+
 	for i, xi := range points {
 		num := oprfGroup.NewScalar().One()
 		den := oprfGroup.NewScalar().One()
@@ -208,16 +214,59 @@ func lagrangeAtZero(evaluations []OPRFEvaluation) ([]*crypto.Scalar, error) {
 				continue
 			}
 			xjScalar := scalarCache[xj]
-			// numerator *= x_j
-			num = num.Copy().Multiply(xjScalar)
+			// numerator *= x_j  (in-place)
+			num.Multiply(xjScalar)
 			// denominator *= (x_j - x_i)
 			diff := xjScalar.Copy().Subtract(xiScalar)
-			den = den.Copy().Multiply(diff)
+			den.Multiply(diff)
 		}
-		denInv := den.Copy().Invert()
-		coeffs[i] = num.Copy().Multiply(denInv)
+		nums[i] = num
+		dens[i] = den
+	}
+
+	// Batch-invert all denominators with a single inversion (Montgomery's trick).
+	denInvs := batchInvert(dens)
+
+	coeffs := make([]*crypto.Scalar, n)
+	for i := range points {
+		coeffs[i] = nums[i].Multiply(denInvs[i])
 	}
 	return coeffs, nil
+}
+
+// batchInvert computes the modular inverse of each scalar using a single
+// inversion via Montgomery's trick: for n scalars it performs 1 inversion
+// and 3(n-1) multiplications instead of n inversions.
+func batchInvert(scalars []*crypto.Scalar) []*crypto.Scalar {
+	n := len(scalars)
+	if n == 0 {
+		return nil
+	}
+	if n == 1 {
+		return []*crypto.Scalar{scalars[0].Copy().Invert()}
+	}
+
+	// Prefix products: prefix[i] = scalars[0] * ... * scalars[i]
+	prefix := make([]*crypto.Scalar, n)
+	prefix[0] = scalars[0].Copy()
+	for i := 1; i < n; i++ {
+		prefix[i] = prefix[i-1].Copy().Multiply(scalars[i])
+	}
+
+	// Invert the total product in-place.
+	prefix[n-1].Invert()
+
+	invs := make([]*crypto.Scalar, n)
+	for i := n - 1; i > 0; i-- {
+		// invs[i] = prefix[i] * prefix[i-1] = 1/scalars[i]
+		invs[i] = prefix[i-1].Copy().Multiply(prefix[i])
+		// prefix[i-1] = prefix[i] * scalars[i] = 1/(scalars[0]*...*scalars[i-1])
+		prefix[i].Multiply(scalars[i])
+		prefix[i-1] = prefix[i]
+	}
+	invs[0] = prefix[0]
+
+	return invs
 }
 
 func scalarFromInt(v int) *crypto.Scalar {
