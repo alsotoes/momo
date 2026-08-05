@@ -191,18 +191,27 @@ func lagrangeAtZero(evaluations []OPRFEvaluation) ([]*crypto.Scalar, error) {
 		return nil, err
 	}
 
+	scalarCache := make(map[int]*crypto.Scalar, len(points))
+	for _, p := range points {
+		if _, ok := scalarCache[p]; !ok {
+			scalarCache[p] = scalarFromInt(p)
+		}
+	}
+
 	coeffs := make([]*crypto.Scalar, len(points))
 	for i, xi := range points {
 		num := oprfGroup.NewScalar().One()
 		den := oprfGroup.NewScalar().One()
+		xiScalar := scalarCache[xi]
 		for j, xj := range points {
 			if i == j {
 				continue
 			}
+			xjScalar := scalarCache[xj]
 			// numerator *= x_j
-			num = num.Copy().Multiply(scalarFromInt(xj))
+			num = num.Copy().Multiply(xjScalar)
 			// denominator *= (x_j - x_i)
-			diff := scalarFromInt(xj).Copy().Subtract(scalarFromInt(xi))
+			diff := xjScalar.Copy().Subtract(xiScalar)
 			den = den.Copy().Multiply(diff)
 		}
 		denInv := den.Copy().Invert()

@@ -8,14 +8,14 @@ This section is automatically updated by our GitHub Actions workflow.
 ```
                       │ /tmp/old_bench_filtered.txt │      /tmp/new_bench_filtered.txt       │
                       │           sec/op            │    sec/op      vs base                 │
-CrushOriginal-8                        573.2n ± ∞ ¹    430.9n ± ∞ ¹        ~ (p=1.000 n=1) ²
-CrushOptimized-8                       312.4n ± ∞ ¹    313.8n ± ∞ ¹        ~ (p=1.000 n=1) ²
-LoadGlobalConfig-8                     6.306µ ± ∞ ¹    5.787µ ± ∞ ¹        ~ (p=1.000 n=1) ²
-PadString-8                            2.019n ± ∞ ¹    2.002n ± ∞ ¹        ~ (p=1.000 n=1) ²
-CheckMetricsAndSwap-8                 10.020n ± ∞ ¹    7.709n ± ∞ ¹        ~ (p=1.000 n=1) ²
-IndexSearch-8                          2.792n ± ∞ ¹    2.978n ± ∞ ¹        ~ (p=1.000 n=1) ²
-IndexDirectTracking-8                 0.4950n ± ∞ ¹   0.3503n ± ∞ ¹        ~ (p=1.000 n=1) ²
-geomean                                31.62n          27.73n        -12.30%
+CrushOriginal-8                        430.9n ± ∞ ¹    704.8n ± ∞ ¹        ~ (p=1.000 n=1) ²
+CrushOptimized-8                       313.8n ± ∞ ¹    456.3n ± ∞ ¹        ~ (p=1.000 n=1) ²
+LoadGlobalConfig-8                     5.787µ ± ∞ ¹   10.204µ ± ∞ ¹        ~ (p=1.000 n=1) ²
+PadString-8                            2.002n ± ∞ ¹    2.324n ± ∞ ¹        ~ (p=1.000 n=1) ²
+CheckMetricsAndSwap-8                  7.709n ± ∞ ¹   17.970n ± ∞ ¹        ~ (p=1.000 n=1) ²
+IndexSearch-8                          2.978n ± ∞ ¹    3.233n ± ∞ ¹        ~ (p=1.000 n=1) ²
+IndexDirectTracking-8                 0.3503n ± ∞ ¹   0.4843n ± ∞ ¹        ~ (p=1.000 n=1) ²
+geomean                                27.73n          41.57n        +49.93%
 ¹ need >= 6 samples for confidence interval at level 0.95
 ² need >= 4 samples to detect a difference at alpha level 0.05
 
@@ -53,13 +53,13 @@ geomean                                           ³                +0.00%      
 
 | Benchmark | Avg. Time/Op | Avg. Bytes/Op | Avg. Allocs/Op |
 |-----------|--------------|---------------|----------------|
-| BenchmarkCheckMetricsAndSwap-8 | 7.71 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkCrushOptimized-8 | 313.80 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkCrushOriginal-8 | 430.90 ns/op | 164.00 B/op | 3.00 allocs/op |
-| BenchmarkIndexDirectTracking-8 | 0.35 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkIndexSearch-8 | 2.98 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkLoadGlobalConfig-8 | 5787.00 ns/op | 1312.00 B/op | 37.00 allocs/op |
-| BenchmarkPadString-8 | 2.00 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkCheckMetricsAndSwap-8 | 17.97 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkCrushOptimized-8 | 456.30 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkCrushOriginal-8 | 704.80 ns/op | 164.00 B/op | 3.00 allocs/op |
+| BenchmarkIndexDirectTracking-8 | 0.48 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkIndexSearch-8 | 3.23 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkLoadGlobalConfig-8 | 10204.00 ns/op | 1312.00 B/op | 37.00 allocs/op |
+| BenchmarkPadString-8 | 2.32 ns/op | 0.00 B/op | 0.00 allocs/op |
 
 
 ### Performance History
@@ -82,14 +82,14 @@ xychart-beta
     title "Performance Trend (Avg. Time, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Time (ns/op)"
-    x-axis [f69cd12,35d87fc,14e42a8,061d097,bf993e4,56abf6b,4244bd0,2b5553e,ee67344,79de954]
-    line "CheckMetricsAndSwap" [9,7,8,11,7,9,8,8,10,8]
-    line "CrushOptimized" [310,340,334,480,316,291,320,382,312,314]
-    line "CrushOriginal" [456,411,411,653,408,400,411,439,573,431]
+    x-axis [35d87fc,14e42a8,061d097,bf993e4,56abf6b,4244bd0,2b5553e,ee67344,79de954,0bd839a]
+    line "CheckMetricsAndSwap" [7,8,11,7,9,8,8,10,8,18]
+    line "CrushOptimized" [340,334,480,316,291,320,382,312,314,456]
+    line "CrushOriginal" [411,411,653,408,400,411,439,573,431,705]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
-    line "IndexSearch" [2,3,3,3,3,3,3,3,3,3]
-    line "LoadGlobalConfig" [5045,4567,4932,6586,5941,5764,6283,6321,6306,5787]
-    line "PadString" [2,2,2,3,2,2,2,2,2,2]
+    line "IndexSearch" [3,3,3,3,3,3,3,3,3,3]
+    line "LoadGlobalConfig" [4567,4932,6586,5941,5764,6283,6321,6306,5787,10204]
+    line "PadString" [2,2,3,2,2,2,2,2,2,2]
     line "ParseReplicationOrder_NoPrealloc" [350,349,357,354,345,225,229,165,232,234]
     line "ParseReplicationOrder_Prealloc" [229,231,237,234,229,108,107,80,110,109]
 ```
@@ -99,13 +99,13 @@ xychart-beta
     title "Memory Trend (Avg. Bytes/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Bytes/Op"
-    x-axis [f69cd12,35d87fc,14e42a8,061d097,bf993e4,56abf6b,4244bd0,2b5553e,ee67344,79de954]
+    x-axis [35d87fc,14e42a8,061d097,bf993e4,56abf6b,4244bd0,2b5553e,ee67344,79de954,0bd839a]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "CrushOptimized" [0,0,0,0,0,0,0,0,0,0]
     line "CrushOriginal" [164,164,164,164,164,164,164,164,164,164]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [0,0,0,0,0,0,0,0,0,0]
-    line "LoadGlobalConfig" [1056,1056,1056,1056,1312,1312,1312,1312,1312,1312]
+    line "LoadGlobalConfig" [1056,1056,1056,1312,1312,1312,1312,1312,1312,1312]
     line "PadString" [0,0,0,0,0,0,0,0,0,0]
     line "ParseReplicationOrder_NoPrealloc" [408,408,408,408,408,248,248,248,248,248]
     line "ParseReplicationOrder_Prealloc" [240,240,240,240,240,80,80,80,80,80]
@@ -116,13 +116,13 @@ xychart-beta
     title "Allocation Trend (Avg. Allocs/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Allocs/Op"
-    x-axis [f69cd12,35d87fc,14e42a8,061d097,bf993e4,56abf6b,4244bd0,2b5553e,ee67344,79de954]
+    x-axis [35d87fc,14e42a8,061d097,bf993e4,56abf6b,4244bd0,2b5553e,ee67344,79de954,0bd839a]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "CrushOptimized" [0,0,0,0,0,0,0,0,0,0]
     line "CrushOriginal" [3,3,3,3,3,3,3,3,3,3]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [0,0,0,0,0,0,0,0,0,0]
-    line "LoadGlobalConfig" [29,29,29,29,37,37,37,37,37,37]
+    line "LoadGlobalConfig" [29,29,29,37,37,37,37,37,37,37]
     line "PadString" [0,0,0,0,0,0,0,0,0,0]
     line "ParseReplicationOrder_NoPrealloc" [6,6,6,6,6,5,5,5,5,5]
     line "ParseReplicationOrder_Prealloc" [2,2,2,2,2,1,1,1,1,1]
