@@ -110,6 +110,12 @@ type ConfigurationP2P struct {
 	ScatterGatherTimeout int
 	// LeaseTimeout is the default lease duration for consensus operations, in seconds.
 	LeaseTimeout int
+	// TLSCertFile is the path to the TLS certificate file for P2P transport.
+	TLSCertFile string
+	// TLSKeyFile is the path to the TLS private key file for P2P transport.
+	TLSKeyFile string
+	// TLSCAFile is the path to the CA certificate file for verifying peer certificates.
+	TLSCAFile string
 }
 
 // ConfigurationStorage holds the storage and garbage collection configuration.

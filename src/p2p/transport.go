@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"crypto/tls"
 	"net"
 )
 
@@ -34,8 +35,9 @@ type Transport interface {
 
 // TCPTransportConfig holds configuration for TCPTransport.
 type TCPTransportConfig struct {
-	LocalID  int32
-	AuthFunc func(id int32) bool
+	LocalID   int32
+	AuthFunc  func(id int32) bool
+	TLSConfig *tls.Config
 }
 
 // Ensure net.Listener is referenced for interface satisfaction checks.

@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"crypto/tls"
 	"fmt"
 	"log"
 	"net"
@@ -51,6 +52,9 @@ func (t *TCPTransport) Listen(addr string) error {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("p2p listen failed: %v: %w", err, syscall.EADDRINUSE)
+	}
+	if t.cfg.TLSConfig != nil {
+		ln = tls.NewListener(ln, t.cfg.TLSConfig)
 	}
 	t.ln = ln
 	t.listenAddr = ln.Addr().String()
@@ -156,9 +160,15 @@ func (t *TCPTransport) Dial(id int32, addr string) (*Peer, error) {
 		return existing, nil
 	}
 
-	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
-	if err != nil {
-		return nil, fmt.Errorf("p2p dial %s failed: %v: %w", addr, err, syscall.ECONNREFUSED)
+	var conn net.Conn
+	var dialErr error
+	if t.cfg.TLSConfig != nil {
+		conn, dialErr = tls.Dial("tcp", addr, t.cfg.TLSConfig)
+	} else {
+		conn, dialErr = net.DialTimeout("tcp", addr, 5*time.Second)
+	}
+	if dialErr != nil {
+		return nil, fmt.Errorf("p2p dial %s failed: %v: %w", addr, dialErr, syscall.ECONNREFUSED)
 	}
 
 	t.mu.Lock()

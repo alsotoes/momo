@@ -1,6 +1,12 @@
 package p2p
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"math/big"
 	"net"
 	"testing"
 	"time"
@@ -129,5 +135,119 @@ func TestTCPTransport_Broadcast(t *testing.T) {
 	sent := tr1.Broadcast(rpc)
 	if sent < 2 {
 		t.Errorf("expected at least 2 sends, got %d", sent)
+	}
+}
+
+func generateTestTLSConfig(t *testing.T) *tls.Config {
+	t.Helper()
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("failed to generate key: %v", err)
+	}
+
+	template := x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "momo-p2p-test"},
+		IPAddresses:           []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(time.Hour),
+		KeyUsage:              x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+	}
+
+	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, pub, priv)
+	if err != nil {
+		t.Fatalf("failed to create certificate: %v", err)
+	}
+
+	cert := tls.Certificate{
+		Certificate: [][]byte{derBytes},
+		PrivateKey:  priv,
+	}
+
+	pool := x509.NewCertPool()
+	parsedCert, err := x509.ParseCertificate(derBytes)
+	if err != nil {
+		t.Fatalf("failed to parse certificate: %v", err)
+	}
+	pool.AddCert(parsedCert)
+
+	return &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		RootCAs:      pool,
+		ClientCAs:    pool,
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		MinVersion:   tls.VersionTLS12,
+	}
+}
+
+func TestTCPTransport_TLS(t *testing.T) {
+	tlsConfig := generateTestTLSConfig(t)
+
+	tr1 := NewTCPTransport(TCPTransportConfig{LocalID: 1, TLSConfig: tlsConfig})
+	tr2 := NewTCPTransport(TCPTransportConfig{LocalID: 2, TLSConfig: tlsConfig})
+	defer tr1.Close()
+	defer tr2.Close()
+
+	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	addr1 := ln.Addr().String()
+	ln.Close()
+
+	ln2, _ := net.Listen("tcp", "127.0.0.1:0")
+	addr2 := ln2.Addr().String()
+	ln2.Close()
+
+	if err := tr1.Listen(addr1); err != nil {
+		t.Fatalf("tr1 Listen failed: %v", err)
+	}
+	if err := tr2.Listen(addr2); err != nil {
+		t.Fatalf("tr2 Listen failed: %v", err)
+	}
+
+	if _, err := tr1.Dial(2, addr2); err != nil {
+		t.Fatalf("tr1 TLS Dial failed: %v", err)
+	}
+
+	time.Sleep(100 * time.Millisecond)
+
+	rpc := &RPC{
+		From:    1,
+		Type:    MsgHeartbeat,
+		Payload: []byte("tls-ping"),
+	}
+
+	if err := tr1.Send(2, rpc); err != nil {
+		t.Fatalf("TLS Send failed: %v", err)
+	}
+
+	select {
+	case received := <-tr2.Consume():
+		if string(received.Payload) != "tls-ping" {
+			t.Errorf("expected payload 'tls-ping', got %q", received.Payload)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for TLS RPC")
+	}
+}
+
+func TestTCPTransport_AuthFunc(t *testing.T) {
+	tr := NewTCPTransport(TCPTransportConfig{
+		LocalID:  1,
+		AuthFunc: func(id int32) bool { return id == 2 },
+	})
+	defer tr.Close()
+
+	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	addr := ln.Addr().String()
+	ln.Close()
+
+	if err := tr.Listen(addr); err != nil {
+		t.Fatalf("Listen failed: %v", err)
+	}
+
+	if _, err := tr.Dial(2, addr); err != nil {
+		t.Fatalf("Dial for authorized peer 2 failed: %v", err)
 	}
 }
