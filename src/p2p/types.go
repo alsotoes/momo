@@ -85,17 +85,19 @@ func (p *Peer) Conn() net.Conn {
 type MessageType uint8
 
 const (
-	MsgHeartbeat     MessageType = 1
-	MsgMembership    MessageType = 2
-	MsgSuspect       MessageType = 3
-	MsgQuery         MessageType = 4
-	MsgQueryResponse MessageType = 5
-	MsgLeaseRequest  MessageType = 6
-	MsgLeaseGrant    MessageType = 7
-	MsgLeaseRelease  MessageType = 8
-	MsgPing          MessageType = 9
-	MsgAck           MessageType = 10
-	MsgIndirectPing  MessageType = 11
+	MsgHeartbeat        MessageType = 1
+	MsgMembership       MessageType = 2
+	MsgSuspect          MessageType = 3
+	MsgQuery            MessageType = 4
+	MsgQueryResponse    MessageType = 5
+	MsgLeaseRequest     MessageType = 6
+	MsgLeaseGrant       MessageType = 7
+	MsgLeaseRelease     MessageType = 8
+	MsgPing             MessageType = 9
+	MsgAck              MessageType = 10
+	MsgIndirectPing     MessageType = 11
+	MsgOPRFEvalRequest  MessageType = 12
+	MsgOPRFEvalResponse MessageType = 13
 )
 
 // RPC is a remote procedure call exchanged between peers.
@@ -383,5 +385,103 @@ func DecodePingPayload(data []byte) (*PingPayload, error) {
 		PingID:    binary.BigEndian.Uint64(data[0:8]),
 		TargetID:  int32(binary.BigEndian.Uint32(data[8:12])),
 		Timestamp: int64(binary.BigEndian.Uint64(data[12:20])),
+	}, nil
+}
+
+// OPRFEvalRequestPayload is the payload of a MsgOPRFEvalRequest RPC.
+// Wire format: [8 bytes: request ID] [1 byte: share index] [4 bytes: blinded len] [N bytes: blinded]
+type OPRFEvalRequestPayload struct {
+	RequestID  uint64
+	ShareIndex byte
+	Blinded    []byte
+}
+
+// Encode serializes an OPRFEvalRequestPayload into binary.
+func (o *OPRFEvalRequestPayload) Encode() []byte {
+	buf := make([]byte, 8+1+4+len(o.Blinded))
+	binary.BigEndian.PutUint64(buf[0:8], o.RequestID)
+	buf[8] = o.ShareIndex
+	binary.BigEndian.PutUint32(buf[9:13], uint32(len(o.Blinded)))
+	copy(buf[13:], o.Blinded)
+	return buf
+}
+
+// DecodeOPRFEvalRequestPayload deserializes an OPRFEvalRequestPayload.
+func DecodeOPRFEvalRequestPayload(data []byte) (*OPRFEvalRequestPayload, error) {
+	if len(data) > maxPayloadSize {
+		return nil, fmt.Errorf("oprf request payload too large: %d (errno=%d)", len(data), syscall.EFBIG)
+	}
+	if len(data) < 13 {
+		return nil, fmt.Errorf("oprf request payload too short: %w", syscall.EBADMSG)
+	}
+	blindedLen := int(binary.BigEndian.Uint32(data[9:13]))
+	if 13+blindedLen > len(data) {
+		return nil, fmt.Errorf("truncated oprf request blinded data: %w", syscall.EBADMSG)
+	}
+	blinded := make([]byte, blindedLen)
+	copy(blinded, data[13:13+blindedLen])
+	return &OPRFEvalRequestPayload{
+		RequestID:  binary.BigEndian.Uint64(data[0:8]),
+		ShareIndex: data[8],
+		Blinded:    blinded,
+	}, nil
+}
+
+// OPRFEvalResponsePayload is the payload of a MsgOPRFEvalResponse RPC.
+// Wire format: [8 bytes: request ID] [1 byte: share index] [2 bytes: err len] [M bytes: err] [4 bytes: eval len] [N bytes: eval]
+type OPRFEvalResponsePayload struct {
+	RequestID  uint64
+	ShareIndex byte
+	Error      string
+	Eval       []byte
+}
+
+// Encode serializes an OPRFEvalResponsePayload into binary.
+func (o *OPRFEvalResponsePayload) Encode() []byte {
+	errLen := len(o.Error)
+	buf := make([]byte, 8+1+2+errLen+4+len(o.Eval))
+	binary.BigEndian.PutUint64(buf[0:8], o.RequestID)
+	buf[8] = o.ShareIndex
+	binary.BigEndian.PutUint16(buf[9:11], uint16(errLen))
+	copy(buf[11:], o.Error)
+	off := 11 + errLen
+	binary.BigEndian.PutUint32(buf[off:off+4], uint32(len(o.Eval)))
+	copy(buf[off+4:], o.Eval)
+	return buf
+}
+
+// DecodeOPRFEvalResponsePayload deserializes an OPRFEvalResponsePayload.
+func DecodeOPRFEvalResponsePayload(data []byte) (*OPRFEvalResponsePayload, error) {
+	if len(data) > maxPayloadSize {
+		return nil, fmt.Errorf("oprf response payload too large: %d (errno=%d)", len(data), syscall.EFBIG)
+	}
+	if len(data) < 11 {
+		return nil, fmt.Errorf("oprf response payload too short: %w", syscall.EBADMSG)
+	}
+	reqID := binary.BigEndian.Uint64(data[0:8])
+	shareIndex := data[8]
+	errLen := int(binary.BigEndian.Uint16(data[9:11]))
+	if 11+errLen+4 > len(data) {
+		return nil, fmt.Errorf("truncated oprf response error: %w", syscall.EBADMSG)
+	}
+	errStr := string(data[11 : 11+errLen])
+	off := 11 + errLen
+	if off+4 > len(data) {
+		return nil, fmt.Errorf("truncated oprf response eval: %w", syscall.EBADMSG)
+	}
+	evalLen := int(binary.BigEndian.Uint32(data[off : off+4]))
+	if off+4+evalLen > len(data) {
+		return nil, fmt.Errorf("truncated oprf response eval: %w", syscall.EBADMSG)
+	}
+	var eval []byte
+	if evalLen > 0 {
+		eval = make([]byte, evalLen)
+		copy(eval, data[off+4:])
+	}
+	return &OPRFEvalResponsePayload{
+		RequestID:  reqID,
+		ShareIndex: shareIndex,
+		Error:      errStr,
+		Eval:       eval,
 	}, nil
 }

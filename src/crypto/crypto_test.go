@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"testing"
 )
 
@@ -164,6 +165,69 @@ func TestDeriveKeyWithContext(t *testing.T) {
 	}
 }
 
+func TestDeriveKeyConcatenationAmbiguity(t *testing.T) {
+	master, _ := GenerateKey()
+
+	// Length-prefixed info must distinguish ("ab","c") from ("a","bc").
+	k1, _ := DeriveKey(master, "ab", []byte("c"))
+	k2, _ := DeriveKey(master, "a", []byte("bc"))
+
+	if bytes.Equal(k1, k2) {
+		t.Fatal("DeriveKey is ambiguous across concatenation boundaries")
+	}
+}
+
+func TestDeriveKeyDomainSeparation(t *testing.T) {
+	master, _ := GenerateKey()
+
+	// Each domain label must produce a distinct key for the same tenant.
+	domains := [][]byte{DomainToken, DomainContent, DomainAtRest, DomainOPRF}
+	seen := make(map[string]bool)
+	for _, d := range domains {
+		k, _ := DeriveKey(master, "tenant-a", d)
+		h := hex.EncodeToString(k)
+		if seen[h] {
+			t.Fatalf("domain %q produced a duplicate key", string(d))
+		}
+		seen[h] = true
+	}
+}
+
+func TestEncryptStreamNonceNotReused(t *testing.T) {
+	key, _ := GenerateKey()
+	c, _ := NewCipher(key)
+
+	// A plaintext spanning multiple chunks must use distinct nonces.
+	plaintext := bytes.Repeat([]byte("n"), 4*ChunkSize)
+	var encBuf bytes.Buffer
+	if err := c.EncryptStream(bytes.NewReader(plaintext), &encBuf); err != nil {
+		t.Fatalf("EncryptStream failed: %v", err)
+	}
+
+	// Re-encrypting the same plaintext must use distinct seeds (and nonces).
+	var encBuf2 bytes.Buffer
+	if err := c.EncryptStream(bytes.NewReader(plaintext), &encBuf2); err != nil {
+		t.Fatalf("EncryptStream failed: %v", err)
+	}
+
+	// The stream seeds differ, so no nonce can collide.
+	if bytes.Equal(encBuf.Bytes()[1:1+streamSeedSize], encBuf2.Bytes()[1:1+streamSeedSize]) {
+		t.Fatal("two encryptions of the same stream reused the same seed")
+	}
+}
+
+func TestDecryptStreamRejectsLegacyVersion(t *testing.T) {
+	key, _ := GenerateKey()
+	c, _ := NewCipher(key)
+
+	// A v1 stream has no seed: header version 1 then chunk data.
+	legacy := append([]byte{1}, bytes.Repeat([]byte{0xAA}, ChunkSize+NonceSize)...)
+	var decBuf bytes.Buffer
+	if err := c.DecryptStream(bytes.NewReader(legacy), &decBuf); !errors.Is(err, ErrStreamFormat) {
+		t.Fatalf("expected ErrStreamFormat for legacy stream, got: %v", err)
+	}
+}
+
 func TestEncryptStreamDecryptStreamRoundTrip(t *testing.T) {
 	key, _ := GenerateKey()
 	c, _ := NewCipher(key)
@@ -202,69 +266,14 @@ func TestDecryptStreamTampered(t *testing.T) {
 	var encBuf bytes.Buffer
 	c.EncryptStream(bytes.NewReader(plaintext), &encBuf)
 
-	encBuf.Bytes()[10] ^= 0xFF
+	// Header (1) + seed (8) + first chunk length (4) = 13 bytes; flip a byte
+	// inside the first chunk's GCM payload so the auth tag fails.
+	encBuf.Bytes()[13+ChunkSize/2] ^= 0xFF
 
 	var decBuf bytes.Buffer
 	err := c.DecryptStream(&encBuf, &decBuf)
 	if err != ErrTampered {
 		t.Fatalf("expected ErrTampered, got: %v", err)
-	}
-}
-
-func TestConvergentEncryptDecrypt(t *testing.T) {
-	plaintext := []byte("dedup-friendly content")
-	pepper := []byte("server-pepper")
-
-	result, err := ConvergentEncrypt(plaintext, pepper)
-	if err != nil {
-		t.Fatalf("ConvergentEncrypt failed: %v", err)
-	}
-
-	decrypted, err := ConvergentDecrypt(result.Ciphertext, result.ContentHash)
-	if err != nil {
-		t.Fatalf("ConvergentDecrypt failed: %v", err)
-	}
-
-	if !bytes.Equal(plaintext, decrypted) {
-		t.Fatal("convergent round-trip mismatch")
-	}
-}
-
-func TestConvergentEncryptDedup(t *testing.T) {
-	plaintext := []byte("same content for dedup")
-	pepper := []byte("server-pepper")
-
-	r1, _ := ConvergentEncrypt(plaintext, pepper)
-	r2, _ := ConvergentEncrypt(plaintext, pepper)
-
-	if !bytes.Equal(r1.Ciphertext, r2.Ciphertext) {
-		t.Fatal("same plaintext produced different convergent ciphertexts (dedup broken)")
-	}
-
-	if !bytes.Equal(r1.ContentHash, r2.ContentHash) {
-		t.Fatal("same plaintext produced different content hashes")
-	}
-}
-
-func TestConvergentEncryptDifferentContent(t *testing.T) {
-	pepper := []byte("server-pepper")
-
-	r1, _ := ConvergentEncrypt([]byte("content-a"), pepper)
-	r2, _ := ConvergentEncrypt([]byte("content-b"), pepper)
-
-	if bytes.Equal(r1.ContentHash, r2.ContentHash) {
-		t.Fatal("different plaintexts produced same content hash")
-	}
-}
-
-func TestConvergentEncryptPepper(t *testing.T) {
-	plaintext := []byte("same content")
-
-	r1, _ := ConvergentEncrypt(plaintext, []byte("pepper-a"))
-	r2, _ := ConvergentEncrypt(plaintext, []byte("pepper-b"))
-
-	if bytes.Equal(r1.ContentHash, r2.ContentHash) {
-		t.Fatal("different peppers produced same content hash (pepper not mixed in)")
 	}
 }
 

@@ -36,6 +36,7 @@ type MomoQUICCommunicator struct {
 	leaseAcquirer    LeaseAcquirer
 	deletePropagator DeletePropagator
 	metricsHook      MetricsHook
+	oprfService      OPRFService
 	isPeer           bool
 	useChallengeResp bool
 }
@@ -75,6 +76,104 @@ func (m *MomoQUICCommunicator) SetDeletePropagator(dp DeletePropagator) {
 // SetMetricsHook sets the metrics instrumentation hook.
 func (m *MomoQUICCommunicator) SetMetricsHook(hook MetricsHook) {
 	m.metricsHook = hook
+}
+
+// SetOPRFService sets the threshold-OPRF evaluation service used to answer
+// ModeOPRFEval requests from clients.
+func (m *MomoQUICCommunicator) SetOPRFService(s OPRFService) {
+	m.oprfService = s
+}
+
+// SendOPRFEval performs a threshold-OPRF evaluation request over Momo-QUIC.
+// It sends a handshake with mode 'O', the blinded dedup tag, then reads the
+// share evaluations returned by the daemon quorum. It never reveals the
+// unblinded tag to the server and fails closed when fewer than threshold
+// distinct evaluations are returned.
+func (m *MomoQUICCommunicator) SendOPRFEval(authToken string, timestamp int64, blinded []byte, threshold int) (results []OPRFEvalResult, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in SendOPRFEval: %v", r)
+			if m != nil {
+				m.Close()
+			}
+			err = fmt.Errorf("panic in SendOPRFEval: %v: %w", r, syscall.EIO)
+		}
+	}()
+
+	if len(blinded) != 32 {
+		return nil, fmt.Errorf("oprf: blinded tag must be 32 bytes: %w", syscall.EINVAL)
+	}
+
+	// Manual handshake with mode 'O' (like GET/Download sends literal 'G').
+	// Respect challenge-response authentication when enabled.
+	if m.useChallengeResp {
+		var handshakeBuf [common.TimestampLength + 1]byte
+		if err := common.AppendPaddedInt(handshakeBuf[:common.TimestampLength], timestamp, common.TimestampLength); err != nil {
+			return nil, fmt.Errorf("oprf: failed to format handshake timestamp: %w", err)
+		}
+		handshakeBuf[common.TimestampLength] = byte(common.ModeOPRFEval)
+		if _, err := m.Write(handshakeBuf[:]); err != nil {
+			return nil, fmt.Errorf("oprf: failed to send handshake: %v: %w", err, syscall.EIO)
+		}
+		if err := common.ChallengeResponseClient(m, authToken); err != nil {
+			return nil, fmt.Errorf("oprf: challenge-response auth failed: %w", err)
+		}
+	} else {
+		var handshakeBuf [common.AuthTokenLength + common.TimestampLength + 1]byte
+		copy(handshakeBuf[:common.AuthTokenLength], common.PadString(authToken, common.AuthTokenLength))
+		if err := common.AppendPaddedInt(handshakeBuf[common.AuthTokenLength:], timestamp, common.TimestampLength); err != nil {
+			return nil, fmt.Errorf("oprf: failed to format handshake timestamp: %w", err)
+		}
+		handshakeBuf[common.AuthTokenLength+common.TimestampLength] = byte(common.ModeOPRFEval)
+		if _, err := m.Write(handshakeBuf[:]); err != nil {
+			return nil, fmt.Errorf("oprf: failed to send handshake: %v: %w", err, syscall.EIO)
+		}
+	}
+
+	if _, err := m.Write(blinded); err != nil {
+		return nil, fmt.Errorf("oprf: failed to send blinded tag: %v: %w", err, syscall.EIO)
+	}
+
+	var countBuf [4]byte
+	if _, err := io.ReadFull(m, countBuf[:]); err != nil {
+		return nil, fmt.Errorf("oprf: failed to read result count: %v: %w", err, syscall.EBADMSG)
+	}
+	count := int(binary.BigEndian.Uint32(countBuf[:]))
+	if count == 0 {
+		return nil, fmt.Errorf("oprf: no evaluations returned (quorum not met): %w", syscall.EAGAIN)
+	}
+	if count > 255 {
+		return nil, fmt.Errorf("oprf: implausible evaluation count %d: %w", count, syscall.EBADMSG)
+	}
+
+	results = make([]OPRFEvalResult, 0, count)
+	for i := 0; i < count; i++ {
+		var idxBuf [4]byte
+		if _, err := io.ReadFull(m, idxBuf[:]); err != nil {
+			return nil, fmt.Errorf("oprf: failed to read share index: %v: %w", err, syscall.EBADMSG)
+		}
+		var lenBuf [4]byte
+		if _, err := io.ReadFull(m, lenBuf[:]); err != nil {
+			return nil, fmt.Errorf("oprf: failed to read eval length: %v: %w", err, syscall.EBADMSG)
+		}
+		evalLen := int(binary.BigEndian.Uint32(lenBuf[:]))
+		if evalLen > 32 {
+			return nil, fmt.Errorf("oprf: implausible eval length %d: %w", evalLen, syscall.EBADMSG)
+		}
+		eval := make([]byte, evalLen)
+		if _, err := io.ReadFull(m, eval); err != nil {
+			return nil, fmt.Errorf("oprf: failed to read eval: %v: %w", err, syscall.EBADMSG)
+		}
+		results = append(results, OPRFEvalResult{
+			ShareIndex: int(binary.BigEndian.Uint32(idxBuf[:])),
+			Eval:       eval,
+		})
+	}
+
+	if len(results) < threshold {
+		return nil, fmt.Errorf("oprf: only %d evaluations, need %d: %w", len(results), threshold, syscall.EAGAIN)
+	}
+	return results, nil
 }
 
 func (m *MomoQUICCommunicator) SetAbsoluteDeadline(t interface{}) (err error) {
@@ -177,7 +276,7 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 			return 0, 0, fmt.Errorf("failed to parse timestamp: %v: %w", err, syscall.EBADMSG)
 		}
 
-		if requestedModeByte == 'L' || requestedModeByte == 'D' || requestedModeByte == 'G' {
+		if requestedModeByte == 'L' || requestedModeByte == 'D' || requestedModeByte == 'G' || requestedModeByte == 'O' {
 			requestedMode = int(requestedModeByte)
 		} else {
 			requestedMode = int(requestedModeByte - '0')
@@ -212,7 +311,7 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 			return 0, 0, fmt.Errorf("failed to parse timestamp: %v: %w", err, syscall.EBADMSG)
 		}
 
-		if requestedModeByte == 'L' || requestedModeByte == 'D' || requestedModeByte == 'G' {
+		if requestedModeByte == 'L' || requestedModeByte == 'D' || requestedModeByte == 'G' || requestedModeByte == 'O' {
 			requestedMode = int(requestedModeByte)
 		} else {
 			requestedMode = int(requestedModeByte - '0')
@@ -412,6 +511,54 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 		if m.metricsHook != nil {
 			m.metricsHook.IncDownloads()
 			m.metricsHook.AddBytesDownloaded(uint64(meta.Size))
+		}
+
+		return 0, 0, ErrRequestHandled
+	}
+
+	// 🛡️ Sentinel: Handle threshold-OPRF evaluation requests natively on Momo-QUIC.
+	if requestedMode == common.ModeOPRFEval {
+		if m.oprfService == nil {
+			m.Stream.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			var zeroCount [4]byte
+			m.Write(zeroCount[:])
+			return 0, 0, fmt.Errorf("oprf service not configured: %w", syscall.ENOTSUP)
+		}
+
+		m.Stream.SetReadDeadline(time.Now().Add(10 * time.Second))
+		var blinded [32]byte
+		if _, err := io.ReadFull(m, blinded[:]); err != nil {
+			return 0, 0, fmt.Errorf("failed to read blinded tag: %v: %w", err, syscall.EBADMSG)
+		}
+
+		results, err := m.oprfService.EvaluateOPRF(blinded[:], 10*time.Second)
+		if err != nil {
+			m.Stream.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			var zeroCount [4]byte
+			m.Write(zeroCount[:])
+			return 0, 0, fmt.Errorf("oprf evaluation failed: %w", err)
+		}
+
+		m.Stream.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		var countBuf [4]byte
+		binary.BigEndian.PutUint32(countBuf[:], uint32(len(results)))
+		if _, err := m.Write(countBuf[:]); err != nil {
+			return 0, 0, fmt.Errorf("failed to send oprf result count: %v: %w", err, syscall.EIO)
+		}
+		for _, r := range results {
+			var idxBuf [4]byte
+			binary.BigEndian.PutUint32(idxBuf[:], uint32(r.ShareIndex))
+			if _, err := m.Write(idxBuf[:]); err != nil {
+				return 0, 0, fmt.Errorf("failed to send oprf share index: %v: %w", err, syscall.EIO)
+			}
+			var lenBuf [4]byte
+			binary.BigEndian.PutUint32(lenBuf[:], uint32(len(r.Eval)))
+			if _, err := m.Write(lenBuf[:]); err != nil {
+				return 0, 0, fmt.Errorf("failed to send oprf eval length: %v: %w", err, syscall.EIO)
+			}
+			if _, err := m.Write(r.Eval); err != nil {
+				return 0, 0, fmt.Errorf("failed to send oprf eval: %v: %w", err, syscall.EIO)
+			}
 		}
 
 		return 0, 0, ErrRequestHandled

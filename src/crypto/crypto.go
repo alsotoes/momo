@@ -19,6 +19,16 @@ const (
 	MaxKeyHexSize = 64
 )
 
+// Domain labels for HKDF key derivation. Each label scopes a derived key to a
+// single purpose so keys for different domain labels, tenants, or contexts can
+// never coincide.
+var (
+	DomainToken   = []byte("momo/token")
+	DomainContent = []byte("momo/content")
+	DomainAtRest  = []byte("momo/atrest")
+	DomainOPRF    = []byte("momo/oprf")
+)
+
 var (
 	ErrInvalidKeySize     = errors.New("crypto: key must be 32 bytes")
 	ErrInvalidNonceSize   = errors.New("crypto: nonce must be 12 bytes")
@@ -101,15 +111,24 @@ func DeriveKey(masterKey []byte, tenant string, context []byte) ([]byte, error) 
 		return nil, ErrInvalidKeySize
 	}
 
-	info := tenant
-	if len(context) > 0 {
-		info += string(context)
-	}
+	// Domain-separated HKDF info. Each part is length-prefixed so that no two
+	// distinct (domain, tenant, context) tuples can collide after
+	// concatenation (e.g. "ab"+"c" vs "a"+"bc"). The length prefixes are
+	// 4-byte big-endian counts fixed across all derivations.
+	buf := make([]byte, 0, 4+len(tenant)+4+len(context))
+	buf = appendUint32(buf, uint32(len(tenant)))
+	buf = append(buf, tenant...)
+	buf = appendUint32(buf, uint32(len(context)))
+	buf = append(buf, context...)
 
-	derived, err := hkdf.Key(sha256.New, masterKey, nil, info, KeySize)
+	derived, err := hkdf.Key(sha256.New, masterKey, nil, string(buf), KeySize)
 	if err != nil {
 		return nil, fmt.Errorf("crypto: failed to derive key: %w", err)
 	}
 
 	return derived, nil
+}
+
+func appendUint32(dst []byte, v uint32) []byte {
+	return append(dst, byte(v>>24), byte(v>>16), byte(v>>8), byte(v))
 }

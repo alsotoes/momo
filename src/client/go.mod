@@ -16,7 +16,13 @@ require (
 )
 
 require (
+	filippo.io/edwards25519 v1.0.0 // indirect
+	filippo.io/nistec v0.0.2 // indirect
 	github.com/alsotoes/momo/src/storage v0.0.0-20260708003031-b3e2d20e8156 // indirect
+	github.com/bytemare/crypto v0.4.4 // indirect
+	github.com/bytemare/hash v0.1.5 // indirect
+	github.com/bytemare/hash2curve v0.1.3 // indirect
+	github.com/gtank/ristretto255 v0.1.2 // indirect
 	github.com/quic-go/quic-go v0.61.0 // indirect
 	go.etcd.io/bbolt v1.5.0 // indirect
 	golang.org/x/crypto v0.54.0 // indirect

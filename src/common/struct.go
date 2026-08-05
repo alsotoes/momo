@@ -32,6 +32,13 @@ type Daemon struct {
 	Data string
 	// Drive is the drive used by the daemon.
 	Drive string
+	// OPRFShare is the hex-encoded 256-bit Shamir share of the threshold OPRF
+	// secret assigned to this daemon. Required when oprf_enabled is true.
+	// Each daemon holds a distinct share; no daemon holds the full secret.
+	OPRFShare string
+	// OPRFShareIndex is the Shamir evaluation point (daemon index + 1) of
+	// OPRFShare. Defaults to the daemon's position in the config when unset.
+	OPRFShareIndex int
 }
 
 // ConfigurationGlobal holds the global configuration for the application.
@@ -74,6 +81,13 @@ type ConfigurationGlobal struct {
 	// EncryptionTenant is the tenant identifier for per-tenant key derivation.
 	// Defaults to "default" when empty. Used with HKDF-SHA256 to derive per-tenant keys.
 	EncryptionTenant string
+	// OPRFEnabled enables threshold-OPRF confidential dedup. Defaults to
+	// EncryptionEnabled when not set explicitly.
+	OPRFEnabled bool
+	// OPRFThreshold is the minimum number of OPRF share evaluations required
+	// to derive a content key. Defaults to the number of configured daemons
+	// when 0. Must satisfy 1 <= OPRFThreshold <= len(daemons).
+	OPRFThreshold int
 }
 
 // ConfigurationMetrics holds the metrics configuration for the application.

@@ -224,3 +224,129 @@ drive = /dev/sda1
 		t.Errorf("Expected ClientSideReplicationModes %v, got %v", expected, config.Global.ClientSideReplicationModes)
 	}
 }
+
+const validOPRFShare = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+func oprfConfig(daemonExtra string, globalExtra string) string {
+	return `
+[global]
+debug = true
+auth_token = a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6 # notsecret
+replication_order = 2,3,1
+polymorphic_system = true
+oprf_enabled = true
+` + globalExtra + `
+[metrics]
+interval = 10
+min_threshold = 0.1
+max_threshold = 0.9
+fallback_interval = 30
+
+[daemon.0]
+host = localhost:8080
+change_replication = localhost:2222
+data = /data/0
+drive = /dev/sda1
+oprf_share = ` + validOPRFShare + `
+` + daemonExtra + `
+`
+}
+
+func TestGetConfig_OPRFShares_Valid(t *testing.T) {
+	cfg := `
+[global]
+debug = true
+auth_token = a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6 # notsecret
+replication_order = 2,3,1
+polymorphic_system = true
+oprf_enabled = true
+oprf_threshold = 1
+
+[metrics]
+interval = 10
+min_threshold = 0.1
+max_threshold = 0.9
+fallback_interval = 30
+
+[daemon.0]
+host = localhost:8080
+change_replication = localhost:2222
+data = /data/0
+drive = /dev/sda1
+oprf_share = ` + validOPRFShare + `
+`
+	tmp := filepath.Join(t.TempDir(), "momo.conf")
+	if err := os.WriteFile(tmp, []byte(cfg), 0666); err != nil {
+		t.Fatal(err)
+	}
+	config, err := GetConfig(tmp)
+	if err != nil {
+		t.Fatalf("valid OPRF config rejected: %v", err)
+	}
+	if !config.Global.OPRFEnabled {
+		t.Error("expected OPRFEnabled to be true")
+	}
+	if config.Daemons[0].OPRFShare != validOPRFShare {
+		t.Errorf("OPRFShare mismatch: %q", config.Daemons[0].OPRFShare)
+	}
+	if config.Daemons[0].OPRFShareIndex != 1 {
+		t.Errorf("expected default OPRFShareIndex 1, got %d", config.Daemons[0].OPRFShareIndex)
+	}
+}
+
+func TestGetConfig_OPRF_ValidationErrors(t *testing.T) {
+	testCases := []struct {
+		name          string
+		content       string
+		expectedError string
+	}{
+		{
+			name:          "Missing share when enabled",
+			content:       strings.Replace(oprfConfig("", "oprf_threshold = 1\n"), "oprf_share = "+validOPRFShare+"\n", "", 1),
+			expectedError: "missing 'oprf_share'",
+		},
+		{
+			name:          "Share wrong length",
+			content:       oprfConfig("oprf_share = aabb\n", "oprf_threshold = 1\n"),
+			expectedError: "must be 64 hex characters",
+		},
+		{
+			name:          "Share index out of range",
+			content:       oprfConfig("oprf_share_index = 5\n", "oprf_threshold = 1\n"),
+			expectedError: "out of range",
+		},
+		{
+			name: "Duplicate share index",
+			content: oprfConfig("oprf_share_index = 1\n", "oprf_threshold = 1\n") +
+				"[daemon.1]\nhost = localhost:8081\nchange_replication = localhost:2223\ndata = /data/1\ndrive = /dev/sda2\noprf_share = " + validOPRFShare + "\noprf_share_index = 1\n",
+			expectedError: "duplicate 'oprf_share_index'",
+		},
+		{
+			name:          "Threshold exceeds daemons",
+			content:       oprfConfig("", "oprf_threshold = 2\n"),
+			expectedError: "exceeds number of daemons",
+		},
+		{
+			name: "Threshold > 1 requires P2P",
+			content: oprfConfig("", "oprf_threshold = 2\n") +
+				"[daemon.1]\nhost = localhost:8081\nchange_replication = localhost:2223\ndata = /data/1\ndrive = /dev/sda2\noprf_share = " + validOPRFShare + "\n",
+			expectedError: "requires [p2p] enabled",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tmp := filepath.Join(t.TempDir(), "momo.conf")
+			if err := os.WriteFile(tmp, []byte(tc.content), 0666); err != nil {
+				t.Fatal(err)
+			}
+			_, err := GetConfig(tmp)
+			if err == nil {
+				t.Fatal("expected an error, got none")
+			}
+			if !strings.Contains(err.Error(), tc.expectedError) {
+				t.Errorf("expected error containing %q, got %q", tc.expectedError, err.Error())
+			}
+		})
+	}
+}

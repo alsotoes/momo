@@ -15,6 +15,9 @@ var (
 	// ErrRequestHandled indicates the request was completely handled at the gateway layer
 	// and requires no further replication payload sequence in the server daemon.
 	ErrRequestHandled = errors.New("request handled gracefully")
+	// ErrOPRFUnsupported indicates the connection (e.g. an external S3 client)
+	// cannot perform threshold-OPRF evaluation.
+	ErrOPRFUnsupported = errors.New("oprf evaluation not supported on this connection")
 )
 
 const (
@@ -53,6 +56,24 @@ type MetricsHook interface {
 	AddBytesDownloaded(n uint64)
 	IncReplication()
 	IncErrors()
+}
+
+// OPRFEvalResult is one daemon's share evaluation returned to a client that
+// requested a threshold-OPRF evaluation. The client combines evaluations from
+// `threshold` distinct shares and unblinds them to derive the content key.
+type OPRFEvalResult struct {
+	// ShareIndex is the Shamir evaluation point (daemon index + 1) used.
+	ShareIndex int
+	// Eval is the encoded group element result of the share evaluation.
+	Eval []byte
+}
+
+// OPRFService evaluates a blinded dedup tag across the daemon quorum over the
+// P2P transport. When set on a Communicator, the server handles ModeOPRFEval
+// requests by delegating to this service. It fails closed by returning an
+// error when fewer than the configured threshold evaluations are available.
+type OPRFService interface {
+	EvaluateOPRF(blinded []byte, timeout time.Duration) ([]OPRFEvalResult, error)
 }
 
 // Communicator defines a transport-agnostic interface for Momo protocol operations.
@@ -103,6 +124,14 @@ type Communicator interface {
 	// distinguish peer-to-peer connections (Secondary role) from direct client
 	// connections (Primary role), replacing the insecure timestamp-based check.
 	IsPeer() bool
+
+	// SendOPRFEval performs a threshold-OPRF evaluation request on this
+	// connection: it sends a blinded dedup tag and returns the share
+	// evaluations collected from the daemon quorum. The caller combines and
+	// unblinds them to derive the content key, so no daemon ever sees the
+	// unblinded tag. It fails closed (returns an error) when fewer than
+	// threshold distinct evaluations are available.
+	SendOPRFEval(authToken string, timestamp int64, blinded []byte, threshold int) ([]OPRFEvalResult, error)
 }
 
 // MomoListener defines a transport-agnostic interface for accepting new Momo connections.

@@ -90,18 +90,3 @@ func BenchmarkDeriveKey(b *testing.B) {
 		}
 	}
 }
-
-func BenchmarkConvergentEncrypt(b *testing.B) {
-	plaintext := make([]byte, 4096)
-	rand.Read(plaintext)
-	pepper := []byte("server-pepper")
-
-	b.ResetTimer()
-	b.SetBytes(int64(len(plaintext)))
-	for i := 0; i < b.N; i++ {
-		_, err := ConvergentEncrypt(plaintext, pepper)
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
-}

@@ -96,6 +96,7 @@ type Gossiper struct {
 	onLeave       func(peerID int32)
 	scatterGather *ScatterGather
 	leaseManager  *LeaseManager
+	oprfProvider  *OPRFProvider
 
 	rtt          *rttTracker
 	pendingMu    sync.Mutex
@@ -141,6 +142,14 @@ func (g *Gossiper) SetScatterGather(sg *ScatterGather) {
 func (g *Gossiper) SetLeaseManager(lm *LeaseManager) {
 	g.cbMu.Lock()
 	g.leaseManager = lm
+	g.cbMu.Unlock()
+}
+
+// SetOPRFProvider attaches an OPRFProvider instance whose threshold-OPRF RPCs
+// will be routed by the gossiper's consumer loop.
+func (g *Gossiper) SetOPRFProvider(op *OPRFProvider) {
+	g.cbMu.Lock()
+	g.oprfProvider = op
 	g.cbMu.Unlock()
 }
 
@@ -613,6 +622,13 @@ func (g *Gossiper) HandleRPC(rpc *RPC) {
 		g.cbMu.RUnlock()
 		if lm != nil {
 			lm.HandleLeaseRPC(rpc)
+		}
+	case MsgOPRFEvalRequest, MsgOPRFEvalResponse:
+		g.cbMu.RLock()
+		op := g.oprfProvider
+		g.cbMu.RUnlock()
+		if op != nil {
+			op.HandleRPC(rpc)
 		}
 	}
 }
