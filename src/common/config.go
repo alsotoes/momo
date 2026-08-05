@@ -372,6 +372,10 @@ func loadP2PConfig(section *ini.Section) (ConfigurationP2P, error) {
 		p2pCfg.LeaseTimeout = 10
 	}
 
+	p2pCfg.TLSCertFile = section.Key("tls_cert_file").String()
+	p2pCfg.TLSKeyFile = section.Key("tls_key_file").String()
+	p2pCfg.TLSCAFile = section.Key("tls_ca_file").String()
+
 	return p2pCfg, nil
 }
 

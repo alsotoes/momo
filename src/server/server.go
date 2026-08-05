@@ -3,9 +3,12 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"log"
 	"net"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -544,6 +547,45 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 	}
 }
 
+// buildP2PTLSConfig constructs a *tls.Config for the P2P transport from the
+// configuration. Returns nil if TLS is not configured (caller should log a
+// warning). The config uses mutual TLS authentication: the node presents its
+// own certificate and verifies peers against the CA.
+func buildP2PTLSConfig(cfg common.Configuration) *tls.Config {
+	if cfg.P2P.TLSCertFile == "" || cfg.P2P.TLSKeyFile == "" {
+		return nil
+	}
+
+	cert, err := tls.LoadX509KeyPair(cfg.P2P.TLSCertFile, cfg.P2P.TLSKeyFile)
+	if err != nil {
+		log.Printf("P2P: failed to load TLS cert/key (%s, %s): %v — falling back to plaintext", cfg.P2P.TLSCertFile, cfg.P2P.TLSKeyFile, err)
+		return nil
+	}
+
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+	}
+
+	if cfg.P2P.TLSCAFile != "" {
+		caData, err := os.ReadFile(cfg.P2P.TLSCAFile)
+		if err != nil {
+			log.Printf("P2P: failed to read CA cert file %s: %v — peer verification disabled", cfg.P2P.TLSCAFile, err)
+		} else {
+			pool := x509.NewCertPool()
+			if pool.AppendCertsFromPEM(caData) {
+				tlsConfig.RootCAs = pool
+				tlsConfig.ClientCAs = pool
+				tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
+			} else {
+				log.Printf("P2P: failed to parse CA cert from %s — peer verification disabled", cfg.P2P.TLSCAFile)
+			}
+		}
+	}
+
+	return tlsConfig
+}
+
 // bootstrapP2P starts the P2P transport and gossip protocol alongside the main daemon.
 // It connects to all configured daemon peers as bootstrap seeds and begins
 // exchanging heartbeats for dynamic membership discovery.
@@ -562,8 +604,15 @@ func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, d
 	gossipPort := basePort + serverId
 	gossipAddr = net.JoinHostPort(host, strconv.Itoa(gossipPort))
 
+	tlsConfig := buildP2PTLSConfig(cfg)
+	if tlsConfig == nil {
+		log.Printf("CRITICAL: P2P transport is running without TLS — all P2P traffic is plaintext. Configure tls_cert_file, tls_key_file, and tls_ca_file under [p2p] for production.")
+	}
+
 	transport := p2p.NewTCPTransport(p2p.TCPTransportConfig{
-		LocalID: int32(serverId),
+		LocalID:   int32(serverId),
+		AuthFunc:  func(id int32) bool { return id >= 0 && int(id) < len(daemons) },
+		TLSConfig: tlsConfig,
 	})
 
 	if err := transport.Listen(gossipAddr); err != nil {
