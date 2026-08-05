@@ -16,7 +16,7 @@ require (
 )
 
 require (
-	filippo.io/edwards25519 v1.0.0 // indirect
+	filippo.io/edwards25519 v1.1.1 // indirect
 	filippo.io/nistec v0.0.2 // indirect
 	github.com/alsotoes/momo/src/storage v0.0.0-20260708003031-b3e2d20e8156 // indirect
 	github.com/bytemare/crypto v0.4.4 // indirect
