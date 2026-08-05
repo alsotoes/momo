@@ -1,4 +1,12 @@
 ## workspace
+# filippo.io/edwards25519 v1.0.0
+## explicit; go 1.17
+filippo.io/edwards25519
+filippo.io/edwards25519/field
+# filippo.io/nistec v0.0.2
+## explicit; go 1.18
+filippo.io/nistec
+filippo.io/nistec/internal/fiat
 # github.com/alsotoes/momo/src/client v0.0.0-00010101000000-000000000000 => ./src/client
 ## explicit; go 1.25.10
 # github.com/alsotoes/momo/src/client v0.0.0-20260610224110-df9547453bcd => ./src/client
@@ -23,10 +31,29 @@
 ## explicit; go 1.25.10
 # github.com/alsotoes/momo/src/transport v0.0.0-20260610224110-df9547453bcd => ./src/transport
 ## explicit; go 1.25.10
+# github.com/bytemare/crypto v0.4.4
+## explicit; go 1.20
+github.com/bytemare/crypto
+github.com/bytemare/crypto/internal
+github.com/bytemare/crypto/internal/edwards25519
+github.com/bytemare/crypto/internal/nist
+github.com/bytemare/crypto/internal/ristretto
+# github.com/bytemare/hash v0.1.5
+## explicit; go 1.20
+github.com/bytemare/hash
+# github.com/bytemare/hash2curve v0.1.3
+## explicit; go 1.20
+github.com/bytemare/hash2curve
 # github.com/go-ole/go-ole v1.2.6
 ## explicit; go 1.12
 github.com/go-ole/go-ole
 github.com/go-ole/go-ole/oleutil
+# github.com/gtank/ristretto255 v0.1.2
+## explicit; go 1.12
+github.com/gtank/ristretto255
+github.com/gtank/ristretto255/internal/edwards25519
+github.com/gtank/ristretto255/internal/radix51
+github.com/gtank/ristretto255/internal/scalar
 # github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0
 ## explicit; go 1.16
 github.com/lufia/plan9stats
@@ -82,10 +109,14 @@ go.uber.org/goleak
 go.uber.org/goleak/internal/stack
 # golang.org/x/crypto v0.54.0
 ## explicit; go 1.25.0
+golang.org/x/crypto/blake2b
+golang.org/x/crypto/blake2s
 golang.org/x/crypto/chacha20
 golang.org/x/crypto/chacha20poly1305
+golang.org/x/crypto/hkdf
 golang.org/x/crypto/internal/alias
 golang.org/x/crypto/internal/poly1305
+golang.org/x/crypto/sha3
 # golang.org/x/net v0.56.0
 ## explicit; go 1.25.0
 golang.org/x/net/bpf

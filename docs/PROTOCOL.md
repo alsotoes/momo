@@ -38,6 +38,7 @@ The handshake is initiated by the client and is used to authenticate the connect
         -   `'L'`: **ModeList** - Query directory list of stored file objects.
         -   `'D'`: **ModeDelete** - Request specific file deletion.
         -   `'G'`: **ModeGet** - Request file payload retrieval (Download).
+        -   `'O'`: **ModeOPRFEval** - Request a threshold-OPRF evaluation of a blinded dedup tag (confidential dedup).
 3.  **Validation**: The server validates the AuthToken using constant-time comparison.
 4.  **Negotiation**: 
     - If it's a new client connection, the server selects the mode based on polymorphic metrics.
@@ -155,6 +156,21 @@ When `RequestedMode` is `ModeGet` (`'G'`), the client requests the raw binary pa
     -   If the file does not exist, the server writes a 1-byte `'1'` (Not Found) code and closes.
     -   If a server error occurs, the server writes a 1-byte `'2'` (Server Error) code and closes.
     -   If the file exists and the hash matches, the server writes a 1-byte `'0'` (Success) code, followed by a 64-byte null-padded `FileSize` string, followed by the raw binary stream of the file until EOF.
+
+### Threshold-OPRF Evaluation (OPRFEval - `'O'`)
+
+When confidential dedup is enabled (`oprf_enabled`), the client calls this native mode to derive a content key from a dedup tag without revealing the tag to any server. It is used before upload (to encrypt with the derived key) and before download (to decrypt with it).
+
+1.  **Handshake:** Completed with `'O'` (auth token or challenge-response as configured).
+2.  **Blinded Tag (Client sends):** The client computes `tag = SHA-256(plaintext)`, hashes it into the Ristretto255 group, blinds it with a random scalar `r`, and sends the 32-byte encoded blinded element. The client keeps `r` secret.
+3.  **Evaluation:** The server (the daemon the client dialed) evaluates the blinded point with its own Shamir share, then gathers peer evaluations over the P2P transport. It returns evaluations without ever unblinding — it sees only `r * H(tag)`, never `tag` or the derived key.
+4.  **Server Response:**
+    -   **Evaluation Count:** 4-byte big-endian count `N`.
+    -   **Per-evaluation records:** `N` records, each `[4-byte ShareIndex] + [4-byte EvalLen] + [EvalLen bytes Eval]`.
+    -   If the quorum (< `oprf_threshold` distinct evaluations) is not met, the server responds with count `0` and the client **fails closed** (the upload/download aborts; there is no convergent fallback).
+5.  **Client Combine/Unblind:** The client interpolates the Shamir secret at `f(0)` over at least `oprf_threshold` distinct share evaluations, unblinds with `1/r`, and derives the content key = `SHA-256(OPRF output)`. Identical plaintexts always yield the same key across tenants and clients.
+
+The CAS/dedup key remains `H(plaintext)`, so identical blobs deduplicate cluster-wide.
 
 ### Payload
 

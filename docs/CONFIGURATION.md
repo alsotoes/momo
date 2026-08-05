@@ -100,6 +100,16 @@ This section contains cluster-wide settings that affect all daemons.
     -   **Type:** String
     -   **Default:** `default`
 
+-   **`oprf_enabled`**
+    -   **Description:** Enables **confidential dedup via a threshold Oblivious PRF (OPRF)**. When enabled, the client derives each file's content key from the plaintext dedup tag (`SHA-256(plaintext)`) through a threshold OPRF evaluated over a quorum of daemons. Identical plaintexts deduplicate to a single blob under `H(plaintext)` across tenants, while no single daemon can derive the content key offline because the OPRF secret is Shamir-split across the cluster. Content is still encrypted with AES-GCM-256 end-to-end. Requires `encryption_enabled = true`, an `oprf_share` (and optionally `oprf_share_index`) on **every** `[daemon.N]` section, and `[p2p]` enabled when `oprf_threshold > 1`. The operation fails closed (no convergent fallback) when fewer than `oprf_threshold` daemons respond.
+    -   **Type:** Boolean (`true` or `false`)
+    -   **Default:** = `encryption_enabled`
+
+-   **`oprf_threshold`**
+    -   **Description:** The minimum number of distinct daemon OPRF share evaluations required to derive a content key. Must satisfy `1 <= oprf_threshold <= len(daemons)`. Values greater than `1` require the P2P transport to gather peer evaluations.
+    -   **Type:** Integer
+    -   **Default:** number of configured daemons (all)
+
 ### [metrics] (required)
 
 This section controls the behavior of the decentralized polymorphic system and the Prometheus metrics exporter. **This section is mandatory** — the application will return an error if it is missing. The polymorphic system is only active if `polymorphic_system = true` in the `[global]` section. The Prometheus exporter is independent of the polymorphic system and can be used on its own.
@@ -189,6 +199,16 @@ The configuration must contain a section for each daemon in the cluster, numbere
     -   **Description:** The IP address and port where this daemon listens for commands to change its replication mode. This is used by the primary server's polymorphic engine to coordinate strategy changes across the cluster.
     -   **Type:** String (host:port)
     -   **Example:** `localhost:9090`
+
+-   **`oprf_share`**
+    -   **Description:** The hex-encoded 256-bit Shamir share of the threshold OPRF secret assigned to this daemon (required when `oprf_enabled = true`). Each daemon holds a **distinct** share; no daemon holds the full secret, so no single server can evaluate the OPRF on a dedup tag alone. Shares are produced by a one-time dealer (see `crypto.GenerateOPRFShares`) and distributed out-of-band.
+    -   **Type:** String (64 hex characters)
+    -   **Example:** `c0ffee...` (64 hex chars)
+
+-   **`oprf_share_index`**
+    -   **Description:** The Shamir evaluation point of `oprf_share` (a daemon's index within the secret split). Must be unique across the cluster and within `[1, len(daemons)]`. Defaults to the daemon's 1-based position in the config when unset.
+    -   **Type:** Integer
+    -   **Default:** daemon position (1-based)
 
 ### [p2p]
 

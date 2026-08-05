@@ -1,7 +1,6 @@
 package client
 
 import (
-	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -45,23 +44,31 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 	// Load encryption cipher if E2EE is enabled.
 	var encCipher *momocrypto.Cipher
 	var tenantKey []byte
-	var encryptedContent []byte
 	if cfg.Global.EncryptionEnabled {
-		encCipher, err = momocrypto.NewCipherFromHex(cfg.Global.EncryptionKey)
-		if err != nil {
-			log.Printf("Failed to create encryption cipher: %v", err)
-			return
-		}
 		masterKey, decErr := hex.DecodeString(cfg.Global.EncryptionKey)
 		if decErr != nil {
 			err = fmt.Errorf("failed to decode encryption key: %v: %w", decErr, syscall.EINVAL)
 			log.Printf("%v", err)
 			return
 		}
-		tenantKey, err = momocrypto.DeriveKey(masterKey, cfg.Global.EncryptionTenant, nil)
+		// Content cipher is derived from the tenant key (not the raw master
+		// key), scoped to the content domain, so per-tenant isolation actually
+		// applies to payloads (Rule/security finding 3).
+		tenantKey, err = momocrypto.DeriveKey(masterKey, cfg.Global.EncryptionTenant, momocrypto.DomainContent)
 		if err != nil {
 			log.Printf("Failed to derive tenant key: %v", err)
 			return
+		}
+		// With OPRF confidential dedup enabled, the content key is derived from
+		// the plaintext dedup tag via the threshold OPRF, so it is deferred
+		// until after the tag is computed. The tenant key is still used for the
+		// metadata wireName HMAC.
+		if !cfg.Global.OPRFEnabled {
+			encCipher, err = momocrypto.NewCipher(tenantKey)
+			if err != nil {
+				log.Printf("Failed to create encryption cipher: %v", err)
+				return
+			}
 		}
 	}
 
@@ -82,13 +89,16 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 	}
 
 	// Compute file hash and optionally encrypt content.
-	// ⚡ Bolt: Use streaming encryption to avoid loading the entire plaintext
-	// into memory. EncryptStream reads in 4KB chunks and writes to a buffer,
-	// so peak memory is chunk-sized rather than file-sized.
+	// ⚡ Bolt: Stream encryption into a temp file (chunk-bounded heap) while
+	// hashing the ciphertext via a TeeReader. Peak memory is chunk-sized
+	// rather than file-sized, and the temp file is streamed to each replica.
 	var fileHash string
-	if encCipher != nil {
+	// encryptedTmp, when non-empty, holds the streaming ciphertext for
+	// encrypted uploads. It is removed after send.
+	var encryptedTmp string
+	if cfg.Global.EncryptionEnabled {
 		// 🛡️ Zero-Crash: Validate file size before encryption to prevent
-		// unbounded buffer growth (Rule 4).
+		// unbounded growth (Rule 4).
 		fileInfo, rErr := os.Stat(filePath)
 		if rErr != nil {
 			log.Printf("Failed to stat file %s: %v", common.SanitizeLog(filePath), common.SanitizeLog(rErr.Error()))
@@ -103,17 +113,63 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 			log.Printf("Failed to open file %s: %v", common.SanitizeLog(filePath), common.SanitizeLog(rErr.Error()))
 			return
 		}
-		var encBuf bytes.Buffer
-		if err = encCipher.EncryptStream(file, &encBuf); err != nil {
+
+		// OPRF confidential dedup: the dedup/CAS key is H(plaintext), and the
+		// content key is derived from that tag via the threshold OPRF so that
+		// identical plaintexts dedup across tenants while no server holds the
+		// key. This requires a separate plaintext-pass to hash the tag before
+		// the streaming encrypt pass.
+		if cfg.Global.OPRFEnabled {
+			tagHash := sha256.New()
+			if _, cErr := io.Copy(tagHash, file); cErr != nil {
+				file.Close()
+				log.Printf("Failed to hash file %s for OPRF tag: %v", common.SanitizeLog(filePath), common.SanitizeLog(cErr.Error()))
+				return
+			}
+			if _, seekErr := file.Seek(0, io.SeekStart); seekErr != nil {
+				file.Close()
+				log.Printf("Failed to rewind file %s for encryption: %v", common.SanitizeLog(filePath), common.SanitizeLog(seekErr.Error()))
+				return
+			}
+			fileHash = hex.EncodeToString(tagHash.Sum(nil))
+			contentKey, kErr := deriveOPRFContentKey(cfg, fileHash, serverId)
+			if kErr != nil {
+				file.Close()
+				log.Printf("Failed to derive OPRF content key for %s: %v", common.SanitizeLog(filePath), common.SanitizeLog(kErr.Error()))
+				return
+			}
+			encCipher, kErr = momocrypto.NewCipher(contentKey)
+			if kErr != nil {
+				file.Close()
+				log.Printf("Failed to create OPRF cipher for %s: %v", common.SanitizeLog(filePath), common.SanitizeLog(kErr.Error()))
+				return
+			}
+		}
+
+		tmp, cErr := os.CreateTemp("", "momo-enc-*")
+		if cErr != nil {
+			file.Close()
+			log.Printf("Failed to create encrypted spool: %v", cErr)
+			return
+		}
+		encryptedTmp = tmp.Name()
+		h := sha256.New()
+		if err = encCipher.EncryptStream(file, io.MultiWriter(tmp, h)); err != nil {
+			tmp.Close()
+			os.Remove(encryptedTmp)
 			file.Close()
 			log.Printf("Failed to encrypt file %s: %v", common.SanitizeLog(filePath), err)
 			return
 		}
 		file.Close()
-		encryptedContent = encBuf.Bytes()
-		h := sha256.New()
-		h.Write(encryptedContent)
-		fileHash = hex.EncodeToString(h.Sum(nil))
+		if sErr := tmp.Close(); sErr != nil {
+			log.Printf("Failed to close encrypted spool: %v", sErr)
+		}
+		// The CAS/dedup key is H(plaintext) when OPRF is enabled; otherwise it
+		// is H(ciphertext) (Phase A behavior).
+		if !cfg.Global.OPRFEnabled {
+			fileHash = hex.EncodeToString(h.Sum(nil))
+		}
 	} else {
 		fileHash, err = common.HashFile(filePath)
 		if err != nil {
@@ -197,7 +253,13 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 		mac.Write([]byte(wireName))
 		wireName = hex.EncodeToString(mac.Sum(nil))
 		meta.Name = wireName
-		meta.Size = int64(len(encryptedContent))
+		// Ciphertext size comes from the streamed spool, not the plaintext.
+		if info, sErr := os.Stat(encryptedTmp); sErr == nil {
+			meta.Size = info.Size()
+		} else {
+			log.Printf("Failed to stat encrypted spool: %v", sErr)
+			return
+		}
 	}
 
 	if len(wireName) > common.FileInfoLength {
@@ -212,16 +274,24 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 	// Send the file to all established connections concurrently
 	wgSendFile.Add(len(communicators))
 	for _, c := range communicators {
-		go sendFile(&wgSendFile, c, filePath, meta, encryptedContent)
+		go sendFile(&wgSendFile, c, filePath, meta, encryptedTmp)
 	}
 	wgSendFile.Wait()
+
+	// E2EE: the spool is only valid for this upload; clean it up regardless
+	// of whether any replica failed.
+	if encryptedTmp != "" {
+		if rmErr := os.Remove(encryptedTmp); rmErr != nil && !os.IsNotExist(rmErr) {
+			log.Printf("Failed to remove encrypted spool %s: %v", encryptedTmp, rmErr)
+		}
+	}
 	return
 }
 
 // sendFile sends a file over a network connection.
 // It first sends the file's metadata (SHA-256 hash, name, and size) and then the file's content.
 // It waits for an acknowledgment ("ACK") from the server upon successful reception.
-func sendFile(wg *sync.WaitGroup, comm transport.Communicator, filePath string, meta *common.FileMetadata, encryptedContent []byte) {
+func sendFile(wg *sync.WaitGroup, comm transport.Communicator, filePath string, meta *common.FileMetadata, encryptedTmp string) {
 	defer wg.Done()
 	// 🛡️ Zero-Crash: Ensure background transmission tasks don't crash the client on unexpected panics
 	defer func() {
@@ -241,24 +311,23 @@ func sendFile(wg *sync.WaitGroup, comm transport.Communicator, filePath string, 
 	if status == transport.MetadataStatusSkipPayload {
 		log.Printf("Server already has content for %s, skipping upload.", common.SanitizeLog(meta.Name))
 	} else {
-		if encryptedContent != nil {
-			if _, err := comm.Write(encryptedContent); err != nil {
-				log.Printf("Error sending encrypted file %s: %v", common.SanitizeLog(meta.Name), common.SanitizeLog(err.Error()))
-				return
-			}
+		var src *os.File
+		var err error
+		if encryptedTmp != "" {
+			src, err = os.Open(encryptedTmp)
 		} else {
-			file, err := os.Open(filePath)
-			if err != nil {
-				log.Printf("Failed to open file %s: %v", common.SanitizeLog(filePath), common.SanitizeLog(err.Error()))
-				return
-			}
-			if _, err := io.Copy(comm, file); err != nil {
-				file.Close()
-				log.Printf("Error sending file %s: %v", common.SanitizeLog(meta.Name), common.SanitizeLog(err.Error()))
-				return
-			}
-			file.Close()
+			src, err = os.Open(filePath)
 		}
+		if err != nil {
+			log.Printf("Failed to open file %s: %v", common.SanitizeLog(filePath), common.SanitizeLog(err.Error()))
+			return
+		}
+		if _, err := io.Copy(comm, src); err != nil {
+			src.Close()
+			log.Printf("Error sending file %s: %v", common.SanitizeLog(meta.Name), common.SanitizeLog(err.Error()))
+			return
+		}
+		src.Close()
 	}
 
 	// Wait for ACK
@@ -427,9 +496,33 @@ func Download(cfg common.Configuration, encryptedName string, contentHash string
 	// ⚡ Bolt: Stream content directly from network to decryptor to output.
 	// No intermediate buffer allocation — peak memory is chunk-sized.
 	if cfg.Global.EncryptionEnabled {
-		cipher, err := momocrypto.NewCipherFromHex(cfg.Global.EncryptionKey)
-		if err != nil {
-			return fmt.Errorf("failed to create decryption cipher: %w", err)
+		var cipher *momocrypto.Cipher
+		if cfg.Global.OPRFEnabled {
+			// The content key is derived from the dedup tag H(plaintext) via the
+			// threshold OPRF, matching the upload path. Fail closed on quorum miss.
+			oprfKey, dErr := deriveOPRFContentKey(cfg, contentHash, serverId)
+			if dErr != nil {
+				return dErr
+			}
+			cipher, dErr = momocrypto.NewCipher(oprfKey)
+			if dErr != nil {
+				return fmt.Errorf("failed to create OPRF decryption cipher: %w", dErr)
+			}
+		} else {
+			// Derive the tenant content key (DomainContent) to match the upload
+			// cipher, rather than the raw master key.
+			masterKey, dErr := hex.DecodeString(cfg.Global.EncryptionKey)
+			if dErr != nil {
+				return fmt.Errorf("failed to decode encryption key: %w", dErr)
+			}
+			tenantKey, dErr := momocrypto.DeriveKey(masterKey, cfg.Global.EncryptionTenant, momocrypto.DomainContent)
+			if dErr != nil {
+				return fmt.Errorf("failed to derive tenant key: %w", dErr)
+			}
+			cipher, dErr = momocrypto.NewCipher(tenantKey)
+			if dErr != nil {
+				return fmt.Errorf("failed to create decryption cipher: %w", dErr)
+			}
 		}
 		limited := io.LimitReader(comm, size)
 		if err := cipher.DecryptStream(limited, dst); err != nil {

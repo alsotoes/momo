@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"net"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/alsotoes/momo/src/client"
 	"github.com/alsotoes/momo/src/common"
+	momocrypto "github.com/alsotoes/momo/src/crypto"
 	"github.com/alsotoes/momo/src/p2p"
 	"github.com/alsotoes/momo/src/storage"
 	"github.com/alsotoes/momo/src/transport"
@@ -56,11 +58,20 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 	factory := transport.NewProtocolFactory(cfg)
 
 	// Initialize storage with configured backend.
-	// When E2EE is enabled, pass the encryption key for server-side
-	// encryption at rest (SSE).
+	// When E2EE is enabled, derive the server-side at-rest (SSE) key from
+	// the tenant key scoped to the at-rest domain, so it is distinct from
+	// the transport content key and never the raw master key.
 	encKeyHex := ""
 	if cfg.Global.EncryptionEnabled {
-		encKeyHex = cfg.Global.EncryptionKey
+		masterKey, decErr := hex.DecodeString(cfg.Global.EncryptionKey)
+		if decErr != nil {
+			return fmt.Errorf("failed to decode encryption key: %v: %w", decErr, syscall.EINVAL)
+		}
+		atRestKey, kErr := momocrypto.DeriveKey(masterKey, cfg.Global.EncryptionTenant, momocrypto.DomainAtRest)
+		if kErr != nil {
+			return fmt.Errorf("failed to derive at-rest key: %w", kErr)
+		}
+		encKeyHex = hex.EncodeToString(atRestKey)
 	}
 	store, err := storage.NewStore(cfg.Storage, daemons[serverId], encKeyHex)
 	if err != nil {
@@ -116,8 +127,20 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 	// P2P Transport & Gossip (coexists with existing listener when enabled)
 	var scatterGather *p2p.ScatterGather
 	var leaseManager *p2p.LeaseManager
+	var oprfProvider *p2p.OPRFProvider
 	if cfg.P2P.Enabled {
-		scatterGather, leaseManager = bootstrapP2P(ctx, cfg, serverId, daemons, store)
+		scatterGather, leaseManager, oprfProvider = bootstrapP2P(ctx, cfg, serverId, daemons, store)
+	}
+
+	// Client-facing threshold-OPRF service for confidential dedup.
+	var oprfService transport.OPRFService
+	if cfg.Global.OPRFEnabled {
+		var sErr error
+		oprfService, sErr = newDaemonOPRFService(daemons[serverId], oprfProvider, cfg.Global.OPRFThreshold)
+		if sErr != nil {
+			log.Printf("Failed to initialize OPRF service: %v", sErr)
+			return
+		}
 	}
 
 	// 🛡️ Sentinel: Enforce a limit on concurrent connections to prevent resource exhaustion (DoS).
@@ -196,6 +219,11 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 				if laComm, ok := comm.(interface{ SetLeaseAcquirer(transport.LeaseAcquirer) }); ok {
 					laComm.SetLeaseAcquirer(NewLeaseAcquirerAdapter(leaseManager,
 						time.Duration(cfg.P2P.LeaseTimeout)*time.Second))
+				}
+			}
+			if oprfService != nil {
+				if opComm, ok := comm.(interface{ SetOPRFService(transport.OPRFService) }); ok {
+					opComm.SetOPRFService(oprfService)
 				}
 			}
 
@@ -590,7 +618,7 @@ func buildP2PTLSConfig(cfg common.Configuration) *tls.Config {
 // It connects to all configured daemon peers as bootstrap seeds and begins
 // exchanging heartbeats for dynamic membership discovery.
 // Returns the ScatterGather and LeaseManager instances for use by the server.
-func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, daemons []*common.Daemon, store storage.Store) (*p2p.ScatterGather, *p2p.LeaseManager) {
+func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, daemons []*common.Daemon, store storage.Store) (*p2p.ScatterGather, *p2p.LeaseManager, *p2p.OPRFProvider) {
 	gossipAddr := daemons[serverId].Host
 	host, _, err := net.SplitHostPort(gossipAddr)
 	if err != nil {
@@ -617,7 +645,7 @@ func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, d
 
 	if err := transport.Listen(gossipAddr); err != nil {
 		log.Printf("P2P: failed to listen on %s: %v", gossipAddr, err)
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	gossipCfg := p2p.GossipConfig{
@@ -642,8 +670,24 @@ func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, d
 	scatterGather := p2p.NewScatterGather(int32(serverId), transport, queryHandler)
 	leaseManager := p2p.NewLeaseManager(int32(serverId), transport)
 
+	// Threshold-OPRF provider: this daemon evaluates its own share and gathers
+	// peer evaluations over P2P. The evaluator never logs or persists the
+	// blinded tag.
+	var oprfProvider *p2p.OPRFProvider
+	if cfg.Global.OPRFEnabled {
+		evaluator, oErr := newOPRFShareEvaluator(daemons[serverId])
+		if oErr != nil {
+			log.Printf("P2P: OPRF evaluator not configured: %v", oErr)
+			return nil, nil, nil
+		}
+		oprfProvider = p2p.NewOPRFProvider(int32(serverId), transport, evaluator)
+	}
+
 	gossip.SetScatterGather(scatterGather)
 	gossip.SetLeaseManager(leaseManager)
+	if oprfProvider != nil {
+		gossip.SetOPRFProvider(oprfProvider)
+	}
 
 	for i, d := range daemons {
 		if i == serverId {
@@ -669,7 +713,7 @@ func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, d
 		transport.Close()
 	}()
 
-	return scatterGather, leaseManager
+	return scatterGather, leaseManager, oprfProvider
 }
 
 // downgradeToServerSideMode finds the next mode in replicationOrder that is NOT

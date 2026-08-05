@@ -97,6 +97,40 @@ func GetConfig(path string) (Configuration, error) {
 		return Configuration{}, err
 	}
 
+	// Resolve OPRF threshold default and validate against cluster size.
+	// OPRFThreshold == 0 means "all daemons" (auto).
+	if config.Global.OPRFThreshold == 0 {
+		config.Global.OPRFThreshold = len(config.Daemons)
+	}
+	if config.Global.OPRFThreshold > len(config.Daemons) {
+		return Configuration{}, fmt.Errorf("'oprf_threshold' %d exceeds number of daemons %d: %w", config.Global.OPRFThreshold, len(config.Daemons), syscall.EINVAL)
+	}
+
+	// Validate OPRF share provisioning when confidential dedup is enabled.
+	// Each daemon must hold a distinct 256-bit Shamir share, and the share
+	// index defaults to its position in the config when not set explicitly.
+	if config.Global.OPRFEnabled {
+		seen := make(map[int]struct{}, len(config.Daemons))
+		for i, d := range config.Daemons {
+			if d.OPRFShare == "" {
+				return Configuration{}, fmt.Errorf("daemon %d is missing 'oprf_share' in [daemon.%d] while oprf is enabled: %w", i, i, syscall.EINVAL)
+			}
+			if len(d.OPRFShare) != 64 {
+				return Configuration{}, fmt.Errorf("'oprf_share' for [daemon.%d] must be 64 hex characters (256-bit): %w", i, syscall.EINVAL)
+			}
+			if d.OPRFShareIndex == 0 {
+				d.OPRFShareIndex = i + 1
+			}
+			if d.OPRFShareIndex < 1 || d.OPRFShareIndex > len(config.Daemons) {
+				return Configuration{}, fmt.Errorf("'oprf_share_index' %d for [daemon.%d] out of range [1,%d]: %w", d.OPRFShareIndex, i, len(config.Daemons), syscall.EINVAL)
+			}
+			if _, dup := seen[d.OPRFShareIndex]; dup {
+				return Configuration{}, fmt.Errorf("duplicate 'oprf_share_index' %d across daemons: %w", d.OPRFShareIndex, syscall.EINVAL)
+			}
+			seen[d.OPRFShareIndex] = struct{}{}
+		}
+	}
+
 	// Load [p2p] section (optional, defaults to disabled)
 	p2pSec, err := cfg.GetSection(sectionP2P)
 	if err == nil {
@@ -104,6 +138,11 @@ func GetConfig(path string) (Configuration, error) {
 		if err != nil {
 			return Configuration{}, fmt.Errorf("failed to load [%s] section: %w", sectionP2P, err)
 		}
+	}
+
+	// A threshold > 1 requires P2P to gather peer evaluations.
+	if config.Global.OPRFEnabled && config.Global.OPRFThreshold > 1 && !config.P2P.Enabled {
+		return Configuration{}, fmt.Errorf("'oprf_threshold' > 1 requires [p2p] enabled: %w", syscall.EINVAL)
 	}
 
 	// Load [storage] section (optional, defaults to standard GC settings)
@@ -280,6 +319,23 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 		globalCfg.EncryptionTenant = "default"
 	}
 
+	if key, err := section.GetKey("oprf_enabled"); err == nil {
+		if v, e := key.Bool(); e == nil {
+			globalCfg.OPRFEnabled = v
+		}
+	} else {
+		globalCfg.OPRFEnabled = globalCfg.EncryptionEnabled
+	}
+
+	if key, err := section.GetKey("oprf_threshold"); err == nil {
+		if v, e := key.Int(); e == nil {
+			if v < 1 {
+				return ConfigurationGlobal{}, fmt.Errorf("'oprf_threshold' must be >= 1: %w", syscall.EINVAL)
+			}
+			globalCfg.OPRFThreshold = v
+		}
+	}
+
 	return globalCfg, nil
 }
 
@@ -451,6 +507,18 @@ func loadDaemons(cfg *ini.File) ([]*Daemon, error) {
 			*ptr = section.Key(key).String()
 			if *ptr == "" {
 				return nil, fmt.Errorf("missing '%s' in section [%s]", key, sectionName)
+			}
+		}
+
+		d.OPRFShare = section.Key("oprf_share").String()
+		if d.OPRFShare != "" {
+			if _, err := hex.DecodeString(d.OPRFShare); err != nil {
+				return nil, fmt.Errorf("invalid 'oprf_share' in section [%s]: must be valid hex: %w", sectionName, err)
+			}
+		}
+		if key, err := section.GetKey("oprf_share_index"); err == nil {
+			if v, e := key.Int(); e == nil {
+				d.OPRFShareIndex = v
 			}
 		}
 

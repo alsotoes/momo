@@ -115,6 +115,16 @@ func (m *S3Communicator) SetMetricsHook(hook MetricsHook) {
 	m.metricsHook = hook
 }
 
+// SetOPRFService is a no-op for the S3 gateway: external S3 clients cannot
+// perform threshold-OPRF evaluation, so ModeOPRFEval is never served here.
+func (m *S3Communicator) SetOPRFService(s OPRFService) {}
+
+// SendOPRFEval is unsupported on the S3 gateway. External S3 clients do not
+// speak the momo OPRF handshake.
+func (m *S3Communicator) SendOPRFEval(authToken string, timestamp int64, blinded []byte, threshold int) ([]OPRFEvalResult, error) {
+	return nil, fmt.Errorf("oprf evaluation not supported on S3 gateway: %w", syscall.ENOTSUP)
+}
+
 func (m *S3Communicator) Read(p []byte) (n int, err error) {
 	defer func() {
 		if r := recover(); r != nil {

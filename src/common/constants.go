@@ -33,6 +33,10 @@ const (
 	ModeDelete = int('D')
 	// ModeGet indicates a request to retrieve a file over Momo protocol.
 	ModeGet = int('G')
+	// ModeOPRFEval indicates a threshold-OPRF evaluation request: the client
+	// sends a blinded dedup tag and receives share evaluations from the daemon
+	// quorum to derive a content key without revealing the tag to any server.
+	ModeOPRFEval = int('O')
 
 	// DummyEpoch is a placeholder epoch value for initialization.
 	DummyEpoch = 1557906926566451195
