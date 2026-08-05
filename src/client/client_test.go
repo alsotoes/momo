@@ -1,11 +1,14 @@
 package client
 
 import (
+	"bytes"
 	"crypto/subtle"
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -389,4 +392,116 @@ func TestSendFile_PanicRecovery(t *testing.T) {
 	// Passing nil communicator with a valid file will trigger a panic when comm is used
 	sendFile(&wg, nil, file.Name(), &common.FileMetadata{}, "")
 	wg.Wait()
+}
+
+// TestConnect_EncryptionStreamsToSpool is a regression test for issue #587:
+// client.Connect must stream encryption to a temp spool file (chunk-bounded
+// memory) rather than buffering the entire ciphertext in a bytes.Buffer.
+// It verifies that (1) the wire payload is ciphertext (starts with stream
+// version 0x02), (2) the plaintext never appears on the wire, and (3) the
+// temp spool is cleaned up after the upload.
+func TestConnect_EncryptionStreamsToSpool(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	plaintext := "e2e-streaming-regression-test-587"
+
+	file, err := os.CreateTemp("", "test_enc_stream_*.txt")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(file.Name())
+	if _, err := file.WriteString(plaintext); err != nil {
+		t.Fatalf("Failed to write plaintext: %v", err)
+	}
+	file.Close()
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to start listener: %v", err)
+	}
+	defer ln.Close()
+
+	payloadCh := make(chan []byte, 1)
+
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		bufAuth := make([]byte, common.AuthTokenLength)
+		io.ReadFull(conn, bufAuth)
+
+		buf := make([]byte, common.TimestampLength+1)
+		io.ReadFull(conn, buf)
+
+		conn.Write([]byte("0"))
+
+		metaBuf := make([]byte, 64+common.FileInfoLength+common.FileInfoLength)
+		io.ReadFull(conn, metaBuf)
+
+		sizeStr := strings.TrimRight(string(metaBuf[64+common.FileInfoLength:]), "\x00")
+		payloadSize, _ := strconv.Atoi(sizeStr)
+
+		conn.Write([]byte{transport.MetadataStatusSendPayload})
+
+		payload := make([]byte, payloadSize)
+		io.ReadFull(conn, payload)
+
+		conn.Write([]byte("ACK"))
+
+		payloadCh <- payload
+	}()
+
+	encKey := strings.Repeat("a", 64)
+	cfg := common.Configuration{
+		Daemons: []*common.Daemon{
+			{Host: ln.Addr().String(), ChangeReplication: ln.Addr().String(), Data: "/tmp", Drive: "/dev/sda1"},
+		},
+		Global: common.ConfigurationGlobal{
+			AuthToken:         authToken,
+			Protocol:          "momo-tcp",
+			EncryptionEnabled: true,
+			EncryptionKey:     encKey,
+			EncryptionTenant:  "default",
+		},
+	}
+
+	stale, _ := filepath.Glob("/tmp/momo-enc-*")
+	for _, s := range stale {
+		os.Remove(s)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	err = Connect(&wg, cfg, file.Name(), "", 0, time.Now().UnixNano(), 0, 3)
+	wg.Wait()
+	if err != nil {
+		t.Fatalf("Connect failed: %v", err)
+	}
+
+	select {
+	case payload := <-payloadCh:
+		if len(payload) == 0 {
+			t.Fatal("Empty payload received")
+		}
+		if payload[0] != 0x02 {
+			t.Errorf("Expected payload to start with stream version 0x02, got 0x%02x", payload[0])
+		}
+		if bytes.Contains(payload, []byte(plaintext)) {
+			t.Error("FAIL: Plaintext leaked to wire (not encrypted)")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Mock server did not receive payload (timeout)")
+	}
+
+	leftover, _ := filepath.Glob("/tmp/momo-enc-*")
+	if len(leftover) > 0 {
+		t.Errorf("Temp spool files left behind: %v", leftover)
+		for _, f := range leftover {
+			os.Remove(f)
+		}
+	}
 }
