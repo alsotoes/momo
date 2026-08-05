@@ -106,9 +106,31 @@ ping_timeout = 500
 indirect_ping_count = 3
 scatter_gather_timeout = 5
 lease_timeout = 10
+tls_cert_file = /etc/momo/p2p.crt
+tls_key_file = /etc/momo/p2p.key
+tls_ca_file = /etc/momo/p2p-ca.crt
 ```
 
 P2P is **disabled by default** and coexists with the existing `Communicator` interface.
+
+## TLS Encryption & Peer Authentication
+
+The P2P transport supports **optional TLS encryption** and **mandatory peer ID authentication**.
+
+### TLS (encryption)
+
+Configure TLS under `[p2p]`:
+- `tls_cert_file` — PEM certificate for this node
+- `tls_key_file` — PEM private key for this node
+- `tls_ca_file` — optional CA used to verify peer certificates
+
+When `tls_cert_file` and `tls_key_file` are set, `TCPTransport` wraps its listener in `tls.NewListener` and dials via `tls.Dial`, negotiating TLS with a **minimum version of TLS 1.2**. When `tls_ca_file` is also set, **mutual TLS (mTLS)** is enforced via `ClientAuth = RequireAndVerifyClientCert`, where both the local certificate and each peer's certificate are validated against the CA pool (`RootCAs`/`ClientCAs`).
+
+If TLS files are **not** configured, the node logs a `CRITICAL` warning that all P2P traffic is plaintext and falls back to plaintext operation — acceptable for dev/test only.
+
+### Peer ID Authentication (AuthFunc)
+
+Independent of TLS, every incoming connection is validated by an `AuthFunc`: `func(id int32) bool { return id >= 0 && int(id) < len(daemons) }`. The connecting peer's claimed ID must fall within the configured daemon set; otherwise the connection is rejected. This prevents peer-ID spoofing and injection of malicious gossip/membership messages. The server's `bootstrapP2P` passes both `TLSConfig` and `AuthFunc` into the `TCPTransportConfig`.
 
 ## Testing
 
@@ -116,7 +138,7 @@ P2P is **disabled by default** and coexists with the existing `Communicator` int
 
 - `types_test.go`: RPC encode/decode, heartbeat payload encode/decode, edge cases
 - `peer_map_test.go`: Add/Remove/Get, RandomPeers, concurrent access
-- `tcp_transport_test.go`: Listen/Dial/Send/Broadcast, connection lifecycle
+- `tcp_transport_test.go`: Listen/Dial/Send/Broadcast, connection lifecycle, TLS (`TestTCPTransport_TLS`), peer auth (`TestTCPTransport_AuthFunc`)
 - `gossip_test.go`: Heartbeat exchange, suspicion transitions, membership discovery
 - `swim_test.go`: Ping/ack, indirect ping, adaptive RTT timeouts, RTT tracker EWMA, suspicion timeout
 - `lease_test.go`: Lease acquire/release, no-peers edge case, lease expiry, quorum timeout

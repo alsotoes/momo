@@ -44,6 +44,12 @@ This section contains cluster-wide settings that affect all daemons.
     -   **Default:** `3`
     -   **Logic:** If the cluster contains fewer than `replication_factor` nodes, the system will store as many copies as possible and log a warning (**Degraded Mode**).
 
+-   **`client_side_replication_modes`**
+    -   **Description:** A comma-separated list of replication mode IDs that require a momo-aware client. External S3 clients (e.g., `aws-cli`) cannot perform these modes, so when such a client connects, the server downgrades to the next server-side mode in `replication_order` per connection.
+    -   **Type:** Comma-separated list of integers
+    -   **Default:** `3` (Primary-Splay)
+    -   **Example:** `client_side_replication_modes=3`
+
 -   **`polymorphic_system`**
     -   **Description:** When set to `true`, enables the polymorphic engine on the primary server (daemon 0), allowing the cluster to change replication strategies dynamically based on system load.
     -   **Type:** Boolean (`true` or `false`)
@@ -58,6 +64,41 @@ This section contains cluster-wide settings that affect all daemons.
         -   `s3-tcp`: AWS S3-compatible REST API mapping over standard TCP.
         -   `s3-quic`: AWS S3-compatible REST API mapping over secure QUIC streams.
     -   **Default:** `momo-tcp` (if omitted, falls back to `momo-tcp` with a warning log)
+
+-   **`tls_cert`**
+    -   **Description:** Path to a PEM-encoded TLS certificate for the TCP-based protocols (`momo-tcp`, `s3-tcp`). When set together with `tls_key`, TCP connections are wrapped in TLS 1.2+ before any application data is exchanged. When empty, TCP connections use plaintext (backward compatible).
+    -   **Type:** String (file path)
+    -   **Default:** (none — plaintext TCP)
+
+-   **`tls_key`**
+    -   **Description:** Path to the PEM-encoded private key that pairs with `tls_cert` for TCP-based protocols.
+    -   **Type:** String (file path)
+    -   **Default:** (none — plaintext TCP)
+
+-   **`ca_cert`**
+    -   **Description:** Path to a PEM-encoded CA certificate used to verify QUIC peer certificates. QUIC peer verification defaults to strict: either `ca_cert` must be configured or `tls_insecure = true` must be explicitly set. This prevents accidental Man-in-the-Middle vulnerabilities.
+    -   **Type:** String (file path)
+    -   **Default:** (none — QUIC requires `tls_insecure = true` or a CA cert)
+
+-   **`tls_insecure`**
+    -   **Description:** When set to `true`, skips TLS certificate verification for QUIC and TCP TLS. Must be explicitly opted into; **not recommended for production**. When `false` (default), QUIC requires a valid `ca_cert` unless the peer is trusted by the system pool.
+    -   **Type:** Boolean (`true` or `false`)
+    -   **Default:** `false`
+
+-   **`encryption_enabled`**
+    -   **Description:** When set to `true`, enables end-to-end (E2EE) content encryption. All content is encrypted with AES-GCM-256 before storage/transfer, and the server becomes zero-knowledge — it stores ciphertext and opaque metadata without ever seeing plaintext. Requires a valid `encryption_key`.
+    -   **Type:** Boolean (`true` or `false`)
+    -   **Default:** `false`
+
+-   **`encryption_key`**
+    -   **Description:** The master encryption key used for E2EE, a 64-character hex-encoded 256-bit key. Required when `encryption_enabled = true`. Keys that are not 64 hex characters are rejected with `EINVAL` at startup.
+    -   **Type:** String (64 hex characters)
+    -   **Default:** (none — required when encryption is enabled)
+
+-   **`encryption_tenant`**
+    -   **Description:** The tenant identifier used for per-tenant key derivation via HKDF-SHA256. The master key is never used directly for content encryption; a tenant-specific key is derived as `HKDF-SHA256(masterKey, salt=nil, info=tenantID)`. Defaults to `"default"` when empty.
+    -   **Type:** String
+    -   **Default:** `default`
 
 ### [metrics] (required)
 
@@ -200,6 +241,23 @@ Becomes a SWIM indirect ping fan-out.
     -   **Type:** Integer
     -   **Default:** `10`
 
+-   **`tls_cert_file`**
+    -   **Description:** Path to a PEM-encoded TLS certificate for the node's P2P transport. When set together with `tls_key_file`, P2P traffic is encrypted with TLS. Must be set identically (or with certificates signed by a shared `tls_ca_file`) across all nodes for mutual authentication.
+    -   **Type:** String (file path)
+    -   **Default:** (none — P2P runs in plaintext with a CRITICAL warning)
+
+-   **`tls_key_file`**
+    -   **Description:** Path to the PEM-encoded private key that pairs with `tls_cert_file` for the node's P2P transport.
+    -   **Type:** String (file path)
+    -   **Default:** (none — P2P runs in plaintext with a CRITICAL warning)
+
+-   **`tls_ca_file`**
+    -   **Description:** Path to a PEM-encoded CA certificate used to verify peer certificates. Enables **mutual TLS (mTLS)**: when set, both the local node's certificate and each peer's certificate are validated against this CA (`RequireAndVerifyClientCert`), and peer verification is enforced. If omitted, TLS is still enabled (node presents its own certificate) but peer certificates are not verified against a CA.
+    -   **Type:** String (file path)
+    -   **Default:** (none — TLS without peer CA verification)
+
+**TLS encryption note:** When `tls_cert_file` and `tls_key_file` are set, the P2P transport negotiates TLS with a minimum version of TLS 1.2. Peer ID authentication is always enforced via `AuthFunc` (a connecting peer's ID must fall within the configured daemon set), independent of TLS. If TLS files are not configured, the node logs a `CRITICAL` warning and falls back to plaintext — do not use in production.
+
 ### [storage]
 
 This section controls the Content-Addressable Storage (CAS) engine, including backend selection, garbage collection, and tombstone retention.
@@ -295,6 +353,10 @@ ping_timeout = 500
 indirect_ping_count = 3
 scatter_gather_timeout = 5
 lease_timeout = 10
+# Production deployments should enable TLS to encrypt P2P traffic (see note below)
+# tls_cert_file = /etc/momo/p2p.crt
+# tls_key_file = /etc/momo/p2p.key
+# tls_ca_file = /etc/momo/p2p-ca.crt
 
 [storage]
 gc_interval = 300

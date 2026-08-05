@@ -44,7 +44,7 @@ Momo includes a fully decentralized P2P subsystem (`src/p2p/`) for cluster membe
 - **SWIM Failure Detection**: Direct ping/ack probes with indirect ping (asking K random peers to probe the target) and adaptive RTT-based timeouts. Suspect marking is based on target ack timeout, not helper contact success.
 - **Lease Consensus**: Lease-based consensus for coordinated operations. Leases require a quorum of `(peerCount+1)/2 + 1` peers and expire after a configurable timeout.
 - **Scatter-Gather Queries**: Decentralized query mechanism for list/get/has/delete operations across the cluster without a central coordinator.
-- **Transport**: P2P communication runs on a separate UDP port (default `4450`, configurable via `gossip_port`). The P2P transport supports both TCP and QUIC underlying connections.
+- **Transport**: P2P communication runs on a separate port (default `4450`, configurable via `gossip_port`). The P2P transport supports both TCP and QUIC underlying connections. P2P supports **optional TLS encryption** (mutual TLS via `[p2p] tls_cert_file`/`tls_key_file`/`tls_ca_file`) and always enforces **peer ID authentication** via an `AuthFunc` that validates connecting peer IDs against the configured daemon set, preventing spoofing and injection.
 
 ### 5. Automated Governance & AI Reviewer
 To maintain high integrity in a single-contributor environment, Momo employs an automated governance layer:
