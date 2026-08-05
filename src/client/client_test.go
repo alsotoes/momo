@@ -425,6 +425,12 @@ func TestConnect_EncryptionStreamsToSpool(t *testing.T) {
 	payloadCh := make(chan []byte, 1)
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Logf("Mock server panic recovered: %v", r)
+			}
+		}()
+
 		conn, err := ln.Accept()
 		if err != nil {
 			return
@@ -432,23 +438,34 @@ func TestConnect_EncryptionStreamsToSpool(t *testing.T) {
 		defer conn.Close()
 
 		bufAuth := make([]byte, common.AuthTokenLength)
-		io.ReadFull(conn, bufAuth)
+		if _, err := io.ReadFull(conn, bufAuth); err != nil {
+			return
+		}
 
 		buf := make([]byte, common.TimestampLength+1)
-		io.ReadFull(conn, buf)
+		if _, err := io.ReadFull(conn, buf); err != nil {
+			return
+		}
 
 		conn.Write([]byte("0"))
 
 		metaBuf := make([]byte, 64+common.FileInfoLength+common.FileInfoLength)
-		io.ReadFull(conn, metaBuf)
+		if _, err := io.ReadFull(conn, metaBuf); err != nil {
+			return
+		}
 
 		sizeStr := strings.TrimRight(string(metaBuf[64+common.FileInfoLength:]), "\x00")
-		payloadSize, _ := strconv.Atoi(sizeStr)
+		payloadSize, err := strconv.Atoi(sizeStr)
+		if err != nil || payloadSize <= 0 || payloadSize > common.MaxFileSize {
+			return
+		}
 
 		conn.Write([]byte{transport.MetadataStatusSendPayload})
 
 		payload := make([]byte, payloadSize)
-		io.ReadFull(conn, payload)
+		if _, err := io.ReadFull(conn, payload); err != nil {
+			return
+		}
 
 		conn.Write([]byte("ACK"))
 
@@ -469,7 +486,7 @@ func TestConnect_EncryptionStreamsToSpool(t *testing.T) {
 		},
 	}
 
-	stale, _ := filepath.Glob("/tmp/momo-enc-*")
+	stale, _ := filepath.Glob(filepath.Join(os.TempDir(), "momo-enc-*"))
 	for _, s := range stale {
 		os.Remove(s)
 	}
@@ -497,7 +514,7 @@ func TestConnect_EncryptionStreamsToSpool(t *testing.T) {
 		t.Fatal("Mock server did not receive payload (timeout)")
 	}
 
-	leftover, _ := filepath.Glob("/tmp/momo-enc-*")
+	leftover, _ := filepath.Glob(filepath.Join(os.TempDir(), "momo-enc-*"))
 	if len(leftover) > 0 {
 		t.Errorf("Temp spool files left behind: %v", leftover)
 		for _, f := range leftover {
