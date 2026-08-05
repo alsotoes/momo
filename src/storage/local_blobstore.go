@@ -103,11 +103,17 @@ func (b *LocalBlobStore) PutBlob(hash string, content io.Reader) (err error) {
 
 // GetBlob opens a blob for reading by its content hash.
 func (b *LocalBlobStore) GetBlob(hash string) (io.ReadCloser, error) {
+	if common.HasPathTraversalChars(hash) {
+		return nil, fmt.Errorf("storage error: invalid hash contains path traversal characters: %w", syscall.EINVAL)
+	}
 	return os.Open(b.blobPath(hash))
 }
 
 // DeleteBlob removes a blob by hash. Missing blobs are silently ignored.
 func (b *LocalBlobStore) DeleteBlob(hash string) error {
+	if common.HasPathTraversalChars(hash) {
+		return fmt.Errorf("storage error: invalid hash contains path traversal characters: %w", syscall.EINVAL)
+	}
 	err := os.Remove(b.blobPath(hash))
 	if err != nil && !os.IsNotExist(err) {
 		return err

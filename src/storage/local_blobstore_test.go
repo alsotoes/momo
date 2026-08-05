@@ -185,3 +185,35 @@ func TestLocalBlobStore_Dedup(t *testing.T) {
 		t.Errorf("Content mismatch after dedup")
 	}
 }
+
+func TestLocalBlobStore_PathTraversal(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	tmpDir, err := os.MkdirTemp("", "momo-local-blob-pt-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	store, err := NewLocalBlobStore(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to create LocalBlobStore: %v", err)
+	}
+	defer store.Close()
+
+	badHash := "../../../etc/passwd"
+
+	// Test GetBlob path traversal
+	if _, err := store.GetBlob(badHash); err == nil {
+		t.Errorf("GetBlob with path traversal should fail")
+	}
+
+	// Test DeleteBlob path traversal
+	if err := store.DeleteBlob(badHash); err == nil {
+		t.Errorf("DeleteBlob with path traversal should fail")
+	}
+
+	// Double check that PutBlob is also correctly failing
+	if err := store.PutBlob(badHash, bytes.NewReader([]byte("test"))); err == nil {
+		t.Errorf("PutBlob with path traversal should fail")
+	}
+}
