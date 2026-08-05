@@ -6,6 +6,7 @@ import (
 	"io"
 	"math"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/alsotoes/momo/src/common"
@@ -392,5 +393,55 @@ func TestRawBlobStore_OverflowCheckBeforeAllocation(t *testing.T) {
 	got, _ := io.ReadAll(reader)
 	if !bytes.Equal(got, content) {
 		t.Fatalf("Data corruption: blob A content changed after overflow scenario: got %q, want %q", got, content)
+	}
+}
+
+func TestRawBlobStore_GetBlobStreaming(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	tempDir := t.TempDir()
+	devicePath := filepath.Join(tempDir, "fake-device")
+	dataDir := filepath.Join(tempDir, "data")
+
+	cfg := common.ConfigurationStorage{Backend: "raw", RawDevicePath: devicePath}
+	daemon := &common.Daemon{Data: dataDir}
+
+	store, err := NewRawBlobStore(cfg, daemon)
+	if err != nil {
+		t.Fatalf("NewRawBlobStore failed: %v", err)
+	}
+	defer store.Close()
+
+	content := []byte("streaming blob payload")
+	hash := "streamhash"
+
+	if err := store.PutBlob(hash, bytes.NewReader(content)); err != nil {
+		t.Fatalf("PutBlob failed: %v", err)
+	}
+
+	reader, err := store.GetBlob(hash)
+	if err != nil {
+		t.Fatalf("GetBlob failed: %v", err)
+	}
+	defer reader.Close()
+
+	// GetBlob must return a lazily-read *io.SectionReader, not a fully-
+	// buffered byte slice. This prevents OOM for large blobs (issue #589).
+	// The SectionReader is wrapped by io.NopCloser, so drill through the
+	// embedded io.Reader field to confirm the streaming type.
+	rv := reflect.ValueOf(reader)
+	if rv.Kind() != reflect.Struct || rv.NumField() == 0 {
+		t.Fatalf("GetBlob returned %T, want an io.NopCloser-wrapped *io.SectionReader", reader)
+	}
+	inner := rv.Field(0).Interface()
+	if _, ok := inner.(*io.SectionReader); !ok {
+		t.Fatalf("GetBlob reader underlying type is %T, want *io.SectionReader (streaming)", inner)
+	}
+
+	got, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("Failed to read streamed blob: %v", err)
+	}
+	if !bytes.Equal(got, content) {
+		t.Fatalf("Streamed content mismatch: got %q, want %q", got, content)
 	}
 }
