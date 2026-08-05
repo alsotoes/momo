@@ -323,8 +323,6 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 		if v, e := key.Bool(); e == nil {
 			globalCfg.OPRFEnabled = v
 		}
-	} else {
-		globalCfg.OPRFEnabled = globalCfg.EncryptionEnabled
 	}
 
 	if key, err := section.GetKey("oprf_threshold"); err == nil {
