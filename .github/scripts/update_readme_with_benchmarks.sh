@@ -93,8 +93,8 @@ This section is automatically updated by our GitHub Actions workflow.
 ### Comparison with previous commit
 
 Each table compares the previous commit (left) to the current commit (right).
-**Lower is better** in all three tables. `+X%` = regression, `-X%` = improvement,
-`~` = no statistically significant change (p >= 0.05).
+**Lower is better** in all three tables. \`+X%\` = regression, \`-X%\` = improvement,
+\`~\` = no statistically significant change (p >= 0.05).
 
 - **sec/op**: Time per operation (nanoseconds). Measures raw speed.
 - **B/op**: Bytes allocated on the heap per operation. Measures memory usage.
