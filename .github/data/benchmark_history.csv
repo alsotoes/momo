@@ -2500,3 +2500,17 @@ ee67344,BenchmarkPadString-8,2.02,0.00,0.00
 6e77176,BenchmarkIndexSearch-8,2.87,0.00,0.00
 6e77176,BenchmarkLoadGlobalConfig-8,6534.00,1312.00,37.00
 6e77176,BenchmarkPadString-8,2.17,0.00,0.00
+327b442,BenchmarkCheckMetricsAndSwap-8,8.76,0.00,0.00
+327b442,BenchmarkCrushOptimized-8,356.60,0.00,0.00
+327b442,BenchmarkCrushOriginal-8,441.20,164.00,3.00
+327b442,BenchmarkIndexDirectTracking-8,0.44,0.00,0.00
+327b442,BenchmarkIndexSearch-8,2.94,0.00,0.00
+327b442,BenchmarkLoadGlobalConfig-8,6713.00,1312.00,37.00
+327b442,BenchmarkPadString-8,2.88,0.00,0.00
+32e1320,BenchmarkCheckMetricsAndSwap-8,8.12,0.00,0.00
+32e1320,BenchmarkCrushOptimized-8,385.70,0.00,0.00
+32e1320,BenchmarkCrushOriginal-8,433.10,164.00,3.00
+32e1320,BenchmarkIndexDirectTracking-8,0.35,0.00,0.00
+32e1320,BenchmarkIndexSearch-8,2.82,0.00,0.00
+32e1320,BenchmarkLoadGlobalConfig-8,7976.00,1312.00,37.00
+32e1320,BenchmarkPadString-8,2.30,0.00,0.00

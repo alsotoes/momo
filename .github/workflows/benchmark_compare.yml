@@ -34,10 +34,6 @@ jobs:
     - name: Install benchstat
       run: go install golang.org/x/perf/cmd/benchstat@latest
 
-    - name: Run Benchmark on Current Commit
-      run: |
-        make benchmark COUNT=15 > /tmp/current_bench.txt
-
     - name: Run Benchmark on Base Branch (PR)
       if: github.event_name == 'pull_request'
       run: |
@@ -51,6 +47,10 @@ jobs:
         git checkout -f HEAD^1
         make benchmark COUNT=15 > /tmp/base_bench.txt
         git checkout -f -
+
+    - name: Run Benchmark on Current Commit
+      run: |
+        make benchmark COUNT=15 > /tmp/current_bench.txt
 
     - name: Compare Benchmarks and Enforce Threshold
       run: |
