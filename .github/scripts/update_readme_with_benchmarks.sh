@@ -92,11 +92,22 @@ This section is automatically updated by our GitHub Actions workflow.
 
 ### Comparison with previous commit
 
+Each table compares the previous commit (left) to the current commit (right).
+**Lower is better** in all three tables. `+X%` = regression, `-X%` = improvement,
+`~` = no statistically significant change (p >= 0.05).
+
+- **sec/op**: Time per operation (nanoseconds). Measures raw speed.
+- **B/op**: Bytes allocated on the heap per operation. Measures memory usage.
+- **allocs/op**: Number of heap allocations per operation. Measures GC pressure.
+
 \`\`\`
 $COMPARISON
 \`\`\`
 
 ### Latest Benchmark Results
+
+Single-snapshot of the current commit's averages. **Lower is better** across all
+three columns: time (speed), bytes (memory), allocs (GC pressure).
 
 $MARKDOWN_TABLE
 
@@ -114,6 +125,12 @@ $MARKDOWN_TABLE
 | 🟠 | LoadGlobalConfig | $(get_desc "LoadGlobalConfig") |
 | 🟣 | PadString | $(get_desc "PadString") |
 | 🟡 | ParseReplicationOrder | $(get_desc "ParseReplicationOrder") |
+
+#### Time per Operation (ns/op)
+
+X-axis: commit SHA (left = older, right = newer). Y-axis: avg time in ns/op.
+**Lower lines = faster code.** Downward trends are improvements; upward spikes
+are regressions to investigate.
 
 \`\`\`mermaid
 xychart-beta
@@ -152,6 +169,11 @@ done
 cat <<EOF >> "$CONTENT_FILE"
 \`\`\`
 
+#### Memory per Operation (B/op)
+
+X-axis: commit SHA. Y-axis: avg bytes allocated per op.
+**Lower lines = less memory.** Drops indicate allocation reductions.
+
 \`\`\`mermaid
 xychart-beta
     title "Memory Trend (Avg. Bytes/Op, Last 10 Commits)"
@@ -182,6 +204,11 @@ done
 
 cat <<EOF >> "$CONTENT_FILE"
 \`\`\`
+
+#### Allocations per Operation (allocs/op)
+
+X-axis: commit SHA. Y-axis: avg heap allocations per op.
+**Lower lines = fewer allocations.** Fewer allocs = less GC pressure.
 
 \`\`\`mermaid
 xychart-beta
