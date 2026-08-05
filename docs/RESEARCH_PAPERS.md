@@ -2,8 +2,6 @@
 
 Generated from a codebase and documentation review on 2026-08-04.
 
-Search sources: OpenAlex and arXiv via the `research_papers` tool. arXiv intermittently returned 429 errors during lookup, so this list combines indexed results with canonical paper links for exact systems papers that directly match Momo's architecture.
-
 ## Project Map
 
 Momo is a Go distributed object storage system. The current code and docs point to these research areas:
@@ -16,6 +14,7 @@ Momo is a Go distributed object storage system. The current code and docs point 
 | Adaptive replication | `src/metrics/`, `docs/POLYMORPHIC_SYSTEM.md` | Self-adaptive systems, autonomic control loops, runtime reconfiguration |
 | P2P coordination | `src/p2p/`, `docs/P2P.md` | Gossip, SWIM membership, failure detectors, scatter-gather, leases |
 | Transport protocols | `src/transport/`, `docs/PROTOCOL.md` | TCP framing, QUIC, S3-compatible REST gateways |
+| Secure E2EE and confidential deduplication | `src/crypto/`, `openspec/changes/secure-e2ee-confidential-dedup/` | Message-locked encryption, OPRF/VOPRF, Shamir secret sharing, HKDF, AES-GCM nonce safety |
 | Future MomoFS roadmap | `docs/momofs/*.md` | Distributed metadata, self-healing, multi-tenancy, GDPR, fast recovery, AI search, erasure coding, HPC/cloud readiness |
 
 ## Read First
@@ -32,6 +31,7 @@ Read these in order if the goal is to understand the project quickly:
 8. **Venti: A New Approach to Archival Storage** - Sean Quinlan, Sean Dorward, 2002. PDF: <https://www.usenix.org/legacy/event/fast02/quinlan/quinlan.pdf>
 9. **Leases: An Efficient Fault-Tolerant Mechanism for Distributed File Cache Consistency** - Cary Gray, David Cheriton, 1989. OpenAlex citations: 72. DOI/PDF: <https://dl.acm.org/doi/pdf/10.1145/74851.74870>
 10. **Software Engineering for Self-Adaptive Systems: A Second Research Roadmap** - Rogério de Lemos, Holger Giese, Hausi Muller, et al., 2013. OpenAlex citations: 718. PDF: <http://repository.icesi.edu.co/bitstreams/1ebf94de-a1b3-4064-a2a2-070e82453dde/download>
+11. **DupLESS: Server-Aided Encryption for Deduplicated Storage** - Mihir Bellare, Sriram Keelveedhi, Thomas Ristenpart, 2013. PDF: <https://www.usenix.org/system/files/conference/usenixsecurity13/sec13-paper_bellare.pdf>
 
 ## Object Storage and Placement
 
@@ -91,6 +91,18 @@ Read these in order if the goal is to understand the project quickly:
 | **Network Applications of Bloom Filters: A Survey** - Andrei Broder, Michael Mitzenmacher, 2004 | Relevant to planned Bloom filters for fast `Has()` across a cluster. OpenAlex citations: 2001. PDF: <https://www.internetmathematicsjournal.com/article/1393.pdf> |
 | **From Hyper-dimensional Structures to Linear Structures: Maintaining Deduplicated Data's Locality** - Xiangyu Zou, Jingsong Yuan, Philip Shilane, et al., 2022 | Useful if Momo optimizes deduplicated storage locality and restore/read performance. OpenAlex citations: 106. PDF: <https://dl.acm.org/doi/pdf/10.1145/3507921> |
 | **I-sieve: An Inline High Performance Deduplication System Used in Cloud Storage** - Jibin Wang, Zhigang Zhao, Zhaogang Xu, et al., 2015 | Useful for inline dedup throughput trade-offs. OpenAlex citations: 33. PDF: <https://ieeexplore.ieee.org/ielx7/5971803/7040506/07040510.pdf> |
+
+## Secure E2EE and Confidential Deduplication
+
+| Paper or standard | Why it matters for Momo |
+|---|---|
+| **DupLESS: Server-Aided Encryption for Deduplicated Storage** - Mihir Bellare, Sriram Keelveedhi, Thomas Ristenpart, 2013. PDF: <https://www.usenix.org/system/files/conference/usenixsecurity13/sec13-paper_bellare.pdf> | Directly relevant to Momo's secure deduplication direction: deduplication with server-aided key derivation instead of plain convergent encryption. |
+| **Message-Locked Encryption and Secure Deduplication** - Mihir Bellare, Sriram Keelveedhi, Thomas Ristenpart, 2013. URL: <https://eprint.iacr.org/2012/631> | Formalizes message-locked encryption and its leakage trade-offs. Useful background for why Momo's design avoids unauthenticated convergent encryption. |
+| **Efficient and Strongly-Secure OPRF from the CDH Assumption** - Stanislaw Jarecki, Aggelos Kiayias, Hugo Krawczyk, 2017. URL: <https://eprint.iacr.org/2017/111> | Foundation for OPRF-style blind key derivation used by confidential deduplication designs. |
+| **RFC 9497: Oblivious Pseudorandom Functions (OPRFs) Using Prime-Order Groups** - Alex Davidson, Nick Sullivan, 2023. URL: <https://www.rfc-editor.org/rfc/rfc9497.html> | Current interoperable VOPRF/OPRF standard. Relevant to Momo's threshold OPRF API and future wire compatibility. |
+| **How to Share a Secret** - Adi Shamir, 1979. PDF: <https://web.mit.edu/6.857/OldStuff/Fall03/ref/Shamir-HowToShareASecret.pdf> | Foundational threshold secret sharing. Directly maps to Momo's OPRF share reconstruction and quorum-oriented key derivation. |
+| **RFC 5869: HMAC-based Extract-and-Expand Key Derivation Function (HKDF)** - Hugo Krawczyk, Pasi Eronen, 2010. URL: <https://www.rfc-editor.org/rfc/rfc5869.html> | Matches Momo's HKDF domain separation for token, content, at-rest, and OPRF-derived keys. |
+| **NIST SP 800-38D: Recommendation for Block Cipher Modes of Operation: Galois/Counter Mode (GCM) and GMAC** - Morris Dworkin, 2007. PDF: <https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38d.pdf> | Baseline reference for AES-GCM authentication and nonce uniqueness. Relevant to Momo's streaming AEAD nonce construction and non-reuse requirements. |
 
 ## Adaptive and Self-Managing Systems
 
@@ -152,6 +164,8 @@ For replication behavior: **Chain Replication**, **Dynamo**, **Bayou**, **Lampor
 For P2P and cluster health: **SWIM**, **Epidemic Algorithms**, **Gossip-based Aggregation**, **Census**.
 
 For transport work: **QUIC Transport Protocol**, **Multipath QUIC**, **Fielding REST dissertation**.
+
+For secure E2EE and confidential deduplication: **DupLESS**, **Message-Locked Encryption**, **OPRF RFC 9497**, **Shamir secret sharing**, **HKDF RFC 5869**, **NIST SP 800-38D**.
 
 For adaptive replication and MomoFS self-healing: **Self-Adaptive Systems Roadmap**, **Software Engineering Meets Control Theory**, **Self-adaptive Software Needs Quantitative Verification at Runtime**.
 
