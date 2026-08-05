@@ -74,6 +74,9 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 	closeServer := func() { closeOnce.Do(func() { server.Close() }) }
 	defer closeServer()
 
+	var handlersWG sync.WaitGroup
+	defer handlersWG.Wait()
+
 	// Handle graceful shutdown via context
 	go func() {
 		defer func() {
@@ -141,7 +144,9 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 		case <-ctx.Done():
 			return nil
 		}
+		handlersWG.Add(1)
 		go func(comm transport.Communicator) {
+			defer handlersWG.Done()
 			defer func() { <-sem }()
 			// 🛡️ Zero-Crash Hardening: Recover from any unexpected panics in the connection handler
 			// to ensure the daemon remains stable and available for other clients.
