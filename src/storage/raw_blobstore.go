@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -232,16 +231,8 @@ func (r *RawBlobStore) GetBlob(hash string) (rc io.ReadCloser, err error) {
 		return nil, fmt.Errorf("raw: invalid blob offset %d in alloc table: %w", offset, syscall.EIO)
 	}
 
-	data := make([]byte, length)
-	n, err := r.device.ReadAt(data, offset)
-	if err != nil && err != io.EOF {
-		return nil, fmt.Errorf("raw: failed to read from device: %w", syscall.EIO)
-	}
-	if int64(n) != length {
-		return nil, fmt.Errorf("raw: short read: %w", syscall.EIO)
-	}
-
-	return io.NopCloser(bytes.NewReader(data)), nil
+	// Stream directly from the device — no full-blob allocation.
+	return io.NopCloser(io.NewSectionReader(r.device, offset, length)), nil
 }
 
 // DeleteBlob removes a blob's allocation entry. The device space is not
