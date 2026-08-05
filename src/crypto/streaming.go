@@ -40,6 +40,9 @@ func (c *Cipher) EncryptStream(plaintext io.Reader, dst io.Writer) error {
 	}
 
 	buf := make([]byte, ChunkSize)
+	nonce := make([]byte, NonceSize)
+	lenBuf := make([]byte, ChunkHeader)
+	sealedBuf := make([]byte, 0, MaxChunkSize)
 	chunkIndex := uint32(0)
 
 	for {
@@ -53,14 +56,11 @@ func (c *Cipher) EncryptStream(plaintext io.Reader, dst io.Writer) error {
 
 		isLast := err == io.ErrUnexpectedEOF
 
-		nonce := make([]byte, NonceSize)
 		copy(nonce[0:streamSeedSize], seed)
 		binary.BigEndian.PutUint32(nonce[streamSeedSize:], chunkIndex)
 
-		chunkData := buf[:n]
-		sealed := c.aead.Seal(nil, nonce, chunkData, nil)
+		sealed := c.aead.Seal(sealedBuf[:0], nonce, buf[:n], nil)
 
-		lenBuf := make([]byte, ChunkHeader)
 		binary.BigEndian.PutUint32(lenBuf, uint32(len(sealed)))
 
 		if _, err := dst.Write(lenBuf); err != nil {
@@ -78,11 +78,9 @@ func (c *Cipher) EncryptStream(plaintext io.Reader, dst io.Writer) error {
 	}
 
 	if chunkIndex == 0 {
-		nonce := make([]byte, NonceSize)
 		copy(nonce[0:streamSeedSize], seed)
-		sealed := c.aead.Seal(nil, nonce, nil, nil)
+		sealed := c.aead.Seal(sealedBuf[:0], nonce, nil, nil)
 
-		lenBuf := make([]byte, ChunkHeader)
 		binary.BigEndian.PutUint32(lenBuf, uint32(len(sealed)))
 
 		if _, err := dst.Write(lenBuf); err != nil {
@@ -111,10 +109,13 @@ func (c *Cipher) DecryptStream(ciphertext io.Reader, dst io.Writer) error {
 		return fmt.Errorf("crypto: failed to read stream seed: %w", err)
 	}
 
+	lenBuf := make([]byte, ChunkHeader)
+	nonce := make([]byte, NonceSize)
+	sealedBuf := make([]byte, MaxChunkSize)
+	plaintextBuf := make([]byte, 0, ChunkSize)
 	chunkIndex := uint32(0)
 
 	for {
-		lenBuf := make([]byte, ChunkHeader)
 		_, err := io.ReadFull(ciphertext, lenBuf)
 		if err == io.EOF {
 			break
@@ -128,16 +129,15 @@ func (c *Cipher) DecryptStream(ciphertext io.Reader, dst io.Writer) error {
 			return fmt.Errorf("%w: invalid chunk size %d", ErrStreamFormat, sealedLen)
 		}
 
-		sealed := make([]byte, sealedLen)
+		sealed := sealedBuf[:sealedLen]
 		if _, err := io.ReadFull(ciphertext, sealed); err != nil {
 			return fmt.Errorf("crypto: failed to read chunk ciphertext: %w", err)
 		}
 
-		nonce := make([]byte, NonceSize)
 		copy(nonce[0:streamSeedSize], seed)
 		binary.BigEndian.PutUint32(nonce[streamSeedSize:], chunkIndex)
 
-		plaintext, err := c.aead.Open(nil, nonce, sealed, nil)
+		plaintext, err := c.aead.Open(plaintextBuf[:0], nonce, sealed, nil)
 		if err != nil {
 			return ErrTampered
 		}
