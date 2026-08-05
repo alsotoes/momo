@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
+	"math"
 	"path/filepath"
 	"testing"
 
@@ -324,5 +325,72 @@ func TestNewStore_RawBackend(t *testing.T) {
 	got, _ := io.ReadAll(reader)
 	if !bytes.Equal(got, content) {
 		t.Errorf("Content mismatch")
+	}
+}
+
+func TestRawBlobStore_OverflowCheckBeforeAllocation(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	tempDir := t.TempDir()
+	devicePath := filepath.Join(tempDir, "fake-device")
+	dataDir := filepath.Join(tempDir, "data")
+
+	cfg := common.ConfigurationStorage{Backend: "raw", RawDevicePath: devicePath}
+	daemon := &common.Daemon{Data: dataDir}
+
+	store, err := NewRawBlobStore(cfg, daemon)
+	if err != nil {
+		t.Fatalf("NewRawBlobStore failed: %v", err)
+	}
+	defer store.Close()
+
+	content := []byte("first blob data")
+	hashA := "overflowhashA"
+
+	if err := store.PutBlob(hashA, bytes.NewReader(content)); err != nil {
+		t.Fatalf("PutBlob A failed: %v", err)
+	}
+
+	store.mu.Lock()
+	store.nextOffset = math.MaxInt64 - common.MaxFileSize + 1
+	store.mu.Unlock()
+
+	overflowContent := []byte("overflow blob")
+	hashB := "overflowhashB"
+
+	err = store.PutBlob(hashB, bytes.NewReader(overflowContent))
+	if err == nil {
+		t.Fatal("Expected overflow error, got nil")
+	}
+
+	var allocExists bool
+	store.allocDB.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket(bucketRawAlloc)
+		if b != nil {
+			allocExists = b.Get([]byte(hashB)) != nil
+		}
+		return nil
+	})
+	if allocExists {
+		t.Fatal("Allocation entry for hashB should NOT exist after overflow error")
+	}
+
+	store.mu.Lock()
+	store.nextOffset = int64(len(content))
+	store.mu.Unlock()
+
+	hashC := "overflowhashC"
+	overwriteContent := []byte("third blob data")
+	if err := store.PutBlob(hashC, bytes.NewReader(overwriteContent)); err != nil {
+		t.Fatalf("PutBlob C failed: %v", err)
+	}
+
+	reader, err := store.GetBlob(hashA)
+	if err != nil {
+		t.Fatalf("GetBlob A failed: %v", err)
+	}
+	defer reader.Close()
+	got, _ := io.ReadAll(reader)
+	if !bytes.Equal(got, content) {
+		t.Fatalf("Data corruption: blob A content changed after overflow scenario: got %q, want %q", got, content)
 	}
 }

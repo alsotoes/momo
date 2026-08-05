@@ -144,6 +144,11 @@ func (r *RawBlobStore) PutBlob(hash string, content io.Reader) (err error) {
 
 	limited := io.LimitReader(content, common.MaxFileSize+1)
 	offset := r.nextOffset
+
+	if offset > math.MaxInt64-common.MaxFileSize {
+		return fmt.Errorf("raw: offset %d would overflow with MaxFileSize %d: %w", offset, common.MaxFileSize, syscall.EIO)
+	}
+
 	buf := make([]byte, 64*1024)
 	var totalWritten int64
 
@@ -171,6 +176,10 @@ func (r *RawBlobStore) PutBlob(hash string, content io.Reader) (err error) {
 		return fmt.Errorf("raw: blob exceeds MaxFileSize (%d bytes): %w", common.MaxFileSize, syscall.EFBIG)
 	}
 
+	if offset > math.MaxInt64-totalWritten {
+		return fmt.Errorf("raw: offset overflow: %d + %d exceeds MaxInt64: %w", offset, totalWritten, syscall.EIO)
+	}
+
 	var alloc [16]byte
 	binary.BigEndian.PutUint64(alloc[0:8], uint64(offset))
 	binary.BigEndian.PutUint64(alloc[8:16], uint64(totalWritten))
@@ -181,9 +190,6 @@ func (r *RawBlobStore) PutBlob(hash string, content io.Reader) (err error) {
 		return fmt.Errorf("raw: failed to record allocation: %w", syscall.EIO)
 	}
 
-	if offset > math.MaxInt64-totalWritten {
-		return fmt.Errorf("raw: offset overflow: %d + %d exceeds MaxInt64: %w", offset, totalWritten, syscall.EIO)
-	}
 	r.nextOffset = offset + totalWritten
 	return nil
 }
