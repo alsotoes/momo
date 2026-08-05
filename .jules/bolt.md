@@ -177,7 +177,3 @@
 ## 2026-07-28 - [Optimize SigV4 URI and Query escaping]
 **Learning:** Using `url.QueryEscape` combined with `strings.ReplaceAll(..., "+", "%20")` or splitting and joining segments to handle AWS SigV4 encoding causes unnecessary allocations and CPU overhead.
 **Action:** When performing custom URI or query escaping for specific protocols like SigV4, implement a single-pass custom escape function that pre-allocates the `strings.Builder` and encodes characters in place.
-
-## 2026-08-05 - Eliminate strings.ReplaceAll allocations in log sanitization
-**Learning:** Using `strings.ReplaceAll` sequentially for multiple characters (like `\n` and `\r`) causes multiple passes over the string and multiple heap allocations if matches are found. `strings.Map` also performs poorly. A single-pass loop over a copied byte slice with `unsafe.String` is ~2x faster and cuts allocations in half.
-**Action:** When replacing multiple individual characters in a string on a hot path, check for matches first with `strings.IndexAny`. If found, copy to a byte slice, do a single-pass replacement loop, and return the result using `unsafe.String` to minimize allocations.
