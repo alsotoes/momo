@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -113,7 +114,7 @@ func (c *IdleTimeoutConn) Read(b []byte) (n int, err error) {
 
 	c.applyDeadlines(true)
 	n, err = c.Conn.Read(b)
-	if err != nil {
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 		if isTimeout(err) {
 			err = fmt.Errorf("%w: %w", err, syscall.ETIMEDOUT)
 		} else {

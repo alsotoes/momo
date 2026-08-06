@@ -2,6 +2,7 @@ package common
 
 import (
 	"errors"
+	"io"
 	"net"
 	"sync"
 	"syscall"
@@ -134,6 +135,28 @@ func TestIdleTimeoutConn_ReadError(t *testing.T) {
 	}
 	if n != 0 {
 		t.Errorf("Expected n to be 0, got %d", n)
+	}
+}
+
+func TestIdleTimeoutConn_ReadPreservesEOF(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{name: "io.EOF", err: io.EOF},
+		{name: "io.ErrUnexpectedEOF", err: io.ErrUnexpectedEOF},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mc := &mockConn{readError: tc.err}
+			idleConn := NewIdleTimeoutConn(mc, 30*time.Second)
+
+			_, err := idleConn.Read([]byte("test"))
+			if err != tc.err {
+				t.Fatalf("Expected err to be identity-equal to %v (direct == check), got %v", tc.err, err)
+			}
+		})
 	}
 }
 
