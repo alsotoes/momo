@@ -21,6 +21,11 @@ import (
 	"github.com/alsotoes/momo/src/storage"
 )
 
+// s3ReadHeaderTimeout is the maximum time to read an HTTP request header on
+// the S3 gateway. It prevents slowloris attacks where a client sends headers
+// one byte at a time to keep the connection alive indefinitely (issue #592).
+var s3ReadHeaderTimeout = 10 * time.Second
+
 type LimitedConnReader struct {
 	r     net.Conn
 	limit int64
@@ -246,8 +251,10 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		}
 	}()
 
-	m.connReader.SetLimit(65536) // 🛡️ Bounded Network Loop/Read (Rule 24)
+	m.connReader.SetLimit(65536)                                // 🛡️ Bounded Network Loop/Read (Rule 24)
+	m.conn.SetReadDeadline(time.Now().Add(s3ReadHeaderTimeout)) // 🛡️ Slowloris mitigation (issue #592)
 	req, err := http.ReadRequest(m.reader)
+	m.conn.SetReadDeadline(time.Time{})
 	m.connReader.ClearLimit()
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to read handshake request: %v: %w", err, syscall.EBADMSG)
@@ -658,8 +665,10 @@ func (m *S3Communicator) ReceiveMetadata() (meta common.FileMetadata, err error)
 	// is the NEXT HTTP request on the same connection!
 	// Let's read the next request if we haven't got metadata yet.
 	if m.meta.Name == "" {
-		m.connReader.SetLimit(65536) // 🛡️ Bounded Network Loop/Read (Rule 24)
+		m.connReader.SetLimit(65536)                                // 🛡️ Bounded Network Loop/Read (Rule 24)
+		m.conn.SetReadDeadline(time.Now().Add(s3ReadHeaderTimeout)) // 🛡️ Slowloris mitigation (issue #592)
 		req, err := http.ReadRequest(m.reader)
+		m.conn.SetReadDeadline(time.Time{})
 		m.connReader.ClearLimit()
 		if err != nil {
 			return common.FileMetadata{}, fmt.Errorf("ReceiveMetadata ReadRequest failed: %v: %w", err, syscall.EBADMSG)

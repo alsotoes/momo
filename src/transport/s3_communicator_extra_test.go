@@ -133,3 +133,53 @@ func TestS3Communicator_Methods(t *testing.T) {
 		t.Errorf("SetAbsoluteDeadline failed: %v", err)
 	}
 }
+
+func TestS3Communicator_SlowlorisMitigation(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	originalTimeout := s3ReadHeaderTimeout
+	s3ReadHeaderTimeout = 150 * time.Millisecond
+	defer func() { s3ReadHeaderTimeout = originalTimeout }()
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
+
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to listen: %v", err)
+	}
+	defer l.Close()
+
+	errChan := make(chan error, 1)
+	go func() {
+		conn, err := l.Accept()
+		if err != nil {
+			errChan <- err
+			return
+		}
+		defer conn.Close()
+		comm := NewS3Communicator(conn)
+		_, _, err = comm.HandshakeServer(expectedAuthToken)
+		errChan <- err
+	}()
+
+	conn, err := net.Dial("tcp", l.Addr().String())
+	if err != nil {
+		t.Fatalf("Failed to dial: %v", err)
+	}
+	defer conn.Close()
+
+	partialHeader := "PUT /test.txt HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+	if _, err := conn.Write([]byte(partialHeader)); err != nil {
+		t.Fatalf("Failed to write partial header: %v", err)
+	}
+
+	select {
+	case serverErr := <-errChan:
+		if serverErr == nil {
+			t.Fatal("Expected HandshakeServer to fail on slowloris, got nil")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("HandshakeServer did not time out within 2s — slowloris mitigation not working")
+	}
+}
