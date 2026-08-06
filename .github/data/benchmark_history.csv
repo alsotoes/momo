@@ -2565,3 +2565,12 @@ ed3f77f,BenchmarkLoadGlobalConfig-8,5754.00,1312.00,37.00
 ed3f77f,BenchmarkPadString-8,1.99,0.00,0.00
 ed3f77f,BenchmarkSanitizeLog/Safe-8,509.90,0.00,0.00
 ed3f77f,BenchmarkSanitizeLog/Unsafe-8,1574.00,704.00,1.00
+596cec9,BenchmarkCheckMetricsAndSwap-8,9.49,0.00,0.00
+596cec9,BenchmarkCrushOptimized-8,382.20,0.00,0.00
+596cec9,BenchmarkCrushOriginal-8,464.00,164.00,3.00
+596cec9,BenchmarkIndexDirectTracking-8,0.50,0.00,0.00
+596cec9,BenchmarkIndexSearch-8,1.69,0.00,0.00
+596cec9,BenchmarkLoadGlobalConfig-8,6420.00,1312.00,37.00
+596cec9,BenchmarkPadString-8,2.58,0.00,0.00
+596cec9,BenchmarkSanitizeLog/Safe-8,563.50,0.00,0.00
+596cec9,BenchmarkSanitizeLog/Unsafe-8,1680.00,704.00,1.00

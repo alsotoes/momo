@@ -89,8 +89,9 @@ func TestS3Communicator_AWSV4Auth(t *testing.T) {
 	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
 	expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
 
-	amzDate := "20260604T120000Z"
-	dateStamp := "20260604"
+	now := time.Now().UTC()
+	amzDate := now.Format("20060102T150405Z")
+	dateStamp := now.Format("20060102")
 	region := "us-east-1"
 	payloadHash := "dummyhash"
 	signedHeaders := "host;x-amz-content-sha256;x-amz-date"

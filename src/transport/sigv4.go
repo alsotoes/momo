@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+	"time"
 )
 
 type sigV4Components struct {
@@ -222,6 +223,26 @@ func hexHMAC(key []byte, data string) string {
 
 var emptyStringSHA256 = hexSHA256(nil)
 
+var sigV4MaxSkew = 15 * time.Minute
+
+func verifySigV4Timestamp(amzDate string) bool {
+	parsedTime, err := time.Parse("20060102T150405Z", amzDate)
+	if err != nil {
+		log.Printf("AUDIT: SigV4 rejected unparseable X-Amz-Date %q: %v", amzDate, err)
+		return false
+	}
+	now := time.Now().UTC()
+	skew := now.Sub(parsedTime)
+	if skew < 0 {
+		skew = -skew
+	}
+	if skew > sigV4MaxSkew {
+		log.Printf("AUDIT: SigV4 rejected stale/future X-Amz-Date %q (skew %v > %v)", amzDate, skew, sigV4MaxSkew)
+		return false
+	}
+	return true
+}
+
 func verifySigV4Signature(req *http.Request, authHeader, secretKey string) bool {
 	components, ok := parseSigV4AuthHeader(authHeader)
 	if !ok {
@@ -231,6 +252,10 @@ func verifySigV4Signature(req *http.Request, authHeader, secretKey string) bool 
 	amzDate := req.Header.Get("X-Amz-Date")
 	if amzDate == "" {
 		amzDate = components.AmzDate
+	}
+
+	if !verifySigV4Timestamp(amzDate) {
+		return false
 	}
 
 	payloadHash := req.Header.Get("X-Amz-Content-Sha256")

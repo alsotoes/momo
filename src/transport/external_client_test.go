@@ -3,6 +3,7 @@ package transport
 import (
 	"net"
 	"testing"
+	"time"
 
 	"github.com/alsotoes/momo/src/common"
 	"go.uber.org/goleak"
@@ -15,8 +16,9 @@ func TestS3Communicator_ExternalClientDetection(t *testing.T) {
 	expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
 
 	t.Run("aws-cli without X-Momo-Requested-Mode is external", func(t *testing.T) {
-		amzDate := "20260604T120000Z"
-		dateStamp := "20260604"
+		now := time.Now().UTC()
+		amzDate := now.Format("20060102T150405Z")
+		dateStamp := now.Format("20060102")
 		region := "us-east-1"
 		payloadHash := "dummyhash"
 		signedHeaders := "host;x-amz-date"
