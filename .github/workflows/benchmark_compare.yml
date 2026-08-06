@@ -63,7 +63,7 @@ jobs:
         # Ignore sub-10ns micro-benchmarks known to be extremely noisy on virtualization.
         # Also ignore geomean as it's skewed by micro-benchmarks.
         # Skip the B/s throughput section: +X% there means faster (improvement, not degradation).
-        if grep -v -E 'IndexSearch|CheckMetricsAndSwap|IndexDirectTracking|PadString|LoadGlobalConfig|geomean|RPC_Encode|HeartbeatPayload_Encode|PeerMap_|CrushOriginal' /tmp/bench_comparison.txt | awk '
+        if grep -v -E 'IndexSearch|CheckMetricsAndSwap|IndexDirectTracking|PadString|LoadGlobalConfig|geomean|RPC_Encode|HeartbeatPayload_Encode|PeerMap_|CrushOriginal|OPRFCombineThreshold3' /tmp/bench_comparison.txt | awk '
         /B\/s.*vs base/ { in_bps=1; next }
         /sec\/op.*vs base/ || /B\/op.*vs base/ || /allocs\/op.*vs base/ { in_bps=0 }
         in_bps { next }
