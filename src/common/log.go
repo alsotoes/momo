@@ -4,7 +4,6 @@ import (
 	"io"
 	"log"
 	"strings"
-	"unsafe"
 )
 
 // LogStdOut configures the logging output for the application.
@@ -20,20 +19,20 @@ func LogStdOut(logApp bool) {
 
 // SanitizeLog removes CRLF characters from a string to prevent log injection.
 func SanitizeLog(input string) string {
-	// ⚡ Bolt: Optimize sequential ReplaceAll by using a fast-path match check.
-	// If matches exist, we perform a single pass over a pre-allocated byte slice
-	// and return it using unsafe.String to eliminate further heap allocations.
+	// ⚡ Bolt: Optimize sequential ReplaceAll by using a fast-path match check
+	// and a strings.Builder to eliminate unnecessary allocations and unsafe code.
 	if !strings.ContainsAny(input, "\n\r") {
 		return input
 	}
-	b := make([]byte, len(input))
+	var b strings.Builder
+	b.Grow(len(input))
 	for i := 0; i < len(input); i++ {
 		c := input[i]
 		if c == '\n' || c == '\r' {
-			b[i] = '_'
+			b.WriteByte('_')
 		} else {
-			b[i] = c
+			b.WriteByte(c)
 		}
 	}
-	return unsafe.String(unsafe.SliceData(b), len(b))
+	return b.String()
 }
