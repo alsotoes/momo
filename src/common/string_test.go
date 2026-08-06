@@ -1,6 +1,7 @@
 package common
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -170,4 +171,19 @@ func TestTrimNullBytesString_BufferReuse(t *testing.T) {
 	if result != "hello" {
 		t.Fatalf("result changed after buffer reuse: got %q, expected 'hello'", result)
 	}
+}
+
+func BenchmarkSanitizeLog(b *testing.B) {
+	safe := strings.Repeat("hello world ", 50)
+	unsafe := strings.Repeat("hello\r\nworld\n", 50)
+	b.Run("Safe", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			SanitizeLog(safe)
+		}
+	})
+	b.Run("Unsafe", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			SanitizeLog(unsafe)
+		}
+	})
 }
