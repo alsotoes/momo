@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"golang.org/x/sys/unix"
 	"testing"
 )
 
@@ -320,6 +321,39 @@ func TestDecryptStreamRejectsFooterChunkCountMismatch(t *testing.T) {
 
 	if err := c.DecryptStream(&forged, &decBuf); !errors.Is(err, ErrStreamFormat) {
 		t.Fatalf("expected ErrStreamFormat for footer count mismatch, got: %v", err)
+	}
+}
+
+// TestDecryptStreamErrorsMapToPOSIXConsts verifies that protocol errors surface
+// the POSIX constants required by Rule 10/42 via errors.Is, so the storage
+// layer can react to them.
+func TestDecryptStreamErrorsMapToPOSIXConsts(t *testing.T) {
+	key, _ := GenerateKey()
+	c, _ := NewCipher(key)
+
+	var decBuf bytes.Buffer
+	// Unsupported version -> ErrStreamFormat -> syscall.EBADMSG on Linux.
+	err := c.DecryptStream(bytes.NewReader([]byte{1, 0xAA}), &decBuf)
+	if !errors.Is(err, ErrStreamFormat) {
+		t.Fatalf("expected ErrStreamFormat, got: %v", err)
+	}
+	if !errors.Is(err, unix.EBADMSG) {
+		t.Fatalf("expected errors.Is(err, unix.EBADMSG), got: %v", err)
+	}
+
+	// Truncated stream -> ErrStreamTruncated -> syscall.EIO.
+	plaintext := bytes.Repeat([]byte("R"), 2*ChunkSize)
+	var encBuf bytes.Buffer
+	c.EncryptStream(bytes.NewReader(plaintext), &encBuf)
+	footerBytes := ChunkHeader + 4 + TagSize
+	truncated := encBuf.Bytes()[:len(encBuf.Bytes())-footerBytes]
+	decBuf.Reset()
+	truncErr := c.DecryptStream(bytes.NewReader(truncated), &decBuf)
+	if !errors.Is(truncErr, ErrStreamTruncated) {
+		t.Fatalf("expected ErrStreamTruncated, got: %v", truncErr)
+	}
+	if !errors.Is(truncErr, unix.EIO) {
+		t.Fatalf("expected errors.Is(err, unix.EIO), got: %v", truncErr)
 	}
 }
 

@@ -6,6 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
+	"syscall"
+
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -32,16 +36,57 @@ const (
 var streamFooterAAD = []byte("momo:stream-footer:v1")
 
 var (
-	ErrStreamFormat    = errors.New("crypto: invalid stream format")
-	ErrStreamTruncated = errors.New("crypto: stream truncated (integrity footer missing)")
+	ErrStreamFormat    = &streamError{posix: unix.EBADMSG, domain: errors.New("crypto: invalid stream format")}
+	ErrStreamTruncated = &streamError{posix: unix.EIO, domain: errors.New("crypto: stream truncated (integrity footer missing)")}
 )
+
+// streamError is a domain error that also unwraps to a POSIX constant so the
+// storage layer can match on both the stream sentinel and the underlying
+// syscall via errors.Is (Rule 10/42).
+type streamError struct {
+	posix  error
+	domain error
+}
+
+func (e *streamError) Error() string {
+	return e.domain.Error()
+}
+
+func (e *streamError) Unwrap() []error {
+	return []error{e.posix, e.domain}
+}
+
+func (e *streamError) Is(target error) bool {
+	return target == e.posix || target == e.domain
+}
+
+// wrapStreamErr annotates a stream error with context while preserving
+// errors.Is matching against both the POSIX constant and the domain sentinel.
+func wrapStreamErr(e error, format string, args ...any) error {
+	if se, ok := e.(*streamError); ok {
+		return fmt.Errorf("%s: %w", fmt.Sprintf(format, args...), se)
+	}
+	return fmt.Errorf("%s: %w", fmt.Sprintf(format, args...), e)
+}
+
+// recoverStreamErr is the unified panic-recovery helper for the streaming
+// cipher functions. It maps any panic to syscall.EIO so an unexpected runtime
+// panic cannot crash the daemon (Rule 37).
+func recoverStreamErr(err *error, op string) {
+	if r := recover(); r != nil {
+		log.Printf("CRITICAL: Panic recovered in %s: %v", op, r)
+		*err = fmt.Errorf("panic in %s: %v: %w", op, r, syscall.EIO)
+	}
+}
 
 // footerNonceIndex marks the AEAD nonce index used for the stream footer. It is
 // deliberately distinct from any data-chunk index so an attacker cannot forge
 // or reorder a footer as a regular chunk, and vice versa.
 const footerNonceIndex = 0xFFFFFFFF
 
-func (c *Cipher) EncryptStream(plaintext io.Reader, dst io.Writer) error {
+func (c *Cipher) EncryptStream(plaintext io.Reader, dst io.Writer) (err error) {
+	defer recoverStreamErr(&err, "EncryptStream")
+
 	header := []byte{StreamVersion}
 	if _, err := dst.Write(header); err != nil {
 		return fmt.Errorf("crypto: failed to write stream header: %w", err)
@@ -123,7 +168,9 @@ func writeStreamFooter(c *Cipher, dst io.Writer, seed, nonce, lenBuf, sealedBuf 
 	return nil
 }
 
-func (c *Cipher) DecryptStream(ciphertext io.Reader, dst io.Writer) error {
+func (c *Cipher) DecryptStream(ciphertext io.Reader, dst io.Writer) (err error) {
+	defer recoverStreamErr(&err, "DecryptStream")
+
 	versionBuf := make([]byte, 1)
 	if _, err := io.ReadFull(ciphertext, versionBuf); err != nil {
 		return fmt.Errorf("crypto: failed to read stream header: %w", err)
@@ -135,11 +182,13 @@ func (c *Cipher) DecryptStream(ciphertext io.Reader, dst io.Writer) error {
 	case StreamVersionLegacy2:
 		return c.decryptStreamLegacy(ciphertext, dst)
 	default:
-		return fmt.Errorf("%w: unsupported version %d", ErrStreamFormat, versionBuf[0])
+		return wrapStreamErr(ErrStreamFormat, "unsupported version %d", versionBuf[0])
 	}
 }
 
-func (c *Cipher) decryptStreamLegacy(ciphertext io.Reader, dst io.Writer) error {
+func (c *Cipher) decryptStreamLegacy(ciphertext io.Reader, dst io.Writer) (err error) {
+	defer recoverStreamErr(&err, "decryptStreamLegacy")
+
 	seed := make([]byte, streamSeedSize)
 	if _, err := io.ReadFull(ciphertext, seed); err != nil {
 		return fmt.Errorf("crypto: failed to read stream seed: %w", err)
@@ -163,7 +212,7 @@ func (c *Cipher) decryptStreamLegacy(ciphertext io.Reader, dst io.Writer) error 
 
 		sealedLen := binary.BigEndian.Uint32(lenBuf)
 		if sealedLen == 0 || sealedLen > uint32(MaxChunkSize) {
-			return fmt.Errorf("%w: invalid chunk size %d", ErrStreamFormat, sealedLen)
+			return wrapStreamErr(ErrStreamFormat, "invalid chunk size %d", sealedLen)
 		}
 
 		sealed := sealedBuf[:sealedLen]
@@ -189,7 +238,9 @@ func (c *Cipher) decryptStreamLegacy(ciphertext io.Reader, dst io.Writer) error 
 	return nil
 }
 
-func (c *Cipher) decryptStreamV3(ciphertext io.Reader, dst io.Writer) error {
+func (c *Cipher) decryptStreamV3(ciphertext io.Reader, dst io.Writer) (err error) {
+	defer recoverStreamErr(&err, "decryptStreamV3")
+
 	seed := make([]byte, streamSeedSize)
 	if _, err := io.ReadFull(ciphertext, seed); err != nil {
 		return fmt.Errorf("crypto: failed to read stream seed: %w", err)
@@ -205,17 +256,17 @@ func (c *Cipher) decryptStreamV3(ciphertext io.Reader, dst io.Writer) error {
 		sealedLen, err := readChunkLen(ciphertext, lenBuf)
 		if err == io.EOF {
 			// Encountered EOF before a footer: the stream was truncated.
-			return fmt.Errorf("%w: expected integrity footer after %d chunk(s)", ErrStreamTruncated, chunkIndex)
+			return wrapStreamErr(ErrStreamTruncated, "expected integrity footer after %d chunk(s)", chunkIndex)
 		}
 		if err != nil {
 			return err
 		}
 
 		if sealedLen > uint32(MaxChunkSize) {
-			return fmt.Errorf("%w: invalid chunk size %d", ErrStreamFormat, sealedLen)
+			return wrapStreamErr(ErrStreamFormat, "invalid chunk size %d", sealedLen)
 		}
 		if sealedLen == 0 {
-			return fmt.Errorf("%w: invalid zero-length chunk", ErrStreamFormat)
+			return wrapStreamErr(ErrStreamFormat, "invalid zero-length chunk")
 		}
 
 		sealed := sealedBuf[:sealedLen]
@@ -238,11 +289,11 @@ func (c *Cipher) decryptStreamV3(ciphertext io.Reader, dst io.Writer) error {
 			// It is the footer. Verify it encodes the exact number of data
 			// chunks seen, then end the stream.
 			if len(plaintext) != 4 {
-				return fmt.Errorf("%w: malformed stream footer", ErrStreamFormat)
+				return wrapStreamErr(ErrStreamFormat, "malformed stream footer")
 			}
 			footerCount := binary.BigEndian.Uint32(plaintext)
 			if footerCount != chunkIndex {
-				return fmt.Errorf("%w: footer chunk count %d != %d chunks decoded", ErrStreamFormat, footerCount, chunkIndex)
+				return wrapStreamErr(ErrStreamFormat, "footer chunk count %d != %d chunks decoded", footerCount, chunkIndex)
 			}
 			break
 		}
