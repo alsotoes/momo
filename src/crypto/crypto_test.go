@@ -3,6 +3,7 @@ package crypto
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"testing"
@@ -216,15 +217,109 @@ func TestEncryptStreamNonceNotReused(t *testing.T) {
 	}
 }
 
-func TestDecryptStreamRejectsLegacyVersion(t *testing.T) {
+func TestDecryptStreamRejectsUnsupportedVersion(t *testing.T) {
 	key, _ := GenerateKey()
 	c, _ := NewCipher(key)
 
-	// A v1 stream has no seed: header version 1 then chunk data.
+	// A v1 stream predates versioned formats; it must be rejected.
 	legacy := append([]byte{1}, bytes.Repeat([]byte{0xAA}, ChunkSize+NonceSize)...)
 	var decBuf bytes.Buffer
 	if err := c.DecryptStream(bytes.NewReader(legacy), &decBuf); !errors.Is(err, ErrStreamFormat) {
-		t.Fatalf("expected ErrStreamFormat for legacy stream, got: %v", err)
+		t.Fatalf("expected ErrStreamFormat for unsupported stream version, got: %v", err)
+	}
+}
+
+// TestDecryptStreamLegacyV2StillDecodes verifies that v2 blob fragments (which
+// predate the integrity footer) remain decryptable so pre-existing at-rest
+// blobs do not become unreadable after an upgrade.
+func TestDecryptStreamLegacyV2StillDecodes(t *testing.T) {
+	key, _ := GenerateKey()
+	c, _ := NewCipher(key)
+
+	// Craft a minimal valid v2 stream by hand: version byte 2, a fixed seed,
+	// then a single AEAD-sealed data chunk with nil AAD (no footer).
+	seed := bytes.Repeat([]byte{0x11}, streamSeedSize)
+	nonce := make([]byte, NonceSize)
+	copy(nonce[0:streamSeedSize], seed)
+	binary.BigEndian.PutUint32(nonce[streamSeedSize:], 0)
+
+	plaintext := []byte("legacy-blob-data")
+	sealed := c.aead.Seal(nil, nonce, plaintext, nil)
+
+	var stream bytes.Buffer
+	stream.WriteByte(StreamVersionLegacy2)
+	stream.Write(seed)
+	var lenBuf [ChunkHeader]byte
+	binary.BigEndian.PutUint32(lenBuf[:], uint32(len(sealed)))
+	stream.Write(lenBuf[:])
+	stream.Write(sealed)
+
+	var decBuf bytes.Buffer
+	if err := c.DecryptStream(&stream, &decBuf); err != nil {
+		t.Fatalf("DecryptStream rejected legacy v2 stream: %v", err)
+	}
+	if !bytes.Equal(decBuf.Bytes(), plaintext) {
+		t.Fatalf("v2 decode mismatch: got %q, want %q", decBuf.Bytes(), plaintext)
+	}
+}
+
+// TestDecryptStreamDetectsTruncation ensures a v3 stream whose trailing chunks
+// (including the integrity footer) are dropped is rejected instead of silently
+// returning partial plaintext.
+func TestDecryptStreamDetectsTruncation(t *testing.T) {
+	key, _ := GenerateKey()
+	c, _ := NewCipher(key)
+
+	plaintext := bytes.Repeat([]byte("T"), 3*ChunkSize+100)
+	var encBuf, decBuf bytes.Buffer
+	if err := c.EncryptStream(bytes.NewReader(plaintext), &encBuf); err != nil {
+		t.Fatalf("EncryptStream failed: %v", err)
+	}
+
+	// Drop the trailing footer chunk (4-byte length + sealed count + tag) to
+	// simulate truncation. The stream must then end cleanly at a data-chunk
+	// boundary so DecryptStream hits EOF while expecting the footer.
+	footerBytes := ChunkHeader + 4 + TagSize
+	truncated := encBuf.Bytes()[:len(encBuf.Bytes())-footerBytes]
+
+	if err := c.DecryptStream(bytes.NewReader(truncated), &decBuf); !errors.Is(err, ErrStreamTruncated) {
+		t.Fatalf("expected ErrStreamTruncated, got: %v", err)
+	}
+}
+
+// TestDecryptStreamRejectsFooterChunkCountMismatch ensures a forged footer that
+// authenticates with the wrong chunk count is rejected.
+func TestDecryptStreamRejectsFooterChunkCountMismatch(t *testing.T) {
+	key, _ := GenerateKey()
+	c, _ := NewCipher(key)
+
+	plaintext := bytes.Repeat([]byte("C"), 2*ChunkSize)
+	var encBuf, decBuf bytes.Buffer
+	if err := c.EncryptStream(bytes.NewReader(plaintext), &encBuf); err != nil {
+		t.Fatalf("EncryptStream failed: %v", err)
+	}
+
+	buf := encBuf.Bytes()
+
+	// Locate and re-seal the footer with an incorrect chunk count.
+	seed := buf[1 : 1+streamSeedSize]
+	nonce := make([]byte, NonceSize)
+	copy(nonce[0:streamSeedSize], seed)
+	binary.BigEndian.PutUint32(nonce[streamSeedSize:], footerNonceIndex)
+
+	var wrong [4]byte
+	binary.BigEndian.PutUint32(wrong[:], 12345)
+	badFooter := c.aead.Seal(nil, nonce, wrong[:], streamFooterAAD)
+
+	var forged bytes.Buffer
+	forged.Write(buf[:len(buf)-(ChunkHeader+4+TagSize)]) // drop original footer
+	var flen [ChunkHeader]byte
+	binary.BigEndian.PutUint32(flen[:], uint32(len(badFooter)))
+	forged.Write(flen[:])
+	forged.Write(badFooter)
+
+	if err := c.DecryptStream(&forged, &decBuf); !errors.Is(err, ErrStreamFormat) {
+		t.Fatalf("expected ErrStreamFormat for footer count mismatch, got: %v", err)
 	}
 }
 
