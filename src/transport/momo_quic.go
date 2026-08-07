@@ -654,7 +654,7 @@ func (m *MomoQUICCommunicator) ReceiveMetadata() (meta common.FileMetadata, err 
 	// ⚡ Bolt: Use common.TrimNullBytesString to eliminate string allocation overhead
 	metadata.Hash = common.SanitizeLog(common.TrimNullBytesString(buffer[:hashLength]))
 	// 🛡️ Sentinel: Sanitize hash immediately to prevent path traversal in all downstream consumers.
-	if common.HasPathTraversalChars(metadata.Hash) {
+	if metadata.Hash == "" || common.HasPathTraversalChars(metadata.Hash) {
 		return common.FileMetadata{}, fmt.Errorf("invalid hash: %s: %w", metadata.Hash, syscall.EBADMSG)
 	}
 	// ⚡ Bolt: Use common.TrimNullBytesString to eliminate string allocation overhead
