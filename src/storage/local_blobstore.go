@@ -71,7 +71,9 @@ func (b *LocalBlobStore) PutBlob(hash string, content io.Reader) (err error) {
 	if _, err := io.Copy(writer, content); err != nil {
 		tmpFile.Close()
 		os.Remove(tmpPath)
-		return fmt.Errorf("storage error: failed to write blob: %w", syscall.ENOSPC)
+		// Preserve the real error (e.g. a read error from content, or the
+		// write-side syscall like ENOSPC) instead of masking it as ENOSPC.
+		return fmt.Errorf("storage error: failed to write blob: %v: %w", err, syscall.EIO)
 	}
 
 	if err := writer.Flush(); err != nil {

@@ -2,8 +2,11 @@ package storage
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"os"
+	"strings"
+	"syscall"
 	"testing"
 
 	"go.uber.org/goleak"
@@ -215,5 +218,66 @@ func TestLocalBlobStore_PathTraversal(t *testing.T) {
 	// Double check that PutBlob is also correctly failing
 	if err := store.PutBlob(badHash, bytes.NewReader([]byte("test"))); err == nil {
 		t.Errorf("PutBlob with path traversal should fail")
+	}
+}
+
+// failingReader returns an error after n bytes, simulating a source read
+// failure (e.g. network error or context cancellation) mid-stream.
+type failingReader struct {
+	remaining int
+}
+
+func (r *failingReader) Read(p []byte) (int, error) {
+	if r.remaining <= 0 {
+		return 0, syscall.ECONNRESET
+	}
+	if len(p) > r.remaining {
+		p = p[:r.remaining]
+	}
+	r.remaining -= len(p)
+	return len(p), nil
+}
+
+func TestLocalBlobStore_PutBlobSurfacesSourceReadError(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	tmpDir, err := os.MkdirTemp("", "momo-local-blob-rd-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	store, err := NewLocalBlobStore(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to create LocalBlobStore: %v", err)
+	}
+	defer store.Close()
+
+	hash := "readerrorhash1234567890abcd"
+
+	// The source read fails partway through; PutBlob must surface that error
+	// instead of masking it as ENOSPC.
+	err = store.PutBlob(hash, &failingReader{remaining: 10})
+	if err == nil {
+		t.Fatal("PutBlob should fail when the source reader errors")
+	}
+	if errors.Is(err, syscall.ENOSPC) {
+		t.Fatalf("PutBlob masked the source read error as ENOSPC: %v", err)
+	}
+	if !errors.Is(err, syscall.EIO) {
+		t.Fatalf("PutBlob error should chain syscall.EIO, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), syscall.ECONNRESET.Error()) {
+		t.Fatalf("PutBlob error should mention the underlying cause (%v), got: %v", syscall.ECONNRESET, err)
+	}
+
+	// No temp files should be left behind on the failure path.
+	entries, err := os.ReadDir(tmpDir)
+	if err != nil {
+		t.Fatalf("ReadDir failed: %v", err)
+	}
+	for _, e := range entries {
+		if bytes.HasPrefix([]byte(e.Name()), []byte("blob-")) && bytes.HasSuffix([]byte(e.Name()), []byte(".tmp")) {
+			t.Errorf("Temp file leaked after PutBlob error: %s", e.Name())
+		}
 	}
 }
