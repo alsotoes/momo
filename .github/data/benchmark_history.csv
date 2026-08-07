@@ -2673,3 +2673,12 @@ c6f3baa,BenchmarkLoadGlobalConfig-8,10649.00,1312.00,37.00
 c6f3baa,BenchmarkPadString-8,2.60,0.00,0.00
 c6f3baa,BenchmarkSanitizeLog/Safe-8,747.10,0.00,0.00
 c6f3baa,BenchmarkSanitizeLog/Unsafe-8,1432.00,704.00,1.00
+caca111,BenchmarkCheckMetricsAndSwap-8,10.02,0.00,0.00
+caca111,BenchmarkCrushOptimized-8,342.00,0.00,0.00
+caca111,BenchmarkCrushOriginal-8,502.70,164.00,3.00
+caca111,BenchmarkIndexDirectTracking-8,0.34,0.00,0.00
+caca111,BenchmarkIndexSearch-8,3.21,0.00,0.00
+caca111,BenchmarkLoadGlobalConfig-8,7011.00,1312.00,37.00
+caca111,BenchmarkPadString-8,2.42,0.00,0.00
+caca111,BenchmarkSanitizeLog/Safe-8,627.80,0.00,0.00
+caca111,BenchmarkSanitizeLog/Unsafe-8,840.90,704.00,1.00

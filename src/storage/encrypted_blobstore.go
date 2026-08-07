@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -48,8 +49,14 @@ func (e *EncryptedBlobStore) PutBlob(hash string, content io.Reader) (err error)
 	// memory. EncryptStream reads in 4KB chunks and writes to a pipe,
 	// so the inner store receives ciphertext in a streaming fashion.
 	pr, pw := io.Pipe()
+	// 🛡️ Goroutine-leak guard (Rule 5): if PutBlob below fails, cancel the
+	// encryption goroutine so it doesn't hang indefinitely reading from
+	// `content` (e.g. waiting for network data) after the pipe is closed.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	go func() {
-		if err := e.cipher.EncryptStream(content, pw); err != nil {
+		if err := e.cipher.EncryptStream(ctxReader{ctx: ctx, r: content}, pw); err != nil {
 			pw.CloseWithError(fmt.Errorf("encryption failed: %w", err))
 			return
 		}
@@ -110,4 +117,23 @@ func (e *EncryptedBlobStore) DeleteBlob(hash string) error {
 // Close closes the underlying BlobStore.
 func (e *EncryptedBlobStore) Close() error {
 	return e.inner.Close()
+}
+
+// ctxReader wraps an io.Reader so that a blocked Read returns immediately once
+// the given context is cancelled. This prevents the PutBlob encryption
+// goroutine from hanging indefinitely if the underlying content reader blocks
+// (e.g. waiting for network data) after the pipe has been closed.
+type ctxReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (c ctxReader) Read(p []byte) (int, error) {
+	select {
+	case <-c.ctx.Done():
+		return 0, c.ctx.Err()
+	default:
+	}
+	n, err := c.r.Read(p)
+	return n, err
 }
