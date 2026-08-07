@@ -2,6 +2,7 @@ package common
 
 import (
 	"bytes"
+	"fmt"
 	"path"
 	"strconv"
 	"strings"
@@ -44,13 +45,19 @@ func HasPathTraversalChars(s string) bool {
 	return false
 }
 
-// PadString pads or truncates a string to the given length.
+// PadString pads a string with null bytes to the given length.
+// Overlong input is a programming error that would silently corrupt wire
+// fields (hashes, auth tokens, names). Failing loudly via panic (Rule 37:
+// recovered at caller boundaries) is safer than silent truncation (Rule 4).
 func PadString(input string, length int) string {
 	if length < 0 {
 		return input
 	}
-	if len(input) >= length {
-		return input[:length]
+	if len(input) > length {
+		panic(fmt.Sprintf("PadString: input length %d exceeds length %d", len(input), length))
+	}
+	if len(input) == length {
+		return input
 	}
 	b := make([]byte, length)
 	copy(b, input)

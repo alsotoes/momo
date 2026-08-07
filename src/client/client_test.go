@@ -26,7 +26,6 @@ func TestPadString(t *testing.T) {
 	}{
 		{"test", 10, "test\x00\x00\x00\x00\x00\x00"},
 		{"test", 4, "test"},
-		{"longstring", 5, "longs"},
 	}
 
 	for _, tc := range testCases {
@@ -35,6 +34,15 @@ func TestPadString(t *testing.T) {
 			t.Errorf("Expected '%s', got '%s'", tc.expected, result)
 		}
 	}
+}
+
+func TestPadStringOverlongPanics(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("padString overlong input should panic")
+		}
+	}()
+	common.PadString("longstring", 5)
 }
 
 func startMockServer(t *testing.T, authToken string, expectedMode int, delay time.Duration) (string, net.Listener) {
