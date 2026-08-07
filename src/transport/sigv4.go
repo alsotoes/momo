@@ -225,7 +225,14 @@ var emptyStringSHA256 = hexSHA256(nil)
 
 var sigV4MaxSkew = 15 * time.Minute // max allowed clock skew for X-Amz-Date (replay attack prevention)
 
-func verifySigV4Timestamp(amzDate string) bool {
+func verifySigV4Timestamp(amzDate string) (ok bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in verifySigV4Timestamp: %v", r)
+			ok = false
+		}
+	}()
+
 	parsedTime, err := time.Parse("20060102T150405Z", amzDate)
 	if err != nil {
 		log.Printf("AUDIT: SigV4 rejected unparseable X-Amz-Date %q: %v", amzDate, err)
@@ -243,6 +250,9 @@ func verifySigV4Timestamp(amzDate string) bool {
 	return true
 }
 
+// verifySigV4Signature validates the SigV4 signature and timestamp freshness.
+// Returns bool (consistent with hmac.Equal); the caller in HandshakeServer
+// maps false → syscall.EACCES per Rule 10 (POSIX Error Mapping).
 func verifySigV4Signature(req *http.Request, authHeader, secretKey string) bool {
 	components, ok := parseSigV4AuthHeader(authHeader)
 	if !ok {
