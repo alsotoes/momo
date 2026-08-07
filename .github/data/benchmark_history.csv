@@ -2736,3 +2736,12 @@ caca111,BenchmarkSanitizeLog/Unsafe-8,840.90,704.00,1.00
 24e5c28,BenchmarkPadString-8,2.62,0.00,0.00
 24e5c28,BenchmarkSanitizeLog/Safe-8,535.30,0.00,0.00
 24e5c28,BenchmarkSanitizeLog/Unsafe-8,925.90,704.00,1.00
+51102d9,BenchmarkCheckMetricsAndSwap-8,11.53,0.00,0.00
+51102d9,BenchmarkCrushOptimized-8,375.20,0.00,0.00
+51102d9,BenchmarkCrushOriginal-8,522.70,164.00,3.00
+51102d9,BenchmarkIndexDirectTracking-8,0.34,0.00,0.00
+51102d9,BenchmarkIndexSearch-8,3.50,0.00,0.00
+51102d9,BenchmarkLoadGlobalConfig-8,7276.00,1312.00,37.00
+51102d9,BenchmarkPadString-8,2.26,0.00,0.00
+51102d9,BenchmarkSanitizeLog/Safe-8,662.90,0.00,0.00
+51102d9,BenchmarkSanitizeLog/Unsafe-8,1017.00,704.00,1.00
