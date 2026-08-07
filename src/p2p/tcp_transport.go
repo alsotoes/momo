@@ -201,7 +201,14 @@ func (t *TCPTransport) Dial(id int32, addr string) (*Peer, error) {
 // Connect establishes an outbound connection to an already-registered peer.
 // It is used to wire up peers discovered via gossip membership updates that
 // were added to the peer map without a live connection.
-func (t *TCPTransport) Connect(peer *Peer) error {
+func (t *TCPTransport) Connect(peer *Peer) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in Connect to peer %d: %v: %w", peer.ID, r, syscall.EIO)
+			log.Printf("CRITICAL: %v", err)
+		}
+	}()
+
 	if peer == nil {
 		return fmt.Errorf("cannot connect nil peer: %w", syscall.EINVAL)
 	}
@@ -214,10 +221,18 @@ func (t *TCPTransport) Connect(peer *Peer) error {
 		return fmt.Errorf("p2p dial %s failed: %v: %w", peer.Addr, err, syscall.ECONNREFUSED)
 	}
 
+	// Ownership of conn transfers to the readLoop once started. Until then,
+	// ensure the socket is closed on any error or panic to avoid a zombie conn.
+	transferred := false
+	defer func() {
+		if !transferred {
+			conn.Close()
+		}
+	}()
+
 	t.mu.Lock()
 	if t.closed {
 		t.mu.Unlock()
-		conn.Close()
 		return fmt.Errorf("transport closed: %w", syscall.ECONNREFUSED)
 	}
 	t.conns[conn] = struct{}{}
@@ -226,6 +241,7 @@ func (t *TCPTransport) Connect(peer *Peer) error {
 
 	peer.SetConn(conn)
 	go t.readLoop(peer.ID, conn)
+	transferred = true
 
 	log.Printf("P2P connected to discovered peer %d at %s", peer.ID, peer.Addr)
 	return nil
