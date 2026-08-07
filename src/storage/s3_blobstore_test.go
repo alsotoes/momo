@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/alsotoes/momo/src/common"
 	"go.uber.org/goleak"
@@ -185,6 +186,86 @@ func TestS3BlobStore_ValidationErrors(t *testing.T) {
 				t.Errorf("Expected validation error")
 			}
 		})
+	}
+}
+
+func TestS3BlobStore_NoOverallClientTimeout(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	server, _ := mockS3Server(t)
+	defer server.Close()
+
+	cfg := common.ConfigurationStorage{
+		Backend:     "s3",
+		S3Endpoint:  server.URL,
+		S3Region:    "us-east-1",
+		S3Bucket:    "test-bucket",
+		S3AccessKey: "AKIAIOSFODNN7EXAMPLE",                     // notsecret
+		S3SecretKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", // notsecret
+		S3PathStyle: true,
+	}
+
+	store, err := NewS3BlobStore(cfg)
+	if err != nil {
+		t.Fatalf("NewS3BlobStore failed: %v", err)
+	}
+	defer store.Close()
+
+	if store.client.Timeout != 0 {
+		t.Errorf("http.Client.Timeout must be zero (would abort slow large downloads); got %v", store.client.Timeout)
+	}
+	transport, ok := store.client.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("expected *http.Transport, got %T", store.client.Transport)
+	}
+	if transport.DialContext == nil || transport.ResponseHeaderTimeout == 0 {
+		t.Errorf("expected dial and response-header timeouts to be configured, got DialContext=%v ResponseHeaderTimeout=%v",
+			transport.DialContext != nil, transport.ResponseHeaderTimeout)
+	}
+
+	// A slow-but-steady streamed download must succeed; previously the overall
+	// http.Client.Timeout covered the body read and would abort a slow transfer.
+	const totalBytes = 1024 * 1024
+	const segment = 16 * 1024
+	const segmentCount = totalBytes / segment
+
+	server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		for i := 0; i < segmentCount; i++ {
+			time.Sleep(2 * time.Millisecond)
+			if _, err := w.Write(make([]byte, segment)); err != nil {
+				return
+			}
+		}
+	}))
+	defer server2.Close()
+
+	cfg2 := common.ConfigurationStorage{
+		Backend:     "s3",
+		S3Endpoint:  server2.URL,
+		S3Region:    "us-east-1",
+		S3Bucket:    "test-bucket",
+		S3AccessKey: "AKIAIOSFODNN7EXAMPLE",                     // notsecret
+		S3SecretKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", // notsecret
+		S3PathStyle: true,
+	}
+	store2, err := NewS3BlobStore(cfg2)
+	if err != nil {
+		t.Fatalf("NewS3BlobStore failed: %v", err)
+	}
+	defer store2.Close()
+
+	reader, err := store2.GetBlob("slow-blob")
+	if err != nil {
+		t.Fatalf("GetBlob over slow connection failed: %v", err)
+	}
+	defer reader.Close()
+	got, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("failed reading slow blob: %v", err)
+	}
+	if len(got) != totalBytes {
+		t.Errorf("size mismatch: got %d, want %d", len(got), totalBytes)
 	}
 }
 
