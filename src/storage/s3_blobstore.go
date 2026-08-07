@@ -98,7 +98,7 @@ func (s *S3BlobStore) PutBlob(hash string, content io.Reader) (err error) {
 	if err != nil {
 		return fmt.Errorf("s3: PUT request failed: %w", syscall.ECONNREFUSED)
 	}
-	defer resp.Body.Close()
+	defer drainAndClose(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("s3: PUT failed with status %d: %w", resp.StatusCode, syscall.EIO)
@@ -136,11 +136,11 @@ func (s *S3BlobStore) GetBlob(hash string) (io.ReadCloser, error) {
 	}
 
 	if resp.StatusCode == http.StatusNotFound {
-		resp.Body.Close()
+		drainAndClose(resp.Body)
 		return nil, syscall.ENOENT
 	}
 	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
+		drainAndClose(resp.Body)
 		return nil, fmt.Errorf("s3: GET failed with status %d: %w", resp.StatusCode, syscall.EIO)
 	}
 	return resp.Body, nil
@@ -158,7 +158,7 @@ func (s *S3BlobStore) DeleteBlob(hash string) error {
 	if err != nil {
 		return fmt.Errorf("s3: DELETE request failed: %w", syscall.ECONNREFUSED)
 	}
-	defer resp.Body.Close()
+	defer drainAndClose(resp.Body)
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil
@@ -169,15 +169,25 @@ func (s *S3BlobStore) DeleteBlob(hash string) error {
 	return nil
 }
 
+// drainAndClose discards any remaining response body before closing it so the
+// underlying HTTP connection can be returned to the transport pool.
+// Necessary for reusing secure (TLS) connections for error responses -- AWS S3
+// may send a non-empty error body even for 4xx/5xx. The body is bounded with
+// io.LimitReader to prevent unbounded memory consumption (Rule 4).
+func drainAndClose(body io.ReadCloser) {
+	_, _ = io.Copy(io.Discard, io.LimitReader(body, 4096))
+	_ = body.Close()
+}
+
 // newRequest builds an HTTP request for the given method and object key.
 func (s *S3BlobStore) newRequest(method, key string, body io.Reader, payloadHash string) (req *http.Request, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("panic building new request: %v", r)
+			log.Printf("CRITICAL: Recovered from panic in S3BlobStore.newRequest: %v", r)
 			if closer, ok := body.(io.ReadCloser); ok {
 				closer.Close()
 			}
-			err = syscall.EIO
+			err = fmt.Errorf("panic in S3BlobStore.newRequest: %v: %w", r, syscall.EIO)
 		}
 	}()
 
