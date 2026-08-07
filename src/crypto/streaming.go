@@ -6,25 +6,87 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
+	"syscall"
+
+	"golang.org/x/sys/unix"
 )
 
 const (
 	ChunkSize     = 4096
 	ChunkHeader   = 4
 	MaxChunkSize  = ChunkSize + ChunkHeader + NonceSize + TagSize
-	StreamVersion = 2
+	StreamVersion = 3
 
 	// streamSeedSize is the number of random bytes seeded per stream. It is
 	// XORed into the first part of the nonce so that a (key, nonce) pair is
 	// never reused across streams for the same key.
 	streamSeedSize = 8
+
+	// StreamVersionLegacy2 is the prior stream format that had no integrity
+	// footer. It is still decoded (insecure against truncation) for backward
+	// compatibility with blobs written before the footer was added.
+	StreamVersionLegacy2 = 2
 )
+
+// streamFooterAAD is the AEAD additional authenticated data bound to the
+// stream footer chunk. It is intentionally domain-separated from data chunks
+// (whose AAD is nil) so DecryptStream can distinguish the final footer from a
+// regular ciphertext chunk.
+var streamFooterAAD = []byte("momo:stream-footer:v1")
 
 var (
-	ErrStreamFormat = errors.New("crypto: invalid stream format")
+	ErrStreamFormat    = &streamError{posix: unix.EBADMSG, domain: errors.New("crypto: invalid stream format")}
+	ErrStreamTruncated = &streamError{posix: unix.EIO, domain: errors.New("crypto: stream truncated (integrity footer missing)")}
 )
 
-func (c *Cipher) EncryptStream(plaintext io.Reader, dst io.Writer) error {
+// streamError is a domain error that also unwraps to a POSIX constant so the
+// storage layer can match on both the stream sentinel and the underlying
+// syscall via errors.Is (Rule 10/42).
+type streamError struct {
+	posix  error
+	domain error
+}
+
+func (e *streamError) Error() string {
+	return e.domain.Error()
+}
+
+func (e *streamError) Unwrap() []error {
+	return []error{e.posix, e.domain}
+}
+
+func (e *streamError) Is(target error) bool {
+	return target == e.posix || target == e.domain
+}
+
+// wrapStreamErr annotates a stream error with context while preserving
+// errors.Is matching against both the POSIX constant and the domain sentinel.
+func wrapStreamErr(e error, format string, args ...any) error {
+	if se, ok := e.(*streamError); ok {
+		return fmt.Errorf("%s: %w", fmt.Sprintf(format, args...), se)
+	}
+	return fmt.Errorf("%s: %w", fmt.Sprintf(format, args...), e)
+}
+
+// recoverStreamErr is the unified panic-recovery helper for the streaming
+// cipher functions. It maps any panic to syscall.EIO so an unexpected runtime
+// panic cannot crash the daemon (Rule 37).
+func recoverStreamErr(err *error, op string) {
+	if r := recover(); r != nil {
+		log.Printf("CRITICAL: Panic recovered in %s: %v", op, r)
+		*err = fmt.Errorf("panic in %s: %v: %w", op, r, syscall.EIO)
+	}
+}
+
+// footerNonceIndex marks the AEAD nonce index used for the stream footer. It is
+// deliberately distinct from any data-chunk index so an attacker cannot forge
+// or reorder a footer as a regular chunk, and vice versa.
+const footerNonceIndex = 0xFFFFFFFF
+
+func (c *Cipher) EncryptStream(plaintext io.Reader, dst io.Writer) (err error) {
+	defer recoverStreamErr(&err, "EncryptStream")
+
 	header := []byte{StreamVersion}
 	if _, err := dst.Write(header); err != nil {
 		return fmt.Errorf("crypto: failed to write stream header: %w", err)
@@ -77,32 +139,55 @@ func (c *Cipher) EncryptStream(plaintext io.Reader, dst io.Writer) error {
 		}
 	}
 
-	if chunkIndex == 0 {
-		copy(nonce[0:streamSeedSize], seed)
-		sealed := c.aead.Seal(sealedBuf[:0], nonce, nil, nil)
+	// 🛡️ Stream integrity footer: a final AEAD-authenticated chunk that binds
+	// the number of data chunks. DecryptStream requires it, so a stream that is
+	// truncated (trailing chunks removed) now fails instead of silently
+	// returning partial plaintext.
+	return writeStreamFooter(c, dst, seed, nonce, lenBuf, sealedBuf, buf, chunkIndex)
+}
 
-		binary.BigEndian.PutUint32(lenBuf, uint32(len(sealed)))
+// writeStreamFooter appends the authenticated footer chunk for a stream that
+// produced chunkCount data chunks. The plaintext container param is the
+// loop's 4KB chunk buffer, reused so the footer adds no heap allocation.
+func writeStreamFooter(c *Cipher, dst io.Writer, seed, nonce, lenBuf, sealedBuf, plainBuf []byte, chunkCount uint32) error {
+	copy(nonce[0:streamSeedSize], seed)
+	binary.BigEndian.PutUint32(nonce[streamSeedSize:], footerNonceIndex)
 
-		if _, err := dst.Write(lenBuf); err != nil {
-			return fmt.Errorf("crypto: failed to write empty chunk length: %w", err)
-		}
-		if _, err := dst.Write(sealed); err != nil {
-			return fmt.Errorf("crypto: failed to write empty chunk ciphertext: %w", err)
-		}
+	binary.BigEndian.PutUint32(plainBuf[0:4], chunkCount)
+
+	sealed := c.aead.Seal(sealedBuf[:0], nonce, plainBuf[0:4], streamFooterAAD)
+
+	binary.BigEndian.PutUint32(lenBuf, uint32(len(sealed)))
+
+	if _, err := dst.Write(lenBuf); err != nil {
+		return fmt.Errorf("crypto: failed to write stream footer length: %w", err)
 	}
-
+	if _, err := dst.Write(sealed); err != nil {
+		return fmt.Errorf("crypto: failed to write stream footer ciphertext: %w", err)
+	}
 	return nil
 }
 
-func (c *Cipher) DecryptStream(ciphertext io.Reader, dst io.Writer) error {
+func (c *Cipher) DecryptStream(ciphertext io.Reader, dst io.Writer) (err error) {
+	defer recoverStreamErr(&err, "DecryptStream")
+
 	versionBuf := make([]byte, 1)
 	if _, err := io.ReadFull(ciphertext, versionBuf); err != nil {
 		return fmt.Errorf("crypto: failed to read stream header: %w", err)
 	}
 
-	if versionBuf[0] != StreamVersion {
-		return fmt.Errorf("%w: unsupported version %d", ErrStreamFormat, versionBuf[0])
+	switch versionBuf[0] {
+	case StreamVersion:
+		return c.decryptStreamV3(ciphertext, dst)
+	case StreamVersionLegacy2:
+		return c.decryptStreamLegacy(ciphertext, dst)
+	default:
+		return wrapStreamErr(ErrStreamFormat, "unsupported version %d", versionBuf[0])
 	}
+}
+
+func (c *Cipher) decryptStreamLegacy(ciphertext io.Reader, dst io.Writer) (err error) {
+	defer recoverStreamErr(&err, "decryptStreamLegacy")
 
 	seed := make([]byte, streamSeedSize)
 	if _, err := io.ReadFull(ciphertext, seed); err != nil {
@@ -118,6 +203,7 @@ func (c *Cipher) DecryptStream(ciphertext io.Reader, dst io.Writer) error {
 	for {
 		_, err := io.ReadFull(ciphertext, lenBuf)
 		if err == io.EOF {
+			// Legacy format has no integrity footer — cannot detect truncation.
 			break
 		}
 		if err != nil {
@@ -126,7 +212,7 @@ func (c *Cipher) DecryptStream(ciphertext io.Reader, dst io.Writer) error {
 
 		sealedLen := binary.BigEndian.Uint32(lenBuf)
 		if sealedLen == 0 || sealedLen > uint32(MaxChunkSize) {
-			return fmt.Errorf("%w: invalid chunk size %d", ErrStreamFormat, sealedLen)
+			return wrapStreamErr(ErrStreamFormat, "invalid chunk size %d", sealedLen)
 		}
 
 		sealed := sealedBuf[:sealedLen]
@@ -150,4 +236,90 @@ func (c *Cipher) DecryptStream(ciphertext io.Reader, dst io.Writer) error {
 	}
 
 	return nil
+}
+
+func (c *Cipher) decryptStreamV3(ciphertext io.Reader, dst io.Writer) (err error) {
+	defer recoverStreamErr(&err, "decryptStreamV3")
+
+	seed := make([]byte, streamSeedSize)
+	if _, err := io.ReadFull(ciphertext, seed); err != nil {
+		return fmt.Errorf("crypto: failed to read stream seed: %w", err)
+	}
+
+	lenBuf := make([]byte, ChunkHeader)
+	nonce := make([]byte, NonceSize)
+	sealedBuf := make([]byte, MaxChunkSize)
+	plaintextBuf := make([]byte, 0, ChunkSize)
+	chunkIndex := uint32(0)
+
+	for {
+		sealedLen, err := readChunkLen(ciphertext, lenBuf)
+		if err == io.EOF {
+			// Encountered EOF before a footer: the stream was truncated.
+			return wrapStreamErr(ErrStreamTruncated, "expected integrity footer after %d chunk(s)", chunkIndex)
+		}
+		if err != nil {
+			return err
+		}
+
+		if sealedLen > uint32(MaxChunkSize) {
+			return wrapStreamErr(ErrStreamFormat, "invalid chunk size %d", sealedLen)
+		}
+		if sealedLen == 0 {
+			return wrapStreamErr(ErrStreamFormat, "invalid zero-length chunk")
+		}
+
+		sealed := sealedBuf[:sealedLen]
+		if _, err := io.ReadFull(ciphertext, sealed); err != nil {
+			return fmt.Errorf("crypto: failed to read chunk ciphertext: %w", err)
+		}
+
+		// Data chunk nonce.
+		copy(nonce[0:streamSeedSize], seed)
+		binary.BigEndian.PutUint32(nonce[streamSeedSize:], chunkIndex)
+
+		plaintext, err := c.aead.Open(plaintextBuf[:0], nonce, sealed, nil)
+		if err != nil {
+			// Data-AAD verification failed. It might be the stream footer —
+			// retry with the footer nonce/AAD before declaring tamper.
+			plaintext, err = c.aead.Open(plaintextBuf[:0], footerNonce(nonce, seed), sealed, streamFooterAAD)
+			if err != nil {
+				return ErrTampered
+			}
+			// It is the footer. Verify it encodes the exact number of data
+			// chunks seen, then end the stream.
+			if len(plaintext) != 4 {
+				return wrapStreamErr(ErrStreamFormat, "malformed stream footer")
+			}
+			footerCount := binary.BigEndian.Uint32(plaintext)
+			if footerCount != chunkIndex {
+				return wrapStreamErr(ErrStreamFormat, "footer chunk count %d != %d chunks decoded", footerCount, chunkIndex)
+			}
+			break
+		}
+
+		if _, err := dst.Write(plaintext); err != nil {
+			return fmt.Errorf("crypto: failed to write decrypted chunk: %w", err)
+		}
+
+		chunkIndex++
+	}
+
+	return nil
+}
+
+// readChunkLen reads a sealed chunk's length. It returns io.EOF when the stream
+// ends cleanly at an expectation of more data (used to detect truncation).
+func readChunkLen(r io.Reader, lenBuf []byte) (uint32, error) {
+	if _, err := io.ReadFull(r, lenBuf); err != nil {
+		return 0, err
+	}
+	return binary.BigEndian.Uint32(lenBuf), nil
+}
+
+// footerNonce rebuilds the nonce for the stream footer inside the shared buffer.
+func footerNonce(nonce, seed []byte) []byte {
+	copy(nonce[0:streamSeedSize], seed)
+	binary.BigEndian.PutUint32(nonce[streamSeedSize:], footerNonceIndex)
+	return nonce
 }

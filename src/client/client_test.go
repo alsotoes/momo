@@ -398,7 +398,7 @@ func TestSendFile_PanicRecovery(t *testing.T) {
 // client.Connect must stream encryption to a temp spool file (chunk-bounded
 // memory) rather than buffering the entire ciphertext in a bytes.Buffer.
 // It verifies that (1) the wire payload is ciphertext (starts with stream
-// version 0x02), (2) the plaintext never appears on the wire, and (3) the
+// version 0x02/0x03), (2) the plaintext never appears on the wire, and (3) the
 // temp spool is cleaned up after the upload.
 func TestConnect_EncryptionStreamsToSpool(t *testing.T) {
 	defer goleak.VerifyNone(t)
@@ -504,8 +504,8 @@ func TestConnect_EncryptionStreamsToSpool(t *testing.T) {
 		if len(payload) == 0 {
 			t.Fatal("Empty payload received")
 		}
-		if payload[0] != 0x02 {
-			t.Errorf("Expected payload to start with stream version 0x02, got 0x%02x", payload[0])
+		if payload[0] != 0x02 && payload[0] != 0x03 {
+			t.Errorf("Expected payload to start with stream version 0x02/0x03, got 0x%02x", payload[0])
 		}
 		if bytes.Contains(payload, []byte(plaintext)) {
 			t.Error("FAIL: Plaintext leaked to wire (not encrypted)")

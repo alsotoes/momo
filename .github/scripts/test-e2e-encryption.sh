@@ -8,7 +8,7 @@ set -e
 #   2. Uploads a file via the client (content is encrypted client-side)
 #   3. Verifies plaintext is NOT on any node's disk (zero-knowledge)
 #   4. Verifies ciphertext IS on the primary node's disk (blob stored)
-#   5. Verifies blob format starts with stream version byte 0x02
+#   5. Verifies blob format starts with a valid stream version byte (0x02/0x03)
 # Note: Replication to all nodes is tested by test-e2e.sh (without encryption).
 # Chain placement depends on the ciphertext hash, so the primary may be the
 # last node in the chain and not forward — only the primary is checked for blobs.
@@ -124,13 +124,14 @@ if [ "$TOTAL_BLOBS" -eq 0 ]; then
   FAIL=1
 fi
 
-# 3. Blob content must start with stream version byte 0x02 (EncryptStream header)
+# 3. Blob content must start with a valid stream version byte (EncryptStream
+#    header): 0x02 (legacy v2) or 0x03 (current v3 with integrity footer).
 if [ -n "$PRIMARY_SERVER" ]; then
   FIRST_BLOB=$(find "$E2E_DIR/$PRIMARY_SERVER/blobs" -type f 2>/dev/null | head -1)
   if [ -n "$FIRST_BLOB" ]; then
     FIRST_BYTE=$(xxd -l 1 -p "$FIRST_BLOB" 2>/dev/null)
-    if [ "$FIRST_BYTE" != "02" ]; then
-        echo "FAIL: Blob on Server $PRIMARY_SERVER does not start with stream version 0x02 (got 0x$FIRST_BYTE)"
+    if [ "$FIRST_BYTE" != "02" ] && [ "$FIRST_BYTE" != "03" ]; then
+        echo "FAIL: Blob on Server $PRIMARY_SERVER has unexpected stream version byte (got 0x$FIRST_BYTE, want 0x02 or 0x03)"
         FAIL=1
     fi
   fi
@@ -158,5 +159,5 @@ fi
 echo "All encryption properties verified:"
 echo "  - Plaintext NOT on any node's disk (zero-knowledge)"
 echo "  - Ciphertext stored on primary node"
-echo "  - Blob format correct (stream version 0x02 header)"
+echo "  - Blob format correct (stream version 0x02/0x03 header)"
 echo "E2E Encryption Test Passed ($PROTOCOL)!"
