@@ -77,8 +77,8 @@ FILE_SIZE=$(wc -c < $E2E_DIR/test_external.txt)
 
 # Compute real SigV4 signature for the PUT request
 TOKEN="a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"  # notsecret
-AMZ_DATE="20260727T120000Z"
-DATE_STAMP="20260727"
+AMZ_DATE=$(date -u +"%Y%m%dT%H%M%SZ")
+DATE_STAMP=$(date -u +"%Y%m%d")
 REGION="us-east-1"
 SIGNED_HEADERS="host;x-amz-content-sha256;x-amz-date"
 SIGNATURE=$(python3 -c "
