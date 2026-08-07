@@ -143,19 +143,19 @@ func (c *Cipher) EncryptStream(plaintext io.Reader, dst io.Writer) (err error) {
 	// the number of data chunks. DecryptStream requires it, so a stream that is
 	// truncated (trailing chunks removed) now fails instead of silently
 	// returning partial plaintext.
-	return writeStreamFooter(c, dst, seed, nonce, lenBuf, sealedBuf, chunkIndex)
+	return writeStreamFooter(c, dst, seed, nonce, lenBuf, sealedBuf, buf, chunkIndex)
 }
 
 // writeStreamFooter appends the authenticated footer chunk for a stream that
-// produced chunkCount data chunks.
-func writeStreamFooter(c *Cipher, dst io.Writer, seed, nonce, lenBuf, sealedBuf []byte, chunkCount uint32) error {
+// produced chunkCount data chunks. The plaintext container param is the
+// loop's 4KB chunk buffer, reused so the footer adds no heap allocation.
+func writeStreamFooter(c *Cipher, dst io.Writer, seed, nonce, lenBuf, sealedBuf, plainBuf []byte, chunkCount uint32) error {
 	copy(nonce[0:streamSeedSize], seed)
 	binary.BigEndian.PutUint32(nonce[streamSeedSize:], footerNonceIndex)
 
-	var countBuf [4]byte
-	binary.BigEndian.PutUint32(countBuf[:], chunkCount)
+	binary.BigEndian.PutUint32(plainBuf[0:4], chunkCount)
 
-	sealed := c.aead.Seal(sealedBuf[:0], nonce, countBuf[:], streamFooterAAD)
+	sealed := c.aead.Seal(sealedBuf[:0], nonce, plainBuf[0:4], streamFooterAAD)
 
 	binary.BigEndian.PutUint32(lenBuf, uint32(len(sealed)))
 
