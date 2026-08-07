@@ -223,7 +223,7 @@ func hexHMAC(key []byte, data string) string {
 
 var emptyStringSHA256 = hexSHA256(nil)
 
-var sigV4MaxSkew = 15 * time.Minute
+var sigV4MaxSkew = 15 * time.Minute // max allowed clock skew for X-Amz-Date (replay attack prevention)
 
 func verifySigV4Timestamp(amzDate string) bool {
 	parsedTime, err := time.Parse("20060102T150405Z", amzDate)
