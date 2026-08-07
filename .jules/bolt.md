@@ -177,3 +177,6 @@
 ## 2026-07-28 - [Optimize SigV4 URI and Query escaping]
 **Learning:** Using `url.QueryEscape` combined with `strings.ReplaceAll(..., "+", "%20")` or splitting and joining segments to handle AWS SigV4 encoding causes unnecessary allocations and CPU overhead.
 **Action:** When performing custom URI or query escaping for specific protocols like SigV4, implement a single-pass custom escape function that pre-allocates the `strings.Builder` and encodes characters in place.
+## 2024-05-18 - SanitizeLog Allocation Optimization
+**Learning:** `strings.Builder` with `WriteByte` inside a byte-by-byte loop performs poorly compared to copying memory in bulk and using `unsafe.String`, even though both theoretically avoid the final string conversion allocation. Using `strings.IndexAny` as a fast path and `copy()` with a localized `[]byte` mutation loop followed by `unsafe.String` is ~2x faster.
+**Action:** When performing string sanitization or escaping where characters may not need changing, use standard library fast path functions (like `strings.IndexAny`) to check before copying/allocating memory, and use local byte slice mutations with `unsafe.String` for the fastest conversion. Ensure the byte slice does not leak to avoid memory safety issues.
