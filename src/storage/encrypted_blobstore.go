@@ -56,6 +56,16 @@ func (e *EncryptedBlobStore) PutBlob(hash string, content io.Reader) (err error)
 	defer cancel()
 
 	go func() {
+		// 🛡️ Zero-Crash: A panic in this goroutine would crash the whole
+		// process — it is not covered by the outer function's recover. Recover
+		// and propagate the error through the pipe instead (Rule 37).
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("CRITICAL: Panic recovered in EncryptedBlobStore.PutBlob goroutine: %v", r)
+				pw.CloseWithError(fmt.Errorf("panic in encryption goroutine: %v: %w", r, syscall.EIO))
+			}
+		}()
+
 		if err := e.cipher.EncryptStream(ctxReader{ctx: ctx, r: content}, pw); err != nil {
 			pw.CloseWithError(fmt.Errorf("encryption failed: %w", err))
 			return
