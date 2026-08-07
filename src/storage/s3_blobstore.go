@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"path"
@@ -57,9 +58,22 @@ func NewS3BlobStore(cfg common.ConfigurationStorage) (*S3BlobStore, error) {
 		region = "us-east-1"
 	}
 
+	// Use a custom Transport with dial/response-header timeouts instead of an
+	// overall client timeout. http.Client.Timeout also covers the entire body
+	// read, which would abort large blob downloads (e.g. 1 GiB at 50 Mbit/s
+	// takes ~170s) even when the connection is healthy.
+	transport := &http.Transport{
+		DialContext:           (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+		ResponseHeaderTimeout: 30 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		IdleConnTimeout:       90 * time.Second,
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   10,
+	}
+
 	return &S3BlobStore{
 		client: &http.Client{
-			Timeout: 30 * time.Second,
+			Transport: transport,
 		},
 		endpoint:  strings.TrimRight(cfg.S3Endpoint, "/"),
 		region:    region,
@@ -71,6 +85,9 @@ func NewS3BlobStore(cfg common.ConfigurationStorage) (*S3BlobStore, error) {
 }
 
 func (s *S3BlobStore) Close() error {
+	if transport, ok := s.client.Transport.(*http.Transport); ok {
+		transport.CloseIdleConnections()
+	}
 	return nil
 }
 
