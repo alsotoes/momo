@@ -139,6 +139,73 @@ func TestTCPTransport_Broadcast(t *testing.T) {
 	}
 }
 
+func TestTCPTransport_Connect(t *testing.T) {
+	tr1 := NewTCPTransport(TCPTransportConfig{LocalID: 1})
+	tr2 := NewTCPTransport(TCPTransportConfig{LocalID: 2})
+	defer tr1.Close()
+	defer tr2.Close()
+
+	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	addr2 := ln.Addr().String()
+	ln.Close()
+
+	if err := tr2.Listen(addr2); err != nil {
+		t.Fatalf("tr2 Listen failed: %v", err)
+	}
+
+	peer := NewPeer(2, addr2)
+	if peer.Conn() != nil {
+		t.Fatal("expected new peer to have no connection")
+	}
+	tr1.Peers().Add(peer)
+
+	if err := tr1.Connect(peer); err != nil {
+		t.Fatalf("Connect failed: %v", err)
+	}
+	if peer.Conn() == nil {
+		t.Fatal("expected peer to have a connection after Connect")
+	}
+
+	rpc := &RPC{
+		From:    1,
+		Type:    MsgHeartbeat,
+		Payload: []byte("connected"),
+	}
+	if err := tr1.Send(2, rpc); err != nil {
+		t.Fatalf("Send after Connect failed: %v", err)
+	}
+
+	select {
+	case received := <-tr2.Consume():
+		if received.From != 1 {
+			t.Errorf("expected From=1, got %d", received.From)
+		}
+		if string(received.Payload) != "connected" {
+			t.Errorf("expected payload 'connected', got %q", received.Payload)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for RPC after Connect")
+	}
+}
+
+func TestTCPTransport_ConnectFailsOnUnreachable(t *testing.T) {
+	tr1 := NewTCPTransport(TCPTransportConfig{LocalID: 1})
+	defer tr1.Close()
+
+	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	unreachable := ln.Addr().String()
+	ln.Close()
+
+	peer := NewPeer(9, unreachable)
+	tr1.Peers().Add(peer)
+	if err := tr1.Connect(peer); err == nil {
+		t.Fatal("expected Connect to fail for unreachable address")
+	}
+	if peer.Conn() != nil {
+		t.Error("expected peer to remain unconnected after failed Connect")
+	}
+}
+
 func generateTestTLSConfig(t *testing.T) *tls.Config {
 	t.Helper()
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)

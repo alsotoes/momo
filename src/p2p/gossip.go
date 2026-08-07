@@ -661,6 +661,7 @@ func (g *Gossiper) handleHeartbeat(rpc *RPC) {
 			if onJoin != nil {
 				onJoin(peer)
 			}
+			g.connectToPeer(peer)
 		}
 	}
 
@@ -701,6 +702,7 @@ func (g *Gossiper) handleMembership(rpc *RPC) {
 			if onJoin != nil {
 				onJoin(peer)
 			}
+			g.connectToPeer(peer)
 		}
 	}
 }
@@ -728,6 +730,26 @@ func (g *Gossiper) handleSuspect(rpc *RPC) {
 			log.Printf("Gossip: peer %d marked SUSPECT via announcement from %d", suspectID, rpc.From)
 		}
 	}
+}
+
+// connectToPeer attempts to establish an outbound connection to a peer that was
+// discovered via gossip but added to the peer map without a live connection.
+// Dialing is non-blocking for the caller so the consumer loop is not stalled
+// when a heartbeat announces many new peers.
+func (g *Gossiper) connectToPeer(peer *Peer) {
+	if peer == nil || peer.Conn() != nil {
+		return
+	}
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("Gossip connectToPeer panic recovered: %v (errno=%d)", r, syscall.EIO)
+			}
+		}()
+		if err := g.transport.Connect(peer); err != nil {
+			log.Printf("Gossip: failed to connect to discovered peer %d at %s: %v (errno=%d)", peer.ID, peer.Addr, err, syscall.EHOSTUNREACH)
+		}
+	}()
 }
 
 // AnnounceJoin sends a membership announcement to all peers about a newly joined node.
