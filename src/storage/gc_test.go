@@ -327,6 +327,86 @@ func TestApplyTombstoneFromRemote(t *testing.T) {
 	}
 }
 
+func TestApplyTombstoneDeletesOrphanedBlobImmediately(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	tmpDir, err := os.MkdirTemp("", "momo-gc-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	store, err := NewCASStore(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to create CASStore: %v", err)
+	}
+	defer store.Close()
+
+	content := []byte("immediate delete")
+	hash := "555000111222333444555666777888"
+	store.Put("immediate.txt", hash, int64(len(content)), "", bytes.NewReader(content))
+
+	blobPath := store.getBlobPath(hash)
+	if _, err := os.Stat(blobPath); os.IsNotExist(err) {
+		t.Fatal("Blob file should exist before ApplyTombstone")
+	}
+
+	// Applying the only name's tombstone drops refcount to 0 → CVE-006 requires
+	// the blob content to be deleted immediately (not deferred to GC).
+	deletedAt := time.Now().UnixNano()
+	if err := store.ApplyTombstone("immediate.txt", deletedAt); err != nil {
+		t.Fatalf("ApplyTombstone failed: %v", err)
+	}
+
+	// Blob content must be gone immediately — no GC run needed.
+	if _, err := os.Stat(blobPath); !os.IsNotExist(err) {
+		t.Fatal("Blob file should be deleted immediately by ApplyTombstone (CVE-006)")
+	}
+
+	// Metadata entry should be removed too.
+	exists, _ := store.Has(hash)
+	if exists {
+		t.Fatal("Has should return false after ApplyTombstone orphaned the blob")
+	}
+}
+
+func TestApplyTombstoneKeepsBlobWhenShared(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	tmpDir, err := os.MkdirTemp("", "momo-gc-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	store, err := NewCASStore(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to create CASStore: %v", err)
+	}
+	defer store.Close()
+
+	content := []byte("shared remote delete")
+	hash := "666111222333444555666777888999"
+	store.Put("shared_a.txt", hash, int64(len(content)), "", bytes.NewReader(content))
+	store.Put("shared_b.txt", hash, int64(len(content)), "", bytes.NewReader(content))
+
+	// Apply tombstone to one name — refcount stays > 0 so blob must remain.
+	deletedAt := time.Now().UnixNano()
+	if err := store.ApplyTombstone("shared_a.txt", deletedAt); err != nil {
+		t.Fatalf("ApplyTombstone failed: %v", err)
+	}
+
+	blobPath := store.getBlobPath(hash)
+	if _, err := os.Stat(blobPath); os.IsNotExist(err) {
+		t.Fatal("Blob file removed while refcount > 0")
+	}
+
+	// The remaining name should still resolve.
+	rc, _, err := store.Get("shared_b.txt")
+	if err != nil {
+		t.Fatalf("Get shared_b.txt failed after ApplyTombstone: %v", err)
+	}
+	rc.Close()
+}
+
 func TestGCBackgroundSweeper(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	tmpDir, err := os.MkdirTemp("", "momo-gc-test-*")
