@@ -7,7 +7,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
+	"time"
+
+	"go.uber.org/goleak"
 )
 
 func testEncKey(t *testing.T) string {
@@ -303,5 +307,60 @@ func TestEncryptedBlobStore_InvalidKey(t *testing.T) {
 	_, err = NewEncryptedBlobStore(inner, "invalid-hex-key")
 	if err == nil {
 		t.Fatal("invalid key should fail")
+	}
+}
+
+// failingInnerStore is a BlobStore whose PutBlob always fails, simulating a
+// storage backend writing error (e.g. disk full) mid-write.
+type failingInnerStore struct {
+	putCalls atomic.Int32
+}
+
+func (f *failingInnerStore) PutBlob(hash string, content io.Reader) error {
+	f.putCalls.Add(1)
+	return os.ErrPermission
+}
+
+func (f *failingInnerStore) GetBlob(hash string) (io.ReadCloser, error) {
+	return nil, os.ErrNotExist
+}
+
+func (f *failingInnerStore) DeleteBlob(hash string) error { return nil }
+func (f *failingInnerStore) Close() error                 { return nil }
+
+// blockingReader never returns any data on Read. It simulates a content source
+// that is stuck (e.g. waiting for network data that never arrives).
+type blockingReader struct{}
+
+func (blockingReader) Read([]byte) (int, error) {
+	select {}
+}
+
+// TestEncryptedBlobStore_PutBlobNoGoroutineLeakOnError verifies that when
+// inner.PutBlob fails while the encryption goroutine is blocked reading the
+// content source, the goroutine is cancelled and does not leak.
+func TestEncryptedBlobStore_PutBlobNoGoroutineLeakOnError(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	enc, err := NewEncryptedBlobStore(&failingInnerStore{}, testEncKey(t))
+	if err != nil {
+		t.Fatalf("NewEncryptedBlobStore: %v", err)
+	}
+
+	// The content source blocks forever; without cancellation the encryption
+	// goroutine would hang. PutBlob must fail and release the goroutine.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		err := enc.PutBlob("somehash", blockingReader{})
+		if err == nil {
+			t.Error("PutBlob should fail when the inner store fails")
+		}
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("PutBlob did not return — encryption goroutine likely leaked")
 	}
 }
