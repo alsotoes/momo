@@ -430,9 +430,11 @@ func (s *CASStore) Delete(name string) (err error) {
 		if delErr := s.blobs.DeleteBlob(orphanedHash); delErr != nil {
 			log.Printf("AUDIT: Failed to delete orphaned blob %s: %v", orphanedHash, delErr)
 		} else {
-			_ = s.db.Update(func(tx *bbolt.Tx) error {
+			if metaErr := s.db.Update(func(tx *bbolt.Tx) error {
 				return tx.Bucket(bucketObjects).Delete([]byte(orphanedHash))
-			})
+			}); metaErr != nil {
+				log.Printf("AUDIT: Failed to remove metadata for orphaned blob %s: %v", orphanedHash, metaErr)
+			}
 		}
 	}
 	return nil
