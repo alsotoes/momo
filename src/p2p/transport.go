@@ -14,6 +14,9 @@ type Transport interface {
 	// Dial connects to a peer at the given address and returns the peer.
 	Dial(id int32, addr string) (*Peer, error)
 
+	// Connect establishes an outbound connection to an already-registered peer.
+	Connect(peer *Peer) error
+
 	// Consume returns the channel of incoming RPCs from all peers.
 	Consume() <-chan RPC
 

@@ -158,6 +158,14 @@ func (t *TCPTransport) handleConn(conn net.Conn) (err error) {
 	}
 }
 
+// dialAddr establishes a raw network connection to the given address.
+func (t *TCPTransport) dialAddr(addr string) (net.Conn, error) {
+	if t.cfg.TLSConfig != nil {
+		return tls.Dial("tcp", addr, t.cfg.TLSConfig)
+	}
+	return net.DialTimeout("tcp", addr, 5*time.Second)
+}
+
 // Dial connects to a peer at the given address.
 // If a peer with the same ID already exists, it returns the existing peer.
 func (t *TCPTransport) Dial(id int32, addr string) (*Peer, error) {
@@ -165,15 +173,9 @@ func (t *TCPTransport) Dial(id int32, addr string) (*Peer, error) {
 		return existing, nil
 	}
 
-	var conn net.Conn
-	var dialErr error
-	if t.cfg.TLSConfig != nil {
-		conn, dialErr = tls.Dial("tcp", addr, t.cfg.TLSConfig)
-	} else {
-		conn, dialErr = net.DialTimeout("tcp", addr, 5*time.Second)
-	}
-	if dialErr != nil {
-		return nil, fmt.Errorf("p2p dial %s failed: %v: %w", addr, dialErr, syscall.ECONNREFUSED)
+	conn, err := t.dialAddr(addr)
+	if err != nil {
+		return nil, fmt.Errorf("p2p dial %s failed: %v: %w", addr, err, syscall.ECONNREFUSED)
 	}
 
 	t.mu.Lock()
@@ -194,6 +196,55 @@ func (t *TCPTransport) Dial(id int32, addr string) (*Peer, error) {
 
 	log.Printf("P2P dialed peer %d at %s", id, addr)
 	return peer, nil
+}
+
+// Connect establishes an outbound connection to an already-registered peer.
+// It is used to wire up peers discovered via gossip membership updates that
+// were added to the peer map without a live connection.
+func (t *TCPTransport) Connect(peer *Peer) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in Connect to peer %d: %v: %w", peer.ID, r, syscall.EIO)
+			log.Printf("CRITICAL: %v", err)
+		}
+	}()
+
+	if peer == nil {
+		return fmt.Errorf("cannot connect nil peer: %w", syscall.EINVAL)
+	}
+	if peer.Conn() != nil {
+		return nil
+	}
+
+	conn, err := t.dialAddr(peer.Addr)
+	if err != nil {
+		return fmt.Errorf("p2p dial %s failed: %v: %w", peer.Addr, err, syscall.ECONNREFUSED)
+	}
+
+	// Ownership of conn transfers to the readLoop once started. Until then,
+	// ensure the socket is closed on any error or panic to avoid a zombie conn.
+	transferred := false
+	defer func() {
+		if !transferred {
+			conn.Close()
+		}
+	}()
+
+	t.mu.Lock()
+	if t.closed {
+		t.mu.Unlock()
+		return fmt.Errorf("transport closed: %w", syscall.ECONNREFUSED)
+	}
+	t.conns[conn] = struct{}{}
+	t.wg.Add(1)
+	t.mu.Unlock()
+
+	peer.SetConn(conn)
+	go t.readLoop(peer.ID, conn)
+	transferred = true
+
+	log.Printf("P2P connected to discovered peer %d at %s", peer.ID, peer.Addr)
+	return nil
 }
 
 // readLoop reads RPCs from a dialed connection.

@@ -124,3 +124,89 @@ func TestIntegration_NodeJoinAfterStart(t *testing.T) {
 		t.Error("node 2 should have discovered node 3 via gossip dissemination")
 	}
 }
+
+// TestIntegration_DynamicPeerGetsConnected verifies that a peer discovered via
+// gossip (not bootstrapped) is actually given a live connection, so that
+// Send/Broadcast to it does not fail with ENOTCONN (issue #598).
+func TestIntegration_DynamicPeerGetsConnected(t *testing.T) {
+	tr1 := NewTCPTransport(TCPTransportConfig{LocalID: 1})
+	tr2 := NewTCPTransport(TCPTransportConfig{LocalID: 2})
+	tr3 := NewTCPTransport(TCPTransportConfig{LocalID: 3})
+	defer tr1.Close()
+	defer tr2.Close()
+	defer tr3.Close()
+
+	getFreeAddr := func() string {
+		ln, _ := net.Listen("tcp", "127.0.0.1:0")
+		a := ln.Addr().String()
+		ln.Close()
+		return a
+	}
+	addr1 := getFreeAddr()
+	addr2 := getFreeAddr()
+	addr3 := getFreeAddr()
+
+	if err := tr1.Listen(addr1); err != nil {
+		t.Fatalf("tr1 Listen failed: %v", err)
+	}
+	if err := tr2.Listen(addr2); err != nil {
+		t.Fatalf("tr2 Listen failed: %v", err)
+	}
+	if err := tr3.Listen(addr3); err != nil {
+		t.Fatalf("tr3 Listen failed: %v", err)
+	}
+
+	cfg := GossipConfig{
+		HeartbeatInterval: 50 * time.Millisecond,
+		SuspicionTimeout:  2 * time.Second,
+		Fanout:            3,
+		PingTimeout:       100 * time.Millisecond,
+		IndirectPingCount: 3,
+		RTTAlpha:          0.25,
+	}
+	cfg1 := cfg
+	cfg1.LocalID = 1
+	cfg2 := cfg
+	cfg2.LocalID = 2
+	cfg3 := cfg
+	cfg3.LocalID = 3
+
+	g1 := NewGossiper(cfg1, tr1)
+	g2 := NewGossiper(cfg2, tr2)
+	g3 := NewGossiper(cfg3, tr3)
+	defer g1.Close()
+	defer g2.Close()
+	defer g3.Close()
+
+	// Node 1 bootstraps to nodes 2 and 3. Nodes 2 and 3 do NOT directly
+	// connect to each other; node 2 must discover node 3 purely via gossip.
+	if _, err := tr1.Dial(2, addr2); err != nil {
+		t.Fatalf("node 1 dial node 2 failed: %v", err)
+	}
+	if _, err := tr1.Dial(3, addr3); err != nil {
+		t.Fatalf("node 1 dial node 3 failed: %v", err)
+	}
+
+	g1.Run()
+	g2.Run()
+	g3.Run()
+
+	deadline := time.After(3 * time.Second)
+	for {
+		if peer := tr2.Peers().Get(3); peer != nil {
+			if peer.Conn() != nil {
+				break
+			}
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("node 2 never established a connection to discovered peer 3")
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+
+	// Sanity check the discovered peer on node 2 is dialable via Send.
+	if err := tr2.Send(3, &RPC{From: 2, Type: MsgHeartbeat, Payload: []byte("discovered")}); err != nil {
+		t.Fatalf("Send to dynamically discovered peer failed: %v", err)
+	}
+}
