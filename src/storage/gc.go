@@ -183,7 +183,8 @@ func (s *CASStore) ApplyTombstone(name string, deletedAt int64) (err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return s.db.Update(func(tx *bbolt.Tx) error {
+	var orphanedHash string
+	err = s.db.Update(func(tx *bbolt.Tx) error {
 		ts := tx.Bucket(bucketTombstones)
 		existing := ts.Get([]byte(name))
 		if existing != nil {
@@ -214,6 +215,10 @@ func (s *CASStore) ApplyTombstone(name string, deletedAt int64) (err error) {
 				if meta.RefCount <= 0 {
 					meta.RefCount = 0
 					meta.DeletedAt = deletedAt
+					// 🛡️ CVE-006: Mirror Delete's immediate-deletion intent. When
+					// refcount reaches 0 the blob is orphaned; record it so we can
+					// delete its content right after the transaction commits.
+					orphanedHash = hash
 				}
 				if err := obj.Put([]byte(hash), meta.encode()); err != nil {
 					return fmt.Errorf("metadata update error: %w", syscall.EIO)
@@ -228,4 +233,21 @@ func (s *CASStore) ApplyTombstone(name string, deletedAt int64) (err error) {
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+
+	// 🛡️ CVE-006: Immediately delete blob content when refcount reaches 0, same
+	// as CASStore.Delete. Performed outside the bbolt transaction to avoid
+	// blocking all db operations during potential network I/O (S3 backends).
+	if orphanedHash != "" {
+		if delErr := s.blobs.DeleteBlob(orphanedHash); delErr != nil {
+			log.Printf("AUDIT: Failed to delete orphaned blob %s: %v", orphanedHash, delErr)
+		} else if metaErr := s.db.Update(func(tx *bbolt.Tx) error {
+			return tx.Bucket(bucketObjects).Delete([]byte(orphanedHash))
+		}); metaErr != nil {
+			log.Printf("AUDIT: Failed to remove metadata for orphaned blob %s: %v", orphanedHash, metaErr)
+		}
+	}
+	return nil
 }
