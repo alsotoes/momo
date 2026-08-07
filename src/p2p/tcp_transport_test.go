@@ -8,6 +8,7 @@ import (
 	"crypto/x509/pkix"
 	"math/big"
 	"net"
+	"sync"
 	"testing"
 	"time"
 )
@@ -229,6 +230,56 @@ func TestTCPTransport_TLS(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timeout waiting for TLS RPC")
+	}
+}
+
+func TestTCPTransport_DialAfterClose(t *testing.T) {
+	tr := NewTCPTransport(TCPTransportConfig{LocalID: 1})
+
+	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	addr := ln.Addr().String()
+	ln.Close()
+
+	if err := tr.Listen(addr); err != nil {
+		t.Fatalf("Listen failed: %v", err)
+	}
+
+	if err := tr.Close(); err != nil {
+		t.Fatalf("Close failed: %v", err)
+	}
+
+	_, err := tr.Dial(2, addr)
+	if err == nil {
+		t.Fatal("expected error when Dialing after Close")
+	}
+}
+
+func TestTCPTransport_ConcurrentDialClose(t *testing.T) {
+	for i := 0; i < 100; i++ {
+		tr := NewTCPTransport(TCPTransportConfig{LocalID: 1})
+
+		ln, _ := net.Listen("tcp", "127.0.0.1:0")
+		addr := ln.Addr().String()
+		ln.Close()
+
+		if err := tr.Listen(addr); err != nil {
+			t.Fatalf("Listen failed: %v", err)
+		}
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+
+		go func() {
+			defer wg.Done()
+			tr.Dial(2, addr)
+		}()
+
+		go func() {
+			defer wg.Done()
+			tr.Close()
+		}()
+
+		wg.Wait()
 	}
 }
 

@@ -89,10 +89,15 @@ func (t *TCPTransport) acceptLoop() {
 		}
 
 		t.mu.Lock()
+		if t.closed {
+			t.mu.Unlock()
+			conn.Close()
+			continue
+		}
 		t.conns[conn] = struct{}{}
+		t.wg.Add(1)
 		t.mu.Unlock()
 
-		t.wg.Add(1)
 		go t.handleConn(conn)
 	}
 }
@@ -172,14 +177,19 @@ func (t *TCPTransport) Dial(id int32, addr string) (*Peer, error) {
 	}
 
 	t.mu.Lock()
+	if t.closed {
+		t.mu.Unlock()
+		conn.Close()
+		return nil, fmt.Errorf("transport closed: %w", syscall.ECONNREFUSED)
+	}
 	t.conns[conn] = struct{}{}
+	t.wg.Add(1)
 	t.mu.Unlock()
 
 	peer := NewPeer(id, addr)
 	peer.SetConn(conn)
 	t.peerMap.Add(peer)
 
-	t.wg.Add(1)
 	go t.readLoop(id, conn)
 
 	log.Printf("P2P dialed peer %d at %s", id, addr)
