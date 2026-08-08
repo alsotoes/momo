@@ -426,6 +426,20 @@ func TestS3Communicator_URLParsing(t *testing.T) {
 			expectedKey:    "file.txt",
 		},
 		{
+			name:           "Virtual host style localhost with port",
+			host:           "mybucket.localhost:9000",
+			path:           "/file.txt",
+			expectedBucket: "mybucket",
+			expectedKey:    "file.txt",
+		},
+		{
+			name:           "Virtual host style s3 with port",
+			host:           "mybucket.s3.amazonaws.com:9000",
+			path:           "/myfolder/file.txt",
+			expectedBucket: "mybucket",
+			expectedKey:    "myfolder/file.txt",
+		},
+		{
 			name:           "Virtual host style bucket root",
 			host:           "mybucket.s3.us-east-1.amazonaws.com",
 			path:           "/",
