@@ -156,6 +156,8 @@ func TestNormalizeVirtualPath(t *testing.T) {
 		{"Traversal segment", "customer01/../etc", "", true},
 		{"Traversal prefix", "../customer01", "", true},
 		{"Nested traversal", "a/b/../../c", "", true},
+		{"Null byte in segment", "file\x00.txt", "", true},
+		{"Null byte after slash", "customer01/doc\x00uments", "", true},
 	}
 
 	for _, tt := range tests {

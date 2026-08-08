@@ -77,7 +77,12 @@ func NormalizeVirtualPath(p string) (string, error) {
 		return "", nil
 	}
 
-	// Strictly reject path traversal segments (..) and backslashes
+	// Strictly reject path traversal segments (..), backslashes, and null bytes.
+	// Null bytes must be rejected: downstream C libraries, shells, or log
+	// aggregators would truncate the path at the first \x00 (injection vector).
+	if strings.ContainsRune(p, 0) {
+		return "", syscall.EINVAL
+	}
 	if strings.Contains(p, "\\") {
 		return "", syscall.EINVAL
 	}
