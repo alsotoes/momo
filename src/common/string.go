@@ -10,10 +10,12 @@ import (
 	"unsafe"
 )
 
-// AppendPaddedInt appends the string representation of val to dst and pads it to width with null bytes.
-// It assumes dst is large enough to hold at least width bytes and that the int representation
-// is less than or equal to width bytes. If len(dst) < width, it returns syscall.EINVAL.
-func AppendPaddedInt(dst []byte, val int64, width int) error {
+// WritePaddedInt writes the string representation of val into dst starting at
+// dst[0] and zero-pads it to width bytes. It overwrites the start of dst rather
+// than appending at dst[len(dst)]; callers must pass a slice sized exactly
+// width (typically a fixed-size buffer's sub-slice). If len(dst) < width or the
+// int representation exceeds width bytes, it returns syscall.EINVAL.
+func WritePaddedInt(dst []byte, val int64, width int) error {
 	if len(dst) < width {
 		return syscall.EINVAL
 	}
