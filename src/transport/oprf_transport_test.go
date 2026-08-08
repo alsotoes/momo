@@ -11,7 +11,7 @@ import (
 	"github.com/alsotoes/momo/src/common"
 )
 
-const testAuthToken = "test-token-1234567890123456789012345678901234567890123456789012345" // notsecret
+const testAuthToken = "test-token-11111111111111111111111111111111111111111111111111111" // notsecret
 
 var errOPRFQuorum = errors.New("oprf quorum not met")
 

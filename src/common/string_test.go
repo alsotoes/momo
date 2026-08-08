@@ -115,7 +115,6 @@ func TestPadString(t *testing.T) {
 	}{
 		{"Short string", "hello", 10, "hello\x00\x00\x00\x00\x00"},
 		{"Exact length", "hello", 5, "hello"},
-		{"Long string", "hello world", 5, "hello"},
 		{"Empty string", "", 3, "\x00\x00\x00"},
 	}
 
@@ -126,6 +125,15 @@ func TestPadString(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPadString_OverlongInputPanics(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("PadString(%q, %d) expected panic, got nil", "hello world", 5)
+		}
+	}()
+	PadString("hello world", 5)
 }
 
 func TestNormalizeVirtualPath(t *testing.T) {

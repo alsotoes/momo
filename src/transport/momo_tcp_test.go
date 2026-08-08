@@ -15,7 +15,7 @@ import (
 )
 
 func TestMomoTCPCommunicator_Handshake_And_Metadata(t *testing.T) {
-	authToken := "test-token-1234567890123456789012345678901234567890123456789012345" // notsecret
+	authToken := "test-token-11111111111111111111111111111111111111111111111111111" // notsecret, 64 chars
 	expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
 	addr := "127.0.0.1:45699"
 
@@ -159,7 +159,7 @@ func TestMomoTCPCommunicator_EdgeCases(t *testing.T) {
 }
 
 func runNativeTCPTest(t *testing.T, requestedMode int, clientFn func(net.Conn), mock *mockStore, usePeerToken bool) {
-	authToken := "test-token-1234567890123456789012345678901234567890123456789012345" // notsecret
+	authToken := "test-token-11111111111111111111111111111111111111111111111111111" // notsecret, 64 chars
 	expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
 	addr := "127.0.0.1:0"
 
