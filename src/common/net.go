@@ -22,8 +22,8 @@ type IdleTimeoutConn struct {
 	net.Conn
 	timeout          time.Duration
 	absoluteDeadline atomic.Pointer[time.Time]
-	readCalls        atomic.Uint32
-	writeCalls       atomic.Uint32
+	lastReadRefresh  atomic.Int64
+	lastWriteRefresh atomic.Int64
 	broken           atomic.Bool
 }
 
@@ -70,23 +70,28 @@ func (c *IdleTimeoutConn) applyDeadlines(isRead bool) {
 		}
 	}()
 
-	var calls *atomic.Uint32
+	var lastRefresh *atomic.Int64
 	if isRead {
-		calls = &c.readCalls
+		lastRefresh = &c.lastReadRefresh
 	} else {
-		calls = &c.writeCalls
-	}
-
-	// ⚡ Bolt: Amortize the cost of updating deadlines using a high-performance bitwise check.
-	// We only update the deadline on the first call and every 64 calls thereafter.
-	// This reduces time.Now() and SetDeadline system calls by 98.4%.
-	// For Slowloris, this is actually MORE secure as it requires 64 drip-bytes to reset the timer.
-	count := calls.Add(1)
-	if (count-1)&63 != 0 {
-		return
+		lastRefresh = &c.lastWriteRefresh
 	}
 
 	now := time.Now()
+	// ⚡ Bolt: Amortize the cost of updating deadlines by refreshing, at most,
+	// once per amortization window based on elapsed time rather than call count.
+	// Counting calls (e.g. every 64th call) breaks slow-but-progressing
+	// connections: a link delivering 1 byte/sec only advances the deadline every
+	// 64 seconds, exceeding a 30s timeout and killing a live transfer. A time
+	// window keeps the deadline within `refresh` of real data progress, so
+	// healthy slow links survive while idle connections still time out. This
+	// still avoids time.Now()/SetDeadline syscalls on high-throughput paths.
+	refresh := c.timeout / 4
+	if prev := lastRefresh.Load(); prev != 0 && now.Sub(time.Unix(0, prev)) < refresh {
+		return
+	}
+	lastRefresh.Store(now.UnixNano())
+
 	deadline := now.Add(c.timeout)
 	if dp := c.absoluteDeadline.Load(); dp != nil && !dp.IsZero() && dp.Before(deadline) {
 		deadline = *dp
