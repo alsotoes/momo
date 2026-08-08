@@ -803,7 +803,12 @@ func (m *S3Communicator) IsPeer() bool {
 // extractS3BucketAndKey parses the bucket name and key path from an S3 HTTP request.
 // It supports both virtual-host style and path-style S3 URL schemas.
 func extractS3BucketAndKey(req *http.Request) (bucket string, key string) {
+	// req.Host may include an explicit port (e.g. "mybucket.localhost:9000").
+	// Strip it before host parsing so virtual-host detection still matches.
 	host := req.Host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
 	if strings.Contains(host, ".") {
 		parts := strings.Split(host, ".")
 		if len(parts) > 1 && parts[len(parts)-1] == "localhost" {
