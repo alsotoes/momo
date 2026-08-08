@@ -235,7 +235,9 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 		return ConfigurationGlobal{}, fmt.Errorf("'replication_order' contains no valid entries: %w", syscall.EINVAL)
 	}
 
-	globalCfg.ClientSideReplicationModes = defaultClientSideReplicationModes
+	// Copy the default slice instead of aliasing it: the shared package-level
+	// slice must never be mutated in place by config consumers (Rule 9).
+	globalCfg.ClientSideReplicationModes = append([]int(nil), defaultClientSideReplicationModes...)
 
 	globalCfg.PolymorphicSystem, err = section.Key("polymorphic_system").Bool()
 	if err != nil {
