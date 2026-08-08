@@ -48,8 +48,22 @@ func (m *ClusterMap) Placement(objectHash string, replicationFactor int) (nodes 
 		return nil, fmt.Errorf("invalid object hash: empty: %w", syscall.EINVAL)
 	}
 
-	if replicationFactor > len(m.Nodes) {
-		replicationFactor = len(m.Nodes)
+	// Filter out zero/negative-weight nodes: a disabled or decommissioned node
+	// (Weight <= 0) must never receive data, even when replicationFactor is
+	// large enough that last-sorted zero-score nodes would otherwise be selected.
+	eligible := make([]*Node, 0, len(m.Nodes))
+	for _, node := range m.Nodes {
+		if node != nil && node.Weight > 0 {
+			eligible = append(eligible, node)
+		}
+	}
+
+	if len(eligible) == 0 {
+		return nil, fmt.Errorf("cluster map has no nodes with positive weight: %w", syscall.EINVAL)
+	}
+
+	if replicationFactor > len(eligible) {
+		replicationFactor = len(eligible)
 	}
 
 	type score struct {
@@ -57,9 +71,9 @@ func (m *ClusterMap) Placement(objectHash string, replicationFactor int) (nodes 
 		value float64
 	}
 
-	scores := make([]score, len(m.Nodes))
+	scores := make([]score, len(eligible))
 
-	for i, node := range m.Nodes {
+	for i, node := range eligible {
 		// Calculate a deterministic float score between 0 and 1 for this node/hash pair.
 		h := sha256.New()
 		h.Write([]byte(objectHash))
