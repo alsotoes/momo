@@ -68,8 +68,9 @@ func PadString(input string, length int) string {
 }
 
 // NormalizeVirtualPath cleans and validates virtual remote paths.
-// It trims whitespace, resolves parent directory references via path.Clean,
+// It trims surrounding whitespace, resolves parent directory references via path.Clean,
 // and strictly rejects any directory traversal (..) sequences to prevent security escalation.
+// Whitespace within path segments is significant and preserved verbatim (e.g. "my folder").
 func NormalizeVirtualPath(p string) (string, error) {
 	p = strings.TrimSpace(p)
 	if p == "" {
@@ -89,16 +90,17 @@ func NormalizeVirtualPath(p string) (string, error) {
 	// Resolve slashes and remove redundancies efficiently
 	cleaned := path.Clean(p)
 
-	// Split and validate each segment to ensure no empty or whitespace-only paths exist
+	// Split and validate each segment to ensure no empty segments exist.
+	// Segment content is preserved verbatim: whitespace within a segment is
+	// meaningful (e.g. "my folder/file") and must not be trimmed.
 	segments := strings.Split(cleaned, "/")
 	var validSegments []string
 
 	for _, seg := range segments {
-		trimmedSeg := strings.TrimSpace(seg)
-		if trimmedSeg == "" || trimmedSeg == "." || trimmedSeg == ".." {
+		if seg == "" || seg == "." || seg == ".." || strings.TrimSpace(seg) == "" {
 			continue
 		}
-		validSegments = append(validSegments, trimmedSeg)
+		validSegments = append(validSegments, seg)
 	}
 
 	if len(validSegments) == 0 {
