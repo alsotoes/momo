@@ -102,7 +102,7 @@ func (m *MomoTCPCommunicator) SendOPRFEval(authToken string, timestamp int64, bl
 	// Respect challenge-response authentication when enabled.
 	if m.useChallengeResp {
 		var handshakeBuf [common.TimestampLength + 1]byte
-		if err := common.AppendPaddedInt(handshakeBuf[:common.TimestampLength], timestamp, common.TimestampLength); err != nil {
+		if err := common.WritePaddedInt(handshakeBuf[:common.TimestampLength], timestamp, common.TimestampLength); err != nil {
 			return nil, fmt.Errorf("oprf: failed to format handshake timestamp: %w", err)
 		}
 		handshakeBuf[common.TimestampLength] = byte(common.ModeOPRFEval)
@@ -115,7 +115,7 @@ func (m *MomoTCPCommunicator) SendOPRFEval(authToken string, timestamp int64, bl
 	} else {
 		var handshakeBuf [common.AuthTokenLength + common.TimestampLength + 1]byte
 		copy(handshakeBuf[:common.AuthTokenLength], common.PadString(authToken, common.AuthTokenLength))
-		if err := common.AppendPaddedInt(handshakeBuf[common.AuthTokenLength:], timestamp, common.TimestampLength); err != nil {
+		if err := common.WritePaddedInt(handshakeBuf[common.AuthTokenLength:], timestamp, common.TimestampLength); err != nil {
 			return nil, fmt.Errorf("oprf: failed to format handshake timestamp: %w", err)
 		}
 		handshakeBuf[common.AuthTokenLength+common.TimestampLength] = byte(common.ModeOPRFEval)
@@ -200,7 +200,7 @@ func (m *MomoTCPCommunicator) HandshakeClient(authToken string, timestamp int64,
 
 	if m.useChallengeResp {
 		var handshakeBuf [common.TimestampLength + 1]byte
-		if err := common.AppendPaddedInt(handshakeBuf[:common.TimestampLength], timestamp, common.TimestampLength); err != nil {
+		if err := common.WritePaddedInt(handshakeBuf[:common.TimestampLength], timestamp, common.TimestampLength); err != nil {
 			return 0, fmt.Errorf("failed to format handshake timestamp: %w", err)
 		}
 		handshakeBuf[common.TimestampLength] = byte(requestedMode + '0')
@@ -216,7 +216,7 @@ func (m *MomoTCPCommunicator) HandshakeClient(authToken string, timestamp int64,
 		var handshakeBuf [common.AuthTokenLength + common.TimestampLength + 1]byte
 		copy(handshakeBuf[0:common.AuthTokenLength], common.PadString(authToken, common.AuthTokenLength))
 
-		if err := common.AppendPaddedInt(handshakeBuf[common.AuthTokenLength:], timestamp, common.TimestampLength); err != nil {
+		if err := common.WritePaddedInt(handshakeBuf[common.AuthTokenLength:], timestamp, common.TimestampLength); err != nil {
 			return 0, fmt.Errorf("failed to format handshake timestamp: %w", err)
 		}
 
@@ -366,7 +366,7 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 			var packet [192]byte
 			copy(packet[0:64], common.PadString(file.Hash, 64))
 			copy(packet[64:128], common.PadString(wireName, 64))
-			if err := common.AppendPaddedInt(packet[128:], file.Size, 64); err != nil {
+			if err := common.WritePaddedInt(packet[128:], file.Size, 64); err != nil {
 				return 0, 0, fmt.Errorf("failed to format file size: %v: %w", err, syscall.EINVAL)
 			}
 
@@ -483,7 +483,7 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 		// Write '0' (success status) + 64-byte size string
 		var respBuf [65]byte
 		respBuf[0] = '0'
-		if err := common.AppendPaddedInt(respBuf[1:], meta.Size, 64); err != nil {
+		if err := common.WritePaddedInt(respBuf[1:], meta.Size, 64); err != nil {
 			return 0, 0, fmt.Errorf("failed to format GET file size: %v: %w", err, syscall.EINVAL)
 		}
 		if _, err := m.Write(respBuf[:]); err != nil {
