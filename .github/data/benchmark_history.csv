@@ -2853,3 +2853,12 @@ efd8101,BenchmarkLoadGlobalConfig-8,7558.00,1320.00,38.00
 efd8101,BenchmarkPadString-8,52.65,64.00,1.00
 efd8101,BenchmarkSanitizeLog/Safe-8,303.40,0.00,0.00
 efd8101,BenchmarkSanitizeLog/Unsafe-8,883.00,704.00,1.00
+0271e7d,BenchmarkCheckMetricsAndSwap-8,11.18,0.00,0.00
+0271e7d,BenchmarkCrushOptimized-8,468.40,0.00,0.00
+0271e7d,BenchmarkCrushOriginal-8,542.50,164.00,3.00
+0271e7d,BenchmarkIndexDirectTracking-8,0.54,0.00,0.00
+0271e7d,BenchmarkIndexSearch-8,2.10,0.00,0.00
+0271e7d,BenchmarkLoadGlobalConfig-8,8021.00,1320.00,38.00
+0271e7d,BenchmarkPadString-8,52.31,64.00,1.00
+0271e7d,BenchmarkSanitizeLog/Safe-8,288.10,0.00,0.00
+0271e7d,BenchmarkSanitizeLog/Unsafe-8,849.10,704.00,1.00
