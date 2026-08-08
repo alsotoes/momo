@@ -2817,3 +2817,12 @@ d70a84a,BenchmarkLoadGlobalConfig-8,7314.00,1320.00,38.00
 d70a84a,BenchmarkPadString-8,50.80,64.00,1.00
 d70a84a,BenchmarkSanitizeLog/Safe-8,566.20,0.00,0.00
 d70a84a,BenchmarkSanitizeLog/Unsafe-8,950.60,704.00,1.00
+c379fe8,BenchmarkCheckMetricsAndSwap-8,9.09,0.00,0.00
+c379fe8,BenchmarkCrushOptimized-8,331.50,0.00,0.00
+c379fe8,BenchmarkCrushOriginal-8,538.70,164.00,3.00
+c379fe8,BenchmarkIndexDirectTracking-8,0.43,0.00,0.00
+c379fe8,BenchmarkIndexSearch-8,2.97,0.00,0.00
+c379fe8,BenchmarkLoadGlobalConfig-8,7292.00,1320.00,38.00
+c379fe8,BenchmarkPadString-8,48.82,64.00,1.00
+c379fe8,BenchmarkSanitizeLog/Safe-8,529.30,0.00,0.00
+c379fe8,BenchmarkSanitizeLog/Unsafe-8,1050.00,704.00,1.00
