@@ -120,14 +120,14 @@ func TestClusterMap_Placement_Defensive(t *testing.T) {
 		t.Errorf("Expected error to wrap syscall.EINVAL, got %v", err)
 	}
 
-	// Test panic recovery with nil Node
-	mPanic := &ClusterMap{Nodes: []*Node{nil}}
+	// Test no eligible (positive-weight) nodes: nil/zero-weight nodes are filtered
+	mPanic := &ClusterMap{Nodes: []*Node{nil, {ID: 0, Weight: 0}}}
 	_, err = mPanic.Placement("some-hash", 1)
 	if err == nil {
-		t.Errorf("Expected error from panic recovery, got nil")
+		t.Errorf("Expected error when no positive-weight nodes, got nil")
 	}
-	if !errors.Is(err, syscall.EIO) {
-		t.Errorf("Expected error to wrap syscall.EIO, got %v", err)
+	if !errors.Is(err, syscall.EINVAL) {
+		t.Errorf("Expected error to wrap syscall.EINVAL, got %v", err)
 	}
 }
 
@@ -149,5 +149,49 @@ func TestClusterMap_LargeNodeIDs(t *testing.T) {
 	}
 	if p1[0].ID == p1[1].ID {
 		t.Fatalf("Node IDs collided: both are %d", p1[0].ID)
+	}
+}
+
+func TestClusterMap_Placement_SkipsZeroWeightNodes(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	nodes := []*Node{
+		{ID: 0, Weight: 1, Addr: "127.0.0.1:4440"},
+		{ID: 1, Weight: 1, Addr: "127.0.0.1:4441"},
+		{ID: 2, Weight: 0, Addr: "127.0.0.1:4442"},   // disabled
+		{ID: 3, Weight: -5, Addr: "127.0.0.1:4443"}, // decommissioned
+	}
+	m := &ClusterMap{Nodes: nodes}
+
+	// With replicationFactor == 4 (>= len(nodes)), zero/negative-weight nodes
+	// must never be selected even though scoring would sort them last.
+	p, err := m.Placement("some-hash", 4)
+	if err != nil {
+		t.Fatalf("Placement failed: %v", err)
+	}
+	if len(p) != 2 {
+		t.Fatalf("Expected 2 eligible nodes, got %d", len(p))
+	}
+	for _, node := range p {
+		if node.Weight <= 0 {
+			t.Errorf("Placement selected node %d with weight %d", node.ID, node.Weight)
+		}
+	}
+}
+
+func TestClusterMap_Placement_AllZeroWeight(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	m := &ClusterMap{Nodes: []*Node{
+		{ID: 0, Weight: 0, Addr: "127.0.0.1:4440"},
+		{ID: 1, Weight: -1, Addr: "127.0.0.1:4441"},
+	}}
+
+	_, err := m.Placement("some-hash", 2)
+	if err == nil {
+		t.Fatal("Expected error when all nodes have Weight <= 0, got nil")
+	}
+	if !errors.Is(err, syscall.EINVAL) {
+		t.Errorf("Expected error to wrap syscall.EINVAL, got %v", err)
 	}
 }
