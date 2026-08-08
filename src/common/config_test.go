@@ -186,6 +186,37 @@ func TestGetConfig_ClientSideReplicationModes_Default(t *testing.T) {
 	}
 }
 
+func TestGetConfig_ClientSideReplicationModes_DefaultNotAliased(t *testing.T) {
+	// Mutating the returned slice must not corrupt the package-level default
+	// shared with subsequent GetConfig calls (Rule 9 - no alias the shared slice).
+	tmpDir := t.TempDir()
+	tmpfile := filepath.Join(tmpDir, "momo.conf")
+	if err := os.WriteFile(tmpfile, []byte(validConfig), 0666); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	config, err := GetConfig(tmpfile)
+	if err != nil {
+		t.Fatalf("GetConfig failed: %v", err)
+	}
+
+	original := []int{ReplicationPrimarySplay}
+	config.Global.ClientSideReplicationModes[0] = ReplicationPrimarySplay + 99
+
+	config2, err := GetConfig(tmpfile)
+	if err != nil {
+		t.Fatalf("second GetConfig failed: %v", err)
+	}
+	if !reflect.DeepEqual(config2.Global.ClientSideReplicationModes, original) {
+		t.Errorf("default slice was aliased: subsequent GetConfig returned %v, want %v",
+			config2.Global.ClientSideReplicationModes, original)
+	}
+	if !reflect.DeepEqual(defaultClientSideReplicationModes, original) {
+		t.Errorf("package-level default mutated: got %v, want %v",
+			defaultClientSideReplicationModes, original)
+	}
+}
+
 func TestGetConfig_ClientSideReplicationModes_Explicit(t *testing.T) {
 	configContent := `
 [global]
