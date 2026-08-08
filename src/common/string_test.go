@@ -16,6 +16,12 @@ func TestSanitizeLog(t *testing.T) {
 		{"Multiple CRLFs", "\r\nhello\r\nworld\r\n", "__hello__world__"},
 		{"Just CR", "hello\rworld", "hello_world"},
 		{"Just LF", "hello\nworld", "hello_world"},
+		{"Null byte", "hello\x00world", "hello_world"},
+		{"ANSI escape", "hello\x1b[31mred", "hello_[31mred"},
+		{"Control chars", "a\x01b\x02c\x07d", "a_b_c_d"},
+		{"Tab preserved", "a\tb", "a\tb"},
+		{"Vertical tab and FF", "a\x0bb\x0cc", "a_b_c"},
+		{"DEL preserved", "a\x7fb", "a\x7fb"},
 	}
 
 	for _, tt := range tests {
