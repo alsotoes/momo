@@ -160,6 +160,57 @@ func TestIdleTimeoutConn_ReadPreservesEOF(t *testing.T) {
 	}
 }
 
+func TestIdleTimeoutConn_SlowProgressiveReadSurvives(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	// Regression for #614: a slow-but-progressing connection must not be cut
+	// because the deadline amortization was call-count based (1 byte/sec over
+	// 64 bytes = 64s > timeout). With a time-based refresh window the deadline
+	// tracks real data progress, so a drip-fed stream lives on.
+
+	client, server := net.Pipe()
+	idleConn := NewIdleTimeoutConn(client, 50*time.Millisecond)
+
+	const totalBytes = 50
+	const dripInterval = 4 * time.Millisecond
+
+	go func() {
+		defer server.Close()
+		buf := make([]byte, 1)
+		for range totalBytes {
+			if _, err := server.Write(buf); err != nil {
+				return
+			}
+			time.Sleep(dripInterval)
+		}
+	}()
+
+	defer func() {
+		idleConn.Close()
+		client.Close()
+	}()
+
+	// Total window: 50 * 4ms = 200ms. With the old call-count logic the first
+	// (and only until the 64th) deadline refresh would have expired the 50ms
+	// timeout ~13 bytes in; time-based refresh must survive the whole stream.
+	readBuf := make([]byte, 1)
+	wallClock := time.After(2 * time.Second)
+	for bytesRead := 0; bytesRead < totalBytes; {
+		select {
+		case <-wallClock:
+			t.Fatalf("test timed out after %d bytes", bytesRead)
+		default:
+		}
+		if _, err := idleConn.Read(readBuf); err != nil {
+			if isTimeout(err) {
+				t.Fatalf("slow progressive read hit deadline at byte %d: %v", bytesRead, err)
+			}
+			return
+		}
+		bytesRead++
+	}
+}
+
 func TestDialSocket(t *testing.T) {
 	defer goleak.VerifyNone(t)
 
