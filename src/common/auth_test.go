@@ -70,6 +70,56 @@ func TestChallengeResponse_Success(t *testing.T) {
 	}
 }
 
+func TestChallengeResponse_UnpaddedServerToken(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	// Regression for #616: the server must accept an unpadded shared token,
+	// since the client always pads before computing the HMAC. Previously an
+	// unpadded expectedAuthToken silently failed for any token < 64 bytes.
+	authToken := "my-secret-token"         // notsecret
+	expectedAuthToken := []byte(authToken) // deliberately unpadded
+
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+
+	errChan := make(chan error, 1)
+	go func() {
+		isPeer, err := ChallengeResponseServerPeer(server, expectedAuthToken)
+		if err != nil {
+			errChan <- err
+			return
+		}
+		if isPeer {
+			errChan <- io.EOF
+			return
+		}
+		errChan <- nil
+	}()
+
+	err := ChallengeResponseClient(client, authToken)
+	if err != nil {
+		t.Fatalf("Client challenge-response failed: %v", err)
+	}
+
+	if err := <-errChan; err != nil {
+		t.Fatalf("Server rejected unpadded token: %v", err)
+	}
+}
+
+func TestChallengeResponse_ExactLengthTokenUnchanged(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	// #616: padding must be a no-op for already-AuthTokenLength-byte tokens.
+	longToken := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	if len(longToken) != AuthTokenLength {
+		t.Fatalf("test token length %d != AuthTokenLength %d", len(longToken), AuthTokenLength)
+	}
+	if got, want := string(padAuthToken([]byte(longToken))), longToken; got != want {
+		t.Fatalf("padAuthToken changed an exact-length token: %q != %q", got, want)
+	}
+}
+
 func TestChallengeResponse_PeerToken(t *testing.T) {
 	defer goleak.VerifyNone(t)
 

@@ -57,7 +57,13 @@ func DerivePeerTokenString(authToken string) string {
 // client's HMAC-SHA256 response, and verifies it against the expected token.
 // The auth token is never transmitted over the wire.
 // Returns true if authentication succeeded, false otherwise.
+//
+// The expected token is padded to AuthTokenLength internally, mirroring the
+// client's padding, so callers may pass an unpadded shared secret without
+// introducing a silent authentication failure for short tokens.
 func ChallengeResponseServer(rw io.ReadWriter, expectedAuthToken []byte) (bool, error) {
+	expectedAuthToken = padAuthToken(expectedAuthToken)
+
 	var nonce [challengeNonceSize]byte
 	if _, err := rand.Read(nonce[:]); err != nil {
 		return false, fmt.Errorf("failed to generate nonce: %w", err)
@@ -102,7 +108,11 @@ func ChallengeResponseClient(rw io.ReadWriter, authToken string) error {
 // ChallengeResponseServerPeer is like ChallengeResponseServer but also checks
 // the peer token. It returns (isPeer, error) where isPeer indicates whether
 // the client authenticated with the peer token vs the client token.
+// The expected token is padded to AuthTokenLength internally (idempotent for
+// already-padded tokens), matching the client's token format.
 func ChallengeResponseServerPeer(rw io.ReadWriter, expectedAuthToken []byte) (isPeer bool, err error) {
+	expectedAuthToken = padAuthToken(expectedAuthToken)
+
 	var nonce [challengeNonceSize]byte
 	if _, err := rand.Read(nonce[:]); err != nil {
 		return false, fmt.Errorf("failed to generate nonce: %w", err)
@@ -129,6 +139,17 @@ func ChallengeResponseServerPeer(rw io.ReadWriter, expectedAuthToken []byte) (is
 	}
 
 	return false, fmt.Errorf("authentication failed: HMAC mismatch: %w", syscall.EACCES)
+}
+
+// padAuthToken pads an auth token to AuthTokenLength. The client always pads
+// before signing, so the server must compare against the padded form. Padding
+// is a no-op for tokens already AuthTokenLength bytes long, keeping the
+// function safe for both new (unpadded) and legacy (padded) call sites.
+func padAuthToken(token []byte) []byte {
+	if len(token) >= AuthTokenLength {
+		return token
+	}
+	return []byte(PadString(string(token), AuthTokenLength))
 }
 
 // computeHMAC returns HMAC-SHA256(key, message).
