@@ -2799,3 +2799,12 @@ e2ab47d,BenchmarkSanitizeLog/Unsafe-8,1122.00,704.00,1.00
 8743c29,BenchmarkPadString-8,49.39,64.00,1.00
 8743c29,BenchmarkSanitizeLog/Safe-8,615.20,0.00,0.00
 8743c29,BenchmarkSanitizeLog/Unsafe-8,1010.00,704.00,1.00
+60e554e,BenchmarkCheckMetricsAndSwap-8,8.90,0.00,0.00
+60e554e,BenchmarkCrushOptimized-8,372.50,0.00,0.00
+60e554e,BenchmarkCrushOriginal-8,549.90,164.00,3.00
+60e554e,BenchmarkIndexDirectTracking-8,0.43,0.00,0.00
+60e554e,BenchmarkIndexSearch-8,3.13,0.00,0.00
+60e554e,BenchmarkLoadGlobalConfig-8,7459.00,1320.00,38.00
+60e554e,BenchmarkPadString-8,51.22,64.00,1.00
+60e554e,BenchmarkSanitizeLog/Safe-8,639.50,0.00,0.00
+60e554e,BenchmarkSanitizeLog/Unsafe-8,1023.00,704.00,1.00
