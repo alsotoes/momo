@@ -132,14 +132,14 @@ func (h *StorageQueryHandler) handleDelete(data []byte) (result []byte, err erro
 }
 
 // EncodeFileMetadataList serializes a list of FileMetadata into binary.
-// Format: [4B count] [for each: 4B nameLen + name + 4B hashLen + hash + 8B size + 4B pathLen + path]
+// Format: [4B count] [for each: 4B nameLen + name + 4B hashLen + hash + 8B size + 4B pathLen + path + 8B modtime]
 // Uses dynamic length prefixes (not fixed 64-byte buffers), so Rule 35's
 // 64-byte padding limit does not apply here. Buffer is pre-sized exactly
 // and copy() prevents overflow. Metadata comes from trusted local store.
 func EncodeFileMetadataList(files []common.FileMetadata) []byte {
 	size := 4
 	for _, f := range files {
-		size += 4 + len(f.Name) + 4 + len(f.Hash) + 8 + 4 + len(f.RemotePath)
+		size += 4 + len(f.Name) + 4 + len(f.Hash) + 8 + 4 + len(f.RemotePath) + 8
 	}
 	buf := make([]byte, size)
 	binary.BigEndian.PutUint32(buf[0:4], uint32(len(files)))
@@ -159,6 +159,8 @@ func EncodeFileMetadataList(files []common.FileMetadata) []byte {
 		off += 4
 		copy(buf[off:], f.RemotePath)
 		off += len(f.RemotePath)
+		binary.BigEndian.PutUint64(buf[off:off+8], uint64(f.ModTime))
+		off += 8
 	}
 	return buf
 }
@@ -177,7 +179,7 @@ func DecodeFileMetadataList(data []byte) (result []common.FileMetadata, err erro
 	}
 	count := int(binary.BigEndian.Uint32(data[0:4]))
 	off := 4
-	maxCount := (len(data) - 4) / 20
+	maxCount := (len(data) - 4) / 28
 	if count > maxCount {
 		return nil, fmt.Errorf("file metadata list count %d exceeds max %d for data length %d: %w", count, maxCount, len(data), syscall.EBADMSG)
 	}
@@ -234,6 +236,12 @@ func DecodeFileMetadataList(data []byte) (result []common.FileMetadata, err erro
 		remotePath := string(data[off : off+pathLen])
 		off += pathLen
 
+		if off+8 > len(data) {
+			return nil, fmt.Errorf("truncated modtime at entry %d", i)
+		}
+		modTime := int64(binary.BigEndian.Uint64(data[off : off+8]))
+		off += 8
+
 		// 🛡️ Sentinel: Sanitize decoded metadata to prevent path traversal and resource exhaustion from malicious peers.
 		if common.HasPathTraversalChars(hash) {
 			return nil, fmt.Errorf("invalid hash at entry %d: %w", i, syscall.EBADMSG)
@@ -250,6 +258,7 @@ func DecodeFileMetadataList(data []byte) (result []common.FileMetadata, err erro
 			Hash:       hash,
 			Size:       fileSize,
 			RemotePath: remotePath,
+			ModTime:    modTime,
 		})
 	}
 	return files, nil

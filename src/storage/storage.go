@@ -22,6 +22,7 @@ var (
 	bucketNamespace  = []byte("namespace")  // Maps FileName -> ContentHash
 	bucketPaths      = []byte("paths")      // Maps FileName -> RemotePath
 	bucketTombstones = []byte("tombstones") // Maps FileName -> deletion timestamp (unix nano)
+	bucketModTimes   = []byte("modtimes")   // Maps FileName -> modification timestamp (unix nano)
 )
 
 // ObjectMeta is the binary metadata stored in the objects bucket.
@@ -115,6 +116,9 @@ func newCASStore(dataDir string, blobs BlobStore) (*CASStore, error) {
 			return err
 		}
 		if _, err := tx.CreateBucketIfNotExists(bucketPaths); err != nil {
+			return err
+		}
+		if _, err := tx.CreateBucketIfNotExists(bucketModTimes); err != nil {
 			return err
 		}
 		_, err = tx.CreateBucketIfNotExists(bucketTombstones)
@@ -212,6 +216,13 @@ func (s *CASStore) Put(name string, hash string, size int64, remotePath string, 
 			return fmt.Errorf("tombstone delete error: %w", err)
 		}
 
+		// Record modification time as Unix nanoseconds.
+		var mtBuf [8]byte
+		binary.BigEndian.PutUint64(mtBuf[:], uint64(time.Now().UnixNano()))
+		if err := tx.Bucket(bucketModTimes).Put([]byte(name), mtBuf[:]); err != nil {
+			return fmt.Errorf("metadata error: %w", syscall.EIO)
+		}
+
 		// Store RemotePath
 		if len(name) > common.FileInfoLength {
 			return fmt.Errorf("name exceeds maximum length: %w", syscall.ENAMETOOLONG)
@@ -304,7 +315,19 @@ func (s *CASStore) Get(name string) (rc io.ReadCloser, meta common.FileMetadata,
 		return nil, common.FileMetadata{}, fmt.Errorf("failed to read remotePath: %w", err)
 	}
 
-	return f, common.FileMetadata{Name: name, Hash: hash, Size: size, RemotePath: remotePath}, nil
+	var modTime int64
+	err = s.db.View(func(tx *bbolt.Tx) error {
+		mt := tx.Bucket(bucketModTimes).Get([]byte(name))
+		if len(mt) >= 8 {
+			modTime = int64(binary.BigEndian.Uint64(mt[:8]))
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, common.FileMetadata{}, fmt.Errorf("failed to read modtime: %w", err)
+	}
+
+	return f, common.FileMetadata{Name: name, Hash: hash, Size: size, RemotePath: remotePath, ModTime: modTime}, nil
 }
 
 // Has checks if a content hash exists in the store.
@@ -416,6 +439,9 @@ func (s *CASStore) Delete(name string) (err error) {
 		if err := paths.Delete([]byte(name)); err != nil {
 			return fmt.Errorf("paths delete error: %w", err)
 		}
+		if err := tx.Bucket(bucketModTimes).Delete([]byte(name)); err != nil {
+			return fmt.Errorf("modtime delete error: %w", err)
+		}
 		return nil
 	})
 	if err != nil {
@@ -460,6 +486,7 @@ func (s *CASStore) List() (list []common.FileMetadata, err error) {
 		}
 		obj := tx.Bucket(bucketObjects)
 		paths := tx.Bucket(bucketPaths)
+		mtimes := tx.Bucket(bucketModTimes)
 		ts := tx.Bucket(bucketTombstones)
 
 		c := ns.Cursor()
@@ -474,6 +501,7 @@ func (s *CASStore) List() (list []common.FileMetadata, err error) {
 
 			var size int64 = 0
 			var remotePath string = ""
+			var modTime int64 = 0
 
 			if obj != nil {
 				sizeBytes := obj.Get(v)
@@ -489,11 +517,19 @@ func (s *CASStore) List() (list []common.FileMetadata, err error) {
 				}
 			}
 
+			if mtimes != nil {
+				mtBytes := mtimes.Get(k)
+				if len(mtBytes) >= 8 {
+					modTime = int64(binary.BigEndian.Uint64(mtBytes[:8]))
+				}
+			}
+
 			list = append(list, common.FileMetadata{
 				Name:       name,
 				Hash:       hash,
 				Size:       size,
 				RemotePath: remotePath,
+				ModTime:    modTime,
 			})
 		}
 		return nil

@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alsotoes/momo/src/common"
 	"go.uber.org/goleak"
@@ -260,6 +261,9 @@ func TestCASStore_List(t *testing.T) {
 	found := make(map[string]bool)
 	for _, f := range list {
 		found[f.Name] = true
+		if f.ModTime <= 0 {
+			t.Errorf("Expected positive ModTime for %s, got %d", f.Name, f.ModTime)
+		}
 		// Verify properties
 		switch f.Name {
 		case "file1.txt":
@@ -281,6 +285,56 @@ func TestCASStore_List(t *testing.T) {
 
 	if len(found) != 3 {
 		t.Errorf("Not all files were found in list: %+v", found)
+	}
+}
+
+func TestCASStore_ModTime(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	tmpDir, err := os.MkdirTemp("", "momo-storage-modtime-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	store, err := NewCASStore(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to create CASStore: %v", err)
+	}
+	defer store.Close()
+
+	content := []byte("modtime content")
+	hash := "dummyhash123"
+	name := "modtime.txt"
+
+	if err := store.Put(name, hash, int64(len(content)), "", bytes.NewReader(content)); err != nil {
+		t.Fatalf("Put failed: %v", err)
+	}
+
+	// Get should report the recorded ModTime.
+	before := time.Now().Add(-5 * time.Second).UnixNano()
+	_, meta, err := store.Get(name)
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	if meta.ModTime <= 0 {
+		t.Errorf("Expected recorded ModTime, got %d", meta.ModTime)
+	}
+	if meta.ModTime < before || meta.ModTime > time.Now().Add(5*time.Second).UnixNano() {
+		t.Errorf("ModTime %d outside expected window", meta.ModTime)
+	}
+
+	// Delete should remove the ModTime record.
+	if err := store.Delete(name); err != nil {
+		t.Fatalf("Delete failed: %v", err)
+	}
+	list, err := store.List()
+	if err != nil {
+		t.Fatalf("List failed: %v", err)
+	}
+	for _, f := range list {
+		if f.Name == name {
+			t.Errorf("Expected %s to be removed after delete", name)
+		}
 	}
 }
 

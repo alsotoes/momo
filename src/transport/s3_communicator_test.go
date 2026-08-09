@@ -512,8 +512,8 @@ func TestS3Communicator_KeyTraversalValidation(t *testing.T) {
 
 func TestS3Communicator_XMLFormatting(t *testing.T) {
 	files := []common.FileMetadata{
-		{Name: "file1.txt", Hash: "hash1", Size: 100, RemotePath: ""},
-		{Name: "docs/file2.txt", Hash: "hash2", Size: 200, RemotePath: "docs"},
+		{Name: "file1.txt", Hash: "hash1", Size: 100, RemotePath: "", ModTime: 1700000000123000000},
+		{Name: "docs/file2.txt", Hash: "hash2", Size: 200, RemotePath: "docs", ModTime: 1700000000456000000},
 		{Name: "docs/nested/file3.txt", Hash: "hash3", Size: 300, RemotePath: "docs/nested"},
 		{Name: "oversized-filename-exceeding-sixty-four-characters-limit-should-be-skipped-entirely.txt", Hash: "hash4", Size: 400},
 		{Name: "valid.txt", Hash: "oversized-hash-exceeding-sixty-four-characters-limit-should-be-skipped-entirely", Size: 500},
@@ -546,6 +546,14 @@ func TestS3Communicator_XMLFormatting(t *testing.T) {
 	}
 	if strings.Contains(xmlStr, "oversized-hash-exceeding") {
 		t.Errorf("Did not expect oversized hash in XML")
+	}
+
+	// 1b. LastModified must reflect the actual ModTime, not a hardcoded value.
+	if !strings.Contains(xmlStr, "<LastModified>2023-11-14T22:13:20.123Z</LastModified>") {
+		t.Errorf("Expected LastModified derived from ModTime, got: %s", xmlStr)
+	}
+	if strings.Contains(xmlStr, "2026-06-29T12:00:00.000Z") {
+		t.Errorf("Hardcoded LastModified timestamp leaked into XML")
 	}
 
 	// 2. Prefix and delimiter grouping

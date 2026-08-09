@@ -10,6 +10,9 @@ type FileMetadata struct {
 	Size int64
 	// RemotePath is the virtual folder or directory path of the file.
 	RemotePath string
+	// ModTime is the last modification time in Unix nanoseconds.
+	// A value of 0 means the modification time is unknown.
+	ModTime int64
 }
 
 // ReplicationData stores the information about a replication mode change.

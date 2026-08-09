@@ -231,6 +231,9 @@ func (s *CASStore) ApplyTombstone(name string, deletedAt int64) (err error) {
 		if err := paths.Delete([]byte(name)); err != nil {
 			return fmt.Errorf("paths delete error: %w", err)
 		}
+		if err := tx.Bucket(bucketModTimes).Delete([]byte(name)); err != nil {
+			return fmt.Errorf("modtime delete error: %w", err)
+		}
 		return nil
 	})
 	if err != nil {
