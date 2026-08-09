@@ -841,6 +841,13 @@ func extractS3BucketAndKey(req *http.Request) (bucket string, key string) {
 	return bucket, key
 }
 
+// formatLastModified renders a Unix-nano modification time in the
+// S3 XML LastModified format (UTC with millisecond precision).
+// A zero timestamp (unknown/modern fallback) renders as the Unix epoch.
+func formatLastModified(modTime int64) string {
+	return time.Unix(0, modTime).UTC().Format("2006-01-02T15:04:05.000Z")
+}
+
 // FormatListObjectsV2XML constructs an S3-compliant ListObjectsV2 XML response
 // using a pre-allocated bytes.Buffer to avoid excessive heap allocations (⚡ Bolt pattern).
 func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, files []common.FileMetadata) (xmlBytes []byte, err error) {
@@ -918,7 +925,9 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, f
 		buf.WriteString(`<Key>`)
 		xmlEscape(&buf, key)
 		buf.WriteString(`</Key>`)
-		buf.WriteString(`<LastModified>2026-06-29T12:00:00.000Z</LastModified>`)
+		buf.WriteString(`<LastModified>`)
+		buf.WriteString(formatLastModified(file.ModTime))
+		buf.WriteString(`</LastModified>`)
 		buf.WriteString(`<ETag>"`)
 		xmlEscape(&buf, file.Hash)
 		buf.WriteString(`"</ETag>`)
