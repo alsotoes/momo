@@ -10,6 +10,7 @@ This document is governed by the steering rules in [`openspec/config.yaml`](../o
 - **Rule 20**: Autonomous traceability — reuse existing tracking issues, never create duplicates
 - **Rule 25**: Workspace vendoring parity — `go work vendor` must produce no diff
 - **Rules 49, 51, 52**: Issue/PR assignment and labeling (assignee: alsotoes, labels: bug|enhancement + automation)
+- **Rule 72**: Issue Ownership Gate — assign the issue to alsotoes and validate labels BEFORE starting work
 - **Rules 51-57**: PR workflow (assign, label, comment, update, merge, close, return) — applies to both bug fixes and features
 - **Rule 58**: Pre-push branch validation
 - **Rule 59**: No-assumption doubt protocol (AIFS)
@@ -43,9 +44,27 @@ Before starting any autonomous work, verify:
    - Only proceed when all runs show `completed` with `success` conclusion.
    - **Rationale**: After merging a PR, GitHub Actions re-runs all workflows on `master`. Branching from mid-CI `master` risks branching from code that may fail or be reverted. This gate guarantees every new branch originates from a fully validated, stable `master`.
 
-## Per-Task Cycle (15 Steps)
+## Per-Task Cycle (16 Steps)
 
 For each task (bug fix or feature), execute these steps strictly sequentially. Do NOT start the next task until the current one is merged.
+
+### Step 0: Issue Ownership Gate (Rule 72)
+
+**Before ANY work on an issue — whether newly created, pre-existing, or picked up from a batch — establish ownership and validate the issue's metadata.**
+
+```bash
+# 1. Assign the issue to the maintainer
+gh issue edit ISSUE_N --add-assignee alsotoes
+
+# 2. Validate labels: category (bug|enhancement) + automation
+gh issue view ISSUE_N --json assignees,labels
+
+# 3. Add any missing labels
+gh issue edit ISSUE_N --add-label <bug|enhancement>
+gh issue edit ISSUE_N --add-label automation
+```
+
+Only proceed to implementation (Step 2) once the issue is assigned to `alsotoes` and carries both the category label and the `automation` label. Issues lacking an assignee or the `automation` label are orphaned and MUST be remediated before work begins.
 
 ### Step 1: Create GitHub Issue
 ```bash
@@ -374,6 +393,10 @@ gh pr edit PR_N --add-label enhancement # for features
 gh pr edit PR_N --add-label automation  # for AI-driven work
 ```
 
+### Forgetting the Issue Ownership Gate (Rule 72)
+**Pitfall**: Starting implementation on a pre-existing or batch issue that is unassigned or missing the `automation` label (e.g., the #606–#623 batch, where all issues lacked an assignee).
+**Solution**: Before any work, run the Issue Ownership Gate (Step 0): assign the issue to `alsotoes` and validate/add the category + `automation` labels via `gh issue edit ISSUE_N`. Treat missing assignee/labels as a blocking condition.
+
 ### Jules PR Comments Posted as Bot (Rule 69)
 **Pitfall**: Posting reviewer feedback or STOP comments as `github-actions[bot]` on a Jules-created PR. Jules only recognizes comments from `alsotoes` and will silently ignore bot comments, causing Jules to continue working or miss feedback.
 **Solution**: Before posting any comment on a PR, check for the `jules` label. If present, ensure the `gh pr comment` command runs from an authenticated `alsotoes` session (PAT), not the `GITHUB_TOKEN` used by CI:
@@ -452,8 +475,10 @@ When manual intervention is happening, automated agents MUST be told to STOP. No
    │
    ├─ 0. Pre-Flight: verify master, clean tree, gh auth, master CI all-green (Rule 71)
    │      │
-   │      └─ Master CI still running? → WAIT and poll until all pass
+   │      └─ Master CI still running? → WAIT and poll until all complete
    │         Master CI failed? → STOP, diagnose and fix on master (Rule 64)
+   │
+   ├─ 0.5 Issue Ownership Gate (Rule 72): assign issue to alsotoes + validate labels (bug|enhancement, automation)
    │
    ├─ 1. Create issue (label: bug|enhancement, assignee: alsotoes)
    ├─ 2. Create branch off master (fix/ or feature/)
