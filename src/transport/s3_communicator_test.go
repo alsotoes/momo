@@ -572,6 +572,9 @@ func TestS3Communicator_XMLFormatting(t *testing.T) {
 	if !strings.Contains(xmlStrDelim, "<Prefix>docs/</Prefix>") {
 		t.Errorf("Expected docs/ as CommonPrefix")
 	}
+	if !strings.Contains(xmlStrDelim, "<KeyCount>1</KeyCount>") {
+		t.Errorf("Expected KeyCount to exclude CommonPrefixes (got XML: %s)", xmlStrDelim)
+	}
 
 	// 3. Reject input exceeding 64 bytes (Rule 35)
 	_, err = FormatListObjectsV2XML("my-very-long-bucket-name-that-exceeds-sixty-four-characters-limit-completely", "", "", 1000, files)

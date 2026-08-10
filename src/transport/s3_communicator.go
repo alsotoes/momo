@@ -945,7 +945,6 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, f
 		xmlEscape(&buf, cp)
 		buf.WriteString(`</Prefix>`)
 		buf.WriteString(`</CommonPrefixes>`)
-		keyCount++
 	}
 
 	buf.WriteString(`<IsTruncated>`)
