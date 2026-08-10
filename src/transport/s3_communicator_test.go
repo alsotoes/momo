@@ -6,6 +6,8 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -510,6 +512,43 @@ func TestS3Communicator_KeyTraversalValidation(t *testing.T) {
 	}
 }
 
+func TestS3Communicator_ListObjectsV2KeyCount(t *testing.T) {
+	files := []common.FileMetadata{
+		{Name: "file1.txt", Hash: "hash1", Size: 100},
+		{Name: "docs/file2.txt", Hash: "hash2", Size: 200},
+		{Name: "docs/nested/file3.txt", Hash: "hash3", Size: 300},
+		{Name: "src/file4.go", Hash: "hash4", Size: 400},
+	}
+
+	xmlBytes, err := FormatListObjectsV2XML("mybucket", "", "/", 1000, files)
+	if err != nil {
+		t.Fatalf("FormatListObjectsV2XML failed: %v", err)
+	}
+	xmlStr := string(xmlBytes)
+
+	contentsCount := strings.Count(xmlStr, "<Contents>")
+	prefixesCount := strings.Count(xmlStr, "<CommonPrefixes>")
+	if contentsCount != 1 {
+		t.Fatalf("Expected 1 Contents entry, got %d", contentsCount)
+	}
+	if prefixesCount != 2 {
+		t.Fatalf("Expected 2 CommonPrefixes (docs/, src/), got %d", prefixesCount)
+	}
+
+	re := regexp.MustCompile(`<KeyCount>(\d+)</KeyCount>`)
+	m := re.FindStringSubmatch(xmlStr)
+	if m == nil {
+		t.Fatalf("KeyCount element not found in XML")
+	}
+	keyCount, err := strconv.Atoi(m[1])
+	if err != nil {
+		t.Fatalf("KeyCount not an integer: %v", err)
+	}
+	if keyCount != contentsCount {
+		t.Errorf("KeyCount (%d) must equal number of Contents entries (%d), excluding CommonPrefixes", keyCount, contentsCount)
+	}
+}
+
 func TestS3Communicator_XMLFormatting(t *testing.T) {
 	files := []common.FileMetadata{
 		{Name: "file1.txt", Hash: "hash1", Size: 100, RemotePath: "", ModTime: 1700000000123000000},
@@ -571,6 +610,9 @@ func TestS3Communicator_XMLFormatting(t *testing.T) {
 	}
 	if !strings.Contains(xmlStrDelim, "<Prefix>docs/</Prefix>") {
 		t.Errorf("Expected docs/ as CommonPrefix")
+	}
+	if !strings.Contains(xmlStrDelim, "<KeyCount>1</KeyCount>") {
+		t.Errorf("Expected KeyCount to exclude CommonPrefixes (got XML: %s)", xmlStrDelim)
 	}
 
 	// 3. Reject input exceeding 64 bytes (Rule 35)
