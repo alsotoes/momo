@@ -53,7 +53,7 @@ Momo's `CRUSH-lite` simplifies the topology to a flat, region-aware ring and use
    This provides mathematically optimal load balancing for heterogeneous nodes — heavier nodes receive proportionally more objects.
 3. **Replication Peer Selection:**
    All nodes are sorted by `finalScore` descending. The top $R$ nodes are selected as the placement targets:
-   $$\text{placement} = \text{sort\_desc}(\text{nodes}, \text{finalScore})[:R]$$
+   $$\text{placement} = \text{sort}_{\text{desc}}(\text{nodes}, \text{finalScore})[:R]$$
    This ensures deterministic, load-balanced replication with minimal data movement when nodes are added or removed.
 
 ---
