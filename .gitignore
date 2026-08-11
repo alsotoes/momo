@@ -41,6 +41,7 @@ empty.txt
 # Compiled binaries and executable overrides
 momo
 src/momo
+src/src
 
 # Temporary local review body text files
 body*.txt

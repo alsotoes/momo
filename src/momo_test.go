@@ -182,6 +182,79 @@ func TestRunServer_Error(t *testing.T) {
 	}
 }
 
+func TestS3EnvelopeSubprocess(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Subprocess mode: run Run() with the args from the parent.
+	if os.Getenv("TEST_RUN_MAIN") == "1" {
+		argsStr := os.Getenv("TEST_MAIN_ARGS")
+		var args []string
+		if argsStr != "" {
+			args = strings.Split(argsStr, " ")
+		}
+		os.Args = append([]string{"momo"}, args...)
+		Run()
+		return
+	}
+
+	_ = tmpDir
+	inPath := filepath.Join(tmpDir, "plain.txt")
+	encPath := filepath.Join(tmpDir, "obj.enc")
+	decPath := filepath.Join(tmpDir, "dec.txt")
+	key := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	cwd, _ := os.Getwd()
+	config := filepath.Join(cwd, "../conf/momo.conf")
+
+	payload := []byte(strings.Repeat("end-to-end s3 envelope ", 64))
+	if err := os.WriteFile(inPath, payload, 0600); err != nil {
+		t.Fatalf("write input: %v", err)
+	}
+
+	runMomo := func(args string) (string, error) {
+		cmd := exec.Command(os.Args[0], "-test.run=TestS3EnvelopeSubprocess")
+		cmd.Env = append(os.Environ(), "TEST_RUN_MAIN=1", "TEST_MAIN_ARGS="+args)
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+
+	encArgs := "-imp s3enc -file " + inPath + " -out " + encPath + " -e2ee-key " + key + " -config " + config
+	if out, err := runMomo(encArgs); err != nil {
+		t.Fatalf("s3enc failed: %v output: %s", err, out)
+	}
+
+	// Envelope object must differ from plaintext.
+	enc, err := os.ReadFile(encPath)
+	if err != nil {
+		t.Fatalf("read envelope: %v", err)
+	}
+	if len(enc) <= len(payload) {
+		t.Fatalf("envelope should be larger, got %d", len(enc))
+	}
+
+	// Missing key must fail.
+	if out, err := runMomo("-imp s3enc -file " + inPath + " -out " + encPath + " -config " + config); err == nil {
+		t.Fatalf("s3enc without key should fail, output: %s", out)
+	}
+
+	decArgs := "-imp s3dec -file " + encPath + " -out " + decPath + " -e2ee-key " + key + " -config " + config
+	if out, err := runMomo(decArgs); err != nil {
+		t.Fatalf("s3dec failed: %v output: %s", err, out)
+	}
+	dec, err := os.ReadFile(decPath)
+	if err != nil {
+		t.Fatalf("read decrypted: %v", err)
+	}
+	if string(dec) != string(payload) {
+		t.Fatalf("round-trip mismatch")
+	}
+
+	// Wrong key must fail decryption.
+	wrongArgs := "-imp s3dec -file " + encPath + " -out " + decPath + " -e2ee-key " + strings.Repeat("9", 64) + " -config " + config
+	if out, err := runMomo(wrongArgs); err == nil {
+		t.Fatalf("s3dec with wrong key should fail, output: %s", out)
+	}
+}
+
 func TestMain_Subprocess(t *testing.T) {
 	tmpDir := t.TempDir()
 	tmpfile := filepath.Join(tmpDir, "momo.conf")
