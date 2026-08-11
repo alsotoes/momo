@@ -13,6 +13,15 @@ type FileMetadata struct {
 	// ModTime is the last modification time in Unix nanoseconds.
 	// A value of 0 means the modification time is unknown.
 	ModTime int64
+	// S3Headers holds optional S3 object metadata (Content-Type, Cache-Control,
+	// Content-Disposition, Content-Encoding, Expires, and x-amz-meta-* user
+	// headers) captured from an S3 PUT and echoed on S3 GET/HEAD. It is additive
+	// only: the replication-critical fields above (Name, Hash, Size, RemotePath,
+	// ModTime) remain authoritative and are the only fields carried by the fixed
+	// momo wire framing. S3 headers are stored at rest per object and propagated
+	// between peers as an additive X-Momo-S3-Meta header (base64-encoded), so
+	// peers without support simply store/echo no headers.
+	S3Headers map[string]string
 }
 
 // ReplicationData stores the information about a replication mode change.
