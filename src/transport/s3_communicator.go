@@ -74,6 +74,11 @@ type S3Communicator struct {
 	// Storage store for list, get, and delete operations
 	store storage.Store
 
+	// configuredBucket is the single bucket name exposed by the S3 gateway for
+	// bucket-management operations (issue #767). Empty means legacy flat
+	// namespace mode where no bucket semantics are enforced.
+	configuredBucket string
+
 	// GlobalLister for scatter-gather list queries (optional)
 	globalLister GlobalLister
 	// LeaseAcquirer for lease-based consensus on deletes (optional)
@@ -98,6 +103,29 @@ func NewS3Communicator(conn net.Conn) *S3Communicator {
 
 func (m *S3Communicator) SetStore(store storage.Store) {
 	m.store = store
+}
+
+// SetConfiguredBucket sets the single bucket name exposed by the S3 gateway for
+// bucket-management operations (issue #767). An empty value disables bucket
+// semantics (legacy flat namespace mode).
+func (m *S3Communicator) SetConfiguredBucket(bucket string) {
+	m.configuredBucket = bucket
+}
+
+// validBucket reports whether the addressed bucket name is acceptable under the
+// single-bucket policy. When no bucket is configured (legacy flat mode), any
+// bucket name is accepted.
+func (m *S3Communicator) validBucket(bucket string) bool {
+	return m.configuredBucket == "" || bucket == m.configuredBucket
+}
+
+// listFiles returns the files in the store, using scatter-gather when available
+// so DeleteBucket emptiness checks agree with ListObjectsV2.
+func (m *S3Communicator) listFiles(timeout time.Duration) ([]common.FileMetadata, error) {
+	if m.globalLister != nil {
+		return m.globalLister.GlobalList(timeout)
+	}
+	return m.store.List()
 }
 
 // SetGlobalLister sets the scatter-gather list capability.
@@ -313,7 +341,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 
 	bucket, key := extractS3BucketAndKey(req)
 
-	// Intercept GET requests (for ListObjectsV2 or GetObject)
+	// Intercept GET requests (for ListObjectsV2, ListBuckets, GetBucketLocation, or GetObject)
 	if req.Method == "GET" {
 		if m.store == nil {
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
@@ -321,17 +349,63 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			return 0, 0, fmt.Errorf("storage store not initialized")
 		}
 
-		// ListObjectsV2 (is list if key is empty, or if list-type query is 2)
 		q := req.URL.Query()
+
+		// GET / -> ListBuckets (root, no bucket addressed, no list-type).
+		// ?list-type=2 on root keeps the legacy flat-namespace list-all path.
+		if bucket == "" && q.Get("list-type") == "" {
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			var buf [256]byte
+			b := buf[:0]
+			xmlBytes := FormatListBucketsXML(m.configuredBucket)
+			b = append(b, "HTTP/1.1 200 OK\r\nContent-Type: application/xml\r\nContent-Length: "...)
+			b = strconv.AppendInt(b, int64(len(xmlBytes)), 10)
+			b = append(b, "\r\nConnection: close\r\n\r\n"...)
+			if _, err := m.conn.Write(b); err != nil {
+				return 0, 0, fmt.Errorf("failed to write ListBuckets headers: %v: %w", err, syscall.EPIPE)
+			}
+			if _, err := m.conn.Write(xmlBytes); err != nil {
+				return 0, 0, fmt.Errorf("failed to write ListBuckets body: %v: %w", err, syscall.EPIPE)
+			}
+			return 0, 0, ErrRequestHandled
+		}
+
+		// GET /bucket?location -> GetBucketLocation (bucket root, location param present).
+		if key == "" {
+			if _, hasLocation := q["location"]; hasLocation {
+				if !m.validBucket(bucket) {
+					m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+					writeS3Error(m.conn, http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", bucket)
+					return 0, 0, fmt.Errorf("unknown bucket %q: %w", bucket, syscall.ENOENT)
+				}
+				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				var buf [256]byte
+				b := buf[:0]
+				xmlBytes := FormatGetBucketLocationXML("")
+				b = append(b, "HTTP/1.1 200 OK\r\nContent-Type: application/xml\r\nContent-Length: "...)
+				b = strconv.AppendInt(b, int64(len(xmlBytes)), 10)
+				b = append(b, "\r\nConnection: close\r\n\r\n"...)
+				if _, err := m.conn.Write(b); err != nil {
+					return 0, 0, fmt.Errorf("failed to write GetBucketLocation headers: %v: %w", err, syscall.EPIPE)
+				}
+				if _, err := m.conn.Write(xmlBytes); err != nil {
+					return 0, 0, fmt.Errorf("failed to write GetBucketLocation body: %v: %w", err, syscall.EPIPE)
+				}
+				return 0, 0, ErrRequestHandled
+			}
+		}
+
+		// ListObjectsV2 (is list if key is empty, or if list-type query is 2)
 		isList := (key == "") || (q.Get("list-type") == "2")
 
 		if isList {
-			var files []common.FileMetadata
-			if m.globalLister != nil {
-				files, err = m.globalLister.GlobalList(5 * time.Second)
-			} else {
-				files, err = m.store.List()
+			if !m.validBucket(bucket) {
+				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				writeS3Error(m.conn, http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", bucket)
+				return 0, 0, fmt.Errorf("unknown bucket %q: %w", bucket, syscall.ENOENT)
 			}
+
+			files, err := m.listFiles(5 * time.Second)
 			if err != nil {
 				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 				writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to list files.", "")
@@ -374,6 +448,11 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		}
 
 		// GetObject (file download)
+		if !m.validBucket(bucket) {
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			writeS3Error(m.conn, http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", bucket)
+			return 0, 0, fmt.Errorf("unknown bucket %q: %w", bucket, syscall.ENOENT)
+		}
 		rc, meta, err := m.store.Get(key)
 		if err != nil {
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
@@ -443,12 +522,22 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			// HEAD / -> endpoint/liveness check; HEAD /bucket -> HeadBucket.
 			// momo uses a bucket-less model (no bucket registry yet, issue #767),
 			// so a configured store implies the bucket exists.
+			if bucket != "" && !m.validBucket(bucket) {
+				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				writeS3Error(m.conn, http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", bucket)
+				return 0, 0, fmt.Errorf("unknown bucket %q: %w", bucket, syscall.ENOENT)
+			}
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			m.conn.Write([]byte("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
 			return 0, 0, ErrRequestHandled
 		}
 
 		// HeadObject: reuse store.Get metadata so HEAD and GET agree on ETag/Last-Modified.
+		if !m.validBucket(bucket) {
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			writeS3Error(m.conn, http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", bucket)
+			return 0, 0, fmt.Errorf("unknown bucket %q: %w", bucket, syscall.ENOENT)
+		}
 		rc, meta, err := m.store.Get(key)
 		if err != nil {
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
@@ -488,9 +577,40 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		}
 
 		if key == "" {
+			if m.configuredBucket == "" {
+				// Legacy flat mode: no bucket semantics, preserve existing behavior.
+				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				writeS3Error(m.conn, http.StatusBadRequest, "InvalidArgument", "Missing key in DELETE request.", "")
+				return 0, 0, fmt.Errorf("missing key in DELETE request")
+			}
+
+			// Bucket mode: DeleteBucket (204, or 409 BucketNotEmpty if the
+			// store still holds objects). Honest single-bucket semantics.
+			if !m.validBucket(bucket) {
+				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				writeS3Error(m.conn, http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", bucket)
+				return 0, 0, fmt.Errorf("unknown bucket %q: %w", bucket, syscall.ENOENT)
+			}
+			files, err := m.listFiles(5 * time.Second)
+			if err != nil {
+				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to list files.", "")
+				return 0, 0, fmt.Errorf("failed to list files for DeleteBucket: %w", err)
+			}
+			if len(files) > 0 {
+				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				writeS3Error(m.conn, http.StatusConflict, "BucketNotEmpty", "The bucket you tried to delete is not empty.", bucket)
+				return 0, 0, fmt.Errorf("bucket %q is not empty: %w", bucket, syscall.ENOTEMPTY)
+			}
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			writeS3Error(m.conn, http.StatusBadRequest, "InvalidArgument", "Missing key in DELETE request.", "")
-			return 0, 0, fmt.Errorf("missing key in DELETE request")
+			m.conn.Write([]byte("HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"))
+			return 0, 0, ErrRequestHandled
+		}
+
+		if !m.validBucket(bucket) {
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			writeS3Error(m.conn, http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", bucket)
+			return 0, 0, fmt.Errorf("unknown bucket %q: %w", bucket, syscall.ENOENT)
 		}
 
 		if m.leaseAcquirer != nil {
@@ -561,6 +681,40 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 
 	// Parse Metadata if it's a PUT request
 	if req.Method == "PUT" {
+		// CreateBucket: PUT to a bucket root (key empty) in bucket mode.
+		// Legacy flat mode (no configured bucket) keeps the upload behavior.
+		if m.configuredBucket != "" && key == "" {
+			if !m.validBucket(bucket) {
+				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				writeS3Error(m.conn, http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", bucket)
+				return 0, 0, fmt.Errorf("unknown bucket %q: %w", bucket, syscall.ENOENT)
+			}
+			// CreateBucket succeeds for the configured bucket: 200 + LocationConstraint.
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			var buf [256]byte
+			b := buf[:0]
+			xmlBytes := FormatGetBucketLocationXML("")
+			b = append(b, "HTTP/1.1 200 OK\r\nLocation: /"...)
+			b = append(b, m.configuredBucket...)
+			b = append(b, "\r\nContent-Type: application/xml\r\nContent-Length: "...)
+			b = strconv.AppendInt(b, int64(len(xmlBytes)), 10)
+			b = append(b, "\r\nConnection: close\r\n\r\n"...)
+			if _, err := m.conn.Write(b); err != nil {
+				return 0, 0, fmt.Errorf("failed to write CreateBucket headers: %v: %w", err, syscall.EPIPE)
+			}
+			if _, err := m.conn.Write(xmlBytes); err != nil {
+				return 0, 0, fmt.Errorf("failed to write CreateBucket body: %v: %w", err, syscall.EPIPE)
+			}
+			return 0, 0, ErrRequestHandled
+		}
+
+		// Object upload: enforce the single-bucket policy when configured.
+		if !m.validBucket(bucket) {
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			writeS3Error(m.conn, http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", bucket)
+			return 0, 0, fmt.Errorf("unknown bucket %q: %w", bucket, syscall.ENOENT)
+		}
+
 		// 🛡️ Sentinel: Sanitize S3 path to prevent traversal attacks.
 		rawPath := req.URL.Path
 		cleanPath := path.Clean(rawPath)
@@ -570,7 +724,14 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			return 0, 0, fmt.Errorf("invalid S3 path: %s: %w", rawPath, syscall.EBADMSG)
 		}
 
-		m.meta.Name = strings.TrimPrefix(cleanPath, "/")
+		// Object name: in bucket mode store the bucket-relative key so GET/HEAD/DELETE
+		// (which extract the key without the bucket) resolve the same object. Legacy
+		// flat mode keeps the full cleaned path as the object name.
+		if m.configuredBucket != "" {
+			m.meta.Name = key
+		} else {
+			m.meta.Name = strings.TrimPrefix(cleanPath, "/")
+		}
 		m.meta.Size = req.ContentLength
 		m.meta.Hash = req.Header.Get("X-Amz-Content-Sha256")
 		if m.meta.Hash == "" {
@@ -925,6 +1086,34 @@ func formatLastModified(modTime int64) string {
 // as the Unix epoch.
 func formatHTTPLastModified(modTime int64) string {
 	return time.Unix(0, modTime).UTC().Format(http.TimeFormat)
+}
+
+// FormatListBucketsXML constructs an S3-compliant ListBuckets
+// (ListAllMyBucketsResult) XML response listing the configured single bucket.
+// An empty configuredBucket yields an empty bucket list (legacy flat mode).
+func FormatListBucketsXML(configuredBucket string) []byte {
+	var buf bytes.Buffer
+	buf.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)
+	buf.WriteString(`<ListAllMyBucketsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Owner><ID>momo</ID><DisplayName>momo</DisplayName></Owner><Buckets>`)
+	if configuredBucket != "" {
+		buf.WriteString(`<Bucket><Name>`)
+		xmlEscape(&buf, configuredBucket)
+		buf.WriteString(`</Name><CreationDate>2024-01-01T00:00:00.000Z</CreationDate></Bucket>`)
+	}
+	buf.WriteString(`</Buckets></ListAllMyBucketsResult>`)
+	return buf.Bytes()
+}
+
+// FormatGetBucketLocationXML constructs an S3-compliant GetBucketLocation
+// response. An empty region (us-east-1) is represented by an empty
+// LocationConstraint element.
+func FormatGetBucketLocationXML(region string) []byte {
+	var buf bytes.Buffer
+	buf.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)
+	buf.WriteString(`<LocationConstraint xmlns="http://s3.amazonaws.com/doc/2006-03-01/">`)
+	xmlEscape(&buf, region)
+	buf.WriteString(`</LocationConstraint>`)
+	return buf.Bytes()
 }
 
 // FormatListObjectsV2XML constructs an S3-compliant ListObjectsV2 XML response

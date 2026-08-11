@@ -288,7 +288,11 @@ When a standard S3 tool connects to Momo, it communicates via raw, standard S3 H
 **Step-by-step Flow:**
 1.  **Request Arrival:** The standard client makes an S3 request (e.g., `GET /?list-type=2` for listing, `GET /bucket/file.txt` for downloads, or `DELETE /bucket/file.txt` for deletion) containing standard AWS-HMAC-SHA256 headers.
 2.  **Handshake Interception:** The server accepts the socket and calls `comm.HandshakeServer(expectedAuthToken)`. S3Communicator reads the HTTP request, parses and validates the token.
-3.  **REST Query Routing:** Because the request method is `GET` or `DELETE`, S3Communicator detects it as a REST query and **bypasses standard Momo framing**:
+3.  **REST Query Routing:** Because the request method is `GET`, `HEAD`, or `DELETE`, S3Communicator detects it as a REST query and **bypasses standard Momo framing**:
+    -   **ListBuckets:** `GET /` queries the configured single bucket (from the `[storage] s3_bucket` setting) and returns an S3-compliant `<ListAllMyBucketsResult>`. With no bucket configured (legacy flat mode), it returns an empty bucket list.
+    -   **HeadBucket / HeadObject:** `HEAD /bucket` returns `200 OK` (or `404 NoSuchBucket` outside the configured bucket); `HEAD /bucket/key` returns headers-only `200 OK` with `ETag`, `Content-Length`, and `Last-Modified`, or `404 NoSuchKey`.
+    -   **CreateBucket / DeleteBucket:** `PUT /bucket` returns `200 OK` with a `<LocationConstraint>` body for the configured bucket (bucket semantics require `s3_bucket` to be set); `DELETE /bucket` returns `204 No Content` when the store is empty or `409 BucketNotEmpty` otherwise.
+    -   **GetBucketLocation:** `GET /bucket?location` returns `200 OK` with a `<LocationConstraint/>` body.
     -   **ListObjectsV2:** Queries `store.List()`, formats the file list into S3-compliant XML using a high-performance allocation-free `bytes.Buffer`, writes `200 OK` back to the client, and returns `ErrRequestHandled`.
     -   **GetObject:** Queries `store.Get(key)`, streams the binary content directly to the client, and returns `ErrRequestHandled`.
     -   **DeleteObject:** Invokes `store.Delete(key)` on BoltDB, writes a `204 No Content` response, and returns `ErrRequestHandled`.
