@@ -27,7 +27,7 @@ const (
 	contractMetadataLen = contractHashLen + contractFileNameLen + contractFileSizeLen // 192
 
 	contractStatusLen = 1
-	contractACKLen    = 4 // "ACK" + 1-digit serverId (e.g., "ACK0")
+	contractACKLen    = 4 // "ACK" + 1-byte serverId (fixed-length, issue #621)
 )
 
 func TestContract_HandshakeLayout(t *testing.T) {
