@@ -809,7 +809,8 @@ func GenerateSelfSignedCert() (tls.Certificate, error) {
 // When caCertPool is non-nil, peer certificates are verified against it.
 // When caCertPool is nil and tlsInsecure is false, the connection fails.
 // When caCertPool is nil and tlsInsecure is true, InsecureSkipVerify is used with a warning.
-func DialQUIC(ctx context.Context, address string, caCertPool *x509.CertPool, tlsInsecure bool) (conn *quic.Conn, stream *quic.Stream, err error) {
+// When clientCert is non-nil, it is presented to the peer for mutual TLS (issue #624).
+func DialQUIC(ctx context.Context, address string, caCertPool *x509.CertPool, tlsInsecure bool, clientCert *tls.Certificate) (conn *quic.Conn, stream *quic.Stream, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Panic recovered in DialQUIC for %s: %v", address, r)
@@ -824,6 +825,9 @@ func DialQUIC(ctx context.Context, address string, caCertPool *x509.CertPool, tl
 
 	tlsConf := &tls.Config{
 		NextProtos: []string{"momo-quic"},
+	}
+	if clientCert != nil {
+		tlsConf.Certificates = []tls.Certificate{*clientCert}
 	}
 	if caCertPool != nil {
 		tlsConf.RootCAs = caCertPool
