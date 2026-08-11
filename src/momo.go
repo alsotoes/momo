@@ -2,16 +2,20 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
+	"os"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/alsotoes/momo/src/client"
 	"github.com/alsotoes/momo/src/common"
+	momocrypto "github.com/alsotoes/momo/src/crypto"
 	"github.com/alsotoes/momo/src/metrics"
 	"github.com/alsotoes/momo/src/server"
 	"github.com/alsotoes/momo/src/transport"
@@ -42,6 +46,9 @@ func Run() {
 	configPathPtr := flag.String("config", "conf/momo.conf", "Path to the configuration file")
 	modePtr := flag.Int("mode", -1, "Replication mode to set (used with -imp repl)")
 	remotePathPtr := flag.String("remote-path", "", "Remote virtual directory path to upload the file to")
+	e2eeKeyPtr := flag.String("e2ee-key", "", "64-hex 256-bit E2EE master key for the S3 envelope encrypt/decrypt (client-held, never shared with the server)")
+	e2eeKeyIDPtr := flag.String("e2ee-key-id", "", "Key identifier stored in the envelope (default: \"default\")")
+	outPathPtr := flag.String("out", "", "Output path for -imp s3enc / s3dec")
 	flag.Parse()
 
 	cfg, err := common.GetConfig(*configPathPtr)
@@ -131,9 +138,69 @@ func Run() {
 		} else {
 			server.ChangeReplicationModeClient(factory, jsonBytes, *serverIdPtr)
 		}
+	case "s3enc", "s3dec":
+		if err := runS3Envelope(*impersonationPtr, *filePathPtr, *outPathPtr, *e2eeKeyPtr, *e2eeKeyIDPtr); err != nil {
+			log.Fatalf("S3 envelope error: %v", common.SanitizeLog(err.Error()))
+		}
 	default:
 		log.Fatalf("*** ERROR: Option unknown: %s", common.SanitizeLog(*impersonationPtr))
 	}
+}
+
+// runS3Envelope implements the -imp s3enc and -imp s3dec modes: a client-side
+// envelope-encryption helper for the S3 gateway (issue #777). It encrypts a
+// local file into a self-describing momo E2EE envelope object (for upload via
+// any S3 client to the momo gateway) or decrypts such an envelope back to
+// plaintext. The master key is client-held only; it must never be the server's
+// EncryptionKey.
+func runS3Envelope(mode, filePath, outPath, e2eeKey, keyID string) error {
+	if e2eeKey == "" {
+		return fmt.Errorf("s3 %s requires -e2ee-key (64 hex characters): %w", mode, syscall.EINVAL)
+	}
+	if len(e2eeKey) != momocrypto.MaxKeyHexSize {
+		return fmt.Errorf("s3 %s requires a 64-hex 256-bit -e2ee-key: %w", mode, syscall.EINVAL)
+	}
+	masterKey, err := hex.DecodeString(e2eeKey)
+	if err != nil {
+		return fmt.Errorf("failed to decode -e2ee-key: %w", err)
+	}
+	if keyID == "" {
+		keyID = "default"
+	}
+
+	in, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to open %s: %w", filePath, err)
+	}
+	defer in.Close()
+
+	out := io.Writer(os.Stdout)
+	var outFile *os.File
+	if outPath != "" {
+		outFile, err = os.Create(outPath)
+		if err != nil {
+			return fmt.Errorf("failed to create %s: %w", outPath, err)
+		}
+		defer outFile.Close()
+		out = outFile
+	}
+
+	switch mode {
+	case "s3enc":
+		if err := momocrypto.EncryptEnvelope(out, in, masterKey, keyID); err != nil {
+			return fmt.Errorf("failed to encrypt envelope: %w", err)
+		}
+	case "s3dec":
+		if _, err := momocrypto.DecryptEnvelope(in, out, masterKey); err != nil {
+			return fmt.Errorf("failed to decrypt envelope: %w", err)
+		}
+	}
+	if outFile != nil {
+		if err := outFile.Sync(); err != nil {
+			return fmt.Errorf("failed to sync %s: %w", outPath, err)
+		}
+	}
+	return nil
 }
 
 // runMetricsLoop runs the metrics loop with panic recovery.
