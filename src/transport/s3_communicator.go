@@ -317,6 +317,14 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			return 0, 0, syscall.EACCES
 		}
 		token = components.AccessKey
+	} else if p, ok := parseSigV4QueryAuth(req); ok {
+		isSigV4 = true
+		token = p.AccessKey
+	} else if isPresignedSigV4(req) {
+		// X-Amz-Algorithm present but required presigned params incomplete → 400.
+		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		writeS3Error(m.conn, http.StatusBadRequest, "AuthorizationQueryParametersError", "Query-string authentication parameters are missing or malformed.", "")
+		return 0, 0, fmt.Errorf("incomplete presigned auth query parameters: %w", syscall.EBADMSG)
 	}
 
 	tokenBuf := []byte(common.PadString(token, common.AuthTokenLength))
@@ -335,7 +343,13 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		if !verifySigV4Signature(req, authHeader, secretKey) {
 			log.Printf("AUDIT: SigV4 signature verification failed from %s", m.conn.RemoteAddr())
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			writeS3Error(m.conn, http.StatusForbidden, "SignatureDoesNotMatch", "The request signature we calculated does not match the signature you provided. Check your AWS secret access key and signing method.", "")
+			var code, msg string
+			if isPresignedSigV4(req) && !verifySigV4Expiry(req) {
+				code, msg = "AccessDenied", "Request has expired."
+			} else {
+				code, msg = "SignatureDoesNotMatch", "The request signature we calculated does not match the signature you provided. Check your AWS secret access key and signing method."
+			}
+			writeS3Error(m.conn, http.StatusForbidden, code, msg, "")
 			return 0, 0, syscall.EACCES
 		}
 	}
