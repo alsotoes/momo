@@ -727,6 +727,99 @@ func TestS3Communicator_HandshakeClient_CRLFInjection(t *testing.T) {
 	}
 }
 
+func TestS3Communicator_HandshakeClient_ReadDeadline(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	origTimeout := s3ReadHeaderTimeout
+	s3ReadHeaderTimeout = 50 * time.Millisecond
+	defer func() { s3ReadHeaderTimeout = origTimeout }()
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	// The peer accepts the handshake request but never writes a response,
+	// simulating a malicious/unresponsive server (issue #620).
+	go func() {
+		buf := make([]byte, 1024)
+		for {
+			if _, err := clientConn.Read(buf); err != nil {
+				return
+			}
+		}
+	}()
+
+	comm := NewS3Communicator(serverConn)
+	start := time.Now()
+	_, err := comm.HandshakeClient("valid-token", 12345, 1)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("Expected HandshakeClient to fail on unresponsive server, got nil")
+	}
+	if elapsed > 5*time.Second {
+		t.Fatalf("HandshakeClient blocked for %v instead of honoring read deadline", elapsed)
+	}
+}
+
+func TestS3Communicator_SendMetadata_ReadDeadline(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	origTimeout := s3ReadHeaderTimeout
+	s3ReadHeaderTimeout = 50 * time.Millisecond
+	defer func() { s3ReadHeaderTimeout = origTimeout }()
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	go func() {
+		buf := make([]byte, 1024)
+		for {
+			if _, err := clientConn.Read(buf); err != nil {
+				return
+			}
+		}
+	}()
+
+	comm := NewS3Communicator(serverConn)
+	meta := &common.FileMetadata{Name: "test-file.txt", Hash: "hash1", Size: 100}
+	start := time.Now()
+	_, err := comm.SendMetadata(meta)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("Expected SendMetadata to fail on unresponsive server, got nil")
+	}
+	if elapsed > 5*time.Second {
+		t.Fatalf("SendMetadata blocked for %v instead of honoring read deadline", elapsed)
+	}
+}
+
+func TestS3Communicator_ReceiveACK_ReadDeadline(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	origTimeout := s3ReadHeaderTimeout
+	s3ReadHeaderTimeout = 50 * time.Millisecond
+	defer func() { s3ReadHeaderTimeout = origTimeout }()
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	comm := NewS3Communicator(serverConn)
+	start := time.Now()
+	err := comm.ReceiveACK()
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("Expected ReceiveACK to fail on unresponsive server, got nil")
+	}
+	if elapsed > 5*time.Second {
+		t.Fatalf("ReceiveACK blocked for %v instead of honoring read deadline", elapsed)
+	}
+}
+
 func TestS3Communicator_SendMetadataPathTraversal(t *testing.T) {
 	defer verifyNoLeaks(t)
 
