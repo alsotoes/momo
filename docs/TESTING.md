@@ -602,7 +602,7 @@ Wire protocol byte-level assertions that prevent accidental protocol breaking ch
 | `contractHandshakeLen` | 84 bytes | AuthToken (64) + Timestamp (19) + Mode (1) |
 | `contractMetadataLen` | 192 bytes | Hash (64) + FileName (64) + FileSize (64) |
 | `contractStatusLen` | 1 byte | Metadata status code |
-| `contractACKLen` | 4+ bytes | Server ACK ("ACK" + serverId digits, e.g. "ACK0") |
+| `contractACKLen` | 4 bytes | Server ACK ("ACK" + 1-byte serverId, fixed-length) |
 
 #### Tests
 

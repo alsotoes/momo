@@ -149,9 +149,9 @@ func TestDaemonLogic(t *testing.T) {
 		expectedAck         string
 		expectedReplication int
 	}{
-		{"ReplicationNone", common.ReplicationNone, 0, "ACK0", common.ReplicationNone},
-		{"ReplicationSplay", common.ReplicationSplay, 0, "ACK0", common.ReplicationSplay},
-		{"ReplicationChain", common.ReplicationChain, 1, "ACK1", common.ReplicationChain},
+		{"ReplicationNone", common.ReplicationNone, 0, "ACK\x00", common.ReplicationNone},
+		{"ReplicationSplay", common.ReplicationSplay, 0, "ACK\x00", common.ReplicationSplay},
+		{"ReplicationChain", common.ReplicationChain, 1, "ACK\x01", common.ReplicationChain},
 	}
 
 	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
