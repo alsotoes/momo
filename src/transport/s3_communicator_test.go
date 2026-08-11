@@ -341,6 +341,10 @@ func (m *mockStore) List() ([]common.FileMetadata, error) {
 }
 
 func runS3RequestCapture(t *testing.T, reqStr string, mock storage.Store) (string, error) {
+	return runS3RequestCaptureBucket(t, reqStr, mock, "")
+}
+
+func runS3RequestCaptureBucket(t *testing.T, reqStr string, mock storage.Store, configuredBucket string) (string, error) {
 	expectedAuthToken := []byte(common.PadString("a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6", common.AuthTokenLength)) // notsecret
 
 	l, err := net.Listen("tcp", "127.0.0.1:0")
@@ -363,6 +367,7 @@ func runS3RequestCapture(t *testing.T, reqStr string, mock storage.Store) (strin
 
 		comm := NewS3Communicator(conn)
 		comm.SetStore(mock)
+		comm.SetConfiguredBucket(configuredBucket)
 
 		_, _, err = comm.HandshakeServer(expectedAuthToken)
 		errChan <- err
@@ -897,6 +902,301 @@ func TestS3Communicator_HEAD_SigV4Auth(t *testing.T) {
 	_, _, err := comm.HandshakeServer(expectedAuthToken)
 	if err != ErrRequestHandled {
 		t.Fatalf("Expected ErrRequestHandled for HEAD with SigV4, got: %v", err)
+	}
+}
+
+func TestFormatListBucketsXML(t *testing.T) {
+	empty := string(FormatListBucketsXML(""))
+	if !strings.Contains(empty, "<ListAllMyBucketsResult") {
+		t.Errorf("Expected ListAllMyBucketsResult root, got: %s", empty)
+	}
+	if strings.Contains(empty, "<Bucket>") {
+		t.Errorf("Expected no buckets for empty configured bucket, got: %s", empty)
+	}
+	if strings.Contains(empty, "<Name>") {
+		t.Errorf("Expected no bucket names for empty configured bucket, got: %s", empty)
+	}
+
+	withBucket := string(FormatListBucketsXML("mybucket"))
+	if !strings.Contains(withBucket, "<Name>mybucket</Name>") {
+		t.Errorf("Expected configured bucket in list, got: %s", withBucket)
+	}
+	if !strings.Contains(withBucket, "<Owner><ID>momo</ID>") {
+		t.Errorf("Expected Owner element, got: %s", withBucket)
+	}
+}
+
+func TestFormatGetBucketLocationXML(t *testing.T) {
+	empty := string(FormatGetBucketLocationXML(""))
+	if !strings.Contains(empty, "<LocationConstraint") || !strings.Contains(empty, "</LocationConstraint>") {
+		t.Errorf("Expected LocationConstraint element, got: %s", empty)
+	}
+	if strings.Contains(empty, ">us-east-1<") {
+		t.Errorf("Expected empty region for empty input, got: %s", empty)
+	}
+
+	region := string(FormatGetBucketLocationXML("us-east-1"))
+	if !strings.Contains(region, ">us-east-1</LocationConstraint>") {
+		t.Errorf("Expected region inside LocationConstraint, got: %s", region)
+	}
+}
+
+func TestS3Communicator_ListBuckets(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	reqStr := "GET / HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"Authorization: Bearer " + authToken + "\r\n\r\n"
+
+	// 1. No configured bucket -> empty bucket list.
+	respStr := runS3TestRequest(t, reqStr, &mockStore{})
+	if !strings.Contains(respStr, "HTTP/1.1 200 OK") {
+		t.Errorf("Expected 200 OK, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "Content-Type: application/xml") {
+		t.Errorf("Expected XML content type, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "<ListAllMyBucketsResult") {
+		t.Errorf("Expected ListAllMyBucketsResult, got: %s", respStr)
+	}
+	if strings.Contains(respStr, "<Name>") {
+		t.Errorf("Expected empty bucket list without configured bucket, got: %s", respStr)
+	}
+
+	// 2. Configured bucket -> returned in ListBuckets.
+	respStr, serverErr := runS3RequestCaptureBucket(t, reqStr, &mockStore{}, "mybucket")
+	if serverErr != ErrRequestHandled {
+		t.Fatalf("Expected ErrRequestHandled, got: %v", serverErr)
+	}
+	if !strings.Contains(respStr, "<Name>mybucket</Name>") {
+		t.Errorf("Expected configured bucket in ListBuckets, got: %s", respStr)
+	}
+}
+
+func TestS3Communicator_GetBucketLocation(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+
+	// 1. Valid bucket -> 200 with empty LocationConstraint (us-east-1).
+	reqStr := "GET /mybucket?location HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"Authorization: Bearer " + authToken + "\r\n\r\n"
+	respStr, serverErr := runS3RequestCaptureBucket(t, reqStr, &mockStore{}, "mybucket")
+	if serverErr != ErrRequestHandled {
+		t.Fatalf("Expected ErrRequestHandled, got: %v", serverErr)
+	}
+	if !strings.Contains(respStr, "HTTP/1.1 200 OK") {
+		t.Errorf("Expected 200 OK, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "<LocationConstraint") {
+		t.Errorf("Expected LocationConstraint XML, got: %s", respStr)
+	}
+
+	// 2. Unknown bucket -> 404 NoSuchBucket.
+	respStr, serverErr = runS3RequestCaptureBucket(t, reqStr, &mockStore{}, "otherbucket")
+	if serverErr == nil || !errors.Is(serverErr, syscall.ENOENT) {
+		t.Fatalf("Expected ENOENT for unknown bucket, got: %v", serverErr)
+	}
+	if !strings.Contains(respStr, "HTTP/1.1 404 Not Found") {
+		t.Errorf("Expected 404 Not Found, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "<Code>NoSuchBucket</Code>") {
+		t.Errorf("Expected NoSuchBucket XML error, got: %s", respStr)
+	}
+}
+
+func TestS3Communicator_CreateBucket(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+
+	// 1. CreateBucket for the configured bucket -> 200 + Location header.
+	reqStr := "PUT /mybucket HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"Authorization: Bearer " + authToken + "\r\n" +
+		"Content-Length: 0\r\n\r\n"
+	respStr, serverErr := runS3RequestCaptureBucket(t, reqStr, &mockStore{}, "mybucket")
+	if serverErr != ErrRequestHandled {
+		t.Fatalf("Expected ErrRequestHandled for CreateBucket, got: %v", serverErr)
+	}
+	if !strings.Contains(respStr, "HTTP/1.1 200 OK") {
+		t.Errorf("Expected 200 OK, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "Location: /mybucket") {
+		t.Errorf("Expected Location header, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "<LocationConstraint") {
+		t.Errorf("Expected LocationConstraint XML, got: %s", respStr)
+	}
+
+	// 2. CreateBucket for a different name -> 404 NoSuchBucket (single-bucket policy).
+	respStr, serverErr = runS3RequestCaptureBucket(t, reqStr, &mockStore{}, "configured-bucket")
+	if serverErr == nil || !errors.Is(serverErr, syscall.ENOENT) {
+		t.Fatalf("Expected ENOENT for wrong bucket name, got: %v", serverErr)
+	}
+	if !strings.Contains(respStr, "HTTP/1.1 404 Not Found") {
+		t.Errorf("Expected 404 Not Found, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "<Code>NoSuchBucket</Code>") {
+		t.Errorf("Expected NoSuchBucket XML error, got: %s", respStr)
+	}
+}
+
+func TestS3Communicator_DeleteBucket(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	reqStr := "DELETE /mybucket HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"Authorization: Bearer " + authToken + "\r\n\r\n"
+
+	// 1. Empty store -> 204 No Content.
+	emptyMock := &mockStore{listFunc: func() ([]common.FileMetadata, error) { return nil, nil }}
+	respStr, serverErr := runS3RequestCaptureBucket(t, reqStr, emptyMock, "mybucket")
+	if serverErr != ErrRequestHandled {
+		t.Fatalf("Expected ErrRequestHandled for empty DeleteBucket, got: %v", serverErr)
+	}
+	if !strings.Contains(respStr, "HTTP/1.1 204 No Content") {
+		t.Errorf("Expected 204 No Content, got: %s", respStr)
+	}
+
+	// 2. Non-empty store -> 409 BucketNotEmpty.
+	nonEmptyMock := &mockStore{listFunc: func() ([]common.FileMetadata, error) {
+		return []common.FileMetadata{{Name: "file.txt", Hash: "h", Size: 1}}, nil
+	}}
+	respStr, serverErr = runS3RequestCaptureBucket(t, reqStr, nonEmptyMock, "mybucket")
+	if serverErr == nil || !errors.Is(serverErr, syscall.ENOTEMPTY) {
+		t.Fatalf("Expected ENOTEMPTY for non-empty DeleteBucket, got: %v", serverErr)
+	}
+	if !strings.Contains(respStr, "HTTP/1.1 409 Conflict") {
+		t.Errorf("Expected 409 Conflict, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "<Code>BucketNotEmpty</Code>") {
+		t.Errorf("Expected BucketNotEmpty XML error, got: %s", respStr)
+	}
+
+	// 3. Unknown bucket name -> 404 NoSuchBucket.
+	respStr, serverErr = runS3RequestCaptureBucket(t, reqStr, emptyMock, "configured-bucket")
+	if serverErr == nil || !errors.Is(serverErr, syscall.ENOENT) {
+		t.Fatalf("Expected ENOENT for wrong bucket, got: %v", serverErr)
+	}
+	if !strings.Contains(respStr, "HTTP/1.1 404 Not Found") {
+		t.Errorf("Expected 404 Not Found, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "<Code>NoSuchBucket</Code>") {
+		t.Errorf("Expected NoSuchBucket XML error, got: %s", respStr)
+	}
+
+	// 4. Legacy flat mode (no configured bucket) preserves 400 for keyless DELETE.
+	respStr, serverErr = runS3RequestCapture(t, reqStr, emptyMock)
+	if serverErr == nil {
+		t.Fatal("Expected error for keyless DELETE in flat mode")
+	}
+	if !strings.Contains(respStr, "HTTP/1.1 400 Bad Request") {
+		t.Errorf("Expected 400 Bad Request in flat mode, got: %s", respStr)
+	}
+}
+
+func TestS3Communicator_HeadBucket_Configured(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+
+	// 1. HEAD configured bucket -> 200.
+	reqStr := "HEAD /mybucket HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"Authorization: Bearer " + authToken + "\r\n\r\n"
+	respStr, serverErr := runS3RequestCaptureBucket(t, reqStr, &mockStore{}, "mybucket")
+	if serverErr != ErrRequestHandled {
+		t.Fatalf("Expected ErrRequestHandled, got: %v", serverErr)
+	}
+	if !strings.Contains(respStr, "HTTP/1.1 200 OK") {
+		t.Errorf("Expected 200 OK, got: %s", respStr)
+	}
+
+	// 2. HEAD unknown bucket -> 404 NoSuchBucket.
+	respStr, serverErr = runS3RequestCaptureBucket(t, reqStr, &mockStore{}, "otherbucket")
+	if serverErr == nil || !errors.Is(serverErr, syscall.ENOENT) {
+		t.Fatalf("Expected ENOENT for unknown bucket, got: %v", serverErr)
+	}
+	if !strings.Contains(respStr, "HTTP/1.1 404 Not Found") {
+		t.Errorf("Expected 404 Not Found, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "<Code>NoSuchBucket</Code>") {
+		t.Errorf("Expected NoSuchBucket XML error, got: %s", respStr)
+	}
+}
+
+func TestS3Communicator_BucketModeObjectOps(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	fileContent := []byte("data")
+
+	// 1. GET object in the configured bucket -> 200.
+	reqGet := "GET /mybucket/hello.txt HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"Authorization: Bearer " + authToken + "\r\n\r\n"
+	mock := &mockStore{
+		getFunc: func(name string) (io.ReadCloser, common.FileMetadata, error) {
+			return io.NopCloser(bytes.NewReader(fileContent)), common.FileMetadata{Name: name, Hash: "h1", Size: 4}, nil
+		},
+	}
+	respStr, serverErr := runS3RequestCaptureBucket(t, reqGet, mock, "mybucket")
+	if serverErr != ErrRequestHandled {
+		t.Fatalf("Expected ErrRequestHandled, got: %v", serverErr)
+	}
+	if !strings.Contains(respStr, "HTTP/1.1 200 OK") {
+		t.Errorf("Expected 200 OK, got: %s", respStr)
+	}
+
+	// 2. GET object in an unknown bucket -> 404 NoSuchBucket.
+	respStr, serverErr = runS3RequestCaptureBucket(t, reqGet, mock, "configured-bucket")
+	if serverErr == nil || !errors.Is(serverErr, syscall.ENOENT) {
+		t.Fatalf("Expected ENOENT for wrong bucket, got: %v", serverErr)
+	}
+	if !strings.Contains(respStr, "<Code>NoSuchBucket</Code>") {
+		t.Errorf("Expected NoSuchBucket XML error, got: %s", respStr)
+	}
+
+	// 3. PUT object in the configured bucket -> handshake proceeds (key stored without bucket prefix).
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+	expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
+
+	putReq := "PUT /mybucket/subdir/file.txt HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"Authorization: Bearer " + authToken + "\r\n" +
+		"X-Amz-Date: 20260604T120000Z\r\n" +
+		"X-Amz-Content-Sha256: hash123\r\n" +
+		"Content-Length: 1024\r\n\r\n"
+
+	go func() {
+		clientConn.Write([]byte(putReq))
+		buf := make([]byte, 1024)
+		for {
+			if _, err := clientConn.Read(buf); err != nil {
+				break
+			}
+		}
+	}()
+
+	comm := NewS3Communicator(serverConn)
+	comm.SetStore(mock)
+	comm.SetConfiguredBucket("mybucket")
+	_, _, err := comm.HandshakeServer(expectedAuthToken)
+	if err != nil {
+		t.Fatalf("HandshakeServer failed for PUT in configured bucket: %v", err)
+	}
+	meta, err := comm.ReceiveMetadata()
+	if err != nil {
+		t.Fatalf("ReceiveMetadata failed: %v", err)
+	}
+	if meta.Name != "subdir/file.txt" {
+		t.Errorf("Expected bucket-relative key name, got %q", meta.Name)
 	}
 }
 

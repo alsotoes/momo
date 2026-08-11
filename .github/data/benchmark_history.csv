@@ -3006,3 +3006,12 @@ c6829fc,BenchmarkSanitizeLog/Unsafe-8,837.80,704.00,1.00
 97aec32,BenchmarkPadString-8,43.47,64.00,1.00
 97aec32,BenchmarkSanitizeLog/Safe-8,496.80,0.00,0.00
 97aec32,BenchmarkSanitizeLog/Unsafe-8,596.70,704.00,1.00
+a2c936b,BenchmarkCheckMetricsAndSwap-8,8.45,0.00,0.00
+a2c936b,BenchmarkCrushOptimized-8,350.30,0.00,0.00
+a2c936b,BenchmarkCrushOriginal-8,478.60,164.00,3.00
+a2c936b,BenchmarkIndexDirectTracking-8,0.40,0.00,0.00
+a2c936b,BenchmarkIndexSearch-8,2.00,0.00,0.00
+a2c936b,BenchmarkLoadGlobalConfig-8,7622.00,1576.00,46.00
+a2c936b,BenchmarkPadString-8,59.75,64.00,1.00
+a2c936b,BenchmarkSanitizeLog/Safe-8,537.10,0.00,0.00
+a2c936b,BenchmarkSanitizeLog/Unsafe-8,732.00,704.00,1.00

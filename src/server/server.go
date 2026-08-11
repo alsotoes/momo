@@ -197,6 +197,11 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 				s3Comm.SetStore(store)
 			}
 
+			// Inject the configured S3 bucket name for bucket-management operations
+			if bcComm, ok := comm.(interface{ SetConfiguredBucket(string) }); ok {
+				bcComm.SetConfiguredBucket(cfg.Storage.S3Bucket)
+			}
+
 			// Inject metrics hook for download/delete/error instrumentation
 			if mhComm, ok := comm.(interface{ SetMetricsHook(transport.MetricsHook) }); ok {
 				mhComm.SetMetricsHook(metricsCollector)
