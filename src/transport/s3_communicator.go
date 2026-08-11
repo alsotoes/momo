@@ -425,6 +425,14 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 	// Intercept HEAD requests (HeadObject or HeadBucket). HEAD is a read-only
 	// metadata operation and must bypass momo framing (issue #765).
 	if req.Method == "HEAD" {
+		// 🛡️ Rule 37: Zero-Crash recovery for the HEAD interception block.
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("CRITICAL: Panic recovered in S3 HEAD interceptor: %v", r)
+				err = fmt.Errorf("internal S3 HEAD panic: %w", syscall.EIO)
+			}
+		}()
+
 		if m.store == nil {
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "The storage store is not initialized.", "")
