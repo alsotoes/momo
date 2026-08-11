@@ -96,7 +96,12 @@ func (f *ProtocolFactory) Dial(address string) (Communicator, error) {
 	case "momo-quic", "s3-quic":
 		ctx, cancel := context.WithTimeout(context.Background(), quicDialTimeout)
 		defer cancel()
-		conn, stream, err := DialQUIC(ctx, address, f.certPool, f.cfg.Global.TLSInsecure)
+		var clientCert *tls.Certificate
+		if f.tlsConfig != nil && len(f.tlsConfig.Certificates) > 0 {
+			cert := f.tlsConfig.Certificates[0]
+			clientCert = &cert
+		}
+		conn, stream, err := DialQUIC(ctx, address, f.certPool, f.cfg.Global.TLSInsecure, clientCert)
 		if err != nil {
 			return nil, err
 		}
@@ -124,13 +129,24 @@ func (f *ProtocolFactory) Listen(address string) (MomoListener, error) {
 		}
 		return &TCPListener{Listener: l, factory: f}, nil
 	case "momo-quic", "s3-quic":
-		cert, err := GenerateSelfSignedCert()
-		if err != nil {
-			return nil, fmt.Errorf("failed to generate cert: %w", err)
-		}
-		tlsConf := &tls.Config{
-			Certificates: []tls.Certificate{cert},
-			NextProtos:   []string{"momo-quic"},
+		// Use the configured TLS certificate when available (issue #624);
+		// fall back to a self-signed certificate only when not configured.
+		tlsConf := &tls.Config{NextProtos: []string{"momo-quic"}}
+		if f.tlsConfig != nil {
+			tlsConf = f.tlsConfig.Clone()
+			tlsConf.NextProtos = []string{"momo-quic"}
+			if f.certPool != nil {
+				// Mutual TLS: require and verify client certificates against
+				// the configured CA pool, mirroring buildP2PTLSConfig.
+				tlsConf.ClientCAs = f.certPool
+				tlsConf.ClientAuth = tls.RequireAndVerifyClientCert
+			}
+		} else {
+			cert, err := GenerateSelfSignedCert()
+			if err != nil {
+				return nil, fmt.Errorf("failed to generate cert: %w", err)
+			}
+			tlsConf.Certificates = []tls.Certificate{cert}
 		}
 		l, err := quic.ListenAddr(address, tlsConf, nil)
 		if err != nil {

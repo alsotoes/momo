@@ -63,12 +63,15 @@ type ConfigurationGlobal struct {
 	// PolymorphicSystem enables or disables the polymorphic system.
 	PolymorphicSystem bool
 	// CACertPath is the path to a PEM-encoded CA certificate file used to verify
-	// QUIC peer certificates. When empty, InsecureSkipVerify is used with a warning.
+	// QUIC/TCP peer certificates and to require client certificates (mutual TLS)
+	// on servers. When empty, InsecureSkipVerify is used with a warning.
 	CACertPath string
-	// TLSCertPath is the path to a PEM-encoded TLS certificate for TCP protocols.
-	// When empty, TCP connections use plaintext (backward compatible).
+	// TLSCertPath is the path to a PEM-encoded TLS certificate, used for both
+	// TCP and QUIC (the QUIC listener presents it instead of a self-signed cert).
+	// When empty, TCP connections use plaintext (backward compatible) and QUIC
+	// listeners fall back to a self-signed certificate.
 	TLSCertPath string
-	// TLSKeyPath is the path to a PEM-encoded TLS private key for TCP protocols.
+	// TLSKeyPath is the path to a PEM-encoded TLS private key, matching TLSCertPath.
 	// When empty, TCP connections use plaintext (backward compatible).
 	TLSKeyPath string
 	// TLSInsecure skips TLS certificate verification. Defaults to false.
