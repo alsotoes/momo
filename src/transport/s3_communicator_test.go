@@ -340,7 +340,7 @@ func (m *mockStore) List() ([]common.FileMetadata, error) {
 	return nil, nil
 }
 
-func runS3TestRequest(t *testing.T, reqStr string, mock storage.Store) string {
+func runS3RequestCapture(t *testing.T, reqStr string, mock storage.Store) (string, error) {
 	expectedAuthToken := []byte(common.PadString("a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6", common.AuthTokenLength)) // notsecret
 
 	l, err := net.Listen("tcp", "127.0.0.1:0")
@@ -391,11 +391,16 @@ func runS3TestRequest(t *testing.T, reqStr string, mock storage.Store) string {
 	}
 
 	serverErr := <-errChan
+
+	return string(respBytes), serverErr
+}
+
+func runS3TestRequest(t *testing.T, reqStr string, mock storage.Store) string {
+	respStr, serverErr := runS3RequestCapture(t, reqStr, mock)
 	if serverErr != ErrRequestHandled {
 		t.Fatalf("Server expected ErrRequestHandled, got: %v", serverErr)
 	}
-
-	return string(respBytes)
+	return respStr
 }
 
 func TestS3Communicator_URLParsing(t *testing.T) {
@@ -842,4 +847,294 @@ func TestS3Communicator_SendMetadataPathTraversal(t *testing.T) {
 	if !errors.Is(err, syscall.EBADMSG) {
 		t.Errorf("Expected EBADMSG error, got: %v", err)
 	}
+}
+
+func TestWriteS3Error(t *testing.T) {
+	var buf bytes.Buffer
+	n, err := writeS3Error(&buf, http.StatusNotFound, "NoSuchKey", "The specified key does not exist.", "mybucket/missing.txt")
+	if err != nil {
+		t.Fatalf("writeS3Error failed: %v", err)
+	}
+
+	respStr := buf.String()
+
+	if !strings.HasPrefix(respStr, "HTTP/1.1 404 Not Found\r\n") {
+		t.Errorf("Expected 404 status line, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "Content-Type: application/xml\r\n") {
+		t.Errorf("Expected XML content type, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "Connection: close\r\n") {
+		t.Errorf("Expected Connection: close header, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "<Code>NoSuchKey</Code>") {
+		t.Errorf("Expected NoSuchKey code in body, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "<Message>The specified key does not exist.</Message>") {
+		t.Errorf("Expected message in body, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "<Resource>mybucket/missing.txt</Resource>") {
+		t.Errorf("Expected resource in body, got: %s", respStr)
+	}
+
+	// Content-Length must exactly match the XML body length.
+	headerEnd := strings.Index(respStr, "\r\n\r\n")
+	if headerEnd == -1 {
+		t.Fatalf("No header/body separator in response: %s", respStr)
+	}
+	bodyLen := len(respStr) - headerEnd - 4
+	clRe := regexp.MustCompile(`Content-Length: (\d+)`)
+	m := clRe.FindStringSubmatch(respStr)
+	if m == nil {
+		t.Fatalf("Content-Length header not found: %s", respStr)
+	}
+	cl, err := strconv.Atoi(m[1])
+	if err != nil {
+		t.Fatalf("Content-Length not an integer: %v", err)
+	}
+	if cl != bodyLen {
+		t.Errorf("Content-Length (%d) must match body length (%d)", cl, bodyLen)
+	}
+
+	// n must equal the total bytes written (headers + body).
+	if n != len(respStr) {
+		t.Errorf("writeS3Error returned %d bytes but wrote %d", n, len(respStr))
+	}
+
+	// XML special characters must be escaped in attacker-controlled fields.
+	buf.Reset()
+	_, _ = writeS3Error(&buf, http.StatusBadRequest, "InvalidArgument", `bad <msg> & "quoted" 'single'`, `a<b&c>d`)
+	escaped := buf.String()
+	if strings.Contains(escaped, `<Message>bad <msg>`) {
+		t.Errorf("Message XML not escaped: %s", escaped)
+	}
+	if !strings.Contains(escaped, `<Message>bad &lt;msg&gt; &amp; &quot;quoted&quot; &apos;single&apos;</Message>`) {
+		t.Errorf("Message not escaped correctly: %s", escaped)
+	}
+	if !strings.Contains(escaped, `<Resource>a&lt;b&amp;c&gt;d</Resource>`) {
+		t.Errorf("Resource not escaped correctly: %s", escaped)
+	}
+
+	// CR/LF must be stripped to prevent HTTP response splitting.
+	buf.Reset()
+	_, _ = writeS3Error(&buf, http.StatusBadRequest, "InvalidArgument", "evil\r\nX-Injected: true\r\n", "")
+	stripped := buf.String()
+	if strings.Contains(stripped, "evil\r\n") {
+		t.Errorf("CR not stripped from message, response splitting possible: %s", stripped)
+	}
+	if strings.Contains(stripped, "true\r\n") {
+		t.Errorf("LF not stripped from message, response splitting possible: %s", stripped)
+	}
+	if !strings.Contains(stripped, "<Message>evil  X-Injected: true  </Message>") {
+		t.Errorf("Expected CR/LF replaced with spaces in message, got: %s", stripped)
+	}
+	// The response must contain exactly one header/body terminator.
+	if strings.Count(stripped, "\r\n\r\n") != 1 {
+		t.Errorf("Expected exactly one header/body separator, got: %s", stripped)
+	}
+
+	// Oversized messages are truncated to 512 bytes.
+	buf.Reset()
+	longMsg := strings.Repeat("a", 2048)
+	_, _ = writeS3Error(&buf, http.StatusBadRequest, "InvalidArgument", longMsg, "")
+	if !strings.Contains(buf.String(), strings.Repeat("a", 512)) {
+		t.Errorf("Expected message truncated to 512 bytes, got: %d", len(buf.String()))
+	}
+	if strings.Contains(buf.String(), strings.Repeat("a", 513)) {
+		t.Errorf("Message not truncated to 512 bytes")
+	}
+
+	// Resource is omitted when empty.
+	buf.Reset()
+	_, _ = writeS3Error(&buf, http.StatusForbidden, "AccessDenied", "Access Denied.", "")
+	if strings.Contains(buf.String(), "<Resource>") {
+		t.Errorf("Empty resource should be omitted, got: %s", buf.String())
+	}
+}
+
+func TestS3ErrorCodeMapping(t *testing.T) {
+	cases := []struct {
+		status int
+		code   string
+	}{
+		{http.StatusBadRequest, "InvalidArgument"},
+		{http.StatusForbidden, "AccessDenied"},
+		{http.StatusNotFound, "NoSuchKey"},
+		{http.StatusMethodNotAllowed, "MethodNotAllowed"},
+		{http.StatusConflict, "BucketNotEmpty"},
+		{http.StatusRequestEntityTooLarge, "EntityTooLarge"},
+		{http.StatusUnsupportedMediaType, "InvalidRequest"},
+		{http.StatusInternalServerError, "InternalError"},
+		{http.StatusServiceUnavailable, "ServiceUnavailable"},
+		{http.StatusGatewayTimeout, "InternalError"},
+	}
+	for _, tc := range cases {
+		if got := s3ErrorCode(tc.status); got != tc.code {
+			t.Errorf("s3ErrorCode(%d) = %q, want %q", tc.status, got, tc.code)
+		}
+	}
+}
+
+func TestS3Communicator_XMLErrorResponses(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+
+	validTokenReq := func(method, target string) string {
+		return method + " " + target + " HTTP/1.1\r\n" +
+			"Host: 127.0.0.1:4440\r\n" +
+			"Authorization: Bearer " + authToken + "\r\n\r\n"
+	}
+
+	// 1. GET missing key -> 404 NoSuchKey
+	mock := &mockStore{
+		getFunc: func(name string) (io.ReadCloser, common.FileMetadata, error) {
+			return nil, common.FileMetadata{}, syscall.ENOENT
+		},
+	}
+	resp, serverErr := runS3RequestCapture(t, validTokenReq("GET", "/bucket/missing.txt"), mock)
+	if serverErr != ErrRequestHandled {
+		t.Fatalf("Expected ErrRequestHandled for missing key, got: %v", serverErr)
+	}
+	if !strings.Contains(resp, "HTTP/1.1 404 Not Found") {
+		t.Errorf("Expected 404 Not Found, got: %s", resp)
+	}
+	if !strings.Contains(resp, "<Code>NoSuchKey</Code>") {
+		t.Errorf("Expected NoSuchKey XML error, got: %s", resp)
+	}
+	if !strings.Contains(resp, "<Resource>missing.txt</Resource>") {
+		t.Errorf("Expected missing.txt resource in error, got: %s", resp)
+	}
+
+	// 2. DELETE with no key -> 400 InvalidArgument
+	resp, serverErr = runS3RequestCapture(t, validTokenReq("DELETE", "/bucket"), &mockStore{})
+	if serverErr == nil {
+		t.Fatalf("Expected error for DELETE without key, got: %v", serverErr)
+	}
+	if !strings.Contains(resp, "HTTP/1.1 400 Bad Request") {
+		t.Errorf("Expected 400 Bad Request, got: %s", resp)
+	}
+	if !strings.Contains(resp, "<Code>InvalidArgument</Code>") {
+		t.Errorf("Expected InvalidArgument XML error, got: %s", resp)
+	}
+
+	// 3. Storage store not initialized -> 500 InternalError
+	resp, serverErr = runS3RequestCapture(t, validTokenReq("GET", "/bucket/file.txt"), nil)
+	if serverErr == nil {
+		t.Fatal("Expected error for nil store")
+	}
+	if !strings.Contains(resp, "HTTP/1.1 500 Internal Server Error") {
+		t.Errorf("Expected 500 Internal Server Error, got: %s", resp)
+	}
+	if !strings.Contains(resp, "<Code>InternalError</Code>") {
+		t.Errorf("Expected InternalError XML error, got: %s", resp)
+	}
+
+	// 4. Path traversal -> 400 InvalidArgument
+	resp, serverErr = runS3RequestCapture(t, validTokenReq("GET", "/bucket/../../etc/passwd"), &mockStore{})
+	if serverErr == nil || !errors.Is(serverErr, syscall.EBADMSG) {
+		t.Fatalf("Expected EBADMSG for path traversal, got: %v", serverErr)
+	}
+	if !strings.Contains(resp, "HTTP/1.1 400 Bad Request") {
+		t.Errorf("Expected 400 Bad Request, got: %s", resp)
+	}
+	if !strings.Contains(resp, "<Code>InvalidArgument</Code>") {
+		t.Errorf("Expected InvalidArgument XML error, got: %s", resp)
+	}
+}
+
+func TestS3Communicator_XMLErrorAuthFailures(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+
+	// 1. Wrong bearer token -> 403 AccessDenied
+	wrongTokenReq := "PUT /bucket/file.txt HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"Authorization: Bearer wrong-token\r\n" +
+		"Content-Length: 0\r\n\r\n"
+
+	resp, serverErr := runS3RequestCapture(t, wrongTokenReq, &mockStore{})
+	if serverErr == nil || !errors.Is(serverErr, syscall.EACCES) {
+		t.Fatalf("Expected EACCES for wrong token, got: %v", serverErr)
+	}
+	if !strings.Contains(resp, "HTTP/1.1 403 Forbidden") {
+		t.Errorf("Expected 403 Forbidden, got: %s", resp)
+	}
+	if !strings.Contains(resp, "<Code>AccessDenied</Code>") {
+		t.Errorf("Expected AccessDenied XML error, got: %s", resp)
+	}
+
+	// 2. Malformed SigV4 header -> 403 AuthorizationHeaderMalformed
+	malformedAuthReq := "PUT /bucket/file.txt HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"Authorization: AWS4-HMAC-SHA256 this-is-not-a-valid-header\r\n" +
+		"X-Amz-Date: 20260604T120000Z\r\n" +
+		"Content-Length: 0\r\n\r\n"
+
+	resp, serverErr = runS3RequestCapture(t, malformedAuthReq, &mockStore{})
+	if serverErr == nil || !errors.Is(serverErr, syscall.EACCES) {
+		t.Fatalf("Expected EACCES for malformed SigV4, got: %v", serverErr)
+	}
+	if !strings.Contains(resp, "HTTP/1.1 403 Forbidden") {
+		t.Errorf("Expected 403 Forbidden, got: %s", resp)
+	}
+	if !strings.Contains(resp, "<Code>AuthorizationHeaderMalformed</Code>") {
+		t.Errorf("Expected AuthorizationHeaderMalformed XML error, got: %s", resp)
+	}
+
+	// 3. SigV4 with correct credentials but wrong signature -> 403 SignatureDoesNotMatch
+	now := time.Now().UTC()
+	amzDate := now.Format("20060102T150405Z")
+	dateStamp := now.Format("20060102")
+	region := "us-east-1"
+	payloadHash := "dummyhash"
+	signedHeaders := "host;x-amz-content-sha256;x-amz-date"
+
+	canonicalRequest := "PUT\n/bucket/file.txt\n\nhost:127.0.0.1:4440\nx-amz-content-sha256:" + payloadHash + "\nx-amz-date:" + amzDate + "\n\n" + signedHeaders + "\n" + payloadHash
+	stringToSign := buildStringToSign(canonicalRequest, amzDate, dateStamp, region)
+	signingKey := deriveSigningKey(authToken, dateStamp, region)
+	goodSignature := computeSignature(signingKey, stringToSign)
+	badSignature := "0000" + goodSignature[4:]
+
+	authHeader := "AWS4-HMAC-SHA256 Credential=" + authToken + "/" + dateStamp + "/" + region + "/s3/aws4_request, SignedHeaders=" + signedHeaders + ", Signature=" + badSignature
+
+	badSigReq := "PUT /bucket/file.txt HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"Authorization: " + authHeader + "\r\n" +
+		"X-Amz-Date: " + amzDate + "\r\n" +
+		"X-Amz-Content-Sha256: " + payloadHash + "\r\n" +
+		"Content-Length: 0\r\n\r\n"
+
+	resp, serverErr = runS3RequestCapture(t, badSigReq, &mockStore{})
+	if serverErr == nil || !errors.Is(serverErr, syscall.EACCES) {
+		t.Fatalf("Expected EACCES for bad SigV4 signature, got: %v", serverErr)
+	}
+	if !strings.Contains(resp, "HTTP/1.1 403 Forbidden") {
+		t.Errorf("Expected 403 Forbidden, got: %s", resp)
+	}
+	if !strings.Contains(resp, "<Code>SignatureDoesNotMatch</Code>") {
+		t.Errorf("Expected SignatureDoesNotMatch XML error, got: %s", resp)
+	}
+
+	// 4. All error bodies must be well-formed XML (parse each captured response).
+	for _, r := range []string{
+		runCaptureReq(t, wrongTokenReq, &mockStore{}),
+		runCaptureReq(t, malformedAuthReq, &mockStore{}),
+		runCaptureReq(t, badSigReq, &mockStore{}),
+	} {
+		headerEnd := strings.Index(r, "\r\n\r\n")
+		if headerEnd == -1 {
+			t.Fatalf("Malformed HTTP response (no header terminator): %s", r)
+		}
+		body := r[headerEnd+4:]
+		if !strings.Contains(body, "<Error>") || !strings.Contains(body, "</Error>") {
+			t.Errorf("Error body is not an <Error> XML document: %s", body)
+		}
+	}
+}
+
+func runCaptureReq(t *testing.T, reqStr string, mock storage.Store) string {
+	resp, _ := runS3RequestCapture(t, reqStr, mock)
+	return resp
 }
