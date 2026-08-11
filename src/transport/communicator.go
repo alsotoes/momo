@@ -185,6 +185,10 @@ type QUICListener struct {
 
 const (
 	quicAcceptTimeout = 30 * time.Second
+	// quicCloseGracePeriod gives the peer time to drain stream data before the
+	// underlying QUIC connection is torn down (issue #623). It runs synchronously
+	// in Close so it always executes, unlike the previous fire-and-forget goroutine.
+	quicCloseGracePeriod = 100 * time.Millisecond
 )
 
 func (l *QUICListener) Accept() (Communicator, error) {

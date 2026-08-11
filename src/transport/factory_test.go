@@ -516,3 +516,74 @@ func TestMomoQUICCommunicator_NativeGet(t *testing.T) {
 
 	runNativeQUICTest(t, common.ModeGet, clientFn, mock, false)
 }
+
+// TestMomoQUICCommunicator_CloseIdempotent verifies that Close() on a real
+// QUIC connection is safe to call multiple times (issue #623). The underlying
+// connection teardown must run exactly once under a sync.Once guard, without
+// spawning a fire-and-forget goroutine per call.
+func TestMomoQUICCommunicator_CloseIdempotent(t *testing.T) {
+	addr := "127.0.0.1:45697"
+
+	cfg := common.Configuration{
+		Global: common.ConfigurationGlobal{
+			Protocol:    "momo-quic",
+			TLSInsecure: true,
+		},
+	}
+	factory := NewProtocolFactory(cfg)
+
+	l, err := factory.Listen(addr)
+	if err != nil {
+		t.Fatalf("Server failed to listen: %v", err)
+	}
+	defer l.Close()
+
+	serverDone := make(chan error, 1)
+	go func() {
+		comm, err := l.Accept()
+		if err != nil {
+			serverDone <- err
+			return
+		}
+		defer comm.Close()
+		if _, _, err := comm.HandshakeServer([]byte(common.PadString("test-token", common.AuthTokenLength))); err != nil {
+			serverDone <- err
+			return
+		}
+		if err := comm.SendReplicationMode(1); err != nil {
+			serverDone <- err
+			return
+		}
+		serverDone <- nil
+	}()
+
+	clientComm, err := factory.Dial(addr)
+	if err != nil {
+		t.Fatalf("Client failed to dial: %v", err)
+	}
+
+	mode, err := clientComm.HandshakeClient("test-token", time.Now().UnixNano(), 0)
+	if err != nil {
+		t.Fatalf("Client handshake failed: %v", err)
+	}
+	if mode != 1 {
+		t.Fatalf("Expected replication mode 1, got %d", mode)
+	}
+	if err := <-serverDone; err != nil {
+		t.Fatalf("Server handshake failed: %v", err)
+	}
+
+	// Client side double-close: the first call tears the connection down
+	// (synchronously, with the grace period); the second must be a no-op that
+	// returns immediately without spawning another teardown.
+	if err := clientComm.Close(); err != nil {
+		t.Errorf("First client Close failed: %v", err)
+	}
+	start := time.Now()
+	if err := clientComm.Close(); err != nil {
+		t.Errorf("Second client Close should be idempotent, got error: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > quicCloseGracePeriod {
+		t.Errorf("Second Close took %v, expected no-op (grace period %v)", elapsed, quicCloseGracePeriod)
+	}
+}
