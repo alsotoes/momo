@@ -302,6 +302,7 @@ type mockStore struct {
 	getHashForNameFunc func(name string) (string, error)
 	deleteFunc         func(name string) error
 	listFunc           func() ([]common.FileMetadata, error)
+	s3Meta             map[string]map[string]string
 }
 
 func (m *mockStore) Close() error { return nil }
@@ -340,6 +341,27 @@ func (m *mockStore) List() ([]common.FileMetadata, error) {
 		return m.listFunc()
 	}
 	return nil, nil
+}
+func (m *mockStore) PutS3Meta(name string, headers map[string]string) error {
+	if m.s3Meta == nil {
+		m.s3Meta = make(map[string]map[string]string)
+	}
+	m.s3Meta[name] = headers
+	return nil
+}
+func (m *mockStore) GetS3Meta(name string) map[string]string {
+	if m.s3Meta == nil {
+		return nil
+	}
+	meta, ok := m.s3Meta[name]
+	if !ok {
+		return nil
+	}
+	cp := make(map[string]string, len(meta))
+	for k, v := range meta {
+		cp[k] = v
+	}
+	return cp
 }
 
 func runS3RequestCapture(t *testing.T, reqStr string, mock storage.Store) (string, error) {
@@ -2276,4 +2298,250 @@ func TestS3Communicator_XMLErrorAuthFailures(t *testing.T) {
 func runCaptureReq(t *testing.T, reqStr string, mock storage.Store) string {
 	resp, _ := runS3RequestCapture(t, reqStr, mock)
 	return resp
+}
+
+func TestS3GetEmitsStoredMetadata(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	storedMeta := map[string]string{
+		"content-type":    "image/png",
+		"x-amz-meta-user": "alice",
+		"cache-control":   "max-age=3600",
+	}
+	mock := &mockStore{
+		getFunc: func(name string) (io.ReadCloser, common.FileMetadata, error) {
+			return io.NopCloser(strings.NewReader("fakepayload")), common.FileMetadata{
+				Name:    name,
+				Hash:    "hash-abc",
+				Size:    11,
+				ModTime: 1700000000,
+			}, nil
+		},
+		s3Meta: map[string]map[string]string{"file.txt": storedMeta},
+	}
+
+	reqStr := "GET /bucket/file.txt HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"Authorization: Bearer " + authToken + "\r\n\r\n"
+	resp := runS3TestRequest(t, reqStr, mock)
+
+	if !strings.Contains(resp, "HTTP/1.1 200 OK\r\n") {
+		t.Fatalf("Expected 200 OK, got: %s", resp)
+	}
+	if !strings.Contains(resp, "Content-Type: image/png\r\n") {
+		t.Errorf("Expected stored Content-Type image/png, got: %s", resp)
+	}
+	if !strings.Contains(resp, "x-amz-meta-user: alice\r\n") {
+		t.Errorf("Expected x-amz-meta-user header, got: %s", resp)
+	}
+	if !strings.Contains(resp, "cache-control: max-age=3600\r\n") {
+		t.Errorf("Expected cache-control header, got: %s", resp)
+	}
+}
+
+func TestS3HeadEmitsStoredMetadata(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	storedMeta := map[string]string{
+		"content-type":     "text/plain",
+		"x-amz-meta-tag":   "alpha",
+		"content-language": "en",
+	}
+	mock := &mockStore{
+		getFunc: func(name string) (io.ReadCloser, common.FileMetadata, error) {
+			return io.NopCloser(strings.NewReader("abc")), common.FileMetadata{
+				Name:    name,
+				Hash:    "hash-def",
+				Size:    3,
+				ModTime: 1700000000,
+			}, nil
+		},
+		s3Meta: map[string]map[string]string{"head.txt": storedMeta},
+	}
+
+	reqStr := "HEAD /bucket/head.txt HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"Authorization: Bearer " + authToken + "\r\n\r\n"
+	resp := runS3TestRequest(t, reqStr, mock)
+
+	if !strings.Contains(resp, "HTTP/1.1 200 OK\r\n") {
+		t.Fatalf("Expected 200 OK, got: %s", resp)
+	}
+	if !strings.Contains(resp, "Content-Type: text/plain\r\n") {
+		t.Errorf("Expected stored Content-Type text/plain, got: %s", resp)
+	}
+	if !strings.Contains(resp, "x-amz-meta-tag: alpha\r\n") {
+		t.Errorf("Expected x-amz-meta-tag header, got: %s", resp)
+	}
+	if !strings.Contains(resp, "content-language: en\r\n") {
+		t.Errorf("Expected content-language header, got: %s", resp)
+	}
+}
+
+func TestS3GetDefersToOctetStreamWhenNoStoredMeta(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	mock := &mockStore{
+		getFunc: func(name string) (io.ReadCloser, common.FileMetadata, error) {
+			return io.NopCloser(strings.NewReader("payload")), common.FileMetadata{
+				Name:    name,
+				Hash:    "hash-ghi",
+				Size:    7,
+				ModTime: 1700000000,
+			}, nil
+		},
+	}
+	reqStr := "GET /bucket/plain.txt HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"Authorization: Bearer " + authToken + "\r\n\r\n"
+	resp := runS3TestRequest(t, reqStr, mock)
+	if !strings.Contains(resp, "Content-Type: application/octet-stream\r\n") {
+		t.Errorf("Expected default Content-Type application/octet-stream, got: %s", resp)
+	}
+}
+
+func TestS3CollectHeaders(t *testing.T) {
+	req := &http.Request{
+		Header: http.Header{
+			"Content-Type":         []string{"application/json"},
+			"X-Amz-Meta-User":      []string{"alice"},
+			"X-Amz-Meta-Project":   []string{"alpha"},
+			"X-Amz-Content-Sha256": []string{"abc123"},
+			"Cache-Control":        []string{"max-age=600"},
+		},
+	}
+	headers := collectS3Headers(req)
+	if headers["content-type"] != "application/json" {
+		t.Errorf("Expected content-type application/json, got %q", headers["content-type"])
+	}
+	if headers["x-amz-meta-user"] != "alice" {
+		t.Errorf("Expected x-amz-meta-user alice, got %q", headers["x-amz-meta-user"])
+	}
+	if headers["x-amz-meta-project"] != "alpha" {
+		t.Errorf("Expected x-amz-meta-project alpha, got %q", headers["x-amz-meta-project"])
+	}
+	if headers["cache-control"] != "max-age=600" {
+		t.Errorf("Expected cache-control max-age=600, got %q", headers["cache-control"])
+	}
+	if _, ok := headers["x-amz-content-sha256"]; ok {
+		t.Error("X-Amz-Content-Sha256 must not be captured as S3 metadata")
+	}
+}
+
+func TestS3CollectHeadersSanitizesValues(t *testing.T) {
+	// CR/LF injection into a user metadata value must be neutralized (Rule 24).
+	req := &http.Request{
+		Header: http.Header{
+			"X-Amz-Meta-Inject": []string{"value\r\nSet-Cookie: evil=1"},
+		},
+	}
+	headers := collectS3Headers(req)
+	got := headers["x-amz-meta-inject"]
+	if got == "" {
+		t.Fatal("Expected x-amz-meta-inject to be collected")
+	}
+	if strings.ContainsAny(got, "\r\n") {
+		t.Errorf("CR/LF injection not neutralized, got %q", got)
+	}
+
+	// Oversized values are capped at 1024 bytes.
+	reqBig := &http.Request{
+		Header: http.Header{
+			"X-Amz-Meta-Big": []string{strings.Repeat("b", 2000)},
+		},
+	}
+	headersBig := collectS3Headers(reqBig)
+	if len(headersBig["x-amz-meta-big"]) != 1024 {
+		t.Errorf("Expected 1024-length capped value, got %d", len(headersBig["x-amz-meta-big"]))
+	}
+}
+
+func TestS3Communicator_SendReceiveMetadataCarriesS3Meta(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	sent := map[string]string{
+		"content-type":    "application/json",
+		"x-amz-meta-user": "bob",
+	}
+
+	var received common.FileMetadata
+	errCh := make(chan error, 1)
+	go func() {
+		srv := NewS3Communicator(serverConn)
+		srv.SetStore(&mockStore{})
+		defer srv.Close()
+		meta, err := srv.ReceiveMetadata()
+		if err == nil {
+			received = meta
+			err = srv.SendMetadataStatus(MetadataStatusSendPayload)
+		}
+		errCh <- err
+	}()
+
+	cli := NewS3Communicator(clientConn)
+	meta := &common.FileMetadata{
+		Name:      "obj.json",
+		Hash:      "hash-jkl",
+		Size:      42,
+		S3Headers: sent,
+	}
+	status, err := cli.SendMetadata(meta)
+	if err != nil {
+		t.Fatalf("SendMetadata failed: %v", err)
+	}
+	if status != MetadataStatusSendPayload {
+		t.Errorf("Expected status %d, got %d", MetadataStatusSendPayload, status)
+	}
+
+	if err := <-errCh; err != nil {
+		t.Fatalf("ReceiveMetadata failed: %v", err)
+	}
+	if received.S3Headers["content-type"] != "application/json" {
+		t.Errorf("Content-Type not propagated, got %q", received.S3Headers["content-type"])
+	}
+	if received.S3Headers["x-amz-meta-user"] != "bob" {
+		t.Errorf("x-amz-meta-user not propagated, got %q", received.S3Headers["x-amz-meta-user"])
+	}
+}
+
+func TestS3Communicator_ReceiveMetadataIgnoresMalformedS3Meta(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	errCh := make(chan error, 1)
+	go func() {
+		srv := NewS3Communicator(serverConn)
+		srv.SetStore(&mockStore{})
+		defer srv.Close()
+		_, err := srv.ReceiveMetadata()
+		errCh <- err
+	}()
+
+	cli := NewS3Communicator(clientConn)
+
+	// Send a raw PUT with a broken X-Momo-S3-Meta header; it must degrade to the
+	// directly-collected headers instead of failing the metadata read.
+	req := "PUT /obj.json HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"X-Amz-Content-Sha256: hash-mno\r\n" +
+		"Content-Length: 42\r\n" +
+		"X-Momo-S3-Meta: !!!not-base64!!!\r\n" +
+		"X-Amz-Meta-Real: true\r\n\r\n"
+	if _, err := cli.Write([]byte(req)); err != nil {
+		t.Fatalf("Write failed: %v", err)
+	}
+
+	if err := <-errCh; err != nil {
+		t.Fatalf("ReceiveMetadata failed: %v", err)
+	}
 }

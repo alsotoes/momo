@@ -23,6 +23,7 @@ var (
 	bucketPaths      = []byte("paths")      // Maps FileName -> RemotePath
 	bucketTombstones = []byte("tombstones") // Maps FileName -> deletion timestamp (unix nano)
 	bucketModTimes   = []byte("modtimes")   // Maps FileName -> modification timestamp (unix nano)
+	bucketS3Meta     = []byte("s3meta")     // Maps FileName -> JSON S3 object metadata (content-type, x-amz-meta-*)
 )
 
 // ObjectMeta is the binary metadata stored in the objects bucket.
@@ -122,6 +123,10 @@ func newCASStore(dataDir string, blobs BlobStore) (*CASStore, error) {
 			return err
 		}
 		_, err = tx.CreateBucketIfNotExists(bucketTombstones)
+		if err != nil {
+			return err
+		}
+		_, err = tx.CreateBucketIfNotExists(bucketS3Meta)
 		return err
 	})
 	if err != nil {
@@ -328,6 +333,41 @@ func (s *CASStore) Get(name string) (rc io.ReadCloser, meta common.FileMetadata,
 	}
 
 	return f, common.FileMetadata{Name: name, Hash: hash, Size: size, RemotePath: remotePath, ModTime: modTime}, nil
+}
+
+// PutS3Meta persists optional S3 object headers (Content-Type, x-amz-meta-*,
+// cache/encoding headers) at rest, keyed by object name. It is additive to the
+// fixed FileMetadata fields and independent of the momo wire framing.
+func (s *CASStore) PutS3Meta(name string, headers map[string]string) error {
+	if len(headers) == 0 {
+		return nil
+	}
+	data, err := common.MarshalS3MetaJSON(headers)
+	if err != nil {
+		return err
+	}
+	return s.db.Update(func(tx *bbolt.Tx) error {
+		return tx.Bucket(bucketS3Meta).Put([]byte(name), data)
+	})
+}
+
+// GetS3Meta returns the S3 object headers stored for name, or nil when none
+// were recorded. Malformed payloads degrade to nil rather than failing reads.
+func (s *CASStore) GetS3Meta(name string) map[string]string {
+	var headers map[string]string
+	_ = s.db.View(func(tx *bbolt.Tx) error {
+		data := tx.Bucket(bucketS3Meta).Get([]byte(name))
+		if len(data) == 0 {
+			return nil
+		}
+		var err error
+		headers, err = common.UnmarshalS3MetaJSON(data)
+		if err != nil {
+			log.Printf("AUDIT: failed to decode S3 metadata for %s: %v", name, err)
+		}
+		return nil
+	})
+	return headers
 }
 
 // Has checks if a content hash exists in the store.

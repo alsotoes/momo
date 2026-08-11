@@ -1,6 +1,7 @@
 package server
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/alsotoes/momo/src/common"
@@ -22,7 +23,9 @@ func TestEncodeDecodeFileMetadataList_ModTime(t *testing.T) {
 		t.Fatalf("Expected %d entries, got %d", len(files), len(decoded))
 	}
 	for i := range files {
-		if decoded[i] != files[i] {
+		// S3Headers (a map) is intentionally not part of the wire framing, so
+		// compare with DeepEqual rather than struct equality.
+		if !reflect.DeepEqual(decoded[i], files[i]) {
 			t.Errorf("Entry %d mismatch:\n got  %+v\n want %+v", i, decoded[i], files[i])
 		}
 	}

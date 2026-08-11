@@ -441,12 +441,14 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 						metricsCollector.IncErrors()
 						return
 					}
+					persistS3Meta(store, storageKey, metadata)
 				} else {
 					if err := getFile(comm, store, storageKey, metadata.Hash, metadata.Size, remotePath); err != nil {
 						log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
 						metricsCollector.IncErrors()
 						return
 					}
+					persistS3Meta(store, storageKey, metadata)
 				}
 			case common.ReplicationChain:
 				// In Chain mode, we find our position in the placement list and forward to the next node.
@@ -467,6 +469,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 						metricsCollector.IncErrors()
 						return
 					}
+					persistS3Meta(store, storageKey, metadata)
 				} else {
 					if err := getFile(comm, store, storageKey, metadata.Hash, metadata.Size, remotePath); err != nil {
 						log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
@@ -474,6 +477,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 						metricsCollector.IncErrors()
 						return
 					}
+					persistS3Meta(store, storageKey, metadata)
 				}
 
 				if myPos != -1 && myPos < len(placement)-1 {
@@ -496,7 +500,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 							return
 						}
 						defer reader.Close()
-						connectToPeerStream(cfg, reader, storageKey, metadata.Hash, metadata.Size, "", id, finalTs, replicationMode, factor)
+						connectToPeerStream(cfg, reader, storageKey, metadata.Hash, metadata.Size, "", getS3Meta(store, storageKey), id, finalTs, replicationMode, factor)
 						metricsCollector.IncReplication()
 					}(nextHop.ID)
 				} else {
@@ -518,6 +522,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 							metricsCollector.IncErrors()
 							return
 						}
+						persistS3Meta(store, storageKey, metadata)
 					} else {
 						if err := getFile(comm, store, storageKey, metadata.Hash, metadata.Size, remotePath); err != nil {
 							log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
@@ -527,6 +532,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 							metricsCollector.IncErrors()
 							return
 						}
+						persistS3Meta(store, storageKey, metadata)
 					}
 					for i := 1; i < len(placement); i++ {
 						targetId := placement[i].ID
@@ -545,7 +551,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 								return
 							}
 							defer reader.Close()
-							connectToPeerStream(cfg, reader, storageKey, metadata.Hash, metadata.Size, "", id, finalTs, replicationMode, factor)
+							connectToPeerStream(cfg, reader, storageKey, metadata.Hash, metadata.Size, "", getS3Meta(store, storageKey), id, finalTs, replicationMode, factor)
 							metricsCollector.IncReplication()
 						}(targetId)
 					}
@@ -558,12 +564,14 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 							metricsCollector.IncErrors()
 							return
 						}
+						persistS3Meta(store, storageKey, metadata)
 					} else {
 						if err := getFile(comm, store, storageKey, metadata.Hash, metadata.Size, remotePath); err != nil {
 							log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
 							metricsCollector.IncErrors()
 							return
 						}
+						persistS3Meta(store, storageKey, metadata)
 					}
 				}
 			default:
@@ -578,6 +586,36 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 			}
 		}(connection)
 	}
+}
+
+// persistS3Meta stores preserved S3 object metadata (Content-Type, x-amz-meta-*)
+// at rest keyed by the storage key (issue #772). Uses an optional type assertion
+// so stores that do not implement PutS3Meta simply skip persistence.
+func persistS3Meta(store storage.Store, key string, meta common.FileMetadata) {
+	if len(meta.S3Headers) == 0 {
+		return
+	}
+	ps, ok := store.(interface {
+		PutS3Meta(string, map[string]string) error
+	})
+	if !ok {
+		return
+	}
+	if err := ps.PutS3Meta(key, meta.S3Headers); err != nil {
+		log.Printf("AUDIT: Error persisting S3 metadata for %s: %v", key, common.SanitizeLog(err.Error()))
+	}
+}
+
+// getS3Meta reads preserved S3 object metadata at rest for replication
+// forwarding. Uses an optional type assertion; returns nil when unsupported.
+func getS3Meta(store storage.Store, key string) map[string]string {
+	gs, ok := store.(interface {
+		GetS3Meta(string) map[string]string
+	})
+	if !ok {
+		return nil
+	}
+	return gs.GetS3Meta(key)
 }
 
 // buildP2PTLSConfig constructs a *tls.Config for the P2P transport from the

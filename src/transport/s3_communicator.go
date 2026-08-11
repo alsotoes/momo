@@ -479,6 +479,10 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		// conditional and range semantics stay consistent per object (issue #771).
 		etag := meta.Hash
 		lastModifiedStr := formatHTTPLastModified(meta.ModTime)
+		// Preserved S3 object metadata (Content-Type, x-amz-meta-*, cache headers)
+		// stored at rest on PUT and echoed here (issue #772).
+		s3Headers := m.storedS3Meta(key)
+		contentType := s3Headers["content-type"]
 		rangeHeader := req.Header.Get("Range")
 
 		// If-Match: any listed entity-tag must match, otherwise 412.
@@ -490,34 +494,34 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 
 		// If-None-Match (with If-Modified-Since as its fallback): 304 when the
 		// object has not changed since the client's cached representation.
+		write304 := func() {
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			var buf [16384]byte
+			b := buf[:0]
+			b = append(b, "HTTP/1.1 304 Not Modified\r\nETag: \""...)
+			b = append(b, etag...)
+			b = append(b, "\"\r\nLast-Modified: "...)
+			b = append(b, lastModifiedStr...)
+			b = append(b, "\r\nContent-Length: 0\r\n"...)
+			b = appendS3MetaHeaders(b, s3Headers, contentType)
+			b = append(b, "Connection: close\r\n\r\n"...)
+			// 🛡️ Zero-Crash: Defensive bounds check to verify the formatted content fits safely within the stack buffer
+			if len(b) > 16384 {
+				log.Printf("WARNING: 304 response buffer overflow: %v", syscall.ENOBUFS)
+				return
+			}
+			if _, err := m.conn.Write(b); err != nil {
+				log.Printf("WARNING: failed to write 304 response: %v", err)
+			}
+		}
 		if inm := req.Header.Get("If-None-Match"); inm != "" {
 			if etagMatches(inm, etag) {
-				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-				var buf [256]byte
-				b := buf[:0]
-				b = append(b, "HTTP/1.1 304 Not Modified\r\nETag: \""...)
-				b = append(b, etag...)
-				b = append(b, "\"\r\nLast-Modified: "...)
-				b = append(b, lastModifiedStr...)
-				b = append(b, "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"...)
-				if _, err := m.conn.Write(b); err != nil {
-					return 0, 0, fmt.Errorf("failed to write 304 response: %v: %w", err, syscall.EPIPE)
-				}
+				write304()
 				return 0, 0, ErrRequestHandled
 			}
 		} else if ims := req.Header.Get("If-Modified-Since"); ims != "" {
 			if t, perr := http.ParseTime(ims); perr == nil && !time.Unix(0, meta.ModTime).After(t.Truncate(time.Second)) {
-				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-				var buf [256]byte
-				b := buf[:0]
-				b = append(b, "HTTP/1.1 304 Not Modified\r\nETag: \""...)
-				b = append(b, etag...)
-				b = append(b, "\"\r\nLast-Modified: "...)
-				b = append(b, lastModifiedStr...)
-				b = append(b, "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"...)
-				if _, err := m.conn.Write(b); err != nil {
-					return 0, 0, fmt.Errorf("failed to write 304 response: %v: %w", err, syscall.EPIPE)
-				}
+				write304()
 				return 0, 0, ErrRequestHandled
 			}
 		}
@@ -561,7 +565,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		m.conn.SetWriteDeadline(time.Now().Add(copyTimeout))
 
 		// ⚡ Bolt: Eliminate http.Response allocation and bytes.Buffer using stack buffer direct write
-		var buf [256]byte
+		var buf [16384]byte
 		b := buf[:0]
 		if serveRange {
 			b = append(b, "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes "...)
@@ -579,7 +583,14 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		b = append(b, etag...)
 		b = append(b, "\"\r\nLast-Modified: "...)
 		b = append(b, lastModifiedStr...)
-		b = append(b, "\r\nContent-Type: application/octet-stream\r\nConnection: close\r\n\r\n"...)
+		b = append(b, "\r\n"...)
+		b = appendS3MetaHeaders(b, s3Headers, contentType)
+		b = append(b, "Connection: close\r\n\r\n"...)
+
+		// 🛡️ Zero-Crash: Defensive bounds check to verify the formatted content fits safely within the stack buffer
+		if len(b) > 16384 {
+			return 0, 0, fmt.Errorf("GET response buffer overflow: %w", syscall.ENOBUFS)
+		}
 
 		if _, err := m.conn.Write(b); err != nil {
 			return 0, 0, fmt.Errorf("failed to write GET headers: %v: %w", err, syscall.EPIPE)
@@ -658,7 +669,11 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		rc.Close()
 
 		// ⚡ Bolt: stack-buffer direct write for the header-only response (no body).
-		var buf [256]byte
+		// Preserved S3 object metadata echoed here (issue #772): HEAD mut always
+		// agree with GET on Content-Type and x-amz-meta-*.
+		s3Headers := m.storedS3Meta(key)
+		contentType := s3Headers["content-type"]
+		var buf [16384]byte
 		b := buf[:0]
 		b = append(b, "HTTP/1.1 200 OK\r\nETag: \""...)
 		b = append(b, meta.Hash...)
@@ -666,7 +681,14 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		b = strconv.AppendInt(b, meta.Size, 10)
 		b = append(b, "\r\nLast-Modified: "...)
 		b = append(b, formatHTTPLastModified(meta.ModTime)...)
-		b = append(b, "\r\nContent-Type: application/octet-stream\r\nConnection: close\r\n\r\n"...)
+		b = append(b, "\r\n"...)
+		b = appendS3MetaHeaders(b, s3Headers, contentType)
+		b = append(b, "Connection: close\r\n\r\n"...)
+
+		// 🛡️ Zero-Crash: Defensive bounds check to verify the formatted content fits safely within the stack buffer
+		if len(b) > 16384 {
+			return 0, 0, fmt.Errorf("HEAD response buffer overflow: %w", syscall.ENOBUFS)
+		}
 
 		if _, err := m.conn.Write(b); err != nil {
 			return 0, 0, fmt.Errorf("failed to write HEAD response: %v: %w", err, syscall.EPIPE)
@@ -845,6 +867,21 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			m.meta.Hash = req.Header.Get("Content-SHA256") // Fallback
 		}
 
+		// S3 object metadata (Content-Type, x-amz-meta-*, cache/encoding headers):
+		// captured here so server.go persists it at rest and GET/HEAD echo it.
+		m.meta.S3Headers = collectS3Headers(req)
+		if s3metaStr := req.Header.Get("X-Momo-S3-Meta"); s3metaStr != "" {
+			// Peer-forwarded PUT (base64 JSON); overrides direct-client headers
+			// so forwarded objects carry the original S3 metadata.
+			if data, decErr := base64.StdEncoding.DecodeString(s3metaStr); decErr == nil {
+				if headers, jsonErr := common.UnmarshalS3MetaJSON(data); jsonErr == nil && len(headers) > 0 {
+					m.meta.S3Headers = headers
+				} else if jsonErr != nil {
+					log.Printf("WARNING: ignoring malformed X-Momo-S3-Meta header: %v", jsonErr)
+				}
+			}
+		}
+
 		// 🛡️ Sentinel: Sanitize S3 hash to prevent directory traversal via malicious metadata.
 		if m.meta.Hash != "" && common.HasPathTraversalChars(m.meta.Hash) {
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
@@ -937,7 +974,7 @@ func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (status int, er
 	}
 
 	// ⚡ Bolt: Eliminate fmt.Sprintf and string allocations using stack-allocated buffer
-	var buf [512]byte
+	var buf [16384]byte
 	b := buf[:0]
 	b = append(b, "PUT /"...)
 	if meta.RemotePath != "" {
@@ -956,10 +993,26 @@ func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (status int, er
 	b = append(b, common.TrimNullBytesFromString(meta.Hash)...)
 	b = append(b, "\r\nContent-Length: "...)
 	b = strconv.AppendInt(b, meta.Size, 10)
+
+	// Carry preserved S3 object headers to forwarding peers as a single additive
+	// base64-encoded JSON header. Additive only: the momo wire framing fields
+	// (Name/Hash/Size/Timestamp) stay unchanged, and peers without support simply
+	// ignore the header.
+	if len(meta.S3Headers) > 0 {
+		data, err := common.MarshalS3MetaJSON(meta.S3Headers)
+		if err != nil {
+			return 0, err
+		}
+		enc := make([]byte, base64.StdEncoding.EncodedLen(len(data)))
+		base64.StdEncoding.Encode(enc, data)
+		b = append(b, "\r\nX-Momo-S3-Meta: "...)
+		b = append(b, enc...)
+	}
+
 	b = append(b, "\r\n\r\n"...)
 
 	// 🛡️ Zero-Crash: Defensive bounds check to verify the formatted content fits safely within the stack buffer
-	if len(b) > 512 {
+	if len(b) > 16384 {
 		return 0, fmt.Errorf("buffer overflow: formatted data exceeds stack capacity: %w", syscall.ENOBUFS)
 	}
 
@@ -1031,6 +1084,16 @@ func (m *S3Communicator) ReceiveMetadata() (meta common.FileMetadata, err error)
 			return common.FileMetadata{}, fmt.Errorf("invalid hash: %s: %w", hash, syscall.EBADMSG)
 		}
 		m.meta.Hash = hash
+
+		// OPTIONS-handshake flow: capture S3 metadata from the PUT as well.
+		m.meta.S3Headers = collectS3Headers(req)
+		if s3metaStr := req.Header.Get("X-Momo-S3-Meta"); s3metaStr != "" {
+			if data, decErr := base64.StdEncoding.DecodeString(s3metaStr); decErr == nil {
+				if headers, jsonErr := common.UnmarshalS3MetaJSON(data); jsonErr == nil && len(headers) > 0 {
+					m.meta.S3Headers = headers
+				}
+			}
+		}
 	}
 	return m.meta, nil
 }
@@ -1493,6 +1556,107 @@ func s3ErrorCode(status int) string {
 // HTTP status, Code, Message, and optional Resource (bucket/key), followed by a
 // Content-Type: application/xml header and Content-Length matching the body.
 // It returns the number of bytes written. Callers set the write deadline first.
+// s3standardHeaders lists the standard S3 object headers captured on PUT and
+// echoed on GET/HEAD (AWS S3 semantics). x-amz-meta-* user headers are captured
+// separately.
+var s3standardHeaders = []string{
+	"Content-Type",
+	"Cache-Control",
+	"Content-Disposition",
+	"Content-Encoding",
+	"Expires",
+}
+
+// sanitizeS3HeaderValue bounds and strips CR/LF from a header value to prevent
+// HTTP response splitting and oversized metadata (Rule 24).
+func sanitizeS3HeaderValue(v string) string {
+	if len(v) > 1024 {
+		v = v[:1024]
+	}
+	v = strings.ReplaceAll(v, "\r", " ")
+	v = strings.ReplaceAll(v, "\n", " ")
+	return strings.TrimSpace(v)
+}
+
+// collectS3Headers captures S3 object metadata from a PUT request: the standard
+// headers plus every x-amz-meta-* user header. Keys are stored canonicalized
+// (lowercase); appendS3MetaHeaders emits them back on GET/HEAD.
+func collectS3Headers(req *http.Request) map[string]string {
+	var headers map[string]string
+	addHeader := func(key, value string) {
+		value = sanitizeS3HeaderValue(value)
+		if value == "" {
+			return
+		}
+		if headers == nil {
+			headers = make(map[string]string)
+		}
+		headers[key] = value
+	}
+	for _, h := range s3standardHeaders {
+		if v := req.Header.Get(h); v != "" {
+			addHeader(strings.ToLower(h), v)
+		}
+	}
+	for name, values := range req.Header {
+		if !strings.HasPrefix(name, "X-Amz-Meta-") {
+			continue
+		}
+		key := "x-amz-meta-" + strings.ToLower(strings.TrimPrefix(name, "X-Amz-Meta-"))
+		for _, v := range values {
+			addHeader(key, v)
+		}
+	}
+	return headers
+}
+
+// headerKeysWithout returns the sorted header keys, excluding "content-type"
+// (emitted explicitly with the resolved value).
+func headerKeysWithout(headers map[string]string, exclude string) []string {
+	keys := make([]string, 0, len(headers))
+	for k := range headers {
+		if k != exclude {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// appendS3MetaHeaders appends Content-Type plus any preserved S3 metadata
+// header lines to the response buffer. contentType defaults to
+// application/octet-stream when the object carries no stored Content-Type.
+func appendS3MetaHeaders(b []byte, headers map[string]string, contentType string) []byte {
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	b = append(b, "Content-Type: "...)
+	b = append(b, contentType...)
+	b = append(b, "\r\n"...)
+	for _, k := range headerKeysWithout(headers, "content-type") {
+		v := headers[k]
+		if v != "" {
+			b = append(b, k...)
+			b = append(b, ": "...)
+			b = append(b, v...)
+			b = append(b, "\r\n"...)
+		}
+	}
+	return b
+}
+
+// storedS3Meta retrieves the S3 object headers persisted at rest for key, or
+// nil when the store does not support S3 metadata or none was recorded.
+func (m *S3Communicator) storedS3Meta(key string) map[string]string {
+	sm, ok := m.store.(interface {
+		GetS3Meta(string) map[string]string
+	})
+	if !ok {
+		return nil
+	}
+	return sm.GetS3Meta(key)
+}
+
 // parseS3Range parses a single AWS S3 Range header value (e.g. "bytes=0-9",
 // "bytes=100-", "bytes=-500") against the object size and returns the inclusive
 // byte span [start,end]. serveRange=true means the caller must answer with
