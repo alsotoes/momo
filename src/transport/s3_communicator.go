@@ -223,7 +223,11 @@ func (m *S3Communicator) HandshakeClient(authToken string, timestamp int64, requ
 		return 0, fmt.Errorf("failed to write handshake request: %v: %w", err, syscall.EPIPE)
 	}
 
+	// 🛡️ Zero-Crash: Set a read deadline before reading the handshake response to
+	// prevent the client from blocking indefinitely on an unresponsive server (issue #620).
+	m.conn.SetReadDeadline(time.Now().Add(s3ReadHeaderTimeout))
 	resp, err := http.ReadResponse(m.reader, nil)
+	m.conn.SetReadDeadline(time.Time{})
 	if err != nil {
 		return 0, fmt.Errorf("failed to read handshake response: %v: %w", err, syscall.EBADMSG)
 	}
@@ -637,7 +641,11 @@ func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (status int, er
 	}
 
 	// ⚡ Bolt: Read the response immediately to get the metadata status.
+	// 🛡️ Zero-Crash: Set a read deadline to prevent the client from blocking
+	// indefinitely on an unresponsive server (issue #620).
+	m.conn.SetReadDeadline(time.Now().Add(s3ReadHeaderTimeout))
 	resp, err := http.ReadResponse(m.reader, nil)
+	m.conn.SetReadDeadline(time.Time{})
 	if err != nil {
 		return 0, fmt.Errorf("failed to read metadata status response: %v: %w", err, syscall.EBADMSG)
 	}
@@ -772,7 +780,11 @@ func (m *S3Communicator) ReceiveACK() (err error) {
 			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
 		}
 	}()
+	// 🛡️ Zero-Crash: Set a read deadline before reading the ACK response to
+	// prevent the client from blocking indefinitely on an unresponsive server (issue #620).
+	m.conn.SetReadDeadline(time.Now().Add(s3ReadHeaderTimeout))
 	resp, err := http.ReadResponse(m.reader, nil)
+	m.conn.SetReadDeadline(time.Time{})
 	if err != nil {
 		return fmt.Errorf("failed to read ACK response: %v: %w", err, syscall.EBADMSG)
 	}
