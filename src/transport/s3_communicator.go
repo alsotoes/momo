@@ -422,6 +422,55 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		return 0, 0, ErrRequestHandled
 	}
 
+	// Intercept HEAD requests (HeadObject or HeadBucket). HEAD is a read-only
+	// metadata operation and must bypass momo framing (issue #765).
+	if req.Method == "HEAD" {
+		if m.store == nil {
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "The storage store is not initialized.", "")
+			return 0, 0, fmt.Errorf("storage store not initialized")
+		}
+
+		if key == "" {
+			// HEAD / -> endpoint/liveness check; HEAD /bucket -> HeadBucket.
+			// momo uses a bucket-less model (no bucket registry yet, issue #767),
+			// so a configured store implies the bucket exists.
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			m.conn.Write([]byte("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
+			return 0, 0, ErrRequestHandled
+		}
+
+		// HeadObject: reuse store.Get metadata so HEAD and GET agree on ETag/Last-Modified.
+		rc, meta, err := m.store.Get(key)
+		if err != nil {
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			if err == syscall.ENOENT || os.IsNotExist(err) {
+				writeS3Error(m.conn, http.StatusNotFound, "NoSuchKey", "The specified key does not exist.", key)
+				return 0, 0, ErrRequestHandled
+			}
+			writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "The request failed due to an internal error.", key)
+			return 0, 0, fmt.Errorf("failed to head file %q: %w", key, err)
+		}
+		rc.Close()
+
+		// ⚡ Bolt: stack-buffer direct write for the header-only response (no body).
+		var buf [256]byte
+		b := buf[:0]
+		b = append(b, "HTTP/1.1 200 OK\r\nETag: \""...)
+		b = append(b, meta.Hash...)
+		b = append(b, "\"\r\nContent-Length: "...)
+		b = strconv.AppendInt(b, meta.Size, 10)
+		b = append(b, "\r\nLast-Modified: "...)
+		b = append(b, formatHTTPLastModified(meta.ModTime)...)
+		b = append(b, "\r\nContent-Type: application/octet-stream\r\nConnection: close\r\n\r\n"...)
+
+		if _, err := m.conn.Write(b); err != nil {
+			return 0, 0, fmt.Errorf("failed to write HEAD response: %v: %w", err, syscall.EPIPE)
+		}
+
+		return 0, 0, ErrRequestHandled
+	}
+
 	// Intercept DELETE requests
 	if req.Method == "DELETE" {
 		if m.store == nil {
@@ -860,6 +909,14 @@ func extractS3BucketAndKey(req *http.Request) (bucket string, key string) {
 // A zero timestamp (unknown/modern fallback) renders as the Unix epoch.
 func formatLastModified(modTime int64) string {
 	return time.Unix(0, modTime).UTC().Format("2006-01-02T15:04:05.000Z")
+}
+
+// formatHTTPLastModified renders a Unix-nano modification time as an
+// HTTP IMF-fixdate header value (RFC 7231), which AWS SDKs and aws-cli
+// parse for the Last-Modified response header. A zero timestamp renders
+// as the Unix epoch.
+func formatHTTPLastModified(modTime int64) string {
+	return time.Unix(0, modTime).UTC().Format(http.TimeFormat)
 }
 
 // FormatListObjectsV2XML constructs an S3-compliant ListObjectsV2 XML response

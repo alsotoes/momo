@@ -714,6 +714,192 @@ func TestS3Communicator_DELETE(t *testing.T) {
 	}
 }
 
+func TestS3Communicator_HEAD_HeadObject(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	reqStr := "HEAD /bucket/hello.txt HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"Authorization: Bearer " + authToken + "\r\n\r\n"
+
+	fileContent := []byte("hello s3 download!")
+	modTime := int64(1700000000123456789)
+	mock := &mockStore{
+		getFunc: func(name string) (io.ReadCloser, common.FileMetadata, error) {
+			if name != "hello.txt" {
+				return nil, common.FileMetadata{}, syscall.ENOENT
+			}
+			return io.NopCloser(bytes.NewReader(fileContent)), common.FileMetadata{
+				Name:    "hello.txt",
+				Hash:    "abc123def456",
+				Size:    int64(len(fileContent)),
+				ModTime: modTime,
+			}, nil
+		},
+	}
+
+	respStr := runS3TestRequest(t, reqStr, mock)
+
+	if !strings.Contains(respStr, "HTTP/1.1 200 OK") {
+		t.Errorf("Expected 200 OK, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "ETag: \"abc123def456\"") {
+		t.Errorf("Expected quoted ETag, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "Content-Length: 18") {
+		t.Errorf("Expected Content-Length matching object size, got: %s", respStr)
+	}
+	// Last-Modified must be IMF-fixdate (RFC 7231) so aws-cli/SDKs can parse it.
+	if !strings.Contains(respStr, "Last-Modified: Tue, 14 Nov 2023 22:13:20 GMT") {
+		t.Errorf("Expected IMF-fixdate Last-Modified, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "Content-Type: application/octet-stream") {
+		t.Errorf("Expected Content-Type header, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "Connection: close") {
+		t.Errorf("Expected Connection: close, got: %s", respStr)
+	}
+
+	// HEAD must be header-only: no message body after the header terminator.
+	headerEnd := strings.Index(respStr, "\r\n\r\n")
+	if headerEnd == -1 {
+		t.Fatalf("Malformed HTTP response: %s", respStr)
+	}
+	if body := respStr[headerEnd+4:]; body != "" {
+		t.Errorf("HEAD must have no body, got: %q", body)
+	}
+
+	// ETag formatting must match GetObject exactly (same metadata source).
+	// Both quoted with the hash from store.Get.
+	etagMatch := regexp.MustCompile(`ETag: "([^"]*)"`).FindStringSubmatch(respStr)
+	if etagMatch == nil || etagMatch[1] != "abc123def456" {
+		t.Errorf("Expected ETag to equal store hash, got: %v", etagMatch)
+	}
+}
+
+func TestS3Communicator_HEAD_MissingObject(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	reqStr := "HEAD /bucket/missing.txt HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"Authorization: Bearer " + authToken + "\r\n\r\n"
+
+	mock := &mockStore{
+		getFunc: func(name string) (io.ReadCloser, common.FileMetadata, error) {
+			return nil, common.FileMetadata{}, syscall.ENOENT
+		},
+	}
+
+	respStr := runS3TestRequest(t, reqStr, mock)
+
+	if !strings.Contains(respStr, "HTTP/1.1 404 Not Found") {
+		t.Errorf("Expected 404 Not Found, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "<Code>NoSuchKey</Code>") {
+		t.Errorf("Expected NoSuchKey XML error, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "<Resource>missing.txt</Resource>") {
+		t.Errorf("Expected missing.txt resource, got: %s", respStr)
+	}
+}
+
+func TestS3Communicator_HEAD_HeadBucket(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+
+	// HeadBucket via path-style (key empty).
+	reqStr := "HEAD /mybucket HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"Authorization: Bearer " + authToken + "\r\n\r\n"
+
+	respStr := runS3TestRequest(t, reqStr, &mockStore{})
+	if !strings.Contains(respStr, "HTTP/1.1 200 OK") {
+		t.Errorf("Expected 200 OK for HeadBucket, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "Content-Length: 0") {
+		t.Errorf("Expected zero-length body for HeadBucket, got: %s", respStr)
+	}
+
+	// Endpoint liveness check: HEAD / with empty bucket.
+	reqStrRoot := "HEAD / HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"Authorization: Bearer " + authToken + "\r\n\r\n"
+
+	respStrRoot := runS3TestRequest(t, reqStrRoot, &mockStore{})
+	if !strings.Contains(respStrRoot, "HTTP/1.1 200 OK") {
+		t.Errorf("Expected 200 OK for HEAD /, got: %s", respStrRoot)
+	}
+
+	// Nil store -> 500 InternalError.
+	respErr, serverErr := runS3RequestCapture(t, reqStr, nil)
+	if serverErr == nil {
+		t.Fatal("Expected error for nil store")
+	}
+	if !strings.Contains(respErr, "HTTP/1.1 500 Internal Server Error") {
+		t.Errorf("Expected 500 for nil store, got: %s", respErr)
+	}
+	if !strings.Contains(respErr, "<Code>InternalError</Code>") {
+		t.Errorf("Expected InternalError XML error, got: %s", respErr)
+	}
+}
+
+func TestS3Communicator_HEAD_SigV4Auth(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
+
+	now := time.Now().UTC()
+	amzDate := now.Format("20060102T150405Z")
+	dateStamp := now.Format("20060102")
+	region := "us-east-1"
+	payloadHash := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" // sha256("")
+	signedHeaders := "host;x-amz-content-sha256;x-amz-date"
+
+	canonicalRequest := "HEAD\n/bucket/hello.txt\n\nhost:127.0.0.1:4440\nx-amz-content-sha256:" + payloadHash + "\nx-amz-date:" + amzDate + "\n\n" + signedHeaders + "\n" + payloadHash
+	stringToSign := buildStringToSign(canonicalRequest, amzDate, dateStamp, region)
+	signingKey := deriveSigningKey(authToken, dateStamp, region)
+	signature := computeSignature(signingKey, stringToSign)
+
+	authHeader := "AWS4-HMAC-SHA256 Credential=" + authToken + "/" + dateStamp + "/" + region + "/s3/aws4_request, SignedHeaders=" + signedHeaders + ", Signature=" + signature
+
+	reqBody := "HEAD /bucket/hello.txt HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"Authorization: " + authHeader + "\r\n" +
+		"X-Amz-Date: " + amzDate + "\r\n" +
+		"X-Amz-Content-Sha256: " + payloadHash + "\r\n\r\n"
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	go func() {
+		clientConn.Write([]byte(reqBody))
+		buf := make([]byte, 1024)
+		for {
+			_, err := clientConn.Read(buf)
+			if err != nil {
+				break
+			}
+		}
+	}()
+
+	mock := &mockStore{
+		getFunc: func(name string) (io.ReadCloser, common.FileMetadata, error) {
+			return io.NopCloser(bytes.NewReader([]byte("data"))), common.FileMetadata{Name: "hello.txt", Hash: "hash1", Size: 4}, nil
+		},
+	}
+
+	comm := NewS3Communicator(serverConn)
+	comm.SetStore(mock)
+	_, _, err := comm.HandshakeServer(expectedAuthToken)
+	if err != ErrRequestHandled {
+		t.Fatalf("Expected ErrRequestHandled for HEAD with SigV4, got: %v", err)
+	}
+}
+
 func TestS3Communicator_HandshakeClient_CRLFInjection(t *testing.T) {
 	defer verifyNoLeaks(t)
 
