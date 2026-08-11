@@ -475,10 +475,82 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		}
 		defer rc.Close()
 
+		// ETag/Last-Modified are derived from the same metadata HEAD uses, so
+		// conditional and range semantics stay consistent per object (issue #771).
+		etag := meta.Hash
+		lastModifiedStr := formatHTTPLastModified(meta.ModTime)
+		rangeHeader := req.Header.Get("Range")
+
+		// If-Match: any listed entity-tag must match, otherwise 412.
+		if im := req.Header.Get("If-Match"); im != "" && !etagMatches(im, etag) {
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			writeS3Error(m.conn, http.StatusPreconditionFailed, "PreconditionFailed", "At least one of the pre-conditions you specified did not hold.", key)
+			return 0, 0, ErrRequestHandled
+		}
+
+		// If-None-Match (with If-Modified-Since as its fallback): 304 when the
+		// object has not changed since the client's cached representation.
+		if inm := req.Header.Get("If-None-Match"); inm != "" {
+			if etagMatches(inm, etag) {
+				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				var buf [256]byte
+				b := buf[:0]
+				b = append(b, "HTTP/1.1 304 Not Modified\r\nETag: \""...)
+				b = append(b, etag...)
+				b = append(b, "\"\r\nLast-Modified: "...)
+				b = append(b, lastModifiedStr...)
+				b = append(b, "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"...)
+				if _, err := m.conn.Write(b); err != nil {
+					return 0, 0, fmt.Errorf("failed to write 304 response: %v: %w", err, syscall.EPIPE)
+				}
+				return 0, 0, ErrRequestHandled
+			}
+		} else if ims := req.Header.Get("If-Modified-Since"); ims != "" {
+			if t, perr := http.ParseTime(ims); perr == nil && !time.Unix(0, meta.ModTime).After(t.Truncate(time.Second)) {
+				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				var buf [256]byte
+				b := buf[:0]
+				b = append(b, "HTTP/1.1 304 Not Modified\r\nETag: \""...)
+				b = append(b, etag...)
+				b = append(b, "\"\r\nLast-Modified: "...)
+				b = append(b, lastModifiedStr...)
+				b = append(b, "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"...)
+				if _, err := m.conn.Write(b); err != nil {
+					return 0, 0, fmt.Errorf("failed to write 304 response: %v: %w", err, syscall.EPIPE)
+				}
+				return 0, 0, ErrRequestHandled
+			}
+		}
+
+		// If-Range: only meaningful alongside a Range header. A non-matching
+		// entity-tag or a stale date falls back to the full 200 response.
+		if ir := req.Header.Get("If-Range"); ir != "" && rangeHeader != "" && !ifRangeMatches(ir, etag, meta.ModTime) {
+			rangeHeader = ""
+		}
+
+		// Resolve the requested byte span against the object size.
+		var start, end int64
+		serveRange := false
+		if rangeHeader != "" {
+			var unsatisfiable bool
+			start, end, serveRange, unsatisfiable = parseS3Range(rangeHeader, meta.Size)
+			if unsatisfiable {
+				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				writeRangeNotSatisfiable(m.conn, meta.Size, key)
+				return 0, 0, ErrRequestHandled
+			}
+		}
+
+		// Body length served on the wire (the full object or the range span).
+		bodyLen := meta.Size
+		if serveRange {
+			bodyLen = end - start + 1
+		}
+
 		// 🛡️ Sentinel: Set a progressive write deadline proportional to the file size
 		// to prevent long-running connection stalls while supporting large objects.
 		copyTimeout := 5 * time.Second
-		mb := meta.Size / (1024 * 1024)
+		mb := bodyLen / (1024 * 1024)
 		if mb > 0 {
 			maxMB := int64(math.MaxInt64 / int64(time.Second))
 			if mb > maxMB {
@@ -491,21 +563,46 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		// ⚡ Bolt: Eliminate http.Response allocation and bytes.Buffer using stack buffer direct write
 		var buf [256]byte
 		b := buf[:0]
-		b = append(b, "HTTP/1.1 200 OK\r\nContent-Length: "...)
-		b = strconv.AppendInt(b, meta.Size, 10)
+		if serveRange {
+			b = append(b, "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes "...)
+			b = strconv.AppendInt(b, start, 10)
+			b = append(b, "-"...)
+			b = strconv.AppendInt(b, end, 10)
+			b = append(b, "/"...)
+			b = strconv.AppendInt(b, meta.Size, 10)
+			b = append(b, "\r\nContent-Length: "...)
+		} else {
+			b = append(b, "HTTP/1.1 200 OK\r\nContent-Length: "...)
+		}
+		b = strconv.AppendInt(b, bodyLen, 10)
+		b = append(b, "\r\nETag: \""...)
+		b = append(b, etag...)
+		b = append(b, "\"\r\nLast-Modified: "...)
+		b = append(b, lastModifiedStr...)
 		b = append(b, "\r\nContent-Type: application/octet-stream\r\nConnection: close\r\n\r\n"...)
 
 		if _, err := m.conn.Write(b); err != nil {
 			return 0, 0, fmt.Errorf("failed to write GET headers: %v: %w", err, syscall.EPIPE)
 		}
 
-		if _, err := io.Copy(m.conn, rc); err != nil {
-			return 0, 0, fmt.Errorf("failed to stream GET body: %v: %w", err, syscall.EPIPE)
+		if serveRange {
+			// Skip to the range start without buffering the object in memory,
+			// then stream exactly the requested span (bounded-memory design).
+			if _, err := io.CopyN(io.Discard, rc, start); err != nil {
+				return 0, 0, fmt.Errorf("failed to skip to range start: %v: %w", err, syscall.EPIPE)
+			}
+			if _, err := io.CopyN(m.conn, rc, bodyLen); err != nil {
+				return 0, 0, fmt.Errorf("failed to stream range body: %v: %w", err, syscall.EPIPE)
+			}
+		} else {
+			if _, err := io.Copy(m.conn, rc); err != nil {
+				return 0, 0, fmt.Errorf("failed to stream GET body: %v: %w", err, syscall.EPIPE)
+			}
 		}
 
 		if m.metricsHook != nil {
 			m.metricsHook.IncDownloads()
-			m.metricsHook.AddBytesDownloaded(uint64(meta.Size))
+			m.metricsHook.AddBytesDownloaded(uint64(bodyLen))
 		}
 
 		return 0, 0, ErrRequestHandled
@@ -1396,6 +1493,133 @@ func s3ErrorCode(status int) string {
 // HTTP status, Code, Message, and optional Resource (bucket/key), followed by a
 // Content-Type: application/xml header and Content-Length matching the body.
 // It returns the number of bytes written. Callers set the write deadline first.
+// parseS3Range parses a single AWS S3 Range header value (e.g. "bytes=0-9",
+// "bytes=100-", "bytes=-500") against the object size and returns the inclusive
+// byte span [start,end]. serveRange=true means the caller must answer with
+// 206 Partial Content for that span. unsatisfiable=true means the request must
+// be answered with 416 (the span cannot be satisfied for the object size).
+// Unknown units and multi-range requests (which AWS S3 answers with the full
+// object) return serveRange=false, unsatisfiable=false.
+func parseS3Range(rangeHeader string, size int64) (start, end int64, serveRange, unsatisfiable bool) {
+	hv := strings.TrimSpace(rangeHeader)
+	if !strings.HasPrefix(hv, "bytes=") {
+		return 0, 0, false, false // unknown unit: ignore the header, 200 full body
+	}
+	spec := hv[len("bytes="):]
+	// AWS S3 only supports a single range; multi-range requests receive the full object.
+	if strings.Contains(spec, ",") {
+		return 0, 0, false, false
+	}
+
+	parts := strings.SplitN(spec, "-", 2)
+	if len(parts) != 2 {
+		return 0, 0, false, false // malformed: ignore the header
+	}
+	startStr, endStr := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+
+	parseInt := func(s string) (int64, bool) {
+		if s == "" {
+			return 0, false
+		}
+		v, err := strconv.ParseInt(s, 10, 63)
+		if err != nil || v < 0 {
+			return 0, false
+		}
+		return v, true
+	}
+
+	switch {
+	case startStr == "" && endStr == "":
+		// "bytes=-" carries no span and is unsatisfiable.
+		return 0, 0, false, true
+	case startStr == "":
+		// Suffix range: the last endStr bytes of the object.
+		n, ok := parseInt(endStr)
+		if !ok || n == 0 || size == 0 {
+			return 0, 0, false, true
+		}
+		if n > size {
+			n = size
+		}
+		return size - n, size - 1, true, false
+	case endStr == "":
+		// Open range: from startStr to the end of the object.
+		s, ok := parseInt(startStr)
+		if !ok || size == 0 || s >= size {
+			return 0, 0, false, true
+		}
+		return s, size - 1, true, false
+	default:
+		s, ok1 := parseInt(startStr)
+		e, ok2 := parseInt(endStr)
+		if !ok1 || !ok2 || s >= size || s > e {
+			return 0, 0, false, true
+		}
+		if e >= size {
+			e = size - 1
+		}
+		return s, e, true, false
+	}
+}
+
+// etagMatches reports whether the comma-separated entity-tag list in header
+// matches the given etag (a raw hash without quotes). "*" matches every object.
+// Weak comparison prefixes (W/) and surrounding double quotes are tolerated.
+func etagMatches(header, etag string) bool {
+	for _, item := range strings.Split(header, ",") {
+		item = strings.TrimSpace(item)
+		if item == "*" {
+			return true
+		}
+		item = strings.TrimPrefix(item, "W/")
+		item = strings.TrimSpace(item)
+		item = strings.Trim(item, `"`)
+		if item == etag {
+			return true
+		}
+	}
+	return false
+}
+
+// ifRangeMatches reports whether an If-Range header value (an entity-tag or an
+// HTTP-date) still matches the object, permitting a 206 Partial Content reply.
+func ifRangeMatches(ifRange, etag string, modTime int64) bool {
+	val := strings.TrimSpace(ifRange)
+	if strings.HasPrefix(val, `"`) || strings.HasPrefix(val, "W/") {
+		return etagMatches(val, etag)
+	}
+	if t, err := http.ParseTime(val); err == nil {
+		// The object is fresh when Last-Modified is not after the If-Range date.
+		return !time.Unix(0, modTime).After(t)
+	}
+	return false
+}
+
+// writeRangeNotSatisfiable writes a 416 Range Not Satisfiable response with the
+// S3 InvalidRange XML error body and a Content-Range: bytes */size header.
+func writeRangeNotSatisfiable(w io.Writer, size int64, key string) (int, error) {
+	var bodyBuf bytes.Buffer
+	bodyBuf.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)
+	bodyBuf.WriteString(`<Error><Code>InvalidRange</Code><Message>The requested range cannot be satisfied.</Message><Resource>`)
+	xmlEscape(&bodyBuf, key)
+	bodyBuf.WriteString(`</Resource></Error>`)
+
+	var hdrBuf [256]byte
+	b := hdrBuf[:0]
+	b = append(b, "HTTP/1.1 416 Range Not Satisfiable\r\nContent-Type: application/xml\r\nContent-Length: "...)
+	b = strconv.AppendInt(b, int64(bodyBuf.Len()), 10)
+	b = append(b, "\r\nContent-Range: bytes */"...)
+	b = strconv.AppendInt(b, size, 10)
+	b = append(b, "\r\nConnection: close\r\n\r\n"...)
+	if _, err := w.Write(b); err != nil {
+		return 0, fmt.Errorf("failed to write 416 headers: %v: %w", err, syscall.EPIPE)
+	}
+	if _, err := w.Write(bodyBuf.Bytes()); err != nil {
+		return 0, fmt.Errorf("failed to write 416 body: %v: %w", err, syscall.EPIPE)
+	}
+	return len(b) + bodyBuf.Len(), nil
+}
+
 func writeS3Error(w io.Writer, status int, code, message, resource string) (int, error) {
 	// 🛡️ Sentinel: Bound attacker-controlled message/resource lengths and strip
 	// CR/LF to prevent HTTP response splitting and oversized error bodies (Rule 24).

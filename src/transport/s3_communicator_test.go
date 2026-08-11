@@ -1012,6 +1012,339 @@ func TestS3Communicator_GET_GetObject(t *testing.T) {
 	}
 }
 
+// s3GetRequest builds a raw HTTP/1.1 GET request against /bucket/key with a
+// valid Bearer token plus any extra name: value header lines.
+func s3GetRequest(token, key, extraHeaders string) string {
+	return "GET /bucket/" + key + " HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"Authorization: Bearer " + token + "\r\n" +
+		extraHeaders + "\r\n"
+}
+
+// rangeMockStore returns an object whose body is "0123456789abcdef" (16 bytes)
+// with a stable ETag and ModTime so range/conditional tests are deterministic.
+func rangeMockStore() *mockStore {
+	content := []byte("0123456789abcdef")
+	return &mockStore{
+		getFunc: func(name string) (io.ReadCloser, common.FileMetadata, error) {
+			return io.NopCloser(bytes.NewReader(content)), common.FileMetadata{
+				Name:    name,
+				Hash:    "etag123",
+				Size:    int64(len(content)),
+				ModTime: 1700000000000000000,
+			}, nil
+		},
+	}
+}
+
+func TestS3Communicator_GET_Range(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+
+	// bytes=4-9 -> the span "456789".
+	respStr := runS3TestRequest(t, s3GetRequest(authToken, "obj.txt", "Range: bytes=4-9\r\n"), rangeMockStore())
+
+	if !strings.Contains(respStr, "HTTP/1.1 206 Partial Content") {
+		t.Fatalf("Expected 206 Partial Content, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "Content-Range: bytes 4-9/16") {
+		t.Errorf("Expected Content-Range bytes 4-9/16, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "Content-Length: 6\r\n") {
+		t.Errorf("Expected Content-Length 6, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "456789") {
+		t.Errorf("Expected body span 456789, got: %s", respStr)
+	}
+	if strings.Contains(respStr, "0123") || strings.Contains(respStr, "abcdef") {
+		t.Errorf("Range body must not include out-of-span bytes, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "ETag: \"etag123\"") {
+		t.Errorf("206 response should carry the object ETag, got: %s", respStr)
+	}
+}
+
+func TestS3Communicator_GET_RangeOpenEnd(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+
+	respStr := runS3TestRequest(t, s3GetRequest(authToken, "obj.txt", "Range: bytes=10-\r\n"), rangeMockStore())
+
+	if !strings.Contains(respStr, "HTTP/1.1 206 Partial Content") {
+		t.Fatalf("Expected 206, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "Content-Range: bytes 10-15/16") {
+		t.Errorf("Expected Content-Range bytes 10-15/16, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "abcdef") {
+		t.Errorf("Expected tail abcdef, got: %s", respStr)
+	}
+}
+
+func TestS3Communicator_GET_RangeSuffix(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+
+	respStr := runS3TestRequest(t, s3GetRequest(authToken, "obj.txt", "Range: bytes=-4\r\n"), rangeMockStore())
+
+	if !strings.Contains(respStr, "HTTP/1.1 206 Partial Content") {
+		t.Fatalf("Expected 206, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "Content-Range: bytes 12-15/16") {
+		t.Errorf("Expected Content-Range bytes 12-15/16, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "cdef") {
+		t.Errorf("Expected last 4 bytes cdef, got: %s", respStr)
+	}
+}
+
+func TestS3Communicator_GET_RangeClamped(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+
+	// End past EOF clamps to the object boundary.
+	respStr := runS3TestRequest(t, s3GetRequest(authToken, "obj.txt", "Range: bytes=12-999\r\n"), rangeMockStore())
+	if !strings.Contains(respStr, "HTTP/1.1 206 Partial Content") {
+		t.Fatalf("Expected 206, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "Content-Range: bytes 12-15/16") {
+		t.Errorf("Expected clamped Content-Range, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "cdef") {
+		t.Errorf("Expected clamped body cdef, got: %s", respStr)
+	}
+}
+
+func TestS3Communicator_GET_RangeUnsatisfiable(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	mock := rangeMockStore()
+
+	for _, hdr := range []string{"Range: bytes=20-25", "Range: bytes=5-2", "Range: bytes=-0", "Range: bytes=20-"} {
+		respStr, serverErr := runS3RequestCapture(t, s3GetRequest(authToken, "obj.txt", hdr+"\r\n"), mock)
+		if !errors.Is(serverErr, ErrRequestHandled) {
+			t.Fatalf("%s: expected ErrRequestHandled, got %v", hdr, serverErr)
+		}
+		if !strings.Contains(respStr, "HTTP/1.1 416 Range Not Satisfiable") {
+			t.Errorf("%s: expected 416, got: %s", hdr, respStr)
+		}
+		if !strings.Contains(respStr, "Content-Range: bytes */16") {
+			t.Errorf("%s: expected Content-Range bytes */16, got: %s", hdr, respStr)
+		}
+		if !strings.Contains(respStr, "<Code>InvalidRange</Code>") {
+			t.Errorf("%s: expected InvalidRange XML error, got: %s", hdr, respStr)
+		}
+	}
+}
+
+func TestS3Communicator_GET_RangeMultiReturnsFull(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+
+	// AWS S3 serves the full object (200) for multi-range requests.
+	respStr := runS3TestRequest(t, s3GetRequest(authToken, "obj.txt", "Range: bytes=0-3,8-11\r\n"), rangeMockStore())
+	if !strings.Contains(respStr, "HTTP/1.1 200 OK") {
+		t.Fatalf("Expected 200 OK for multi-range, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "0123456789abcdef") {
+		t.Errorf("Expected full body for multi-range, got: %s", respStr)
+	}
+}
+
+func TestS3Communicator_GET_IfNoneMatch(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	mock := rangeMockStore()
+
+	// Matching ETag -> 304 Not Modified, no body.
+	respStr := runS3TestRequest(t, s3GetRequest(authToken, "obj.txt", "If-None-Match: \"etag123\"\r\n"), mock)
+	if !strings.Contains(respStr, "HTTP/1.1 304 Not Modified") {
+		t.Fatalf("If-None-Match match: expected 304, got: %s", respStr)
+	}
+	if strings.Contains(respStr, "0123456789abcdef") {
+		t.Errorf("304 must not include a body, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "ETag: \"etag123\"") {
+		t.Errorf("304 should echo ETag, got: %s", respStr)
+	}
+
+	// Non-matching ETag -> 200 full body.
+	respStr = runS3TestRequest(t, s3GetRequest(authToken, "obj.txt", "If-None-Match: \"other\"\r\n"), mock)
+	if !strings.Contains(respStr, "HTTP/1.1 200 OK") {
+		t.Errorf("If-None-Match non-match: expected 200, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "0123456789abcdef") {
+		t.Errorf("If-None-Match non-match should stream the body, got: %s", respStr)
+	}
+
+	// Wildcard -> always 304 for an existing object.
+	respStr = runS3TestRequest(t, s3GetRequest(authToken, "obj.txt", "If-None-Match: *\r\n"), mock)
+	if !strings.Contains(respStr, "HTTP/1.1 304 Not Modified") {
+		t.Errorf("If-None-Match *: expected 304, got: %s", respStr)
+	}
+}
+
+func TestS3Communicator_GET_IfMatch(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	mock := rangeMockStore()
+
+	// Matching ETag -> 200.
+	respStr := runS3TestRequest(t, s3GetRequest(authToken, "obj.txt", "If-Match: \"etag123\"\r\n"), mock)
+	if !strings.Contains(respStr, "HTTP/1.1 200 OK") {
+		t.Errorf("If-Match match: expected 200, got: %s", respStr)
+	}
+
+	// Mismatched ETag -> 412 Precondition Failed.
+	respStr, serverErr := runS3RequestCapture(t, s3GetRequest(authToken, "obj.txt", "If-Match: \"stale\"\r\n"), mock)
+	if !errors.Is(serverErr, ErrRequestHandled) {
+		t.Fatalf("expected ErrRequestHandled, got %v", serverErr)
+	}
+	if !strings.Contains(respStr, "HTTP/1.1 412 Precondition Failed") {
+		t.Errorf("If-Match mismatch: expected 412, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "<Code>PreconditionFailed</Code>") {
+		t.Errorf("If-Match mismatch: expected PreconditionFailed XML, got: %s", respStr)
+	}
+}
+
+func TestS3Communicator_GET_IfModifiedSince(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	mock := rangeMockStore()                                                        // ModTime = 1700000000.000s = 2023-11-14T22:13:20Z
+
+	// Future date -> object not modified since -> 304.
+	future := "Wed, 15 Nov 2023 22:13:20 GMT"
+	respStr := runS3TestRequest(t, s3GetRequest(authToken, "obj.txt", "If-Modified-Since: "+future+"\r\n"), mock)
+	if !strings.Contains(respStr, "HTTP/1.1 304 Not Modified") {
+		t.Errorf("If-Modified-Since future: expected 304, got: %s", respStr)
+	}
+
+	// Past date -> object modified after -> 200.
+	past := "Tue, 14 Nov 2023 10:00:00 GMT"
+	respStr = runS3TestRequest(t, s3GetRequest(authToken, "obj.txt", "If-Modified-Since: "+past+"\r\n"), mock)
+	if !strings.Contains(respStr, "HTTP/1.1 200 OK") {
+		t.Errorf("If-Modified-Since past: expected 200, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "0123456789abcdef") {
+		t.Errorf("If-Modified-Since past should stream the body, got: %s", respStr)
+	}
+}
+
+func TestS3Communicator_GET_IfRange(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	mock := rangeMockStore()
+
+	// Matching If-Range ETag + Range -> 206.
+	respStr := runS3TestRequest(t, s3GetRequest(authToken, "obj.txt", "Range: bytes=0-3\r\nIf-Range: \"etag123\"\r\n"), mock)
+	if !strings.Contains(respStr, "HTTP/1.1 206 Partial Content") {
+		t.Errorf("If-Range match: expected 206, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "0123") {
+		t.Errorf("If-Range match: expected range body 0123, got: %s", respStr)
+	}
+
+	// Stale If-Range ETag -> full 200 (Range ignored).
+	respStr = runS3TestRequest(t, s3GetRequest(authToken, "obj.txt", "Range: bytes=0-3\r\nIf-Range: \"stale\"\r\n"), mock)
+	if !strings.Contains(respStr, "HTTP/1.1 200 OK") {
+		t.Errorf("If-Range stale: expected 200, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "0123456789abcdef") {
+		t.Errorf("If-Range stale: expected full body, got: %s", respStr)
+	}
+}
+
+func TestS3Communicator_GET_ETagLastModifiedConsistency(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	// The plain full GET must expose the same ETag/Last-Modified that HEAD and
+	// conditional requests use, so clients can rely on caching semantics.
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	mock := rangeMockStore()
+
+	respStr := runS3TestRequest(t, s3GetRequest(authToken, "obj.txt", ""), mock)
+	if !strings.Contains(respStr, "HTTP/1.1 200 OK") {
+		t.Fatalf("Expected 200 OK, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "ETag: \"etag123\"") {
+		t.Errorf("Plain GET must expose ETag, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "Last-Modified: ") {
+		t.Errorf("Plain GET must expose Last-Modified, got: %s", respStr)
+	}
+}
+
+func TestS3Communicator_ParseS3Range(t *testing.T) {
+	tests := []struct {
+		name            string
+		header          string
+		size            int64
+		wantStart       int64
+		wantEnd         int64
+		wantServe       bool
+		wantUnsatisfied bool
+	}{
+		{name: "full range", header: "bytes=0-15", size: 16, wantStart: 0, wantEnd: 15, wantServe: true},
+		{name: "mid range", header: "bytes=4-9", size: 16, wantStart: 4, wantEnd: 9, wantServe: true},
+		{name: "open", header: "bytes=10-", size: 16, wantStart: 10, wantEnd: 15, wantServe: true},
+		{name: "suffix", header: "bytes=-4", size: 16, wantStart: 12, wantEnd: 15, wantServe: true},
+		{name: "suffix exceeds size", header: "bytes=-100", size: 16, wantStart: 0, wantEnd: 15, wantServe: true},
+		{name: "end clamped", header: "bytes=12-999", size: 16, wantStart: 12, wantEnd: 15, wantServe: true},
+		{name: "start equals size", header: "bytes=16-", size: 16, wantUnsatisfied: true},
+		{name: "start past size", header: "bytes=20-25", size: 16, wantUnsatisfied: true},
+		{name: "start past end", header: "bytes=5-2", size: 16, wantUnsatisfied: true},
+		{name: "suffix zero", header: "bytes=-0", size: 16, wantUnsatisfied: true},
+		{name: "empty spec", header: "bytes=-", size: 16, wantUnsatisfied: true},
+		{name: "multi range full", header: "bytes=0-3,8-11", size: 16, wantServe: false},
+		{name: "unknown unit", header: "items=0-4", size: 16, wantServe: false},
+		{name: "empty object range", header: "bytes=0-0", size: 0, wantUnsatisfied: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			start, end, serve, unsatisfied := parseS3Range(tt.header, tt.size)
+			if serve != tt.wantServe || unsatisfied != tt.wantUnsatisfied {
+				t.Fatalf("parseS3Range(%q, %d) = (%d,%d,serve=%v,unsat=%v), want serve=%v unsat=%v",
+					tt.header, tt.size, start, end, serve, unsatisfied, tt.wantServe, tt.wantUnsatisfied)
+			}
+			if tt.wantServe && (start != tt.wantStart || end != tt.wantEnd) {
+				t.Errorf("parseS3Range(%q, %d) span=(%d,%d), want (%d,%d)", tt.header, tt.size, start, end, tt.wantStart, tt.wantEnd)
+			}
+		})
+	}
+}
+
+func TestS3Communicator_EtagMatches(t *testing.T) {
+	if !etagMatches(`"etag123"`, "etag123") {
+		t.Error("quoted exact etag should match")
+	}
+	if !etagMatches(`"aaa", "etag123"`, "etag123") {
+		t.Error("list should match")
+	}
+	if !etagMatches("*", "etag123") {
+		t.Error("wildcard should match")
+	}
+	if !etagMatches(`W/"etag123"`, "etag123") {
+		t.Error("weak etag should match")
+	}
+	if etagMatches(`"etag123"`, "etag456") {
+		t.Error("different etag must not match")
+	}
+	if etagMatches(`"etag123"`, "") {
+		t.Error("empty object etag must not match a specific tag")
+	}
+}
+
 func TestS3Communicator_DELETE(t *testing.T) {
 	defer verifyNoLeaks(t)
 
