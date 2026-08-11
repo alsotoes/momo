@@ -5,12 +5,14 @@ import (
 	"bytes"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"log"
 	"math"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"sort"
@@ -293,8 +295,12 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to read handshake request: %v: %w", err, syscall.EBADMSG)
 	}
+	// Keep the body open for PUT (upload) and for POST ?delete (batch DeleteObjects),
+	// whose XML payload must be read inside the handler.
 	if req.Method != "PUT" {
-		req.Body.Close()
+		if _, hasDelete := req.URL.Query()["delete"]; req.Method != "POST" || !hasDelete {
+			req.Body.Close()
+		}
 	}
 
 	authHeader := req.Header.Get("Authorization")
@@ -342,6 +348,20 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 	}
 
 	bucket, key := extractS3BucketAndKey(req)
+
+	// Intercept POST /{bucket}?delete (DeleteObjects batch) — fully handled here:
+	// each key goes through the same single-DELETE path (lease -> store.Delete ->
+	// scatter-gather) and the per-key results are aggregated into DeleteResult XML.
+	if req.Method == "POST" {
+		if _, hasDelete := req.URL.Query()["delete"]; hasDelete {
+			if m.store == nil {
+				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "The storage store is not initialized.", "")
+				return 0, 0, fmt.Errorf("storage store not initialized")
+			}
+			return m.handleBatchDelete(bucket, req)
+		}
+	}
 
 	// Intercept GET requests (for ListObjectsV2, ListBuckets, GetBucketLocation, or GetObject)
 	if req.Method == "GET" {
@@ -810,6 +830,18 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 
 	// Parse Metadata if it's a PUT request
 	if req.Method == "PUT" {
+		// CopyObject: PUT with x-amz-copy-source copies an existing object within
+		// the store (a namespace alias via store.Get -> store.Put), preserving its
+		// S3 metadata, and answers with CopyObjectResult XML entirely here.
+		if copySource := req.Header.Get("X-Amz-Copy-Source"); copySource != "" {
+			if m.store == nil {
+				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "The storage store is not initialized.", "")
+				return 0, 0, fmt.Errorf("storage store not initialized")
+			}
+			return m.handleCopyObject(bucket, key, copySource)
+		}
+
 		// CreateBucket: PUT to a bucket root (key empty) in bucket mode.
 		// Legacy flat mode (no configured bucket) keeps the upload behavior.
 		if m.configuredBucket != "" && key == "" {
@@ -1655,6 +1687,259 @@ func (m *S3Communicator) storedS3Meta(key string) map[string]string {
 		return nil
 	}
 	return sm.GetS3Meta(key)
+}
+
+// handleCopyObject implements S3 CopyObject (PUT with x-amz-copy-source):
+// the destination key becomes a new namespace alias via store.Get -> store.Put
+// (CAS dedup at the storage layer), preserving the source's S3 metadata, and
+// answers with CopyObjectResult XML. Handled entirely within HandshakeServer.
+func (m *S3Communicator) handleCopyObject(bucket, key, copySource string) (int, int64, error) {
+	// Destination bucket and key validation (mirrors the single-DELETE path).
+	if !m.validBucket(bucket) {
+		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		writeS3Error(m.conn, http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", bucket)
+		return 0, 0, ErrRequestHandled
+	}
+	if key == "" {
+		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		writeS3Error(m.conn, http.StatusBadRequest, "InvalidArgument", "Copy source must have a destination object key.", "")
+		return 0, 0, ErrRequestHandled
+	}
+
+	// Decode and validate the copy-source (may be URL-escaped).
+	srcPath := copySource
+	if decoded, decErr := url.PathUnescape(copySource); decErr == nil {
+		srcPath = decoded
+	}
+	srcPath = strings.TrimPrefix(srcPath, "/")
+	if srcPath == "" || strings.Contains(srcPath, "..") || strings.Contains(srcPath, "\\") {
+		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		writeS3Error(m.conn, http.StatusBadRequest, "InvalidArgument", "Invalid copy source.", copySource)
+		return 0, 0, ErrRequestHandled
+	}
+
+	// Source key: in bucket mode the first segment is the source bucket; in
+	// legacy flat mode it is ignored (consistent with GET/HEAD use of `key`).
+	srcKey := ""
+	parts := strings.SplitN(srcPath, "/", 2)
+	if m.configuredBucket != "" {
+		if !m.validBucket(parts[0]) {
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			writeS3Error(m.conn, http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", parts[0])
+			return 0, 0, ErrRequestHandled
+		}
+		if len(parts) > 1 {
+			srcKey = parts[1]
+		}
+	} else if len(parts) > 1 {
+		srcKey = parts[1]
+	} else {
+		srcKey = parts[0]
+	}
+	if srcKey == "" {
+		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		writeS3Error(m.conn, http.StatusBadRequest, "InvalidArgument", "Invalid copy source.", copySource)
+		return 0, 0, ErrRequestHandled
+	}
+
+	rc, srcMeta, err := m.store.Get(srcKey)
+	if err != nil {
+		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		if err == syscall.ENOENT || os.IsNotExist(err) {
+			writeS3Error(m.conn, http.StatusNotFound, "NoSuchKey", "The specified source key does not exist.", srcKey)
+			return 0, 0, ErrRequestHandled
+		}
+		writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "The request failed due to an internal error.", srcKey)
+		return 0, 0, fmt.Errorf("failed to copy source file %q: %w", srcKey, err)
+	}
+	defer rc.Close()
+
+	// store.Put with the source blob: content-augmented CAS dedups under the
+	// existing hash and creates the destination namespace alias.
+	if err := m.store.Put(key, srcMeta.Hash, srcMeta.Size, "", rc); err != nil {
+		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "The request failed due to an internal error.", key)
+		return 0, 0, fmt.Errorf("failed to copy file %q: %w", key, err)
+	}
+
+	// Preserve the source's S3 object metadata on the new alias (issue #772).
+	if srcHeaders := m.storedS3Meta(srcKey); len(srcHeaders) > 0 {
+		if ps, ok := m.store.(interface {
+			PutS3Meta(string, map[string]string) error
+		}); ok {
+			if pErr := ps.PutS3Meta(key, srcHeaders); pErr != nil {
+				log.Printf("AUDIT: Error persisting S3 metadata for copy %s: %v", key, pErr)
+			}
+		}
+	}
+
+	xmlBytes := FormatCopyObjectResultXML(srcMeta.Hash, srcMeta.ModTime)
+	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	var hbuf [256]byte
+	hb := hbuf[:0]
+	hb = append(hb, "HTTP/1.1 200 OK\r\nContent-Type: application/xml\r\nContent-Length: "...)
+	hb = strconv.AppendInt(hb, int64(len(xmlBytes)), 10)
+	hb = append(hb, "\r\nConnection: close\r\n\r\n"...)
+	if _, err := m.conn.Write(hb); err != nil {
+		return 0, 0, fmt.Errorf("failed to write CopyObject headers: %v: %w", err, syscall.EPIPE)
+	}
+	if _, err := m.conn.Write(xmlBytes); err != nil {
+		return 0, 0, fmt.Errorf("failed to write CopyObject body: %v: %w", err, syscall.EPIPE)
+	}
+	return 0, 0, ErrRequestHandled
+}
+
+// maxDeleteBodyBytes bounds the DeleteObjects XML payload to prevent XML DoS
+// (Rule 24). maxDeleteKeys bounds the per-request object count (AWS limit is 1000).
+const (
+	maxDeleteBodyBytes = 1 << 20
+	maxDeleteKeys      = 1000
+)
+
+type s3DeleteObject struct {
+	Key string `xml:"Key"`
+}
+
+type s3DeletePayload struct {
+	Object []s3DeleteObject `xml:"Object"`
+}
+
+type s3DeleteError struct {
+	Key     string
+	Code    string
+	Message string
+}
+
+// parseDeleteObjectsBody parses an AWS DeleteObjects <Delete> XML payload into
+// its keys, capping the number of keys to prevent XML DoS.
+func parseDeleteObjectsBody(body []byte) ([]string, error) {
+	var payload s3DeletePayload
+	if err := xml.Unmarshal(body, &payload); err != nil {
+		return nil, err
+	}
+	if len(payload.Object) > maxDeleteKeys {
+		return nil, fmt.Errorf("DeleteObjects count %d exceeds limit %d: %w", len(payload.Object), maxDeleteKeys, syscall.E2BIG)
+	}
+	keys := make([]string, 0, len(payload.Object))
+	for _, o := range payload.Object {
+		if k := strings.TrimSpace(o.Key); k != "" {
+			keys = append(keys, k)
+		}
+	}
+	return keys, nil
+}
+
+// handleBatchDelete implements S3 DeleteObjects (POST /{bucket}?delete): each
+// key goes through the single-DELETE path (lease -> store.Delete -> scatter-gather)
+// and the per-key results are aggregated into DeleteResult XML (AWS returns 200
+// even when keys are missing). No momo framing is emitted for the batch itself.
+func (m *S3Communicator) handleBatchDelete(bucket string, req *http.Request) (int, int64, error) {
+	if !m.validBucket(bucket) {
+		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		writeS3Error(m.conn, http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", bucket)
+		return 0, 0, ErrRequestHandled
+	}
+
+	body, err := io.ReadAll(io.LimitReader(req.Body, maxDeleteBodyBytes+1))
+	if err != nil {
+		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		writeS3Error(m.conn, http.StatusBadRequest, "InvalidRequest", "Error parsing request body:", "")
+		return 0, 0, ErrRequestHandled
+	}
+	req.Body.Close()
+	if len(body) > maxDeleteBodyBytes {
+		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		writeS3Error(m.conn, http.StatusBadRequest, "MalformedXML", "The request body is too large.", "")
+		return 0, 0, ErrRequestHandled
+	}
+
+	keys, err := parseDeleteObjectsBody(body)
+	if err != nil {
+		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		writeS3Error(m.conn, http.StatusBadRequest, "MalformedXML", "The XML you provided was not well-formed or did not validate against our published schema.", "")
+		return 0, 0, ErrRequestHandled
+	}
+
+	deleted := make([]string, 0, len(keys))
+	var errs []s3DeleteError
+	for _, k := range keys {
+		if strings.Contains(k, "..") || strings.Contains(k, "\\") {
+			errs = append(errs, s3DeleteError{Key: k, Code: "InvalidArgument", Message: "Invalid key."})
+			continue
+		}
+		var leaseErr error
+		if m.leaseAcquirer != nil {
+			leaseErr = m.leaseAcquirer.AcquireLease(k, 10*time.Second)
+			if leaseErr == nil {
+				defer m.leaseAcquirer.ReleaseLease(k)
+			}
+		}
+		if leaseErr != nil {
+			errs = append(errs, s3DeleteError{Key: k, Code: "ServiceUnavailable", Message: "The request could not be completed because the resource is locked by another request."})
+			continue
+		}
+		if delErr := m.store.Delete(k); delErr != nil {
+			errs = append(errs, s3DeleteError{Key: k, Code: "InternalError", Message: "The request failed due to an internal error."})
+			continue
+		}
+		// Propagate delete to all peers via scatter-gather (best-effort).
+		if m.deletePropagator != nil {
+			_ = m.deletePropagator.PropagateDelete(k, 5*time.Second)
+		}
+		deleted = append(deleted, k)
+	}
+	if m.metricsHook != nil {
+		m.metricsHook.IncDeletes()
+	}
+
+	xmlBytes := FormatDeleteObjectsResultXML(deleted, errs)
+	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	var hbuf [256]byte
+	hb := hbuf[:0]
+	hb = append(hb, "HTTP/1.1 200 OK\r\nContent-Type: application/xml\r\nContent-Length: "...)
+	hb = strconv.AppendInt(hb, int64(len(xmlBytes)), 10)
+	hb = append(hb, "\r\nConnection: close\r\n\r\n"...)
+	if _, err := m.conn.Write(hb); err != nil {
+		return 0, 0, fmt.Errorf("failed to write DeleteObjects headers: %v: %w", err, syscall.EPIPE)
+	}
+	if _, err := m.conn.Write(xmlBytes); err != nil {
+		return 0, 0, fmt.Errorf("failed to write DeleteObjects body: %v: %w", err, syscall.EPIPE)
+	}
+	return 0, 0, ErrRequestHandled
+}
+
+// FormatCopyObjectResultXML constructs the S3 CopyObject Success result body.
+func FormatCopyObjectResultXML(etag string, modTime int64) []byte {
+	var buf bytes.Buffer
+	buf.WriteString(`<?xml version="1.0" encoding="UTF-8"?><CopyObjectResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><ETag>"`)
+	xmlEscape(&buf, etag)
+	buf.WriteString(`"</ETag><LastModified>`)
+	buf.WriteString(formatLastModified(modTime))
+	buf.WriteString(`</LastModified></CopyObjectResult>`)
+	return buf.Bytes()
+}
+
+// FormatDeleteObjectsResultXML constructs the S3 DeleteObjects (DeleteResult)
+// response listing per-key Deleted and Error entries.
+func FormatDeleteObjectsResultXML(deleted []string, errs []s3DeleteError) []byte {
+	var buf bytes.Buffer
+	buf.WriteString(`<?xml version="1.0" encoding="UTF-8"?><DeleteResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">`)
+	for _, k := range deleted {
+		buf.WriteString(`<Deleted><Key>`)
+		xmlEscape(&buf, k)
+		buf.WriteString(`</Key></Deleted>`)
+	}
+	for _, e := range errs {
+		buf.WriteString(`<Error><Key>`)
+		xmlEscape(&buf, e.Key)
+		buf.WriteString(`</Key><Code>`)
+		xmlEscape(&buf, e.Code)
+		buf.WriteString(`</Code><Message>`)
+		xmlEscape(&buf, e.Message)
+		buf.WriteString(`</Message></Error>`)
+	}
+	buf.WriteString(`</DeleteResult>`)
+	return buf.Bytes()
 }
 
 // parseS3Range parses a single AWS S3 Range header value (e.g. "bytes=0-9",
