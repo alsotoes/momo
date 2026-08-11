@@ -381,3 +381,140 @@ func TestGetConfig_OPRF_ValidationErrors(t *testing.T) {
 		})
 	}
 }
+
+// TestGetConfig_E2EE_Valid verifies that a 64-hex 'e2ee_key' loads correctly
+// with a default key id (issue #780).
+func TestGetConfig_E2EE_Valid(t *testing.T) {
+	cfg := `
+[global]
+debug = true
+auth_token = a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6 # notsecret
+replication_order = 2,3,1
+polymorphic_system = true
+e2ee_key = 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+e2ee_key_id = my-key
+
+[metrics]
+interval = 10
+min_threshold = 0.1
+max_threshold = 0.9
+fallback_interval = 30
+
+[daemon.0]
+host = localhost:8080
+change_replication = localhost:2222
+data = /data/0
+drive = /dev/sda1
+`
+	tmp := filepath.Join(t.TempDir(), "momo.conf")
+	if err := os.WriteFile(tmp, []byte(cfg), 0666); err != nil {
+		t.Fatal(err)
+	}
+	config, err := GetConfig(tmp)
+	if err != nil {
+		t.Fatalf("valid E2EE config rejected: %v", err)
+	}
+	if config.Global.E2EEKey != "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" {
+		t.Errorf("E2EEKey mismatch: %q", config.Global.E2EEKey)
+	}
+	if config.Global.E2EEKeyID != "my-key" {
+		t.Errorf("E2EEKeyID mismatch: %q", config.Global.E2EEKeyID)
+	}
+}
+
+// TestGetConfig_E2EE_DefaultKeyID verifies the "default" key id fallback when
+// only 'e2ee_key' is provided.
+func TestGetConfig_E2EE_DefaultKeyID(t *testing.T) {
+	cfg := `
+[global]
+debug = true
+auth_token = a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6 # notsecret
+replication_order = 2,3,1
+polymorphic_system = true
+e2ee_key = 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+
+[metrics]
+interval = 10
+min_threshold = 0.1
+max_threshold = 0.9
+fallback_interval = 30
+
+[daemon.0]
+host = localhost:8080
+change_replication = localhost:2222
+data = /data/0
+drive = /dev/sda1
+`
+	tmp := filepath.Join(t.TempDir(), "momo.conf")
+	if err := os.WriteFile(tmp, []byte(cfg), 0666); err != nil {
+		t.Fatal(err)
+	}
+	config, err := GetConfig(tmp)
+	if err != nil {
+		t.Fatalf("valid E2EE config rejected: %v", err)
+	}
+	if config.Global.E2EEKeyID != "default" {
+		t.Errorf("expected default E2EEKeyID, got %q", config.Global.E2EEKeyID)
+	}
+}
+
+// TestGetConfig_E2EE_ValidationErrors covers E2EE config validation (issue #780).
+func TestGetConfig_E2EE_ValidationErrors(t *testing.T) {
+	testCases := []struct {
+		name          string
+		globalExtra   string
+		expectedError string
+	}{
+		{
+			name:          "Key wrong length",
+			globalExtra:   "e2ee_key = aabb\n",
+			expectedError: "must be 64 hex characters",
+		},
+		{
+			name:          "Key invalid hex",
+			globalExtra:   "e2ee_key = " + strings.Repeat("z", 64) + "\n",
+			expectedError: "must be valid hex",
+		},
+		{
+			name:          "Mutually exclusive with OPRF",
+			globalExtra:   "e2ee_key = 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\noprf_enabled = true\noprf_threshold = 1\n",
+			expectedError: "mutually exclusive with OPRF",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			content := `
+[global]
+debug = true
+auth_token = a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6 # notsecret
+replication_order = 2,3,1
+polymorphic_system = true
+` + tc.globalExtra + `
+[metrics]
+interval = 10
+min_threshold = 0.1
+max_threshold = 0.9
+fallback_interval = 30
+
+[daemon.0]
+host = localhost:8080
+change_replication = localhost:2222
+data = /data/0
+drive = /dev/sda1
+oprf_share = ` + validOPRFShare + `
+`
+			tmp := filepath.Join(t.TempDir(), "momo.conf")
+			if err := os.WriteFile(tmp, []byte(content), 0666); err != nil {
+				t.Fatal(err)
+			}
+			_, err := GetConfig(tmp)
+			if err == nil {
+				t.Fatal("expected an error, got none")
+			}
+			if !strings.Contains(err.Error(), tc.expectedError) {
+				t.Errorf("expected error containing %q, got %q", tc.expectedError, err.Error())
+			}
+		})
+	}
+}

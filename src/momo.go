@@ -46,7 +46,7 @@ func Run() {
 	configPathPtr := flag.String("config", "conf/momo.conf", "Path to the configuration file")
 	modePtr := flag.Int("mode", -1, "Replication mode to set (used with -imp repl)")
 	remotePathPtr := flag.String("remote-path", "", "Remote virtual directory path to upload the file to")
-	e2eeKeyPtr := flag.String("e2ee-key", "", "64-hex 256-bit E2EE master key for the S3 envelope encrypt/decrypt (client-held, never shared with the server)")
+	e2eeKeyPtr := flag.String("e2ee-key", "", "64-hex 256-bit E2EE master key for envelope encrypt/decrypt (client-held, never shared with the server); applies to native client mode and the S3 s3enc/s3dec impersonations")
 	e2eeKeyIDPtr := flag.String("e2ee-key-id", "", "Key identifier stored in the envelope (default: \"default\")")
 	outPathPtr := flag.String("out", "", "Output path for -imp s3enc / s3dec")
 	flag.Parse()
@@ -95,6 +95,15 @@ func Run() {
 
 		if serverId >= len(cfg.Daemons) || serverId < 0 {
 			log.Fatalf("index out of range")
+		}
+		// Envelope E2EE (zero-trust): client-held key for the native protocol.
+		// This overrides config values so the CLI flag is the source of truth;
+		// the key never leaves the client and is never persisted to the server.
+		if *e2eeKeyPtr != "" {
+			cfg.Global.E2EEKey = *e2eeKeyPtr
+		}
+		if *e2eeKeyIDPtr != "" {
+			cfg.Global.E2EEKeyID = *e2eeKeyIDPtr
 		}
 		var wg sync.WaitGroup
 		wg.Add(1)
