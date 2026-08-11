@@ -277,7 +277,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		components, ok := parseSigV4AuthHeader(authHeader)
 		if !ok {
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			m.conn.Write([]byte("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
+			writeS3Error(m.conn, http.StatusForbidden, "AuthorizationHeaderMalformed", "The authorization header is malformed.", "")
 			return 0, 0, syscall.EACCES
 		}
 		token = components.AccessKey
@@ -290,7 +290,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		m.isPeer = true
 	} else {
 		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		m.conn.Write([]byte("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
+		writeS3Error(m.conn, http.StatusForbidden, "AccessDenied", "Access Denied.", "")
 		return 0, 0, syscall.EACCES
 	}
 
@@ -299,7 +299,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		if !verifySigV4Signature(req, authHeader, secretKey) {
 			log.Printf("AUDIT: SigV4 signature verification failed from %s", m.conn.RemoteAddr())
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			m.conn.Write([]byte("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
+			writeS3Error(m.conn, http.StatusForbidden, "SignatureDoesNotMatch", "The request signature we calculated does not match the signature you provided. Check your AWS secret access key and signing method.", "")
 			return 0, 0, syscall.EACCES
 		}
 	}
@@ -307,7 +307,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 	// 🛡️ Sentinel: Reject requests containing directory traversal characters (".." or "\") to prevent path traversal attacks.
 	if strings.Contains(req.URL.Path, "..") || strings.Contains(req.URL.Path, "\\") {
 		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		m.conn.Write([]byte("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
+		writeS3Error(m.conn, http.StatusBadRequest, "InvalidArgument", "Invalid key path.", req.URL.Path)
 		return 0, 0, fmt.Errorf("invalid key path traversal: %s: %w", req.URL.Path, syscall.EBADMSG)
 	}
 
@@ -317,7 +317,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 	if req.Method == "GET" {
 		if m.store == nil {
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			m.conn.Write([]byte("HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
+			writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "The storage store is not initialized.", "")
 			return 0, 0, fmt.Errorf("storage store not initialized")
 		}
 
@@ -334,7 +334,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			}
 			if err != nil {
 				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-				m.conn.Write([]byte("HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
+				writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to list files.", "")
 				return 0, 0, fmt.Errorf("failed to list files: %w", err)
 			}
 
@@ -351,7 +351,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			xmlBytes, formatErr := FormatListObjectsV2XML(bucket, prefix, delimiter, maxKeys, files)
 			if formatErr != nil {
 				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-				m.conn.Write([]byte("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
+				writeS3Error(m.conn, http.StatusBadRequest, "InvalidArgument", "Invalid list request parameters.", "")
 				return 0, 0, formatErr
 			}
 
@@ -378,10 +378,10 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		if err != nil {
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			if err == syscall.ENOENT || os.IsNotExist(err) {
-				m.conn.Write([]byte("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
+				writeS3Error(m.conn, http.StatusNotFound, "NoSuchKey", "The specified key does not exist.", key)
 				return 0, 0, ErrRequestHandled
 			}
-			m.conn.Write([]byte("HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
+			writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "The request failed due to an internal error.", key)
 			return 0, 0, fmt.Errorf("failed to get file %q: %w", key, err)
 		}
 		defer rc.Close()
@@ -426,20 +426,20 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 	if req.Method == "DELETE" {
 		if m.store == nil {
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			m.conn.Write([]byte("HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
+			writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "The storage store is not initialized.", "")
 			return 0, 0, fmt.Errorf("storage store not initialized")
 		}
 
 		if key == "" {
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			m.conn.Write([]byte("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
+			writeS3Error(m.conn, http.StatusBadRequest, "InvalidArgument", "Missing key in DELETE request.", "")
 			return 0, 0, fmt.Errorf("missing key in DELETE request")
 		}
 
 		if m.leaseAcquirer != nil {
 			if err := m.leaseAcquirer.AcquireLease(key, 10*time.Second); err != nil {
 				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-				m.conn.Write([]byte("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
+				writeS3Error(m.conn, http.StatusServiceUnavailable, "ServiceUnavailable", "The request could not be completed because the resource is locked by another request.", key)
 				return 0, 0, fmt.Errorf("failed to acquire lease for delete %q: %w", key, err)
 			}
 			defer m.leaseAcquirer.ReleaseLease(key)
@@ -448,7 +448,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		err := m.store.Delete(key)
 		if err != nil {
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			m.conn.Write([]byte("HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
+			writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "The request failed due to an internal error.", key)
 			return 0, 0, fmt.Errorf("failed to delete file %q: %w", key, err)
 		}
 
@@ -508,7 +508,8 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		rawPath := req.URL.Path
 		cleanPath := path.Clean(rawPath)
 		if cleanPath == "." || cleanPath == ".." || strings.HasPrefix(cleanPath, "../") || cleanPath == "/" {
-			m.conn.Write([]byte("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			writeS3Error(m.conn, http.StatusBadRequest, "InvalidArgument", "Invalid S3 path.", rawPath)
 			return 0, 0, fmt.Errorf("invalid S3 path: %s: %w", rawPath, syscall.EBADMSG)
 		}
 
@@ -521,7 +522,8 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 
 		// 🛡️ Sentinel: Sanitize S3 hash to prevent directory traversal via malicious metadata.
 		if m.meta.Hash != "" && common.HasPathTraversalChars(m.meta.Hash) {
-			m.conn.Write([]byte("HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"))
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			writeS3Error(m.conn, http.StatusBadRequest, "InvalidArgument", "Invalid hash value.", "")
 			return 0, 0, fmt.Errorf("invalid hash: %s: %w", m.meta.Hash, syscall.EBADMSG)
 		}
 	}
@@ -1000,4 +1002,81 @@ func xmlEscape(buf *bytes.Buffer, s string) {
 		}
 		s = s[i+1:]
 	}
+}
+
+// s3ErrorCode maps an HTTP status to the S3 XML error Code used in error bodies.
+// https://docs.aws.amazon.com/AmazonS3/latest/API/ErrorResponses.html
+func s3ErrorCode(status int) string {
+	switch status {
+	case http.StatusBadRequest:
+		return "InvalidArgument"
+	case http.StatusForbidden:
+		return "AccessDenied"
+	case http.StatusNotFound:
+		return "NoSuchKey"
+	case http.StatusMethodNotAllowed:
+		return "MethodNotAllowed"
+	case http.StatusConflict:
+		return "BucketNotEmpty"
+	case http.StatusRequestEntityTooLarge:
+		return "EntityTooLarge"
+	case http.StatusUnsupportedMediaType:
+		return "InvalidRequest"
+	case http.StatusInternalServerError:
+		return "InternalError"
+	case http.StatusServiceUnavailable:
+		return "ServiceUnavailable"
+	default:
+		return "InternalError"
+	}
+}
+
+// writeS3Error writes an S3-compliant XML <Error> response body with the given
+// HTTP status, Code, Message, and optional Resource (bucket/key), followed by a
+// Content-Type: application/xml header and Content-Length matching the body.
+// It returns the number of bytes written. Callers set the write deadline first.
+func writeS3Error(w io.Writer, status int, code, message, resource string) (int, error) {
+	// 🛡️ Sentinel: Bound attacker-controlled message/resource lengths and strip
+	// CR/LF to prevent HTTP response splitting and oversized error bodies (Rule 24).
+	if len(message) > 512 {
+		message = message[:512]
+	}
+	message = strings.ReplaceAll(message, "\r", " ")
+	message = strings.ReplaceAll(message, "\n", " ")
+	if len(resource) > 1024 {
+		resource = resource[:1024]
+	}
+
+	var bodyBuf bytes.Buffer
+	bodyBuf.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)
+	bodyBuf.WriteString(`<Error>`)
+	bodyBuf.WriteString(`<Code>`)
+	xmlEscape(&bodyBuf, code)
+	bodyBuf.WriteString(`</Code><Message>`)
+	xmlEscape(&bodyBuf, message)
+	bodyBuf.WriteString(`</Message>`)
+	if resource != "" {
+		bodyBuf.WriteString(`<Resource>`)
+		xmlEscape(&bodyBuf, resource)
+		bodyBuf.WriteString(`</Resource>`)
+	}
+	bodyBuf.WriteString(`</Error>`)
+
+	var hdrBuf [256]byte
+	b := hdrBuf[:0]
+	b = append(b, "HTTP/1.1 "...)
+	b = strconv.AppendInt(b, int64(status), 10)
+	b = append(b, " "...)
+	b = append(b, http.StatusText(status)...)
+	b = append(b, "\r\nContent-Type: application/xml\r\nContent-Length: "...)
+	b = strconv.AppendInt(b, int64(bodyBuf.Len()), 10)
+	b = append(b, "\r\nConnection: close\r\n\r\n"...)
+
+	if _, err := w.Write(b); err != nil {
+		return 0, fmt.Errorf("failed to write S3 error headers: %v: %w", err, syscall.EPIPE)
+	}
+	if _, err := w.Write(bodyBuf.Bytes()); err != nil {
+		return 0, fmt.Errorf("failed to write S3 error body: %v: %w", err, syscall.EPIPE)
+	}
+	return len(b) + bodyBuf.Len(), nil
 }
