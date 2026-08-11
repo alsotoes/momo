@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -137,6 +138,9 @@ func encodeCanonicalURI(uri string) (string, error) {
 func buildCanonicalQueryString(values url.Values) (string, error) {
 	keys := make([]string, 0, len(values))
 	for k := range values {
+		if k == "X-Amz-Signature" {
+			continue // the signature itself is never part of the canonical query
+		}
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
@@ -223,7 +227,44 @@ func hexHMAC(key []byte, data string) string {
 
 var emptyStringSHA256 = hexSHA256(nil)
 
+// s3UnsignedPayload is the payload hash used by presigned S3 uploads, which do
+// not carry an X-Amz-Content-Sha256 header (aws-sdk-go-v2 / aws-cli presign).
+const s3UnsignedPayload = "UNSIGNED-PAYLOAD"
+
 var sigV4MaxSkew = 15 * time.Minute // max allowed clock skew for X-Amz-Date (replay attack prevention)
+
+// isPresignedSigV4 reports whether the request authenticates via query-string
+// SigV4 parameters (a presigned URL) rather than the Authorization header.
+func isPresignedSigV4(req *http.Request) bool {
+	return req.URL.Query().Get("X-Amz-Algorithm") == "AWS4-HMAC-SHA256"
+}
+
+// parseSigV4QueryAuth parses presigned-URL SigV4 auth parameters from the query
+// string: X-Amz-Algorithm, X-Amz-Credential, X-Amz-Date, X-Amz-Expires,
+// X-Amz-SignedHeaders, and X-Amz-Signature.
+func parseSigV4QueryAuth(req *http.Request) (sigV4Components, bool) {
+	q := req.URL.Query()
+	if q.Get("X-Amz-Algorithm") != "AWS4-HMAC-SHA256" {
+		return sigV4Components{}, false
+	}
+	cred := q.Get("X-Amz-Credential")
+	credParts := strings.Split(cred, "/")
+	if len(credParts) < 5 {
+		return sigV4Components{}, false
+	}
+	c := sigV4Components{
+		AccessKey:     credParts[0],
+		DateStamp:     credParts[1],
+		Region:        credParts[2],
+		SignedHeaders: q.Get("X-Amz-SignedHeaders"),
+		Signature:     q.Get("X-Amz-Signature"),
+		AmzDate:       q.Get("X-Amz-Date"),
+	}
+	if c.AccessKey == "" || c.Signature == "" || c.SignedHeaders == "" || c.AmzDate == "" {
+		return sigV4Components{}, false
+	}
+	return c, true
+}
 
 func verifySigV4Timestamp(amzDate string) (ok bool) {
 	defer func() {
@@ -250,10 +291,55 @@ func verifySigV4Timestamp(amzDate string) (ok bool) {
 	return true
 }
 
+// verifySigV4Expiry reports whether a presigned request is still within its
+// X-Amz-Date + X-Amz-Expires validity window. Requests without a parsable
+// date/expires pair are treated as expired (defensive default per Rule 35).
+func verifySigV4Expiry(req *http.Request) bool {
+	q := req.URL.Query()
+	amzDate := q.Get("X-Amz-Date")
+	expires := q.Get("X-Amz-Expires")
+	if amzDate == "" || expires == "" {
+		return false
+	}
+	signTime, err := time.Parse("20060102T150405Z", amzDate)
+	if err != nil {
+		return false
+	}
+	ttlSec, err := strconv.Atoi(expires)
+	if err != nil || ttlSec < 0 {
+		return false
+	}
+	return time.Now().UTC().Before(signTime.Add(time.Duration(ttlSec) * time.Second))
+}
+
 // verifySigV4Signature validates the SigV4 signature and timestamp freshness.
 // Returns bool (consistent with hmac.Equal); the caller in HandshakeServer
 // maps false → syscall.EACCES per Rule 10 (POSIX Error Mapping).
+// Supports both the Authorization header form (Authorization: AWS4-HMAC-SHA256
+// Credential=...) and the presigned query-string form (X-Amz-Algorithm,
+// X-Amz-Credential, X-Amz-Date, X-Amz-Expires, X-Amz-SignedHeaders,
+// X-Amz-Signature). The query form has no bearer-token body, so it signs an
+// UNSIGNED-PAYLOAD payload hash; some clients (aws-cli/boto3 presign) always
+// use UNSIGNED-PAYLOAD, others (older SDKs, hand-rolled signers) use the
+// empty-body SHA256 for GET/HEAD/DELETE — both are accepted.
+// X-Amz-Signature is always excluded from the canonical query string.
 func verifySigV4Signature(req *http.Request, authHeader, secretKey string) bool {
+	if isPresignedSigV4(req) {
+		components, ok := parseSigV4QueryAuth(req)
+		if !ok {
+			return false
+		}
+		if !verifySigV4Expiry(req) {
+			return false
+		}
+		if payloadHash := req.Header.Get("X-Amz-Content-Sha256"); payloadHash != "" {
+			return verifySigV4SignatureWithPayload(req, components, secretKey, payloadHash)
+		}
+		// No explicit payload hash: accept either S3 presign convention.
+		return verifySigV4SignatureWithPayload(req, components, secretKey, s3UnsignedPayload) ||
+			verifySigV4SignatureWithPayload(req, components, secretKey, emptyStringSHA256)
+	}
+
 	components, ok := parseSigV4AuthHeader(authHeader)
 	if !ok {
 		return false
@@ -268,18 +354,26 @@ func verifySigV4Signature(req *http.Request, authHeader, secretKey string) bool 
 		return false
 	}
 
+	components.AmzDate = amzDate
+
 	payloadHash := req.Header.Get("X-Amz-Content-Sha256")
 	if payloadHash == "" {
 		payloadHash = emptyStringSHA256
 	}
 
+	return verifySigV4SignatureWithPayload(req, components, secretKey, payloadHash)
+}
+
+// verifySigV4SignatureWithPayload computes the expected SigV4 signature for the
+// given payload hash and compares it (constant-time) against the request's.
+func verifySigV4SignatureWithPayload(req *http.Request, components sigV4Components, secretKey, payloadHash string) bool {
 	canonicalRequest, err := buildCanonicalRequest(req, components.SignedHeaders, payloadHash)
 	if err != nil {
 		log.Printf("AUDIT: Failed to build canonical request during SigV4 verification: %v", err)
 		return false
 	}
 
-	stringToSign := buildStringToSign(canonicalRequest, amzDate, components.DateStamp, components.Region)
+	stringToSign := buildStringToSign(canonicalRequest, components.AmzDate, components.DateStamp, components.Region)
 	signingKey := deriveSigningKey(secretKey, components.DateStamp, components.Region)
 	expectedSig := computeSignature(signingKey, stringToSign)
 

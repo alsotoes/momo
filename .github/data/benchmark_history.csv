@@ -3051,3 +3051,12 @@ a2dd35a,BenchmarkSanitizeLog/Unsafe-8,686.20,704.00,1.00
 651be22,BenchmarkPadString-8,45.99,64.00,1.00
 651be22,BenchmarkSanitizeLog/Safe-8,475.10,0.00,0.00
 651be22,BenchmarkSanitizeLog/Unsafe-8,591.80,704.00,1.00
+3a22811,BenchmarkCheckMetricsAndSwap-8,9.62,0.00,0.00
+3a22811,BenchmarkCrushOptimized-8,355.00,0.00,0.00
+3a22811,BenchmarkCrushOriginal-8,491.00,164.00,3.00
+3a22811,BenchmarkIndexDirectTracking-8,0.37,0.00,0.00
+3a22811,BenchmarkIndexSearch-8,1.63,0.00,0.00
+3a22811,BenchmarkLoadGlobalConfig-8,8102.00,1576.00,46.00
+3a22811,BenchmarkPadString-8,48.83,64.00,1.00
+3a22811,BenchmarkSanitizeLog/Safe-8,486.90,0.00,0.00
+3a22811,BenchmarkSanitizeLog/Unsafe-8,720.20,704.00,1.00
