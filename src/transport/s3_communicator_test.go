@@ -3,9 +3,11 @@ package transport
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -530,7 +532,7 @@ func TestS3Communicator_ListObjectsV2KeyCount(t *testing.T) {
 		{Name: "src/file4.go", Hash: "hash4", Size: 400},
 	}
 
-	xmlBytes, err := FormatListObjectsV2XML("mybucket", "", "/", 1000, files)
+	xmlBytes, _, err := FormatListObjectsV2XML("mybucket", "", "/", 1000, "", false, files)
 	if err != nil {
 		t.Fatalf("FormatListObjectsV2XML failed: %v", err)
 	}
@@ -554,8 +556,9 @@ func TestS3Communicator_ListObjectsV2KeyCount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("KeyCount not an integer: %v", err)
 	}
-	if keyCount != contentsCount {
-		t.Errorf("KeyCount (%d) must equal number of Contents entries (%d), excluding CommonPrefixes", keyCount, contentsCount)
+	// AWS S3 semantics: KeyCount equals the number of Contents plus CommonPrefixes returned.
+	if keyCount != contentsCount+prefixesCount {
+		t.Errorf("KeyCount (%d) must equal Contents (%d) + CommonPrefixes (%d)", keyCount, contentsCount, prefixesCount)
 	}
 }
 
@@ -569,7 +572,7 @@ func TestS3Communicator_XMLFormatting(t *testing.T) {
 	}
 
 	// 1. Root listing (prefix: "", delimiter: "")
-	xmlBytes, err := FormatListObjectsV2XML("mybucket", "", "", 1000, files)
+	xmlBytes, _, err := FormatListObjectsV2XML("mybucket", "", "", 1000, "", false, files)
 	if err != nil {
 		t.Fatalf("FormatListObjectsV2XML failed: %v", err)
 	}
@@ -606,7 +609,7 @@ func TestS3Communicator_XMLFormatting(t *testing.T) {
 	}
 
 	// 2. Prefix and delimiter grouping
-	xmlBytesDelim, err := FormatListObjectsV2XML("mybucket", "", "/", 1000, files)
+	xmlBytesDelim, _, err := FormatListObjectsV2XML("mybucket", "", "/", 1000, "", false, files)
 	if err != nil {
 		t.Fatalf("FormatListObjectsV2XML failed: %v", err)
 	}
@@ -621,14 +624,331 @@ func TestS3Communicator_XMLFormatting(t *testing.T) {
 	if !strings.Contains(xmlStrDelim, "<Prefix>docs/</Prefix>") {
 		t.Errorf("Expected docs/ as CommonPrefix")
 	}
-	if !strings.Contains(xmlStrDelim, "<KeyCount>1</KeyCount>") {
-		t.Errorf("Expected KeyCount to exclude CommonPrefixes (got XML: %s)", xmlStrDelim)
+	// AWS S3 semantics: KeyCount includes CommonPrefixes (1 Contents + 1 CommonPrefix).
+	if !strings.Contains(xmlStrDelim, "<KeyCount>2</KeyCount>") {
+		t.Errorf("Expected KeyCount to include CommonPrefixes (got XML: %s)", xmlStrDelim)
 	}
 
 	// 3. Reject input exceeding 64 bytes (Rule 35)
-	_, err = FormatListObjectsV2XML("my-very-long-bucket-name-that-exceeds-sixty-four-characters-limit-completely", "", "", 1000, files)
+	_, _, err = FormatListObjectsV2XML("my-very-long-bucket-name-that-exceeds-sixty-four-characters-limit-completely", "", "", 1000, "", false, files)
 	if !errors.Is(err, syscall.EINVAL) {
 		t.Errorf("Expected syscall.EINVAL for oversized bucket name, got %v", err)
+	}
+}
+
+func TestS3Communicator_ContinuationTokenRoundtrip(t *testing.T) {
+	tests := []struct {
+		name string
+		kind byte
+		key  string
+	}{
+		{name: "plain key", kind: continuationKindKey, key: "docs/file2.txt"},
+		{name: "common prefix", kind: continuationKindPrefix, key: "docs/"},
+		{name: "empty key", kind: continuationKindKey, key: ""},
+		{name: "unicode key", kind: continuationKindKey, key: "caf\u00e9/\u00e9tude.txt"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			token := encodeContinuationToken(tt.kind, tt.key)
+			if token == "" {
+				t.Fatalf("expected non-empty token")
+			}
+			kind, key, ok := decodeContinuationToken(token)
+			if !ok {
+				t.Fatalf("expected token to decode, got %q", token)
+			}
+			if kind != tt.kind || key != tt.key {
+				t.Errorf("roundtrip mismatch: got (%d, %q), want (%d, %q)", kind, key, tt.kind, tt.key)
+			}
+		})
+	}
+
+	// Malformed / garbage tokens must be rejected, not panic.
+	for _, garbage := range []string{"", "not-base64!!", "a", "!!!"} {
+		kind, key, ok := decodeContinuationToken(garbage)
+		if ok {
+			t.Errorf("expected %q to be rejected, got ok=(%d, %q)", garbage, kind, key)
+		}
+	}
+}
+
+func TestS3Communicator_ListObjectsV2Pagination(t *testing.T) {
+	files := make([]common.FileMetadata, 0, 25)
+	for i := 0; i < 25; i++ {
+		files = append(files, common.FileMetadata{Name: fmt.Sprintf("file-%02d.txt", i), Hash: "hash", Size: 100})
+	}
+
+	var collected []string
+	token := ""
+	page := 0
+	for {
+		xmlBytes, nextToken, err := FormatListObjectsV2XML("mybucket", "", "", 10, token, false, files)
+		if err != nil {
+			t.Fatalf("page %d: FormatListObjectsV2XML failed: %v", page, err)
+		}
+		xmlStr := string(xmlBytes)
+
+		if strings.Contains(xmlStr, "<IsTruncated>true</IsTruncated>") {
+			if nextToken == "" {
+				t.Fatalf("page %d: truncated page without NextContinuationToken", page)
+			}
+		} else {
+			if nextToken != "" {
+				t.Fatalf("page %d: non-truncated page must not emit NextContinuationToken", page)
+			}
+		}
+
+		re := regexp.MustCompile(`<Key>([^<]+)</Key>`)
+		for _, m := range re.FindAllStringSubmatch(xmlStr, -1) {
+			collected = append(collected, m[1])
+		}
+
+		if nextToken == "" {
+			break
+		}
+		token = nextToken
+		page++
+		if page > 10 {
+			t.Fatalf("pagination did not terminate after 10 pages")
+		}
+	}
+
+	if page != 2 {
+		t.Errorf("Expected 3 pages for 25 keys at maxKeys=10, got %d", page+1)
+	}
+	if len(collected) != 25 {
+		t.Fatalf("Expected 25 keys across pages, got %d: %v", len(collected), collected)
+	}
+	for i, key := range collected {
+		want := fmt.Sprintf("file-%02d.txt", i)
+		if key != want {
+			t.Fatalf("Expected %s at position %d, got %s", want, i, key)
+		}
+	}
+}
+
+func TestS3Communicator_ListObjectsV2PaginationStartAfter(t *testing.T) {
+	files := []common.FileMetadata{
+		{Name: "a.txt", Hash: "h1", Size: 1},
+		{Name: "b.txt", Hash: "h2", Size: 2},
+		{Name: "c.txt", Hash: "h3", Size: 3},
+		{Name: "d.txt", Hash: "h4", Size: 4},
+	}
+
+	// start-after is informational: resume strictly after the given key.
+	xmlBytes, _, err := FormatListObjectsV2XML("mybucket", "", "", 1000, "b.txt", false, files)
+	if err != nil {
+		t.Fatalf("FormatListObjectsV2XML failed: %v", err)
+	}
+	xmlStr := string(xmlBytes)
+	for _, key := range []string{"c.txt", "d.txt"} {
+		if !strings.Contains(xmlStr, "<Key>"+key+"</Key>") {
+			t.Errorf("start-after=b.txt should include %s, got: %s", key, xmlStr)
+		}
+	}
+	for _, key := range []string{"a.txt", "b.txt"} {
+		if strings.Contains(xmlStr, "<Key>"+key+"</Key>") {
+			t.Errorf("start-after=b.txt must not include %s, got: %s", key, xmlStr)
+		}
+	}
+	if !strings.Contains(xmlStr, "<IsTruncated>false</IsTruncated>") {
+		t.Errorf("expected non-truncated result, got: %s", xmlStr)
+	}
+}
+
+func TestS3Communicator_ListObjectsV2PaginationDelimiter(t *testing.T) {
+	files := []common.FileMetadata{
+		{Name: "a.txt", Hash: "h1", Size: 1},
+		{Name: "docs/f1.txt", Hash: "h2", Size: 2},
+		{Name: "docs/nested/f2.txt", Hash: "h3", Size: 3},
+		{Name: "src/g.go", Hash: "h4", Size: 4},
+	}
+
+	// maxKeys=2 with delimiter '/': a.txt + docs/ should fill page 1 and truncate.
+	xmlBytes, nextToken, err := FormatListObjectsV2XML("mybucket", "", "/", 2, "", false, files)
+	if err != nil {
+		t.Fatalf("FormatListObjectsV2XML failed: %v", err)
+	}
+	xmlStr := string(xmlBytes)
+	if !strings.Contains(xmlStr, "<Key>a.txt</Key>") {
+		t.Errorf("page 1 should contain a.txt, got: %s", xmlStr)
+	}
+	if !strings.Contains(xmlStr, "<Prefix>docs/</Prefix>") {
+		t.Errorf("page 1 should contain docs/ CommonPrefix, got: %s", xmlStr)
+	}
+	if strings.Contains(xmlStr, "<Prefix>src/</Prefix>") {
+		t.Errorf("page 1 must not contain src/ CommonPrefix, got: %s", xmlStr)
+	}
+	if !strings.Contains(xmlStr, "<IsTruncated>true</IsTruncated>") {
+		t.Errorf("page 1 expected truncated, got: %s", xmlStr)
+	}
+	if nextToken == "" {
+		t.Fatalf("page 1 truncated but no NextContinuationToken")
+	}
+
+	// Resume: the token is prefix-kind, so the whole docs/ group is skipped.
+	xmlBytes2, nextToken2, err := FormatListObjectsV2XML("mybucket", "", "/", 2, nextToken, false, files)
+	if err != nil {
+		t.Fatalf("FormatListObjectsV2XML failed: %v", err)
+	}
+	xmlStr2 := string(xmlBytes2)
+	if strings.Contains(xmlStr2, "<Key>a.txt</Key>") {
+		t.Errorf("page 2 must not repeat a.txt, got: %s", xmlStr2)
+	}
+	if strings.Contains(xmlStr2, "<Prefix>docs/</Prefix>") {
+		t.Errorf("page 2 must not repeat docs/ group, got: %s", xmlStr2)
+	}
+	if !strings.Contains(xmlStr2, "<Prefix>src/</Prefix>") {
+		t.Errorf("page 2 should contain src/ CommonPrefix, got: %s", xmlStr2)
+	}
+	if strings.Contains(xmlStr2, "<IsTruncated>true</IsTruncated>") {
+		t.Errorf("page 2 expected to complete listing, got: %s", xmlStr2)
+	}
+	if nextToken2 != "" {
+		t.Errorf("page 2 must not emit NextContinuationToken, got %q", nextToken2)
+	}
+}
+
+func TestS3Communicator_ListObjectsV2FetchOwner(t *testing.T) {
+	files := []common.FileMetadata{
+		{Name: "a.txt", Hash: "h1", Size: 1},
+		{Name: "b.txt", Hash: "h2", Size: 2},
+	}
+
+	// Default: fetch-owner=false → no Owner element.
+	xmlDefault, _, err := FormatListObjectsV2XML("mybucket", "", "", 1000, "", false, files)
+	if err != nil {
+		t.Fatalf("FormatListObjectsV2XML failed: %v", err)
+	}
+	if strings.Contains(string(xmlDefault), "<Owner>") {
+		t.Errorf("fetch-owner=false must not emit Owner, got: %s", xmlDefault)
+	}
+
+	// fetch-owner=true → Owner element per key.
+	xmlOwned, _, err := FormatListObjectsV2XML("mybucket", "", "", 1000, "", true, files)
+	if err != nil {
+		t.Fatalf("FormatListObjectsV2XML failed: %v", err)
+	}
+	xmlStr := string(xmlOwned)
+	if strings.Count(xmlStr, "<Owner>") != 2 {
+		t.Errorf("Expected Owner element for each of 2 keys, got: %s", xmlStr)
+	}
+	if !strings.Contains(xmlStr, "<DisplayName>momo</DisplayName>") {
+		t.Errorf("Expected Owner display name, got: %s", xmlStr)
+	}
+}
+
+func TestS3Communicator_GET_ListObjectsV2FetchOwner(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	reqStr := "GET /?list-type=2&fetch-owner=true HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"Authorization: Bearer " + authToken + "\r\n\r\n"
+
+	mock := &mockStore{
+		listFunc: func() ([]common.FileMetadata, error) {
+			return []common.FileMetadata{{Name: "test-file.txt", Hash: "hash123", Size: 500}}, nil
+		},
+	}
+
+	respStr := runS3TestRequest(t, reqStr, mock)
+
+	if !strings.Contains(respStr, "<Owner>") {
+		t.Errorf("fetch-owner=true should emit Owner, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "<Key>test-file.txt</Key>") {
+		t.Errorf("Expected test-file.txt in body, got: %s", respStr)
+	}
+}
+
+func TestS3Communicator_GET_ListObjectsV2Pagination(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+
+	// Unsorted listFunc output verifies the defensive sort in the formatter.
+	mock := &mockStore{
+		listFunc: func() ([]common.FileMetadata, error) {
+			return []common.FileMetadata{
+				{Name: "c.txt", Hash: "h3", Size: 3},
+				{Name: "a.txt", Hash: "h1", Size: 1},
+				{Name: "b.txt", Hash: "h2", Size: 2},
+			}, nil
+		},
+	}
+
+	// Page 1: max-keys=2 should return a.txt, b.txt and truncate.
+	reqStr1 := "GET /?list-type=2&max-keys=2 HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"Authorization: Bearer " + authToken + "\r\n\r\n"
+	respStr1 := runS3TestRequest(t, reqStr1, mock)
+
+	if !strings.Contains(respStr1, "<Key>a.txt</Key>") {
+		t.Errorf("page 1 should contain a.txt, got: %s", respStr1)
+	}
+	if !strings.Contains(respStr1, "<Key>b.txt</Key>") {
+		t.Errorf("page 1 should contain b.txt, got: %s", respStr1)
+	}
+	if strings.Contains(respStr1, "<Key>c.txt</Key>") {
+		t.Errorf("page 1 must not contain c.txt, got: %s", respStr1)
+	}
+	if !strings.Contains(respStr1, "<IsTruncated>true</IsTruncated>") {
+		t.Errorf("page 1 expected IsTruncated=true, got: %s", respStr1)
+	}
+	tokenRe := regexp.MustCompile(`<NextContinuationToken>([^<]+)</NextContinuationToken>`)
+	tokenMatch := tokenRe.FindStringSubmatch(respStr1)
+	if tokenMatch == nil {
+		t.Fatalf("page 1 missing NextContinuationToken, got: %s", respStr1)
+	}
+	token := tokenMatch[1]
+
+	// Page 2: resume with continuation-token, expect only c.txt.
+	reqStr2 := "GET /?list-type=2&continuation-token=" + url.QueryEscape(token) + " HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"Authorization: Bearer " + authToken + "\r\n\r\n"
+	respStr2 := runS3TestRequest(t, reqStr2, mock)
+
+	if !strings.Contains(respStr2, "<Key>c.txt</Key>") {
+		t.Errorf("page 2 should contain c.txt, got: %s", respStr2)
+	}
+	if strings.Contains(respStr2, "<Key>a.txt</Key>") {
+		t.Errorf("page 2 must not repeat a.txt, got: %s", respStr2)
+	}
+	if !strings.Contains(respStr2, "<IsTruncated>false</IsTruncated>") {
+		t.Errorf("page 2 expected IsTruncated=false, got: %s", respStr2)
+	}
+}
+
+func TestS3Communicator_GET_ListObjectsV2MaxKeysClamp(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+
+	mock := &mockStore{
+		listFunc: func() ([]common.FileMetadata, error) {
+			// 1500 keys; max-keys=999999 must be clamped to 1000.
+			files := make([]common.FileMetadata, 1500)
+			for i := range files {
+				files[i] = common.FileMetadata{Name: fmt.Sprintf("k-%04d", i), Hash: "h", Size: 1}
+			}
+			return files, nil
+		},
+	}
+
+	reqStr := "GET /?list-type=2&max-keys=999999 HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"Authorization: Bearer " + authToken + "\r\n\r\n"
+	respStr := runS3TestRequest(t, reqStr, mock)
+
+	if !strings.Contains(respStr, "<KeyCount>1000</KeyCount>") {
+		t.Errorf("expected KeyCount clamped to 1000, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "<MaxKeys>1000</MaxKeys>") {
+		t.Errorf("expected MaxKeys reported as 1000, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "<IsTruncated>true</IsTruncated>") {
+		t.Errorf("expected IsTruncated=true after clamp, got: %s", respStr)
 	}
 }
 

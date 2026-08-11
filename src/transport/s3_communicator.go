@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/subtle"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"log"
@@ -12,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -414,6 +416,14 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 
 			prefix := q.Get("prefix")
 			delimiter := q.Get("delimiter")
+			// Pagination: continuation-token resumes after the last key of the
+			// previous page; start-after is an informational starting hint.
+			startAfter := q.Get("continuation-token")
+			if startAfter == "" {
+				startAfter = q.Get("start-after")
+			}
+			// fetch-owner=true (default false) includes the Owner element per key.
+			fetchOwner := strings.EqualFold(q.Get("fetch-owner"), "true")
 			maxKeys := 1000
 			if maxKeysStr := q.Get("max-keys"); maxKeysStr != "" {
 				if mk, err := strconv.Atoi(maxKeysStr); err == nil && mk > 0 {
@@ -422,7 +432,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 				}
 			}
 
-			xmlBytes, formatErr := FormatListObjectsV2XML(bucket, prefix, delimiter, maxKeys, files)
+			xmlBytes, _, formatErr := FormatListObjectsV2XML(bucket, prefix, delimiter, maxKeys, startAfter, fetchOwner, files)
 			if formatErr != nil {
 				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 				writeS3Error(m.conn, http.StatusBadRequest, "InvalidArgument", "Invalid list request parameters.", "")
@@ -1116,9 +1126,39 @@ func FormatGetBucketLocationXML(region string) []byte {
 	return buf.Bytes()
 }
 
+// Continuation-token kinds. The token is base64(kind byte + last emitted key).
+// 'K' means the page ended on a Contents key (resume after that key);
+// 'P' means it ended on a CommonPrefix (resume after the whole prefix group).
+// This is deterministic and stable across s3-tcp/s3-quic and server restarts.
+const (
+	continuationKindKey     byte = 'K'
+	continuationKindPrefix  byte = 'P'
+	continuationKindUnknown byte = 0
+)
+
+func encodeContinuationToken(kind byte, key string) string {
+	return base64.StdEncoding.EncodeToString(append([]byte{kind}, []byte(key)...))
+}
+
+// decodeContinuationToken parses a continuation token produced by
+// encodeContinuationToken. The second return is the plain resume key.
+func decodeContinuationToken(token string) (kind byte, key string, ok bool) {
+	raw, err := base64.StdEncoding.DecodeString(token)
+	if err != nil || len(raw) == 0 {
+		return continuationKindUnknown, "", false
+	}
+	return raw[0], string(raw[1:]), true
+}
+
 // FormatListObjectsV2XML constructs an S3-compliant ListObjectsV2 XML response
 // using a pre-allocated bytes.Buffer to avoid excessive heap allocations (⚡ Bolt pattern).
-func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, files []common.FileMetadata) (xmlBytes []byte, err error) {
+// startAfter is the raw value of either the continuation-token or start-after query
+// parameter; it selects the page to resume from. When the page is truncated the
+// returned nextToken encodes the last emitted element and must be passed back as
+// continuation-token on the next request. fetchOwner mirrors the AWS S3
+// fetch-owner parameter (default false): when true an Owner element is emitted
+// per key.
+func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, startAfter string, fetchOwner bool, files []common.FileMetadata) (xmlBytes []byte, nextToken string, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Recovered from panic in FormatListObjectsV2XML: %v", r)
@@ -1127,9 +1167,26 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, f
 	}()
 
 	// 🛡️ Rule 35: Validate input strings for length limits (64 bytes) before writing to the bytes.Buffer.
-	if len(bucketName) > 64 || len(prefix) > 64 || len(delimiter) > 64 {
-		return nil, fmt.Errorf("FormatListObjectsV2XML input length exceeds limit: %w", syscall.EINVAL)
+	if len(bucketName) > 64 || len(prefix) > 64 || len(delimiter) > 64 || len(startAfter) > 1024 {
+		return nil, "", fmt.Errorf("FormatListObjectsV2XML input length exceeds limit: %w", syscall.EINVAL)
 	}
+
+	// Determine the resume position from a continuation token (kind-aware) or a
+	// plain start-after key (S3 treats start-after as an informational hint).
+	var resumeKey string
+	var resumePrefixMode bool
+	if startAfter != "" {
+		if kind, key, ok := decodeContinuationToken(startAfter); ok {
+			resumeKey = key
+			resumePrefixMode = kind == continuationKindPrefix
+		} else {
+			resumeKey = startAfter
+		}
+	}
+
+	// Sort by key so pagination is deterministic regardless of the list source
+	// (store.List is sorted, but scatter-gather merges may not be).
+	sort.SliceStable(files, func(i, j int) bool { return files[i].Name < files[j].Name })
 
 	var buf bytes.Buffer
 	var intBuf [32]byte
@@ -1157,6 +1214,33 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, f
 	commonPrefixes := make(map[string]bool)
 	keyCount := 0
 	truncated := false
+	// last emitted element (used to build the continuation token on truncation).
+	lastKind := byte(continuationKindKey)
+	lastToken := ""
+
+	emitContents := func(file common.FileMetadata, key string) {
+		buf.WriteString(`<Contents>`)
+		buf.WriteString(`<Key>`)
+		xmlEscape(&buf, key)
+		buf.WriteString(`</Key>`)
+		buf.WriteString(`<LastModified>`)
+		buf.WriteString(formatLastModified(file.ModTime))
+		buf.WriteString(`</LastModified>`)
+		buf.WriteString(`<ETag>"`)
+		xmlEscape(&buf, file.Hash)
+		buf.WriteString(`"</ETag>`)
+		if fetchOwner {
+			buf.WriteString(`<Owner>`)
+			buf.WriteString(`<ID>momo</ID>`)
+			buf.WriteString(`<DisplayName>momo</DisplayName>`)
+			buf.WriteString(`</Owner>`)
+		}
+		buf.WriteString(`<Size>`)
+		buf.Write(strconv.AppendInt(intBuf[:0], file.Size, 10))
+		buf.WriteString(`</Size>`)
+		buf.WriteString(`<StorageClass>STANDARD</StorageClass>`)
+		buf.WriteString(`</Contents>`)
+	}
 
 	for _, file := range files {
 		// 🛡️ Sentinel: Validate that the metadata fields conform to the project's strict size limits (64 bytes)
@@ -1168,6 +1252,20 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, f
 
 		key := file.Name
 
+		// Resume-after: skip everything at or before the resume position.
+		if resumeKey != "" {
+			if resumePrefixMode {
+				// Skip the whole already-emitted CommonPrefix group.
+				if strings.HasPrefix(key, resumeKey) || key < resumeKey {
+					continue
+				}
+			} else {
+				if key <= resumeKey {
+					continue
+				}
+			}
+		}
+
 		if prefix != "" && !strings.HasPrefix(key, prefix) {
 			continue
 		}
@@ -1177,9 +1275,17 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, f
 			delimIdx := strings.Index(relativeKey, delimiter)
 			if delimIdx != -1 {
 				subPrefix := prefix + relativeKey[:delimIdx+1]
-				if !commonPrefixes[subPrefix] {
-					commonPrefixes[subPrefix] = true
+				if commonPrefixes[subPrefix] {
+					continue
 				}
+				if maxKeys > 0 && keyCount >= maxKeys {
+					truncated = true
+					break
+				}
+				commonPrefixes[subPrefix] = true
+				lastKind = continuationKindPrefix
+				lastToken = subPrefix
+				keyCount++
 				continue
 			}
 		}
@@ -1189,25 +1295,19 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, f
 			break
 		}
 
-		buf.WriteString(`<Contents>`)
-		buf.WriteString(`<Key>`)
-		xmlEscape(&buf, key)
-		buf.WriteString(`</Key>`)
-		buf.WriteString(`<LastModified>`)
-		buf.WriteString(formatLastModified(file.ModTime))
-		buf.WriteString(`</LastModified>`)
-		buf.WriteString(`<ETag>"`)
-		xmlEscape(&buf, file.Hash)
-		buf.WriteString(`"</ETag>`)
-		buf.WriteString(`<Size>`)
-		buf.Write(strconv.AppendInt(intBuf[:0], file.Size, 10))
-		buf.WriteString(`</Size>`)
-		buf.WriteString(`<StorageClass>STANDARD</StorageClass>`)
-		buf.WriteString(`</Contents>`)
+		emitContents(file, key)
+		lastKind = continuationKindKey
+		lastToken = key
 		keyCount++
 	}
 
+	// Emit CommonPrefixes in stable (sorted) order for reproducible output.
+	sortedPrefixes := make([]string, 0, len(commonPrefixes))
 	for cp := range commonPrefixes {
+		sortedPrefixes = append(sortedPrefixes, cp)
+	}
+	sort.Strings(sortedPrefixes)
+	for _, cp := range sortedPrefixes {
 		buf.WriteString(`<CommonPrefixes>`)
 		buf.WriteString(`<Prefix>`)
 		xmlEscape(&buf, cp)
@@ -1227,8 +1327,15 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, f
 	buf.Write(strconv.AppendInt(intBuf[:0], int64(keyCount), 10))
 	buf.WriteString(`</KeyCount>`)
 
+	if truncated && lastToken != "" {
+		nextToken = encodeContinuationToken(lastKind, lastToken)
+		buf.WriteString(`<NextContinuationToken>`)
+		xmlEscape(&buf, nextToken)
+		buf.WriteString(`</NextContinuationToken>`)
+	}
+
 	buf.WriteString(`</ListBucketResult>`)
-	return buf.Bytes(), nil
+	return buf.Bytes(), nextToken, nil
 }
 
 // ⚡ Bolt: Optimize XML escaping by replacing byte-by-byte iteration with fast-path
