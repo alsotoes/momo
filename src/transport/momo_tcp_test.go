@@ -113,6 +113,78 @@ func TestMomoTCPCommunicator_Deadline(t *testing.T) {
 	}
 }
 
+// TestMomoTCPCommunicator_HandshakeClientLetterModes verifies that
+// HandshakeClient encodes letter modes (ModeList/ModeDelete/ModeGet) as their
+// raw byte value rather than adding '0' (issue #622). The server previously
+// rejected these modes because byte(ModeList + '0') = '|' is not 'L'.
+func TestMomoTCPCommunicator_HandshakeClientLetterModes(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "test-token-11111111111111111111111111111111111111111111111111111" // notsecret, 64 chars
+
+	testCases := []struct {
+		name      string
+		requested int
+		wantByte  byte
+	}{
+		{"ModeList", common.ModeList, 'L'},
+		{"ModeDelete", common.ModeDelete, 'D'},
+		{"ModeGet", common.ModeGet, 'G'},
+		{"ModeOPRFEval", common.ModeOPRFEval, 'O'},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			clientConn, serverConn := net.Pipe()
+			defer clientConn.Close()
+			defer serverConn.Close()
+
+			// Server: read the handshake, verify the mode byte, then reply.
+			go func() {
+				var handshakeBuf [common.AuthTokenLength + common.TimestampLength + 1]byte
+				if _, err := io.ReadFull(serverConn, handshakeBuf[:]); err != nil {
+					t.Errorf("failed to read handshake: %v", err)
+					return
+				}
+				modeByte := handshakeBuf[common.AuthTokenLength+common.TimestampLength]
+				if modeByte != tc.wantByte {
+					t.Errorf("requested mode byte = %q (0x%x), want %q", modeByte, modeByte, tc.wantByte)
+				}
+				// Reply with replication mode 1.
+				serverConn.Write([]byte{'1'})
+			}()
+
+			client := NewMomoTCPCommunicator(clientConn)
+			mode, err := client.HandshakeClient(authToken, 1557906926566451195, tc.requested)
+			if err != nil {
+				t.Fatalf("HandshakeClient failed: %v", err)
+			}
+			if mode != 1 {
+				t.Errorf("replication mode = %d, want 1", mode)
+			}
+		})
+	}
+}
+
+// TestMomoTCPCommunicator_HandshakeClientInvalidMode verifies HandshakeClient
+// rejects out-of-range numeric modes that cannot be represented in the single
+// mode byte (issue #622).
+func TestMomoTCPCommunicator_HandshakeClientInvalidMode(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "test-token-11111111111111111111111111111111111111111111111111111" // notsecret, 64 chars
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	client := NewMomoTCPCommunicator(clientConn)
+	if _, err := client.HandshakeClient(authToken, 1557906926566451195, 10); err == nil {
+		t.Error("Expected HandshakeClient with mode 10 to fail")
+	}
+	_ = serverConn
+}
+
 // TestMomoTCPCommunicator_ACKFixedLength verifies the ACK uses a fixed-length
 // 4-byte wire format ("ACK" + 1-byte server ID), so the receiver never needs a
 // fragile 5ms deadline and cannot leave unread trailing digits (issue #621).

@@ -3,8 +3,10 @@ package transport
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
+	"syscall"
 	"time"
 
 	"github.com/alsotoes/momo/src/common"
@@ -26,6 +28,21 @@ const (
 	// MetadataStatusSkipPayload indicates the server already has the content (deduplication).
 	MetadataStatusSkipPayload = 2
 )
+
+// encodeRequestedModeByte encodes the handshake requested-mode field (issue #622).
+// Numeric replication modes (0-9) are sent as their ASCII digit; letter modes
+// (ModeList 'L', ModeDelete 'D', ModeGet 'G', ModeOPRFEval 'O') are sent as the
+// raw byte so the server's letter-mode decoder can match them.
+func encodeRequestedModeByte(requestedMode int) (byte, error) {
+	switch requestedMode {
+	case common.ModeList, common.ModeDelete, common.ModeGet, common.ModeOPRFEval:
+		return byte(requestedMode), nil
+	}
+	if requestedMode < 0 || requestedMode > 9 {
+		return 0, fmt.Errorf("invalid requested mode %d: %w", requestedMode, syscall.EBADMSG)
+	}
+	return byte(requestedMode + '0'), nil
+}
 
 // GlobalLister enables scatter-gather list queries across the cluster.
 // When set on a Communicator, list operations aggregate results from all peers.

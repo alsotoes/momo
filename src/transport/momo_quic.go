@@ -208,7 +208,11 @@ func (m *MomoQUICCommunicator) HandshakeClient(authToken string, timestamp int64
 		if err := common.WritePaddedInt(handshakeBuf[:common.TimestampLength], timestamp, common.TimestampLength); err != nil {
 			return 0, fmt.Errorf("failed to format handshake timestamp: %w", err)
 		}
-		handshakeBuf[common.TimestampLength] = byte(requestedMode + '0')
+		modeByte, err := encodeRequestedModeByte(requestedMode)
+		if err != nil {
+			return 0, err
+		}
+		handshakeBuf[common.TimestampLength] = modeByte
 
 		if _, err := m.Write(handshakeBuf[:]); err != nil {
 			return 0, fmt.Errorf("failed to send handshake: %v: %w", err, syscall.EIO)
@@ -225,7 +229,11 @@ func (m *MomoQUICCommunicator) HandshakeClient(authToken string, timestamp int64
 			return 0, fmt.Errorf("failed to format handshake timestamp: %w", err)
 		}
 
-		handshakeBuf[common.AuthTokenLength+common.TimestampLength] = byte(requestedMode + '0')
+		modeByte, err := encodeRequestedModeByte(requestedMode)
+		if err != nil {
+			return 0, err
+		}
+		handshakeBuf[common.AuthTokenLength+common.TimestampLength] = modeByte
 
 		if _, err := m.Write(handshakeBuf[:]); err != nil {
 			return 0, fmt.Errorf("failed to send handshake: %v: %w", err, syscall.EIO)
