@@ -2545,3 +2545,183 @@ func TestS3Communicator_ReceiveMetadataIgnoresMalformedS3Meta(t *testing.T) {
 		t.Fatalf("ReceiveMetadata failed: %v", err)
 	}
 }
+
+func TestS3CopyObject(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	fileContent := "copy source bytes"
+	modTime := int64(1700000000123456789)
+
+	putName, putHash, putSize := "", "", int64(0)
+	mock := &mockStore{
+		getFunc: func(name string) (io.ReadCloser, common.FileMetadata, error) {
+			if name != "file.txt" {
+				return nil, common.FileMetadata{}, syscall.ENOENT
+			}
+			return io.NopCloser(strings.NewReader(fileContent)), common.FileMetadata{
+				Name:    name,
+				Hash:    "abc123def456",
+				Size:    int64(len(fileContent)),
+				ModTime: modTime,
+			}, nil
+		},
+		putFunc: func(name string, hash string, size int64, remotePath string, content io.Reader) error {
+			putName, putHash, putSize = name, hash, size
+			got, _ := io.ReadAll(content)
+			if string(got) != fileContent {
+				t.Errorf("CopyObject stored wrong content: got %q, want %q", got, fileContent)
+			}
+			return nil
+		},
+		s3Meta: map[string]map[string]string{
+			"file.txt": {"content-type": "text/plain", "x-amz-meta-user": "alice"},
+		},
+	}
+
+	reqStr := "PUT /bucket/file-copy.txt HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"Authorization: Bearer " + authToken + "\r\n" +
+		"X-Amz-Copy-Source: /bucket/file.txt\r\n" +
+		"Content-Length: 0\r\n\r\n"
+	resp := runS3TestRequest(t, reqStr, mock)
+
+	if !strings.Contains(resp, "HTTP/1.1 200 OK\r\n") {
+		t.Fatalf("Expected 200 OK, got: %s", resp)
+	}
+	if !strings.Contains(resp, `<ETag>"abc123def456"</ETag>`) {
+		t.Errorf("Expected CopyObjectResult ETag, got: %s", resp)
+	}
+	if !strings.Contains(resp, "<LastModified>2023-11-14T22:13:20.123Z</LastModified>") {
+		t.Errorf("Expected CopyObjectResult LastModified, got: %s", resp)
+	}
+	if putName != "file-copy.txt" || putHash != "abc123def456" || putSize != int64(len(fileContent)) {
+		t.Errorf("Dest alias not stored correctly: name=%q hash=%q size=%d", putName, putHash, putSize)
+	}
+	if mock.s3Meta["file-copy.txt"]["content-type"] != "text/plain" {
+		t.Errorf("S3 metadata not copied to destination, got %v", mock.s3Meta["file-copy.txt"])
+	}
+	if mock.s3Meta["file-copy.txt"]["x-amz-meta-user"] != "alice" {
+		t.Errorf("S3 metadata not copied to destination, got %v", mock.s3Meta["file-copy.txt"])
+	}
+}
+
+func TestS3CopyObjectMissingSource(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	mock := &mockStore{
+		getFunc: func(name string) (io.ReadCloser, common.FileMetadata, error) {
+			return nil, common.FileMetadata{}, syscall.ENOENT
+		},
+	}
+	reqStr := "PUT /bucket/dest.txt HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"Authorization: Bearer " + authToken + "\r\n" +
+		"X-Amz-Copy-Source: /bucket/missing.txt\r\n" +
+		"Content-Length: 0\r\n\r\n"
+	resp := runS3TestRequest(t, reqStr, mock)
+	if !strings.Contains(resp, "HTTP/1.1 404 Not Found") {
+		t.Errorf("Expected 404 Not Found for missing copy source, got: %s", resp)
+	}
+	if !strings.Contains(resp, "<Code>NoSuchKey</Code>") {
+		t.Errorf("Expected NoSuchKey error, got: %s", resp)
+	}
+}
+
+func TestS3CopyObjectRejectsPathTraversal(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	mock := &mockStore{}
+	reqStr := "PUT /bucket/dest.txt HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"Authorization: Bearer " + authToken + "\r\n" +
+		"X-Amz-Copy-Source: /bucket/../etc/passwd\r\n" +
+		"Content-Length: 0\r\n\r\n"
+	resp := runS3TestRequest(t, reqStr, mock)
+	if !strings.Contains(resp, "HTTP/1.1 400 Bad Request") {
+		t.Errorf("Expected 400 Bad Request for path traversal copy source, got: %s", resp)
+	}
+}
+
+func TestS3DeleteObjectsBatch(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	var deletedKeys []string
+	mock := &mockStore{
+		deleteFunc: func(name string) error {
+			deletedKeys = append(deletedKeys, name)
+			return nil
+		},
+	}
+
+	body := `<?xml version="1.0" encoding="UTF-8"?><Delete><Object><Key>a.txt</Key></Object><Object><Key>b.txt</Key></Object><Object><Key>c.txt</Key></Object></Delete>`
+	reqStr := "POST /bucket?delete HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"Authorization: Bearer " + authToken + "\r\n" +
+		"Content-Type: application/xml\r\n" +
+		"Content-Length: " + strconv.Itoa(len(body)) + "\r\n\r\n" + body
+	resp := runS3TestRequest(t, reqStr, mock)
+
+	if len(deletedKeys) != 3 || deletedKeys[0] != "a.txt" || deletedKeys[2] != "c.txt" {
+		t.Errorf("Expected batch delete of a.txt,b.txt,c.txt, got %v", deletedKeys)
+	}
+	if !strings.Contains(resp, "HTTP/1.1 200 OK\r\n") {
+		t.Fatalf("Expected 200 OK, got: %s", resp)
+	}
+	for _, k := range []string{"a.txt", "b.txt", "c.txt"} {
+		if !strings.Contains(resp, "<Deleted><Key>"+k+"</Key></Deleted>") {
+			t.Errorf("Expected Deleted entry for %s, got: %s", k, resp)
+		}
+	}
+}
+
+func TestS3DeleteObjectsMalformedXML(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	mock := &mockStore{}
+	body := `<Delete><Object><Key>a.txt</Key></Object>` // truncated: no closing tags
+	reqStr := "POST /bucket?delete HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"Authorization: Bearer " + authToken + "\r\n" +
+		"Content-Type: application/xml\r\n" +
+		"Content-Length: " + strconv.Itoa(len(body)) + "\r\n\r\n" + body
+	resp := runS3TestRequest(t, reqStr, mock)
+	if !strings.Contains(resp, "HTTP/1.1 400 Bad Request") {
+		t.Errorf("Expected 400 Bad Request for malformed DeleteObjects XML, got: %s", resp)
+	}
+	if !strings.Contains(resp, "<Code>MalformedXML</Code>") {
+		t.Errorf("Expected MalformedXML error, got: %s", resp)
+	}
+}
+
+func TestS3ParseDeleteObjectsBodyKeyLimit(t *testing.T) {
+	var sb strings.Builder
+	sb.WriteString("<Delete>")
+	for i := 0; i < maxDeleteKeys+1; i++ {
+		sb.WriteString(fmt.Sprintf("<Object><Key>k%d.txt</Key></Object>", i))
+	}
+	sb.WriteString("</Delete>")
+	if _, err := parseDeleteObjectsBody([]byte(sb.String())); err == nil {
+		t.Error("Expected key-count limit error, got nil")
+	} else if !errors.Is(err, syscall.E2BIG) {
+		t.Errorf("Expected E2BIG, got: %v", err)
+	}
+}
+
+func TestS3FormatDeleteObjectsResultXML(t *testing.T) {
+	xmlBytes := FormatDeleteObjectsResultXML(
+		[]string{"ok.txt"},
+		[]s3DeleteError{{Key: "bad.txt", Code: "NoSuchKey", Message: "missing"}},
+	)
+	got := string(xmlBytes)
+	if !strings.Contains(got, "<Deleted><Key>ok.txt</Key></Deleted>") {
+		t.Errorf("Missing Deleted entry, got: %s", got)
+	}
+	if !strings.Contains(got, "<Error><Key>bad.txt</Key><Code>NoSuchKey</Code>") {
+		t.Errorf("Missing Error entry, got: %s", got)
+	}
+}
