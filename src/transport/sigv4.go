@@ -294,6 +294,8 @@ func verifySigV4Timestamp(amzDate string) (ok bool) {
 // verifySigV4Expiry reports whether a presigned request is still within its
 // X-Amz-Date + X-Amz-Expires validity window. Requests without a parsable
 // date/expires pair are treated as expired (defensive default per Rule 35).
+// The expiry is additionally bounds-checked to 0 < ttlSec <= 86400 (24h, the
+// AWS presign maximum) to prevent extreme duration calculations (Rule 35).
 func verifySigV4Expiry(req *http.Request) bool {
 	q := req.URL.Query()
 	amzDate := q.Get("X-Amz-Date")
@@ -306,7 +308,7 @@ func verifySigV4Expiry(req *http.Request) bool {
 		return false
 	}
 	ttlSec, err := strconv.Atoi(expires)
-	if err != nil || ttlSec < 0 {
+	if err != nil || ttlSec <= 0 || ttlSec > 86400 {
 		return false
 	}
 	return time.Now().UTC().Before(signTime.Add(time.Duration(ttlSec) * time.Second))
