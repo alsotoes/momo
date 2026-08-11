@@ -113,6 +113,61 @@ func TestMomoTCPCommunicator_Deadline(t *testing.T) {
 	}
 }
 
+// TestMomoTCPCommunicator_ACKFixedLength verifies the ACK uses a fixed-length
+// 4-byte wire format ("ACK" + 1-byte server ID), so the receiver never needs a
+// fragile 5ms deadline and cannot leave unread trailing digits (issue #621).
+func TestMomoTCPCommunicator_ACKFixedLength(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	// Server sends a fixed-length ACK for server ID 2, then closes the conn so
+	// the client observes EOF with no leftover bytes.
+	go func() {
+		server := NewMomoTCPCommunicator(serverConn)
+		if err := server.SendACK(2); err != nil {
+			t.Errorf("SendACK failed: %v", err)
+			return
+		}
+		serverConn.Close()
+	}()
+
+	client := NewMomoTCPCommunicator(clientConn)
+	if err := client.ReceiveACK(); err != nil {
+		t.Fatalf("ReceiveACK failed: %v", err)
+	}
+
+	// Verify the exact 4-byte wire format (no variable-length digits): after
+	// consuming the ACK, the next read must yield EOF with zero leftover bytes.
+	clientConn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+	buf := make([]byte, 8)
+	n, err := clientConn.Read(buf)
+	if err != nil && err != io.EOF {
+		t.Fatalf("expected EOF after 4-byte ACK, got read error: %v", err)
+	}
+	if n != 0 {
+		// Any leftover bytes would corrupt the next protocol message.
+		t.Errorf("unexpected leftover bytes after ACK: %v", buf[:n])
+	}
+}
+
+// TestMomoTCPCommunicator_SendACKInvalidServerID verifies SendACK rejects
+// server IDs that do not fit in the fixed 1-byte field (issue #621).
+func TestMomoTCPCommunicator_SendACKInvalidServerID(t *testing.T) {
+	conn, _ := net.Pipe()
+	defer conn.Close()
+	comm := NewMomoTCPCommunicator(conn)
+
+	if err := comm.SendACK(-1); err == nil {
+		t.Error("Expected SendACK(-1) to fail")
+	}
+	if err := comm.SendACK(256); err == nil {
+		t.Error("Expected SendACK(256) to fail")
+	}
+}
+
 func TestMomoTCPCommunicator_EdgeCases(t *testing.T) {
 	// 1. Panic recovery tests (Rule 4) via nil communicator
 	var nilComm *MomoTCPCommunicator

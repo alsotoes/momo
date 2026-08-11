@@ -692,8 +692,20 @@ func (m *MomoQUICCommunicator) SendACK(serverId int) (err error) {
 		}
 	}()
 
-	var ackBuf [32]byte
-	if _, err := m.Write(strconv.AppendInt(append(ackBuf[:0], "ACK"...), int64(serverId), 10)); err != nil {
+	if serverId < 0 || serverId > 255 {
+		return fmt.Errorf("invalid server ID %d: %w", serverId, syscall.EBADMSG)
+	}
+
+	// Fixed-length ACK: "ACK" + 1-byte server ID (issue #621).
+	// This removes the variable-length decimal digits that required a fragile
+	// 5ms deadline on the read side and could corrupt the next protocol message
+	// when digits arrived in multiple segments.
+	var ackBuf [4]byte
+	ackBuf[0] = 'A'
+	ackBuf[1] = 'C'
+	ackBuf[2] = 'K'
+	ackBuf[3] = byte(serverId)
+	if _, err := m.Write(ackBuf[:]); err != nil {
 		return fmt.Errorf("failed to send ACK: %v: %w", err, syscall.EIO)
 	}
 	return nil
@@ -707,28 +719,15 @@ func (m *MomoQUICCommunicator) ReceiveACK() (err error) {
 		}
 	}()
 
-	var ackBuffer [3]byte
-	if _, err := io.ReadFull(io.LimitReader(m, 3), ackBuffer[:]); err != nil {
-		return fmt.Errorf("failed to read ACK prefix: %v: %w", err, syscall.EBADMSG)
+	var ackBuffer [4]byte
+	if _, err := io.ReadFull(io.LimitReader(m, 4), ackBuffer[:]); err != nil {
+		return fmt.Errorf("failed to read ACK: %v: %w", err, syscall.EBADMSG)
 	}
 
-	if !bytes.Equal(ackBuffer[:], []byte("ACK")) {
-		return fmt.Errorf("unexpected response: %s: %w", string(ackBuffer[:]), syscall.EBADMSG)
+	if !bytes.Equal(ackBuffer[:3], []byte("ACK")) {
+		return fmt.Errorf("unexpected response: %s: %w", string(ackBuffer[:3]), syscall.EBADMSG)
 	}
 
-	// ⚡ Bolt: Read any trailing server ID digits under a short deadline to prevent blocking,
-	// limited to at most 10 iterations to prevent infinite-loop CPU exhaustion (DoS).
-	m.Stream.SetDeadline(time.Now().Add(5 * time.Millisecond))
-	var oneByte [1]byte
-	for i := 0; i < 10; i++ {
-		n, _ := m.Read(oneByte[:])
-		if n == 1 && oneByte[0] >= '0' && oneByte[0] <= '9' {
-			// Continue
-		} else {
-			break
-		}
-	}
-	m.Stream.SetDeadline(time.Time{}) // Restore default deadline
 	return nil
 }
 
