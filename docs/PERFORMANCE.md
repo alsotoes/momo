@@ -39,16 +39,16 @@ Each table compares the previous commit (left) to the current commit (right).
 ```
                       │ /tmp/old_bench_filtered.txt │      /tmp/new_bench_filtered.txt      │
                       │           sec/op            │    sec/op      vs base                │
-CrushOriginal-8                        667.2n ± ∞ ¹    619.5n ± ∞ ¹       ~ (p=1.000 n=1) ²
-CrushOptimized-8                       587.3n ± ∞ ¹    395.7n ± ∞ ¹       ~ (p=1.000 n=1) ²
-LoadGlobalConfig-8                     8.445µ ± ∞ ¹    9.134µ ± ∞ ¹       ~ (p=1.000 n=1) ²
-PadString-8                            48.86n ± ∞ ¹    67.09n ± ∞ ¹       ~ (p=1.000 n=1) ²
-SanitizeLog/Safe-8                     252.3n ± ∞ ¹    341.7n ± ∞ ¹       ~ (p=1.000 n=1) ²
-SanitizeLog/Unsafe-8                   989.1n ± ∞ ¹    837.8n ± ∞ ¹       ~ (p=1.000 n=1) ²
-CheckMetricsAndSwap-8                  8.933n ± ∞ ¹    8.874n ± ∞ ¹       ~ (p=1.000 n=1) ²
-IndexSearch-8                          1.601n ± ∞ ¹    1.671n ± ∞ ¹       ~ (p=1.000 n=1) ²
-IndexDirectTracking-8                 0.3796n ± ∞ ¹   0.3689n ± ∞ ¹       ~ (p=1.000 n=1) ²
-geomean                                84.47n          85.15n        +0.80%
+CrushOriginal-8                        619.5n ± ∞ ¹    505.6n ± ∞ ¹       ~ (p=1.000 n=1) ²
+CrushOptimized-8                       395.7n ± ∞ ¹    362.9n ± ∞ ¹       ~ (p=1.000 n=1) ²
+LoadGlobalConfig-8                     9.134µ ± ∞ ¹    7.656µ ± ∞ ¹       ~ (p=1.000 n=1) ²
+PadString-8                            67.09n ± ∞ ¹    47.53n ± ∞ ¹       ~ (p=1.000 n=1) ²
+SanitizeLog/Safe-8                     341.7n ± ∞ ¹    469.5n ± ∞ ¹       ~ (p=1.000 n=1) ²
+SanitizeLog/Unsafe-8                   837.8n ± ∞ ¹    634.4n ± ∞ ¹       ~ (p=1.000 n=1) ²
+CheckMetricsAndSwap-8                  8.874n ± ∞ ¹    8.496n ± ∞ ¹       ~ (p=1.000 n=1) ²
+IndexSearch-8                          1.671n ± ∞ ¹    2.028n ± ∞ ¹       ~ (p=1.000 n=1) ²
+IndexDirectTracking-8                 0.3689n ± ∞ ¹   0.4093n ± ∞ ¹       ~ (p=1.000 n=1) ²
+geomean                                85.15n          80.39n        -5.58%
 ¹ need >= 6 samples for confidence interval at level 0.95
 ² need >= 4 samples to detect a difference at alpha level 0.05
 
@@ -56,33 +56,35 @@ geomean                                84.47n          85.15n        +0.80%
                       │            B/op             │     B/op       vs base                │
 CrushOriginal-8                         164.0 ± ∞ ¹     164.0 ± ∞ ¹       ~ (p=1.000 n=1) ²
 CrushOptimized-8                        0.000 ± ∞ ¹     0.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
-LoadGlobalConfig-8                    1.289Ki ± ∞ ¹   1.289Ki ± ∞ ¹       ~ (p=1.000 n=1) ²
+LoadGlobalConfig-8                    1.289Ki ± ∞ ¹   1.539Ki ± ∞ ¹       ~ (p=1.000 n=1) ³
 PadString-8                             64.00 ± ∞ ¹     64.00 ± ∞ ¹       ~ (p=1.000 n=1) ²
 SanitizeLog/Safe-8                      0.000 ± ∞ ¹     0.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
 SanitizeLog/Unsafe-8                    704.0 ± ∞ ¹     704.0 ± ∞ ¹       ~ (p=1.000 n=1) ²
 CheckMetricsAndSwap-8                   0.000 ± ∞ ¹     0.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
 IndexSearch-8                           0.000 ± ∞ ¹     0.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
 IndexDirectTracking-8                   0.000 ± ∞ ¹     0.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
-geomean                                           ³                  +0.00%               ³
+geomean                                           ⁴                  +1.99%               ⁴
 ¹ need >= 6 samples for confidence interval at level 0.95
 ² all samples are equal
-³ summaries must be >0 to compute geomean
+³ need >= 4 samples to detect a difference at alpha level 0.05
+⁴ summaries must be >0 to compute geomean
 
                       │ /tmp/old_bench_filtered.txt │     /tmp/new_bench_filtered.txt     │
                       │          allocs/op          │  allocs/op   vs base                │
 CrushOriginal-8                         3.000 ± ∞ ¹   3.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
 CrushOptimized-8                        0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
-LoadGlobalConfig-8                      38.00 ± ∞ ¹   38.00 ± ∞ ¹       ~ (p=1.000 n=1) ²
+LoadGlobalConfig-8                      38.00 ± ∞ ¹   46.00 ± ∞ ¹       ~ (p=1.000 n=1) ³
 PadString-8                             1.000 ± ∞ ¹   1.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
 SanitizeLog/Safe-8                      0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
 SanitizeLog/Unsafe-8                    1.000 ± ∞ ¹   1.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
 CheckMetricsAndSwap-8                   0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
 IndexSearch-8                           0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
 IndexDirectTracking-8                   0.000 ± ∞ ¹   0.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
-geomean                                           ³                +0.00%               ³
+geomean                                           ⁴                +2.15%               ⁴
 ¹ need >= 6 samples for confidence interval at level 0.95
 ² all samples are equal
-³ summaries must be >0 to compute geomean
+³ need >= 4 samples to detect a difference at alpha level 0.05
+⁴ summaries must be >0 to compute geomean
 ```
 
 ### Latest Benchmark Results
@@ -93,15 +95,15 @@ three columns: time (speed), bytes (memory), allocs (GC pressure).
 
 | Benchmark | Avg. Time/Op | Avg. Bytes/Op | Avg. Allocs/Op |
 |-----------|--------------|---------------|----------------|
-| BenchmarkCheckMetricsAndSwap-8 | 8.87 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkCrushOptimized-8 | 395.70 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkCrushOriginal-8 | 619.50 ns/op | 164.00 B/op | 3.00 allocs/op |
-| BenchmarkIndexDirectTracking-8 | 0.37 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkIndexSearch-8 | 1.67 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkLoadGlobalConfig-8 | 9134.00 ns/op | 1320.00 B/op | 38.00 allocs/op |
-| BenchmarkPadString-8 | 67.09 ns/op | 64.00 B/op | 1.00 allocs/op |
-| BenchmarkSanitizeLog/Safe-8 | 341.70 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkSanitizeLog/Unsafe-8 | 837.80 ns/op | 704.00 B/op | 1.00 allocs/op |
+| BenchmarkCheckMetricsAndSwap-8 | 8.50 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkCrushOptimized-8 | 362.90 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkCrushOriginal-8 | 505.60 ns/op | 164.00 B/op | 3.00 allocs/op |
+| BenchmarkIndexDirectTracking-8 | 0.41 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkIndexSearch-8 | 2.03 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkLoadGlobalConfig-8 | 7656.00 ns/op | 1576.00 B/op | 46.00 allocs/op |
+| BenchmarkPadString-8 | 47.53 ns/op | 64.00 B/op | 1.00 allocs/op |
+| BenchmarkSanitizeLog/Safe-8 | 469.50 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkSanitizeLog/Unsafe-8 | 634.40 ns/op | 704.00 B/op | 1.00 allocs/op |
 
 
 ### Performance History
@@ -130,18 +132,18 @@ xychart-beta
     title "Performance Trend (Avg. Time, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Time (ns/op)"
-    x-axis [1b241ec,1ddb702,a8e6bbc,bd016ee,6e7bf28,8b3edae,ec59a82,aaf6479,28ed539,c6829fc]
-    line "CheckMetricsAndSwap" [7,7,9,8,8,8,10,11,9,9]
-    line "CrushOptimized" [305,338,300,289,304,293,317,420,587,396]
-    line "CrushOriginal" [409,387,443,396,419,409,436,627,667,620]
-    line "IndexDirectTracking" [0,0,0,0,0,0,0,1,0,0]
-    line "IndexSearch" [2,1,2,2,2,2,2,3,2,2]
-    line "LoadGlobalConfig" [5825,5598,5683,5474,6080,5863,5958,8220,8445,9134]
-    line "PadString" [39,36,39,36,39,39,41,59,49,67]
+    x-axis [1ddb702,a8e6bbc,bd016ee,6e7bf28,8b3edae,ec59a82,aaf6479,28ed539,c6829fc,1cfce56]
+    line "CheckMetricsAndSwap" [7,9,8,8,8,10,11,9,9,8]
+    line "CrushOptimized" [338,300,289,304,293,317,420,587,396,363]
+    line "CrushOriginal" [387,443,396,419,409,436,627,667,620,506]
+    line "IndexDirectTracking" [0,0,0,0,0,0,1,0,0,0]
+    line "IndexSearch" [1,2,2,2,2,2,3,2,2,2]
+    line "LoadGlobalConfig" [5598,5683,5474,6080,5863,5958,8220,8445,9134,7656]
+    line "PadString" [36,39,36,39,39,41,59,49,67,48]
     line "ParseReplicationOrder_NoPrealloc" [350,349,357,354,345,225,229,165,232,234]
     line "ParseReplicationOrder_Prealloc" [229,231,237,234,229,108,107,80,110,109]
-    line "SanitizeLog/Safe" [229,212,222,245,238,231,326,287,252,342]
-    line "SanitizeLog/Unsafe" [667,636,710,640,671,675,1095,866,989,838]
+    line "SanitizeLog/Safe" [212,222,245,238,231,326,287,252,342,470]
+    line "SanitizeLog/Unsafe" [636,710,640,671,675,1095,866,989,838,634]
 ```
 
 #### Memory per Operation (B/op)
@@ -154,13 +156,13 @@ xychart-beta
     title "Memory Trend (Avg. Bytes/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Bytes/Op"
-    x-axis [1b241ec,1ddb702,a8e6bbc,bd016ee,6e7bf28,8b3edae,ec59a82,aaf6479,28ed539,c6829fc]
+    x-axis [1ddb702,a8e6bbc,bd016ee,6e7bf28,8b3edae,ec59a82,aaf6479,28ed539,c6829fc,1cfce56]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "CrushOptimized" [0,0,0,0,0,0,0,0,0,0]
     line "CrushOriginal" [164,164,164,164,164,164,164,164,164,164]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [0,0,0,0,0,0,0,0,0,0]
-    line "LoadGlobalConfig" [1320,1320,1320,1320,1320,1320,1320,1320,1320,1320]
+    line "LoadGlobalConfig" [1320,1320,1320,1320,1320,1320,1320,1320,1320,1576]
     line "PadString" [64,64,64,64,64,64,64,64,64,64]
     line "ParseReplicationOrder_NoPrealloc" [408,408,408,408,408,248,248,248,248,248]
     line "ParseReplicationOrder_Prealloc" [240,240,240,240,240,80,80,80,80,80]
@@ -178,13 +180,13 @@ xychart-beta
     title "Allocation Trend (Avg. Allocs/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Allocs/Op"
-    x-axis [1b241ec,1ddb702,a8e6bbc,bd016ee,6e7bf28,8b3edae,ec59a82,aaf6479,28ed539,c6829fc]
+    x-axis [1ddb702,a8e6bbc,bd016ee,6e7bf28,8b3edae,ec59a82,aaf6479,28ed539,c6829fc,1cfce56]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "CrushOptimized" [0,0,0,0,0,0,0,0,0,0]
     line "CrushOriginal" [3,3,3,3,3,3,3,3,3,3]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [0,0,0,0,0,0,0,0,0,0]
-    line "LoadGlobalConfig" [38,38,38,38,38,38,38,38,38,38]
+    line "LoadGlobalConfig" [38,38,38,38,38,38,38,38,38,46]
     line "PadString" [1,1,1,1,1,1,1,1,1,1]
     line "ParseReplicationOrder_NoPrealloc" [6,6,6,6,6,5,5,5,5,5]
     line "ParseReplicationOrder_Prealloc" [2,2,2,2,2,1,1,1,1,1]

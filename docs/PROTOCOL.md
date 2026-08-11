@@ -496,3 +496,49 @@ When `encryption_enabled = true` and `encryption_key` is set, the storage
 factory (`NewStore`) wraps the blob store with `EncryptedBlobStore` before
 passing it to `CASStore`. No changes to S3 key handling or S3 communicator
 logic are required.
+
+## Envelope E2EE (Phase 4, issue #780)
+
+The `encryption_key` model above is **shared secret**: both the client and the
+server hold the same master key, so the server could decrypt content in
+principle. For **zero-trust vs. the serving node**, the native protocol
+(`momo-tcp` / `momo-quic`) supports a client-held envelope model modeled on the
+AWS S3 Encryption Client v3:
+
+- A **client-held** `e2ee_key` (64-hex, 256-bit) is configured client-side
+  only; it is **never** configured on, or sent to, any server daemon.
+- On upload, the client generates a fresh **per-object data key**, wraps it
+  with the client-held master key, and writes a self-describing envelope header
+  (`MOMOENV1` magic + version/algorithm + key-id + wrapped data key) followed by
+  the streaming AES-256-GCM ciphertext under the data key
+  (`crypto.EncryptEnvelope`).
+- The server stores the envelope bytes **as-is** (opaque). Its `TeeReader`
+  hashes the wire bytes → `SHA-256(envelope)`, which becomes the CAS/dedup key.
+  The server can neither read nor derive the content key; SSE
+  (`EncryptedBlobStore`) may still wrap the opaque envelope for at-rest
+  defense-in-depth, but that is optional.
+- On download, the client reads the envelope, unwraps the data key with its
+  client-held master key, and streams the plaintext out
+  (`crypto.DecryptEnvelope`).
+- Metadata (filename) confidentiality uses the same HMAC-SHA256 obfuscation as
+  Phase 3, but the HMAC key is derived from the **client-held** master key
+  (`DomainContent`), so the server can never derive it either.
+- **Mutually exclusive with OPRF** confidential dedup in this iteration: the
+  two models share the wire format's key-management slot. Config with both
+  `e2ee_key` and `oprf_enabled` is rejected.
+
+```
+Client → [EnvelopeE2EE: wrap data key + EncryptStream] → Server → [opaque store]
+```
+
+### Configuration (client side)
+
+```ini
+[global]
+e2ee_key = <64-char hex string (32 bytes)>
+e2ee_key_id = default
+```
+
+Or via CLI flag for the native client: `momo -imp client -file F -e2ee-key <hex>`.
+The same `-e2ee-key` / `-e2ee-key-id` flags power the S3 `s3enc` / `s3dec`
+impersonations (issue #777).

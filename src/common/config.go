@@ -308,6 +308,27 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 		globalCfg.EncryptionTenant = key.String()
 	}
 
+	if key, err := section.GetKey("e2ee_key"); err == nil {
+		globalCfg.E2EEKey = key.String()
+	}
+
+	if key, err := section.GetKey("e2ee_key_id"); err == nil {
+		globalCfg.E2EEKeyID = key.String()
+	}
+
+	if globalCfg.E2EEKey != "" {
+		if len(globalCfg.E2EEKey) != 64 {
+			return ConfigurationGlobal{}, fmt.Errorf("'e2ee_key' must be 64 hex characters (256-bit): %w", syscall.EINVAL)
+		}
+		if _, err := hex.DecodeString(globalCfg.E2EEKey); err != nil {
+			return ConfigurationGlobal{}, fmt.Errorf("'e2ee_key' must be valid hex: %w", err)
+		}
+	}
+
+	if globalCfg.E2EEKeyID == "" {
+		globalCfg.E2EEKeyID = "default"
+	}
+
 	if globalCfg.EncryptionEnabled {
 		if len(globalCfg.EncryptionKey) != 64 {
 			return ConfigurationGlobal{}, fmt.Errorf("'encryption_key' must be 64 hex characters (256-bit) when encryption is enabled: %w", syscall.EINVAL)
@@ -334,6 +355,13 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 			}
 			globalCfg.OPRFThreshold = v
 		}
+	}
+
+	// Envelope E2EE (client-held key) and OPRF confidential dedup share the
+	// wire format's key-management slot; they are mutually exclusive in the
+	// first iteration (issue #780).
+	if globalCfg.E2EEKey != "" && globalCfg.OPRFEnabled {
+		return ConfigurationGlobal{}, fmt.Errorf("'e2ee_key' (envelope E2EE) is mutually exclusive with OPRF confidential dedup: %w", syscall.EINVAL)
 	}
 
 	return globalCfg, nil

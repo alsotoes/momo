@@ -94,6 +94,16 @@ type ConfigurationGlobal struct {
 	// to derive a content key. Defaults to the number of configured daemons
 	// when 0. Must satisfy 1 <= OPRFThreshold <= len(daemons).
 	OPRFThreshold int
+	// E2EEKey is the 64-hex 256-bit client-held master key for native protocol
+	// (momo-tcp/momo-quic) envelope encryption. When set, content is wrapped in
+	// a self-describing momo E2EE envelope (per-object data key under this
+	// client-held master key) so the serving node never sees plaintext
+	// (zero-trust vs the serving node, issue #780). The key is client-held only
+	// and must never be the server's EncryptionKey.
+	E2EEKey string
+	// E2EEKeyID is the key identifier stored in the envelope header. Defaults
+	// to "default" when empty.
+	E2EEKeyID string
 }
 
 // ConfigurationMetrics holds the metrics configuration for the application.

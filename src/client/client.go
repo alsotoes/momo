@@ -44,7 +44,37 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 	// Load encryption cipher if E2EE is enabled.
 	var encCipher *momocrypto.Cipher
 	var tenantKey []byte
-	if cfg.Global.EncryptionEnabled {
+	// envelopeMode enables client-held envelope encryption (zero-trust vs the
+	// serving node, issue #780). When set, content is wrapped in a
+	// self-describing momo E2EE envelope under a per-object data key; the
+	// client's E2EE master key never leaves the client.
+	envelopeMode := cfg.Global.E2EEKey != ""
+	var e2eeMasterKey []byte
+	if envelopeMode {
+		if len(cfg.Global.E2EEKey) != momocrypto.MaxKeyHexSize {
+			err = fmt.Errorf("invalid E2EE key: must be 64 hex characters: %w", syscall.EINVAL)
+			log.Printf("%v", err)
+			return
+		}
+		e2eeMasterKey, err = hex.DecodeString(cfg.Global.E2EEKey)
+		if err != nil {
+			err = fmt.Errorf("failed to decode E2EE key: %v: %w", err, syscall.EINVAL)
+			log.Printf("%v", err)
+			return
+		}
+		// The metadata wireName HMAC key is derived from the client-held E2EE
+		// master key (DomainContent), so the server can never derive it.
+		tenantKey, err = momocrypto.DeriveKey(e2eeMasterKey, cfg.Global.EncryptionTenant, momocrypto.DomainContent)
+		if err != nil {
+			log.Printf("Failed to derive tenant key: %v", err)
+			return
+		}
+		if cfg.Global.OPRFEnabled {
+			err = fmt.Errorf("envelope E2EE mode is mutually exclusive with OPRF confidential dedup: %w", syscall.EINVAL)
+			log.Printf("%v", err)
+			return
+		}
+	} else if cfg.Global.EncryptionEnabled {
 		masterKey, decErr := hex.DecodeString(cfg.Global.EncryptionKey)
 		if decErr != nil {
 			err = fmt.Errorf("failed to decode encryption key: %v: %w", decErr, syscall.EINVAL)
@@ -96,7 +126,7 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 	// encryptedTmp, when non-empty, holds the streaming ciphertext for
 	// encrypted uploads. It is removed after send.
 	var encryptedTmp string
-	if cfg.Global.EncryptionEnabled {
+	if cfg.Global.EncryptionEnabled || envelopeMode {
 		// 🛡️ Zero-Crash: Validate file size before encryption to prevent
 		// unbounded growth (Rule 4).
 		fileInfo, rErr := os.Stat(filePath)
@@ -154,21 +184,36 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 		}
 		encryptedTmp = tmp.Name()
 		h := sha256.New()
-		if err = encCipher.EncryptStream(file, io.MultiWriter(tmp, h)); err != nil {
-			tmp.Close()
-			os.Remove(encryptedTmp)
-			file.Close()
-			log.Printf("Failed to encrypt file %s: %v", common.SanitizeLog(filePath), err)
-			return
+		if envelopeMode {
+			// Envelope E2EE (zero-trust): wrap the content under a fresh
+			// per-object data key inside a self-describing envelope keyed by
+			// the client-held E2EE master key. The spool is the envelope bytes
+			// (opaque to the server); the CAS/dedup hash is H(ciphertext).
+			if err = momocrypto.EncryptEnvelope(io.MultiWriter(tmp, h), file, e2eeMasterKey, cfg.Global.E2EEKeyID); err != nil {
+				tmp.Close()
+				os.Remove(encryptedTmp)
+				file.Close()
+				log.Printf("Failed to encrypt envelope for %s: %v", common.SanitizeLog(filePath), common.SanitizeLog(err.Error()))
+				return
+			}
+			fileHash = hex.EncodeToString(h.Sum(nil))
+		} else {
+			if err = encCipher.EncryptStream(file, io.MultiWriter(tmp, h)); err != nil {
+				tmp.Close()
+				os.Remove(encryptedTmp)
+				file.Close()
+				log.Printf("Failed to encrypt file %s: %v", common.SanitizeLog(filePath), err)
+				return
+			}
+			// The CAS/dedup key is H(plaintext) when OPRF is enabled; otherwise
+			// it is H(ciphertext) (Phase A behavior).
+			if !cfg.Global.OPRFEnabled {
+				fileHash = hex.EncodeToString(h.Sum(nil))
+			}
 		}
 		file.Close()
 		if sErr := tmp.Close(); sErr != nil {
 			log.Printf("Failed to close encrypted spool: %v", sErr)
-		}
-		// The CAS/dedup key is H(plaintext) when OPRF is enabled; otherwise it
-		// is H(ciphertext) (Phase A behavior).
-		if !cfg.Global.OPRFEnabled {
-			fileHash = hex.EncodeToString(h.Sum(nil))
 		}
 	} else {
 		fileHash, err = common.HashFile(filePath)
@@ -248,7 +293,9 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 	// E2EE: encrypt the wireName for metadata confidentiality.
 	// Uses HMAC-SHA256 with the tenant key to produce a deterministic
 	// opaque key (64 hex chars) that fits within FileInfoLength.
-	if encCipher != nil {
+	// In envelope mode the tenant key is derived from the client-held E2EE
+	// master key, so the server can never derive the wireName either.
+	if encCipher != nil || envelopeMode {
 		mac := hmac.New(sha256.New, tenantKey)
 		mac.Write([]byte(wireName))
 		wireName = hex.EncodeToString(mac.Sum(nil))
@@ -495,7 +542,23 @@ func Download(cfg common.Configuration, encryptedName string, contentHash string
 
 	// ⚡ Bolt: Stream content directly from network to decryptor to output.
 	// No intermediate buffer allocation — peak memory is chunk-sized.
-	if cfg.Global.EncryptionEnabled {
+	limited := io.LimitReader(comm, size)
+	if cfg.Global.E2EEKey != "" {
+		// Envelope E2EE (zero-trust): the wire bytes are a self-describing
+		// envelope whose data key is wrapped by the client-held E2EE master
+		// key. The serving node only ever stores opaque ciphertext, so the
+		// client (and only the client) can unwrap it.
+		if cfg.Global.OPRFEnabled {
+			return fmt.Errorf("envelope E2EE mode is mutually exclusive with OPRF confidential dedup: %w", syscall.EINVAL)
+		}
+		masterKey, dErr := hex.DecodeString(cfg.Global.E2EEKey)
+		if dErr != nil {
+			return fmt.Errorf("failed to decode E2EE key: %w", dErr)
+		}
+		if _, dErr := momocrypto.DecryptEnvelope(limited, dst, masterKey); dErr != nil {
+			return fmt.Errorf("failed to decrypt envelope content: %w", dErr)
+		}
+	} else if cfg.Global.EncryptionEnabled {
 		var cipher *momocrypto.Cipher
 		if cfg.Global.OPRFEnabled {
 			// The content key is derived from the dedup tag H(plaintext) via the
