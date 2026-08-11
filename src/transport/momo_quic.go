@@ -19,6 +19,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -31,6 +32,7 @@ import (
 type MomoQUICCommunicator struct {
 	*quic.Stream
 	conn             *quic.Conn
+	closeOnce        sync.Once
 	store            storage.Store
 	globalLister     GlobalLister
 	leaseAcquirer    LeaseAcquirer
@@ -758,12 +760,21 @@ func (m *MomoQUICCommunicator) Close() (err error) {
 			err = fmt.Errorf("panic in Close: %v: %w", r, syscall.EIO)
 		}
 	}()
-	streamErr := m.Stream.Close()
-	go func() {
-		time.Sleep(100 * time.Millisecond)
+	// Guard against double-close (issue #623): the underlying conn must be
+	// torn down exactly once. The grace period runs synchronously in the
+	// calling goroutine so it is guaranteed to execute — no fire-and-forget
+	// goroutine that could be dropped on process exit or leak on repeat Close.
+	m.closeOnce.Do(func() {
+		streamErr := m.Stream.Close()
+		// Allow the peer to drain the stream before tearing down the conn;
+		// otherwise pending reads are aborted with an application error.
+		time.Sleep(quicCloseGracePeriod)
 		m.conn.CloseWithError(0, "")
-	}()
-	return streamErr
+		if streamErr != nil {
+			err = streamErr
+		}
+	})
+	return err
 }
 
 // GenerateSelfSignedCert generates a self-signed TLS certificate for testing and internal use.
