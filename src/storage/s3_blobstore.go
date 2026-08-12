@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"strings"
 	"syscall"
@@ -92,8 +93,12 @@ func (s *S3BlobStore) Close() error {
 }
 
 // PutBlob uploads a blob to S3 using HTTP PUT with SigV4 authentication.
-// The content is streamed directly to S3 using UNSIGNED-PAYLOAD to avoid
-// buffering the entire blob in memory (OOM/DoS prevention).
+// The content is signed with SIGNED_PAYLOAD (issue #776): the body is spooled
+// to a temp file while its SHA-256 is computed, then uploaded with a real
+// Content-Length and a payload hash that binds the signature to the content.
+// Spooling to disk (rather than buffering in memory) keeps the operation
+// bounded-memory (OOM/DoS prevention). The spool file is always removed.
+// Oversized blobs are rejected before any upload occurs.
 func (s *S3BlobStore) PutBlob(hash string, content io.Reader) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -102,14 +107,34 @@ func (s *S3BlobStore) PutBlob(hash string, content io.Reader) (err error) {
 		}
 	}()
 
-	cr := &countingReader{r: content}
-	boundedContent := io.LimitReader(cr, common.MaxFileSize+1)
+	spill, err := os.CreateTemp("", "momo-s3-put-*")
+	if err != nil {
+		return fmt.Errorf("s3: failed to create spool file: %w", syscall.EIO)
+	}
+	spillPath := spill.Name()
+	defer func() {
+		_ = spill.Close()
+		_ = os.Remove(spillPath)
+	}()
 
-	req, err := s.newRequest("PUT", hash, boundedContent, "UNSIGNED-PAYLOAD")
+	hasher := sha256.New()
+	written, copyErr := io.Copy(io.MultiWriter(spill, hasher), io.LimitReader(content, common.MaxFileSize+1))
+	if copyErr != nil {
+		return fmt.Errorf("s3: failed to spool blob: %w", copyErr)
+	}
+	if written > common.MaxFileSize {
+		return fmt.Errorf("s3: blob exceeds MaxFileSize (%d bytes): %w", common.MaxFileSize, syscall.EFBIG)
+	}
+	if _, seekErr := spill.Seek(0, io.SeekStart); seekErr != nil {
+		return fmt.Errorf("s3: failed to rewind spool file: %w", syscall.EIO)
+	}
+
+	payloadHash := hex.EncodeToString(hasher.Sum(nil))
+	req, err := s.newRequest("PUT", hash, spill, payloadHash)
 	if err != nil {
 		return err
 	}
-	req.ContentLength = -1
+	req.ContentLength = written
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -121,23 +146,7 @@ func (s *S3BlobStore) PutBlob(hash string, content io.Reader) (err error) {
 		return fmt.Errorf("s3: PUT failed with status %d: %w", resp.StatusCode, syscall.EIO)
 	}
 
-	if cr.n > common.MaxFileSize {
-		_ = s.DeleteBlob(hash)
-		return fmt.Errorf("s3: blob exceeds MaxFileSize (%d bytes): %w", common.MaxFileSize, syscall.EFBIG)
-	}
-
 	return nil
-}
-
-type countingReader struct {
-	r io.Reader
-	n int64
-}
-
-func (cr *countingReader) Read(p []byte) (int, error) {
-	n, err := cr.r.Read(p)
-	cr.n += int64(n)
-	return n, err
 }
 
 // GetBlob downloads a blob from S3 using HTTP GET with SigV4 authentication.
