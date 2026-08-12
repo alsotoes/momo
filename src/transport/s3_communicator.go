@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -93,6 +94,19 @@ type S3Communicator struct {
 	metricsHook MetricsHook
 	// isPeer is always false for S3 connections (S3 clients are never peers).
 	isPeer bool
+
+	// Streaming (aws-chunked) upload state (issue #773). When a PUT arrives
+	// with an aws-chunked body, the gateway decodes the framing at the
+	// transport boundary, spills the de-framed content to a temp file, and
+	// resolves meta.Hash/Size to the decoded content hash/size. The spill is
+	// then replayed through Read() so the standard server pipeline sees only
+	// de-framed content with the real content-addressed hash.
+	streamingPayload bool
+	streamingSpill   *os.File
+	streamingReader  io.Reader
+	// sigV4 holds the per-chunk verification context derived during SigV4
+	// verification for signed streaming PUTs (issue #773).
+	sigV4 *streamingSigningCtx
 }
 
 func NewS3Communicator(conn net.Conn) *S3Communicator {
@@ -169,6 +183,11 @@ func (m *S3Communicator) Read(p []byte) (n int, err error) {
 			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
 		}
 	}()
+	// A decoded aws-chunked payload is replayed from the spill file so the
+	// server pipeline (getFile/store.Put) consumes only de-framed content.
+	if m.streamingPayload && m.streamingReader != nil {
+		return m.streamingReader.Read(p)
+	}
 	return m.reader.Read(p)
 }
 
@@ -189,6 +208,14 @@ func (m *S3Communicator) Close() (err error) {
 			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
 		}
 	}()
+	if m.streamingSpill != nil {
+		name := m.streamingSpill.Name()
+		m.streamingSpill.Close()
+		os.Remove(name)
+		m.streamingSpill = nil
+		m.streamingReader = nil
+		m.streamingPayload = false
+	}
 	return m.conn.Close()
 }
 
@@ -351,6 +378,34 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			}
 			writeS3Error(m.conn, http.StatusForbidden, code, msg, "")
 			return 0, 0, syscall.EACCES
+		}
+
+		// issue #773: derive the per-chunk verification context for signed
+		// streaming PUTs from the (already verified) request signature. The
+		// seed signature is the request signature; chunk signatures chain from
+		// it with the same derived signing key/date/scope.
+		if req.Method == "PUT" && isStreamingLiteral(req.Header.Get("X-Amz-Content-Sha256")) {
+			if comps, ok := parseSigV4AuthHeader(authHeader); ok {
+				amzDate := req.Header.Get("X-Amz-Date")
+				if amzDate == "" {
+					amzDate = comps.AmzDate
+				}
+				m.sigV4 = &streamingSigningCtx{
+					signingKey: deriveSigningKey(secretKey, comps.DateStamp, comps.Region),
+					amzDate:    amzDate,
+					scope:      comps.DateStamp + "/" + comps.Region + "/s3/aws4_request",
+					seedSig:    comps.Signature,
+				}
+			} else if comps, ok := parseSigV4QueryAuth(req); ok {
+				m.sigV4 = &streamingSigningCtx{
+					signingKey: deriveSigningKey(secretKey, comps.DateStamp, comps.Region),
+					amzDate:    comps.AmzDate,
+					scope:      comps.DateStamp + "/" + comps.Region + "/s3/aws4_request",
+					seedSig:    comps.Signature,
+				}
+			}
+			// No SigV4 auth (e.g. Bearer momo peer): m.sigV4 stays nil and the
+			// body is de-framed in unsigned mode.
 		}
 	}
 
@@ -934,9 +989,145 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			writeS3Error(m.conn, http.StatusBadRequest, "InvalidArgument", "Invalid hash value.", "")
 			return 0, 0, fmt.Errorf("invalid hash: %s: %w", m.meta.Hash, syscall.EBADMSG)
 		}
+
+		// issue #773: aws-chunked streaming payload. Decode the framing at the
+		// gateway boundary so de-framed content and the real content hash flow
+		// through the standard momo PUT/replication pipeline.
+		lit := req.Header.Get("X-Amz-Content-Sha256")
+		if isStreamingLiteral(lit) || strings.Contains(req.Header.Get("Content-Encoding"), s3StreamingContentEncoding) {
+			if err := m.decodeStreamingPayload(req); err != nil {
+				return 0, 0, err
+			}
+		}
 	}
 
 	return requestedMode, timestamp, nil
+}
+
+// decodeStreamingPayload fully consumes an aws-chunked body, verifies the
+// per-chunk SigV4 signatures (signed modes), spills the de-framed content to a
+// bounded temp file, and resolves m.meta.Hash/Size to the decoded content
+// hash/size. On failure it writes the appropriate S3 error response and
+// returns a POSIX-mapped error so the connection is torn down cleanly.
+func (m *S3Communicator) decodeStreamingPayload(req *http.Request) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in S3 decodeStreamingPayload: %v", r)
+			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+		}
+	}()
+
+	mode := streamingModeOf(req.Header.Get("X-Amz-Content-Sha256"), req.Header.Get("Content-Encoding"))
+	if mode == streamingNone {
+		return nil
+	}
+
+	// Expected decoded size as declared by the SDK (X-Amz-Decoded-Content-Length).
+	// Used to pre-check bounds and to reject smuggling/mismatches at the end.
+	var expected int64 = -1
+	if v := req.Header.Get(s3StreamingDecodedContentLength); v != "" {
+		ev, parseErr := strconv.ParseInt(v, 10, 64)
+		if parseErr != nil || ev < 0 {
+			m.writeStreamingError(http.StatusBadRequest, "InvalidArgument", "Invalid X-Amz-Decoded-Content-Length.", "")
+			return fmt.Errorf("invalid decoded content length %q: %w", v, syscall.EBADMSG)
+		}
+		expected = ev
+	}
+	if expected > common.MaxFileSize {
+		m.writeStreamingError(http.StatusRequestEntityTooLarge, "EntityTooLarge", "Your proposed upload exceeds the maximum allowed object size.", "")
+		return fmt.Errorf("decoded content length %d exceeds maximum: %w", expected, syscall.EOVERFLOW)
+	}
+
+	// Body-read deadline proportional to the decoded size (mirrors the server's
+	// size-based absolute deadline) to prevent stalled/hanging uploads.
+	if expected >= 0 {
+		m.conn.SetReadDeadline(time.Now().Add(5*time.Minute + time.Duration(expected/(10*1024*1024))*time.Minute))
+	} else {
+		m.conn.SetReadDeadline(time.Now().Add(15 * time.Minute))
+	}
+	defer m.conn.SetReadDeadline(time.Time{})
+
+	// Expect: 100-continue — emit the interim response before reading the body.
+	if strings.EqualFold(req.Header.Get("Expect"), "100-continue") {
+		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		if _, werr := m.conn.Write([]byte("HTTP/1.1 100 Continue\r\n\r\n")); werr != nil {
+			m.conn.SetWriteDeadline(time.Time{})
+			return fmt.Errorf("failed to send 100-continue: %v: %w", werr, syscall.EPIPE)
+		}
+		m.conn.SetWriteDeadline(time.Time{})
+	}
+
+	// Signing context: signed modes require the verification material derived
+	// during SigV4 verification; unsigned modes de-frame without per-chunk
+	// checks (documented security posture).
+	var ctx *streamingSigningCtx
+	if mode == streamingSigned || mode == streamingSignedTrailer {
+		ctx = m.sigV4
+		if ctx == nil || len(ctx.signingKey) == 0 {
+			m.writeStreamingError(http.StatusBadRequest, "InvalidRequest", "Signed aws-chunked streaming requires SigV4 authentication.", "")
+			return fmt.Errorf("no signing context for signed streaming upload: %w", syscall.EACCES)
+		}
+	}
+	trailers := mode == streamingSignedTrailer || mode == streamingUnsignedTrailer ||
+		req.Header.Get(s3StreamingTrailerHeader) != ""
+
+	dechunker := newAWSChunkedReader(m.reader, ctx, trailers, common.MaxFileSize)
+
+	spill, spillErr := os.CreateTemp("", "momo-aws-chunked-*")
+	if spillErr != nil {
+		m.writeStreamingError(http.StatusInternalServerError, "InternalError", "Failed to buffer streaming payload.", "")
+		return fmt.Errorf("failed to create streaming spill file: %w", syscall.EIO)
+	}
+	spillName := spill.Name()
+	success := false
+	defer func() {
+		if !success {
+			spill.Close()
+			os.Remove(spillName)
+		}
+	}()
+
+	if _, copyErr := io.Copy(spill, dechunker); copyErr != nil {
+		switch {
+		case errors.Is(copyErr, errStreamingSignatureMismatch):
+			m.writeStreamingError(http.StatusForbidden, "SignatureDoesNotMatch", "The chunk signature we calculated does not match the signature you provided.", "")
+			return fmt.Errorf("%w: streaming chunk signature mismatch", syscall.EACCES)
+		case errors.Is(copyErr, syscall.EOVERFLOW):
+			m.writeStreamingError(http.StatusRequestEntityTooLarge, "EntityTooLarge", "Your proposed upload exceeds the maximum allowed object size.", "")
+			return fmt.Errorf("streaming payload exceeds maximum size: %w", syscall.EOVERFLOW)
+		default:
+			m.writeStreamingError(http.StatusBadRequest, "InvalidArgument", "Malformed aws-chunked body.", "")
+			return fmt.Errorf("streaming decode failed: %v: %w", copyErr, syscall.EBADMSG)
+		}
+	}
+
+	decodedSize := dechunker.DecodedSize()
+	if expected >= 0 && decodedSize != expected {
+		m.writeStreamingError(http.StatusBadRequest, "InvalidArgument", "The decoded content length does not match X-Amz-Decoded-Content-Length.", "")
+		return fmt.Errorf("decoded length %d != declared %d: %w", decodedSize, expected, syscall.EBADMSG)
+	}
+
+	// Rewind the spill and hand it to Read() so the server pipeline consumes
+	// only de-framed content keyed by the real content hash.
+	if _, seekErr := spill.Seek(0, io.SeekStart); seekErr != nil {
+		m.writeStreamingError(http.StatusInternalServerError, "InternalError", "Failed to rewind buffered streaming payload.", "")
+		return fmt.Errorf("failed to rewind streaming spill: %w", syscall.EIO)
+	}
+
+	m.meta.Hash = dechunker.ContentHash()
+	m.meta.Size = decodedSize
+	m.streamingSpill = spill
+	m.streamingReader = spill
+	m.streamingPayload = true
+	success = true
+	return nil
+}
+
+// writeStreamingError writes an S3 error response with a bounded write deadline.
+func (m *S3Communicator) writeStreamingError(status int, code, msg, resource string) {
+	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	writeS3Error(m.conn, status, code, msg, resource)
+	m.conn.SetWriteDeadline(time.Time{})
 }
 
 func (m *S3Communicator) SendReplicationMode(mode int) (err error) {
@@ -1130,6 +1321,15 @@ func (m *S3Communicator) ReceiveMetadata() (meta common.FileMetadata, err error)
 			return common.FileMetadata{}, fmt.Errorf("invalid hash: %s: %w", hash, syscall.EBADMSG)
 		}
 		m.meta.Hash = hash
+
+		// issue #773: the OPTIONS/ReceiveMetadata handshake path cannot decode
+		// an aws-chunked body (the streaming frame is only supported on the
+		// full server PUT path). Reject streaming uploads here explicitly.
+		if isStreamingLiteral(req.Header.Get("X-Amz-Content-Sha256")) ||
+			strings.Contains(req.Header.Get("Content-Encoding"), s3StreamingContentEncoding) {
+			writeS3Error(m.conn, http.StatusBadRequest, "InvalidRequest", "aws-chunked streaming uploads require the metadata handshake.", "")
+			return common.FileMetadata{}, fmt.Errorf("streaming upload on handshake path is unsupported: %w", syscall.EBADMSG)
+		}
 
 		// OPTIONS-handshake flow: capture S3 metadata from the PUT as well.
 		m.meta.S3Headers = collectS3Headers(req)
