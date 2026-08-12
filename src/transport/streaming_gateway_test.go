@@ -286,17 +286,20 @@ func TestS3Communicator_StreamingPUT_Oversized(t *testing.T) {
 	defer clientConn.Close()
 	defer serverConn.Close()
 
-	var resp bytes.Buffer
+	var respCh = make(chan string, 1)
 	go func() {
 		clientConn.Write(header)
+		clientConn.SetReadDeadline(time.Now().Add(2 * time.Second))
+		var sb strings.Builder
 		buf := make([]byte, 2048)
 		for {
 			n, err := clientConn.Read(buf)
-			resp.Write(buf[:n])
+			sb.Write(buf[:n])
 			if err != nil {
 				break
 			}
 		}
+		respCh <- sb.String()
 	}()
 
 	comm := NewS3Communicator(serverConn)
@@ -307,8 +310,9 @@ func TestS3Communicator_StreamingPUT_Oversized(t *testing.T) {
 	if !errors.Is(err, syscall.EOVERFLOW) {
 		t.Fatalf("expected EOVERFLOW for oversized upload, got: %v", err)
 	}
-	if !strings.Contains(resp.String(), "413") || !strings.Contains(resp.String(), "EntityTooLarge") {
-		t.Fatalf("expected 413 EntityTooLarge in S3 error response, got: %s", resp.String())
+	resp := <-respCh
+	if !strings.Contains(resp, "413") || !strings.Contains(resp, "EntityTooLarge") {
+		t.Fatalf("expected 413 EntityTooLarge in S3 error response, got: %s", resp)
 	}
 }
 
