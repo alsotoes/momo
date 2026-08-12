@@ -57,6 +57,7 @@ func s3TestStores(t *testing.T, n int) ([]Store, *httptest.Server, func()) {
 		cfg := common.ConfigurationStorage{
 			Backend:            "s3",
 			S3Endpoint:         server.URL,
+			S3Insecure:         true,
 			S3Region:           "us-east-1",
 			S3Bucket:           "e2e-bucket",
 			S3AccessKey:        "AKIAIOSFODNN7EXAMPLE",                     // notsecret

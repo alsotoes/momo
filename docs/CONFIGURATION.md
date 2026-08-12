@@ -333,6 +333,11 @@ This section controls the Content-Addressable Storage (CAS) engine, including ba
     -   **Type:** Boolean
     -   **Default:** `true`
 
+-   **`s3_insecure`**
+    -   **Description:** Allow an `http://` (cleartext) S3 endpoint. Defaults to `false`, in which case a non-`https://` endpoint is rejected at startup with an `EINVAL` config error so credentials and blob content are never sent in cleartext. When `true`, the endpoint may use `http://` and a prominent warning is logged at startup. `https://` endpoints are always accepted regardless of this flag.
+    -   **Type:** Boolean
+    -   **Default:** `false`
+
 -   **`raw_device_path`**
     -   **Description:** Path to the raw block device for blob storage (e.g., `/dev/sda1`). Overrides `daemon.drive` if set. Only used when `backend = raw`.
     -   **Type:** String
