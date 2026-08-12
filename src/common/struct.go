@@ -179,6 +179,11 @@ type ConfigurationStorage struct {
 	S3SecretKey string
 	// S3PathStyle uses path-style addressing (bucket in URL path) instead of virtual-host style.
 	S3PathStyle bool
+	// S3Insecure allows an http:// S3 endpoint (cleartext). Defaults to false;
+	// when false, an http:// endpoint is rejected to prevent silent credential
+	// and payload disclosure. When true, a prominent warning is logged at
+	// startup. https:// endpoints are always accepted regardless of this flag.
+	S3Insecure bool
 	// RawDevicePath is the path to the raw block device for blob storage.
 	// Overrides Daemon.Drive if set.
 	RawDevicePath string

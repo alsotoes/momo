@@ -496,6 +496,25 @@ Client → [E2EE encryption] → Server → EncryptedBlobStore → Underlying Bl
 - **Delete passthrough:** `DeleteBlob` delegates directly to the underlying store — encryption does not affect deletion semantics.
 - **S3 metadata (filenames) remain plaintext** — only blob content is encrypted at rest.
 
+### Outbound TLS to the S3 storage backend (issue #774)
+
+The `S3BlobStore` (outbound client to a real S3/MinIO endpoint) enforces TLS on the storage endpoint. In `NewS3BlobStore` the `s3_endpoint` scheme is validated before any request is issued:
+
+- `https://` — always accepted (default posture).
+- `http://` — **rejected with an `EINVAL` config error unless `s3_insecure = true`** is explicitly set, in which case a prominent warning is logged at startup. This prevents silent cleartext transmission of SigV4 credentials, blob payloads, and object metadata.
+- Missing or unsupported schemes (e.g. `ftp://`) are rejected with `EINVAL`.
+
+This enforcement is orthogonal to the inbound gateway framing (s3-tcp/s3-quic/momo-tcp/momo-quic): the `S3BlobStore` sits below the storage layer, so behavior is identical regardless of which inbound protocol served the data. TLS here protects the wire in *addition to* the AES-GCM-256 at-rest ciphertext.
+
+### Layered confidentiality model
+
+The "real E2EE boundary" is a stack of independent protections:
+
+1. **Inbound gateway TLS** — TLS 1.3 for QUIC protocols (s3-quic/momo-quic); TLS 1.2+ for TCP protocols (s3-tcp/momo-tcp) when `tls_cert`/`tls_key` are configured (see [Transport TLS](#transport-tls-phase-1--e2ee)); s3-tcp refuses cleartext S3 serving without an explicit insecure override.
+2. **Client-side E2EE** — when `encryption_enabled = true`, the client encrypts content before it ever reaches the server.
+3. **At-rest encryption** — `EncryptedBlobStore` AES-GCM-256 wraps whatever the underlying backend is.
+4. **Outbound storage TLS** — when the backend is S3, `S3BlobStore` requires HTTPS (or an explicit `s3_insecure` override) so replication to the S3 endpoint is never silently downgraded to cleartext.
+
 ### Configuration
 
 ```ini

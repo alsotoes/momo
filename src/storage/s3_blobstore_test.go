@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"crypto/hmac"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -68,6 +70,7 @@ func TestS3BlobStore_PutGetDelete(t *testing.T) {
 	cfg := common.ConfigurationStorage{
 		Backend:     "s3",
 		S3Endpoint:  server.URL,
+		S3Insecure:  true,
 		S3Region:    "us-east-1",
 		S3Bucket:    "test-bucket",
 		S3AccessKey: "AKIAIOSFODNN7EXAMPLE",                     // notsecret
@@ -124,6 +127,7 @@ func TestS3BlobStore_DeleteMissing(t *testing.T) {
 	cfg := common.ConfigurationStorage{
 		Backend:     "s3",
 		S3Endpoint:  server.URL,
+		S3Insecure:  true,
 		S3Region:    "us-east-1",
 		S3Bucket:    "test-bucket",
 		S3AccessKey: "AKIAIOSFODNN7EXAMPLE",                     // notsecret
@@ -151,6 +155,7 @@ func TestS3BlobStore_GetMissing(t *testing.T) {
 	cfg := common.ConfigurationStorage{
 		Backend:     "s3",
 		S3Endpoint:  server.URL,
+		S3Insecure:  true,
 		S3Region:    "us-east-1",
 		S3Bucket:    "test-bucket",
 		S3AccessKey: "AKIAIOSFODNN7EXAMPLE",                     // notsecret
@@ -200,6 +205,7 @@ func TestS3BlobStore_NoOverallClientTimeout(t *testing.T) {
 	cfg := common.ConfigurationStorage{
 		Backend:     "s3",
 		S3Endpoint:  server.URL,
+		S3Insecure:  true,
 		S3Region:    "us-east-1",
 		S3Bucket:    "test-bucket",
 		S3AccessKey: "AKIAIOSFODNN7EXAMPLE",                     // notsecret
@@ -245,6 +251,7 @@ func TestS3BlobStore_NoOverallClientTimeout(t *testing.T) {
 	cfg2 := common.ConfigurationStorage{
 		Backend:     "s3",
 		S3Endpoint:  server2.URL,
+		S3Insecure:  true,
 		S3Region:    "us-east-1",
 		S3Bucket:    "test-bucket",
 		S3AccessKey: "AKIAIOSFODNN7EXAMPLE",                     // notsecret
@@ -271,6 +278,76 @@ func TestS3BlobStore_NoOverallClientTimeout(t *testing.T) {
 	}
 }
 
+func TestS3BlobStore_TLSEnforcement(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	base := common.ConfigurationStorage{
+		Backend:     "s3",
+		S3Region:    "us-east-1",
+		S3Bucket:    "test-bucket",
+		S3AccessKey: s3TestAccessKey,
+		S3SecretKey: s3TestSecretKey,
+		S3PathStyle: true,
+	}
+
+	t.Run("https accepted by default", func(t *testing.T) {
+		cfg := base
+		cfg.S3Endpoint = "https://s3.amazonaws.com"
+		store, err := NewS3BlobStore(cfg)
+		if err != nil {
+			t.Fatalf("https endpoint must be accepted without s3_insecure, got: %v", err)
+		}
+		defer store.Close()
+	})
+
+	t.Run("http rejected without insecure gate", func(t *testing.T) {
+		cfg := base
+		cfg.S3Endpoint = "http://localhost:9000"
+		_, err := NewS3BlobStore(cfg)
+		if err == nil {
+			t.Fatalf("cleartext http endpoint must be rejected unless s3_insecure=true")
+		}
+		if !errors.Is(err, syscall.EINVAL) {
+			t.Errorf("expected EINVAL, got: %v", err)
+		}
+	})
+
+	t.Run("http accepted with insecure gate", func(t *testing.T) {
+		cfg := base
+		cfg.S3Endpoint = "http://localhost:9000"
+		cfg.S3Insecure = true
+		store, err := NewS3BlobStore(cfg)
+		if err != nil {
+			t.Fatalf("http endpoint must be accepted with s3_insecure=true, got: %v", err)
+		}
+		defer store.Close()
+	})
+
+	t.Run("missing scheme rejected", func(t *testing.T) {
+		cfg := base
+		cfg.S3Endpoint = "s3.amazonaws.com"
+		_, err := NewS3BlobStore(cfg)
+		if err == nil {
+			t.Fatalf("endpoint without scheme must be rejected")
+		}
+		if !errors.Is(err, syscall.EINVAL) {
+			t.Errorf("expected EINVAL, got: %v", err)
+		}
+	})
+
+	t.Run("unsupported scheme rejected", func(t *testing.T) {
+		cfg := base
+		cfg.S3Endpoint = "ftp://s3.amazonaws.com"
+		_, err := NewS3BlobStore(cfg)
+		if err == nil {
+			t.Fatalf("unsupported scheme must be rejected")
+		}
+		if !errors.Is(err, syscall.EINVAL) {
+			t.Errorf("expected EINVAL, got: %v", err)
+		}
+	})
+}
+
 func TestS3BlobStore_DefaultRegion(t *testing.T) {
 	server, _ := mockS3Server(t)
 	defer server.Close()
@@ -278,6 +355,7 @@ func TestS3BlobStore_DefaultRegion(t *testing.T) {
 	cfg := common.ConfigurationStorage{
 		Backend:     "s3",
 		S3Endpoint:  server.URL,
+		S3Insecure:  true,
 		S3Bucket:    "test-bucket",
 		S3AccessKey: "AKIAIOSFODNN7EXAMPLE",                     // notsecret
 		S3SecretKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", // notsecret
@@ -309,6 +387,7 @@ func TestNewStore_S3Backend(t *testing.T) {
 	cfg := common.ConfigurationStorage{
 		Backend:            "s3",
 		S3Endpoint:         server.URL,
+		S3Insecure:         true,
 		S3Region:           "us-east-1",
 		S3Bucket:           "test-bucket",
 		S3AccessKey:        "AKIAIOSFODNN7EXAMPLE",                     // notsecret
@@ -354,6 +433,7 @@ func TestS3BlobStore_PutLargeBlob(t *testing.T) {
 	cfg := common.ConfigurationStorage{
 		Backend:     "s3",
 		S3Endpoint:  server.URL,
+		S3Insecure:  true,
 		S3Region:    "us-east-1",
 		S3Bucket:    "test-bucket",
 		S3AccessKey: "AKIAIOSFODNN7EXAMPLE",                     // notsecret
@@ -399,6 +479,7 @@ func TestNewRequest_PathTraversal(t *testing.T) {
 	cfg := common.ConfigurationStorage{
 		Backend:     "s3",
 		S3Endpoint:  server.URL,
+		S3Insecure:  true,
 		S3Bucket:    "test-bucket",
 		S3AccessKey: "test", // notsecret
 		S3SecretKey: "test", // notsecret
@@ -599,6 +680,7 @@ func TestS3BlobStore_PutBlob_UsesRealPayloadHash(t *testing.T) {
 	cfg := common.ConfigurationStorage{
 		Backend:     "s3",
 		S3Endpoint:  server.URL,
+		S3Insecure:  true,
 		S3Region:    "us-east-1",
 		S3Bucket:    "test-bucket",
 		S3AccessKey: s3TestAccessKey,
@@ -635,6 +717,7 @@ func TestS3BlobStore_PutBlob_SignedPayload(t *testing.T) {
 	cfg := common.ConfigurationStorage{
 		Backend:     "s3",
 		S3Endpoint:  server.URL,
+		S3Insecure:  true,
 		S3Region:    "us-east-1",
 		S3Bucket:    "test-bucket",
 		S3AccessKey: s3TestAccessKey,
@@ -675,6 +758,7 @@ func TestS3BlobStore_SignatureBindsContent(t *testing.T) {
 	cfg := common.ConfigurationStorage{
 		Backend:     "s3",
 		S3Endpoint:  server.URL,
+		S3Insecure:  true,
 		S3Region:    "us-east-1",
 		S3Bucket:    "test-bucket",
 		S3AccessKey: s3TestAccessKey,
@@ -717,6 +801,7 @@ func TestS3BlobStore_UNSIGNEDPayloadStillTolerated(t *testing.T) {
 	cfg := common.ConfigurationStorage{
 		Backend:     "s3",
 		S3Endpoint:  server.URL,
+		S3Insecure:  true,
 		S3Region:    "us-east-1",
 		S3Bucket:    "test-bucket",
 		S3AccessKey: s3TestAccessKey,

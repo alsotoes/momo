@@ -502,6 +502,11 @@ func loadStorageConfig(section *ini.Section) (ConfigurationStorage, error) {
 		cfg.S3PathStyle = true
 	}
 
+	cfg.S3Insecure, err = section.Key("s3_insecure").Bool()
+	if err != nil {
+		cfg.S3Insecure = false
+	}
+
 	cfg.RawDevicePath = section.Key("raw_device_path").String()
 
 	return cfg, nil

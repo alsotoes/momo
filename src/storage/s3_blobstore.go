@@ -54,6 +54,25 @@ func NewS3BlobStore(cfg common.ConfigurationStorage) (*S3BlobStore, error) {
 		return nil, fmt.Errorf("s3_secret_key is required: %w", syscall.EINVAL)
 	}
 
+	endpoint := strings.TrimRight(cfg.S3Endpoint, "/")
+	parsed, parseErr := url.Parse(endpoint)
+	if parseErr != nil {
+		return nil, fmt.Errorf("s3_endpoint is not a valid URL: %v: %w", parseErr, syscall.EINVAL)
+	}
+	switch parsed.Scheme {
+	case "https":
+		// TLS always allowed.
+	case "http":
+		if !cfg.S3Insecure {
+			return nil, fmt.Errorf("s3_endpoint uses cleartext http://; require https:// or set s3_insecure=true to allow insecure plaintext transport: %w", syscall.EINVAL)
+		}
+		log.Printf("WARNING: s3_insecure=true: S3 endpoint %q uses cleartext http://; credentials and blob content are transmitted without TLS", endpoint)
+	case "":
+		return nil, fmt.Errorf("s3_endpoint must include a scheme (https:// or http://): %w", syscall.EINVAL)
+	default:
+		return nil, fmt.Errorf("s3_endpoint scheme %q is unsupported; use https:// (or http:// with s3_insecure=true): %w", parsed.Scheme, syscall.EINVAL)
+	}
+
 	region := cfg.S3Region
 	if region == "" {
 		region = "us-east-1"
@@ -76,7 +95,7 @@ func NewS3BlobStore(cfg common.ConfigurationStorage) (*S3BlobStore, error) {
 		client: &http.Client{
 			Transport: transport,
 		},
-		endpoint:  strings.TrimRight(cfg.S3Endpoint, "/"),
+		endpoint:  endpoint,
 		region:    region,
 		bucket:    cfg.S3Bucket,
 		accessKey: cfg.S3AccessKey,
