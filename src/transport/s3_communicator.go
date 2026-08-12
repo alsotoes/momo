@@ -899,6 +899,13 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 
 	// Parse Metadata if it's a PUT request
 	if req.Method == "PUT" {
+		// 🛡️ issue #776: enforce the honest SSE boundary before any PUT variant is
+		// processed. AES256 is honored (persisted + echoed on GET/HEAD); SSE-C/KMS
+		// and unknown algorithms are rejected instead of being silently downgraded.
+		if err := m.validateSSEHeaders(req); err != nil {
+			return 0, 0, err
+		}
+
 		// CopyObject: PUT with x-amz-copy-source copies an existing object within
 		// the store (a namespace alias via store.Get -> store.Put), preserving its
 		// S3 metadata, and answers with CopyObjectResult XML entirely here.
@@ -1804,13 +1811,15 @@ func s3ErrorCode(status int) string {
 // It returns the number of bytes written. Callers set the write deadline first.
 // s3standardHeaders lists the standard S3 object headers captured on PUT and
 // echoed on GET/HEAD (AWS S3 semantics). x-amz-meta-* user headers are captured
-// separately.
+// separately. x-amz-server-side-encryption is only ever present here with the
+// value AES256 (validateSSEHeaders rejects everything else before capture).
 var s3standardHeaders = []string{
 	"Content-Type",
 	"Cache-Control",
 	"Content-Disposition",
 	"Content-Encoding",
 	"Expires",
+	"X-Amz-Server-Side-Encryption",
 }
 
 // sanitizeS3HeaderValue bounds and strips CR/LF from a header value to prevent
@@ -1854,6 +1863,49 @@ func collectS3Headers(req *http.Request) map[string]string {
 		}
 	}
 	return headers
+}
+
+// validateSSEHeaders enforces momo's honest SSE boundary (issue #776). The
+// gateway honors the AWS S3 SSE contract at the surface: AES256 is accepted
+// (momo encrypts objects at rest with its own AES-256-GCM envelope) and echoed
+// on GET/HEAD; SSE-C customer keys and SSE-KMS are rejected with clear errors
+// rather than silently ignored -- accepting them would claim a guarantee momo
+// cannot provide. No customer-provided key is ever stored. On rejection the
+// S3 error is written to the connection and a POSIX-mapped error returned.
+func (m *S3Communicator) validateSSEHeaders(req *http.Request) error {
+	// SSE-C: customer-provided keys are never accepted nor stored.
+	for _, h := range []string{
+		"X-Amz-Server-Side-Encryption-Customer-Algorithm",
+		"X-Amz-Server-Side-Encryption-Customer-Key",
+		"X-Amz-Server-Side-Encryption-Customer-Key-MD5",
+	} {
+		if v := req.Header.Get(h); v != "" {
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			writeS3Error(m.conn, http.StatusBadRequest, "InvalidRequest",
+				"Server-side encryption with customer-provided keys (SSE-C) is not supported.", "")
+			return fmt.Errorf("SSE-C request rejected: %w", syscall.EINVAL)
+		}
+	}
+
+	sse := req.Header.Get("X-Amz-Server-Side-Encryption")
+	switch {
+	case sse == "" && req.Header.Get("X-Amz-Server-Side-Encryption-Aws-Kms-Key-Id") == "":
+		// No SSE requested: nothing to honor or echo.
+		return nil
+	case strings.EqualFold(sse, "aws:kms") || req.Header.Get("X-Amz-Server-Side-Encryption-Aws-Kms-Key-Id") != "":
+		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		writeS3Error(m.conn, http.StatusNotImplemented, "NotImplemented",
+			"Server-side encryption with AWS KMS (aws:kms) is not supported.", "")
+		return fmt.Errorf("SSE-KMS request rejected: %w", syscall.ENOTSUP)
+	case strings.EqualFold(sse, "AES256"):
+		// Accepted: captured by collectS3Headers and echoed on GET/HEAD.
+		return nil
+	default:
+		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		writeS3Error(m.conn, http.StatusBadRequest, "InvalidArgument",
+			fmt.Sprintf("Unsupported server-side encryption algorithm %q.", sse), "")
+		return fmt.Errorf("unsupported SSE algorithm %q: %w", sse, syscall.EINVAL)
+	}
 }
 
 // headerKeysWithout returns the sorted header keys, excluding "content-type"

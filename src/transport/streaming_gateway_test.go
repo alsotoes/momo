@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -87,6 +88,88 @@ func clientStreamingBody(data []byte, seedSig, amzDate, scope string, signingKey
 func stringToSignAndSign(alg, amzDate, scope, prevSig, emptyHash, dataHash string, signingKey []byte) string {
 	sts := alg + "\n" + amzDate + "\n" + scope + "\n" + prevSig + "\n" + emptyHash + "\n" + dataHash
 	return hex.EncodeToString(hmacSHA256(signingKey, sts))
+}
+
+// unsignedStreamingPUT builds the wire bytes for an aws-chunked PUT using the
+// STREAMING-UNSIGNED-PAYLOAD-TRAILER variant (no per-chunk signatures). The
+// trailer block carries a checksum the gateway must tolerate and discard.
+func unsignedStreamingPUT(authToken string, content []byte) []byte {
+	body := unsignedStreamingBody(content)
+	hdr := "PUT /examplebucket/chunkObject.txt HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"Authorization: Bearer " + authToken + "\r\n" +
+		"X-Amz-Content-Sha256: " + s3StreamingUnsignedTrailer + "\r\n" +
+		"Content-Encoding: aws-chunked\r\n" +
+		"x-amz-decoded-content-length: " + strconv.Itoa(len(content)) + "\r\n" +
+		"X-Amz-Trailer: x-amz-checksum-crc32\r\n" +
+		"Content-Length: " + strconv.Itoa(len(body)) + "\r\n\r\n"
+	return append([]byte(hdr), body...)
+}
+
+// unsignedStreamingBody frames data as unsigned aws-chunked chunks followed by
+// the terminating chunk and a trailing-header block.
+func unsignedStreamingBody(data []byte) []byte {
+	var buf bytes.Buffer
+	chunks := [][]byte{data[:65536], data[65536:]}
+	for _, chunk := range chunks {
+		fmt.Fprintf(&buf, "%x\r\n", len(chunk))
+		buf.Write(chunk)
+		buf.WriteString("\r\n")
+	}
+	buf.WriteString("0\r\n\r\n")
+	buf.WriteString("x-amz-checksum-crc32: 1234567890\r\n")
+	buf.WriteString("\r\n")
+	return buf.Bytes()
+}
+
+func TestS3Communicator_StreamingPUT_UnsignedStillAccepted(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
+	content := bytes.Repeat([]byte{'b'}, 66560)
+
+	wire := unsignedStreamingPUT(authToken, content)
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	go func() {
+		_, _ = clientConn.Write(wire)
+		buf := make([]byte, 1024)
+		for {
+			if _, err := clientConn.Read(buf); err != nil {
+				break
+			}
+		}
+	}()
+
+	comm := NewS3Communicator(serverConn)
+	_, _, err := comm.HandshakeServer(expectedAuthToken)
+	if err != nil {
+		t.Fatalf("HandshakeServer failed for unsigned streaming PUT: %v", err)
+	}
+
+	if !comm.streamingPayload {
+		t.Fatal("streaming payload flag should be set after de-framing")
+	}
+	if comm.meta.Size != int64(len(content)) {
+		t.Errorf("meta.Size = %d, want %d", comm.meta.Size, len(content))
+	}
+
+	sum := sha256.Sum256(content)
+	if comm.meta.Hash != hex.EncodeToString(sum[:]) {
+		t.Errorf("meta.Hash = %s, want content sha256 %s", comm.meta.Hash, hex.EncodeToString(sum[:]))
+	}
+
+	got, err := io.ReadAll(comm)
+	if err != nil {
+		t.Fatalf("reading de-framed content: %v", err)
+	}
+	if !bytes.Equal(got, content) {
+		t.Fatalf("de-framed content mismatch: got %d bytes want %d", len(got), len(content))
+	}
 }
 
 func TestS3Communicator_StreamingSignedPUT(t *testing.T) {

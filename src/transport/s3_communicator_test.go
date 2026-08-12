@@ -2459,6 +2459,192 @@ func TestS3CollectHeadersSanitizesValues(t *testing.T) {
 	}
 }
 
+// s3PutCapture runs a PUT request through HandshakeServer and returns the
+// captured S3 metadata headers and the server-side result error (nil for a
+// successfully parsed upload).
+func s3PutCapture(t *testing.T, reqStr string, mock storage.Store, configuredBucket string) (map[string]string, error) {
+	t.Helper()
+	expectedAuthToken := []byte(common.PadString("a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6", common.AuthTokenLength)) // notsecret
+
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to listen: %v", err)
+	}
+	defer l.Close()
+
+	addr := l.Addr().String()
+	type result struct {
+		headers map[string]string
+		err     error
+	}
+	resCh := make(chan result, 1)
+
+	go func() {
+		conn, err := l.Accept()
+		if err != nil {
+			resCh <- result{err: err}
+			return
+		}
+		defer conn.Close()
+		comm := NewS3Communicator(conn)
+		comm.SetStore(mock)
+		comm.SetConfiguredBucket(configuredBucket)
+		_, _, err = comm.HandshakeServer(expectedAuthToken)
+		resCh <- result{headers: comm.meta.S3Headers, err: err}
+	}()
+
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatalf("Failed to dial: %v", err)
+	}
+	defer conn.Close()
+
+	if _, err := conn.Write([]byte(reqStr)); err != nil {
+		t.Fatalf("Failed to write request: %v", err)
+	}
+	if tcpConn, ok := conn.(*net.TCPConn); ok {
+		tcpConn.CloseWrite()
+	}
+	_, _ = io.Copy(io.Discard, conn)
+
+	res := <-resCh
+	return res.headers, res.err
+}
+
+func TestS3Communicator_PUT_SSEAES256Captured(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	reqStr := "PUT /mybucket/obj.txt HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"Authorization: Bearer " + authToken + "\r\n" +
+		"X-Amz-Server-Side-Encryption: AES256\r\n" +
+		"Content-Length: 5\r\n\r\nhello"
+
+	headers, err := s3PutCapture(t, reqStr, &mockStore{}, "mybucket")
+	if err != nil {
+		t.Fatalf("PUT with SSE AES256 should succeed, got: %v", err)
+	}
+	if headers["x-amz-server-side-encryption"] != "AES256" {
+		t.Errorf("SSE AES256 must be captured for persistence/echo, got: %v", headers)
+	}
+}
+
+func TestS3Communicator_PUT_SSECRejected(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	cases := []struct {
+		name   string
+		header string
+	}{
+		{"customer-algorithm", "X-Amz-Server-Side-Encryption-Customer-Algorithm: AES256\r\n"},
+		{"customer-key", "X-Amz-Server-Side-Encryption-Customer-Key: MDAyMzQ1Njc4OWFiY2RlZg==\r\n"},
+		{"customer-key-md5", "X-Amz-Server-Side-Encryption-Customer-Key-MD5: dGVzdA==\r\n"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			reqStr := "PUT /bucket/obj.txt HTTP/1.1\r\n" +
+				"Host: 127.0.0.1:4440\r\n" +
+				"Authorization: Bearer " + authToken + "\r\n" +
+				tc.header +
+				"Content-Length: 5\r\n\r\nhello"
+
+			respStr, serverErr := runS3RequestCaptureBucket(t, reqStr, &mockStore{}, "mybucket")
+			if serverErr == nil || !errors.Is(serverErr, syscall.EINVAL) {
+				t.Fatalf("SSE-C must be rejected with EINVAL, got: %v", serverErr)
+			}
+			if !strings.Contains(respStr, "HTTP/1.1 400 Bad Request") {
+				t.Errorf("Expected 400, got: %s", respStr)
+			}
+			if !strings.Contains(respStr, "<Code>InvalidRequest</Code>") {
+				t.Errorf("Expected InvalidRequest code, got: %s", respStr)
+			}
+		})
+	}
+}
+
+func TestS3Communicator_PUT_SSEKMSRejected(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	cases := []struct {
+		name   string
+		header string
+	}{
+		{"aws-kms", "X-Amz-Server-Side-Encryption: aws:kms\r\n"},
+		{"kms-key-id", "X-Amz-Server-Side-Encryption-Aws-Kms-Key-Id: alias/my-key\r\n"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			reqStr := "PUT /bucket/obj.txt HTTP/1.1\r\n" +
+				"Host: 127.0.0.1:4440\r\n" +
+				"Authorization: Bearer " + authToken + "\r\n" +
+				tc.header +
+				"Content-Length: 5\r\n\r\nhello"
+
+			respStr, serverErr := runS3RequestCaptureBucket(t, reqStr, &mockStore{}, "mybucket")
+			if serverErr == nil || !errors.Is(serverErr, syscall.ENOTSUP) {
+				t.Fatalf("SSE-KMS must be rejected with ENOTSUP, got: %v", serverErr)
+			}
+			if !strings.Contains(respStr, "HTTP/1.1 501 Not Implemented") {
+				t.Errorf("Expected 501, got: %s", respStr)
+			}
+			if !strings.Contains(respStr, "<Code>NotImplemented</Code>") {
+				t.Errorf("Expected NotImplemented code, got: %s", respStr)
+			}
+		})
+	}
+}
+
+func TestS3Communicator_PUT_SSEUnknownAlgorithmRejected(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	reqStr := "PUT /bucket/obj.txt HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:4440\r\n" +
+		"Authorization: Bearer " + authToken + "\r\n" +
+		"X-Amz-Server-Side-Encryption: SOME-ALGORITHM\r\n" +
+		"Content-Length: 5\r\n\r\nhello"
+
+	respStr, serverErr := runS3RequestCaptureBucket(t, reqStr, &mockStore{}, "mybucket")
+	if serverErr == nil || !errors.Is(serverErr, syscall.EINVAL) {
+		t.Fatalf("Unknown SSE algorithm must be rejected with EINVAL, got: %v", serverErr)
+	}
+	if !strings.Contains(respStr, "HTTP/1.1 400 Bad Request") {
+		t.Errorf("Expected 400, got: %s", respStr)
+	}
+	if !strings.Contains(respStr, "<Code>InvalidArgument</Code>") {
+		t.Errorf("Expected InvalidArgument code, got: %s", respStr)
+	}
+}
+
+func TestS3Communicator_GET_EchoesSSEHeader(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	mock := &mockStore{
+		getFunc: func(name string) (io.ReadCloser, common.FileMetadata, error) {
+			return io.NopCloser(bytes.NewReader([]byte("data"))), common.FileMetadata{
+				Name:    name,
+				Hash:    "hash-1",
+				Size:    4,
+				ModTime: 1700000000,
+			}, nil
+		},
+		s3Meta: map[string]map[string]string{
+			"obj.txt": {"content-type": "application/json", "x-amz-server-side-encryption": "AES256"},
+		},
+	}
+
+	resp := runS3TestRequest(t, s3GetRequest(authToken, "obj.txt", ""), mock)
+	if !strings.Contains(resp, "x-amz-server-side-encryption: AES256\r\n") {
+		t.Errorf("GET must echo the stored SSE header, got: %s", resp)
+	}
+}
+
 func TestS3Communicator_SendReceiveMetadataCarriesS3Meta(t *testing.T) {
 	defer verifyNoLeaks(t)
 
