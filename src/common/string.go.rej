@@ -1,9 +1,0 @@
---- string.go
-+++ string.go
-@@ -134,6 +134,7 @@
- // in a string with spaces (' '). It operates in a single pass and avoids
- // allocation entirely if no replacements are needed by using strings.IndexAny.
-+// Note: Callers must ensure the input string is bounded to prevent unbounded memory allocation (Rule 32).
- func ReplaceCRLF(s string) string {
-	if strings.IndexAny(s, "\r\n") == -1 {
-		return s
