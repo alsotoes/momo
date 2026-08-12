@@ -24,8 +24,9 @@ func TestS3Communicator_FullFlow(t *testing.T) {
 
 	cfg := common.Configuration{
 		Global: common.ConfigurationGlobal{
-			Protocol:  "s3-tcp",
-			AuthToken: authToken,
+			Protocol:    "s3-tcp",
+			AuthToken:   authToken,
+			TLSInsecure: true,
 		},
 	}
 	factory := NewProtocolFactory(cfg)

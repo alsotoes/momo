@@ -3,6 +3,7 @@ package transport
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -13,6 +14,56 @@ import (
 	"github.com/alsotoes/momo/src/common"
 	"github.com/alsotoes/momo/src/storage"
 )
+
+func TestProtocolFactory_Listen_S3TCP_TLSEnforcement(t *testing.T) {
+	t.Run("s3-tcp without TLS rejected by default", func(t *testing.T) {
+		cfg := common.Configuration{
+			Global: common.ConfigurationGlobal{
+				Protocol: "s3-tcp",
+			},
+		}
+		factory := NewProtocolFactory(cfg)
+		_, err := factory.Listen("127.0.0.1:0")
+		if err == nil {
+			t.Fatalf("s3-tcp without TLS must be rejected unless tls_insecure=true")
+		}
+		if !errors.Is(err, syscall.EINVAL) {
+			t.Errorf("expected EINVAL, got: %v", err)
+		}
+	})
+
+	t.Run("s3-tcp with TLSInsecure accepted", func(t *testing.T) {
+		cfg := common.Configuration{
+			Global: common.ConfigurationGlobal{
+				Protocol:    "s3-tcp",
+				TLSInsecure: true,
+			},
+		}
+		factory := NewProtocolFactory(cfg)
+		l, err := factory.Listen("127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("s3-tcp with tls_insecure must be accepted, got: %v", err)
+		}
+		defer l.Close()
+		if _, ok := l.(*TCPListener); !ok {
+			t.Errorf("Expected *TCPListener, got %T", l)
+		}
+	})
+
+	t.Run("momo-tcp without TLS still accepted", func(t *testing.T) {
+		cfg := common.Configuration{
+			Global: common.ConfigurationGlobal{
+				Protocol: "momo-tcp",
+			},
+		}
+		factory := NewProtocolFactory(cfg)
+		l, err := factory.Listen("127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("momo-tcp without TLS must remain accepted, got: %v", err)
+		}
+		defer l.Close()
+	})
+}
 
 func TestProtocolFactory_Listen_TCP(t *testing.T) {
 	cfg := common.Configuration{

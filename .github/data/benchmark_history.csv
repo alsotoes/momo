@@ -3113,3 +3113,14 @@ e07261e,BenchmarkSanitizeLog/Unsafe-8,825.70,704.00,1.00
 1e21e2b,BenchmarkPadString-8,63.97,64.00,1.00
 1e21e2b,BenchmarkSanitizeLog/Safe-8,585.00,0.00,0.00
 1e21e2b,BenchmarkSanitizeLog/Unsafe-8,793.90,704.00,1.00
+66be498,BenchmarkAWSChunkedReaderSigned-8,485586.00,137.07,11284.00
+66be498,BenchmarkAWSChunkedReaderUnsigned-8,458443.00,145.19,78570.00
+66be498,BenchmarkCheckMetricsAndSwap-8,8.59,0.00,0.00
+66be498,BenchmarkCrushOptimized-8,354.70,0.00,0.00
+66be498,BenchmarkCrushOriginal-8,459.40,164.00,3.00
+66be498,BenchmarkIndexDirectTracking-8,0.47,0.00,0.00
+66be498,BenchmarkIndexSearch-8,3.06,0.00,0.00
+66be498,BenchmarkLoadGlobalConfig-8,7877.00,1576.00,46.00
+66be498,BenchmarkPadString-8,43.27,64.00,1.00
+66be498,BenchmarkSanitizeLog/Safe-8,443.90,0.00,0.00
+66be498,BenchmarkSanitizeLog/Unsafe-8,567.90,704.00,1.00

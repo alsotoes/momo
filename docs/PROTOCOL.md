@@ -18,6 +18,14 @@ When `tls_cert` and `tls_key` are configured, TCP-based protocols (`momo-tcp`, `
 
 QUIC peer verification defaults to strict: either `ca_cert` must be configured or `tls_insecure = true` must be explicitly set. This prevents accidental MitM vulnerabilities.
 
+### S3 inbound gateway TLS requirements (issue #775)
+
+The `s3-tcp` protocol **requires** TLS. When no `tls_cert`/`tls_key` are configured, `Listen` returns an `EINVAL` error unless `tls_insecure = true` is explicitly set (in which case a prominent startup warning is emitted and the gateway serves S3 over cleartext HTTP). This mirrors the AWS standard of TLS-only S3.
+
+The `momo-tcp` protocol is unaffected — it carries its own authentication via the momo handshake and does not require TLS.
+
+QUIC protocols (`s3-quic`, `momo-quic`) always use TLS 1.3 via QUIC. When no `tls_cert`/`tls_key` are configured, a self-signed certificate is generated and a warning is logged noting that the connection is encrypted but the server identity is unauthenticated.
+
 When TLS is enabled, the momo handshake uses **challenge-response authentication** instead of sending the auth token in plaintext.
 
 ## Handshake

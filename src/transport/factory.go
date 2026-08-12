@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"syscall"
 	"time"
 
 	"github.com/alsotoes/momo/src/common"
@@ -119,13 +120,27 @@ func (f *ProtocolFactory) Dial(address string) (Communicator, error) {
 // Listen starts a listener for the configured protocol.
 func (f *ProtocolFactory) Listen(address string) (MomoListener, error) {
 	switch f.cfg.Global.Protocol {
-	case "momo-tcp", "s3-tcp":
+	case "momo-tcp":
 		l, err := net.Listen("tcp", address)
 		if err != nil {
 			return nil, err
 		}
 		if f.tlsConfig != nil {
 			l = tls.NewListener(l, f.tlsConfig)
+		}
+		return &TCPListener{Listener: l, factory: f}, nil
+	case "s3-tcp":
+		if f.tlsConfig == nil && !f.cfg.Global.TLSInsecure {
+			return nil, fmt.Errorf("s3-tcp requires TLS (configure tls_cert/tls_key) or set tls_insecure=true to allow cleartext S3 serving: %w", syscall.EINVAL)
+		}
+		l, err := net.Listen("tcp", address)
+		if err != nil {
+			return nil, err
+		}
+		if f.tlsConfig != nil {
+			l = tls.NewListener(l, f.tlsConfig)
+		} else {
+			log.Printf("WARNING: s3-tcp without TLS (tls_insecure=true); S3 credentials and blob content travel in cleartext")
 		}
 		return &TCPListener{Listener: l, factory: f}, nil
 	case "momo-quic", "s3-quic":
@@ -147,6 +162,7 @@ func (f *ProtocolFactory) Listen(address string) (MomoListener, error) {
 				return nil, fmt.Errorf("failed to generate cert: %w", err)
 			}
 			tlsConf.Certificates = []tls.Certificate{cert}
+			log.Printf("WARNING: %s using self-signed TLS certificate (encrypted but unauthenticated); configure tls_cert/tls_key for verified identity", f.cfg.Global.Protocol)
 		}
 		l, err := quic.ListenAddr(address, tlsConf, nil)
 		if err != nil {
