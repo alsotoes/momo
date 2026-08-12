@@ -131,3 +131,21 @@ func TrimNullBytesFromString(s string) string {
 	}
 	return s
 }
+
+// ReplaceCRLF replaces all carriage return (\r) and line feed (\n) characters
+// in a string with spaces (' '). It operates in a single pass and avoids
+// allocation entirely if no replacements are needed by using strings.IndexAny.
+
+func ReplaceCRLF(s string) string {
+	if strings.IndexAny(s, "\r\n") == -1 {
+		return s
+	}
+	b := make([]byte, len(s))
+	copy(b, s)
+	for i := 0; i < len(b); i++ {
+		if b[i] == '\r' || b[i] == '\n' {
+			b[i] = ' '
+		}
+	}
+	return string(b)
+}

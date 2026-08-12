@@ -1828,8 +1828,7 @@ func sanitizeS3HeaderValue(v string) string {
 	if len(v) > 1024 {
 		v = v[:1024]
 	}
-	v = strings.ReplaceAll(v, "\r", " ")
-	v = strings.ReplaceAll(v, "\n", " ")
+	v = common.ReplaceCRLF(v)
 	return strings.TrimSpace(v)
 }
 
@@ -2341,8 +2340,7 @@ func writeS3Error(w io.Writer, status int, code, message, resource string) (int,
 	if len(message) > 512 {
 		message = message[:512]
 	}
-	message = strings.ReplaceAll(message, "\r", " ")
-	message = strings.ReplaceAll(message, "\n", " ")
+	message = common.ReplaceCRLF(message)
 	if len(resource) > 1024 {
 		resource = resource[:1024]
 	}

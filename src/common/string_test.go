@@ -206,3 +206,27 @@ func BenchmarkSanitizeLog(b *testing.B) {
 		}
 	})
 }
+
+func TestReplaceCRLF(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"clean", "hello world", "hello world"},
+		{"only CR", "hello\rworld", "hello world"},
+		{"only LF", "hello\nworld", "hello world"},
+		{"both CRLF", "hello\r\nworld\r\n", "hello  world  "},
+		{"multiple", "\r\r\n\n", "    "},
+		{"empty", "", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ReplaceCRLF(tt.input)
+			if result != tt.expected {
+				t.Errorf("ReplaceCRLF(%q) = %q; want %q", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
