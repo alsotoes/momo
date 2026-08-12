@@ -22,6 +22,7 @@ replication_order=3,2,1
 client_side_replication_modes=3
 polymorphic_system=false
 protocol=s3-tcp
+tls_insecure=true
 
 [metrics]
 interval=10

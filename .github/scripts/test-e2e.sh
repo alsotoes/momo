@@ -21,7 +21,7 @@ polymorphic_system=false
 protocol=$PROTOCOL
 EOF
 
-if [[ "$PROTOCOL" == *quic* ]]; then
+if [[ "$PROTOCOL" == *quic* ]] || [[ "$PROTOCOL" == "s3-tcp" ]]; then
   echo "tls_insecure=true" >> $E2E_DIR/e2e.conf
 fi
 
