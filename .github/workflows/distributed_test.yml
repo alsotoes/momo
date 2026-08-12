@@ -60,6 +60,7 @@ jobs:
           replication_order=3,2,1
           polymorphic_system=false
           protocol=s3-tcp
+          tls_insecure=true
 
           [metrics]
           interval=10
@@ -139,6 +140,7 @@ jobs:
           replication_order=3,2,1
           polymorphic_system=false
           protocol=s3-tcp
+          tls_insecure=true
 
           [metrics]
           interval=10
