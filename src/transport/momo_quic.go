@@ -441,7 +441,9 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 		}
 
 		if m.deletePropagator != nil {
-			_ = m.deletePropagator.PropagateDelete(fileName, 5*time.Second)
+			if pErr := m.deletePropagator.PropagateDelete(fileName, 5*time.Second); pErr != nil {
+				log.Printf("P2P delete propagation for %s partially failed: %v", common.SanitizeLog(fileName), pErr)
+			}
 		}
 
 		if m.metricsHook != nil {

@@ -101,6 +101,9 @@ func NewScatterGatherDeleter(sg *p2p.ScatterGather, timeout time.Duration) *Scat
 }
 
 // PropagateDelete fans out a delete operation to all peers via scatter-gather.
+// It returns an error whenever ANY contacted peer fails, so a partial
+// propagation (stale replicas still holding the deleted object) is surfaced to
+// the caller rather than being masked by a single success (issue #633).
 func (d *ScatterGatherDeleter) PropagateDelete(key string, timeout time.Duration) error {
 	if d.sg == nil {
 		return nil
@@ -109,14 +112,22 @@ func (d *ScatterGatherDeleter) PropagateDelete(key string, timeout time.Duration
 	if count == 0 {
 		return fmt.Errorf("propagate delete: no peers responded (errno=%d)", syscall.EHOSTUNREACH)
 	}
+
 	successes := 0
+	var firstErr string
 	for _, resp := range results {
 		if resp.Error == "" {
 			successes++
+			continue
+		}
+		if firstErr == "" {
+			firstErr = resp.Error
 		}
 	}
-	if successes == 0 {
-		return fmt.Errorf("propagate delete: all %d peer responses were errors (errno=%d)", count, syscall.EIO)
+	failures := count - successes
+	if failures > 0 {
+		return fmt.Errorf("propagate delete: %d/%d peers failed to delete (error: %s) (errno=%d)",
+			failures, count, firstErr, syscall.EIO)
 	}
 	return nil
 }
