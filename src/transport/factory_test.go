@@ -733,3 +733,85 @@ func TestMomoQUICCommunicator_CloseIdempotent(t *testing.T) {
 		t.Errorf("Second Close took %v, expected no-op (grace period %v)", elapsed, quicCloseGracePeriod)
 	}
 }
+
+func TestMomoQUICCommunicator_IdleTimeoutApplied(t *testing.T) {
+	cfg := common.Configuration{
+		Global: common.ConfigurationGlobal{
+			AuthToken:   "test-token", // notsecret
+			Protocol:    "momo-quic",
+			TLSInsecure: true,
+		},
+	}
+	factory := NewProtocolFactory(cfg)
+
+	addr := "127.0.0.1:45701"
+	l, err := factory.Listen(addr)
+	if err != nil {
+		t.Fatalf("Server failed to listen: %v", err)
+	}
+	defer l.Close()
+
+	accepted := make(chan *MomoQUICCommunicator, 1)
+	acceptErr := make(chan error, 1)
+	go func() {
+		comm, err := l.Accept()
+		if err != nil {
+			acceptErr <- err
+			return
+		}
+		if tc, ok := comm.(*MomoQUICCommunicator); ok {
+			// Drain the client's probe byte so the QUIC handshake completes and
+			// the connection is fully established before we test the deadline.
+			probe := make([]byte, 1)
+			if _, err := tc.Read(probe); err != nil {
+				comm.Close()
+				acceptErr <- err
+				return
+			}
+			accepted <- tc
+			return
+		}
+		comm.Close()
+		acceptErr <- fmt.Errorf("expected *MomoQUICCommunicator, got %T", comm)
+	}()
+
+	clientComm, err := factory.Dial(addr)
+	if err != nil {
+		t.Fatalf("Client failed to dial: %v", err)
+	}
+	defer clientComm.Close()
+	// A single write forces the QUIC handshake packets to flow so the server's
+	// Accept/read can complete on an otherwise idle connection.
+	if _, err := clientComm.Write([]byte{1}); err != nil {
+		t.Fatalf("Client probe write failed: %v", err)
+	}
+
+	var tc *MomoQUICCommunicator
+	select {
+	case tc = <-accepted:
+	case err := <-acceptErr:
+		t.Fatalf("Server accept failed: %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for server-side accept")
+	}
+	defer tc.Close()
+
+	if tc.timeoutConn == nil {
+		t.Fatal("momo-quic communicator must wrap its stream with an IdleTimeoutConn")
+	}
+
+	// A read with no incoming data must honor an absolute deadline set through
+	// the IdleTimeoutConn rather than blocking for the full rolling 30s window.
+	if err := tc.SetAbsoluteDeadline(time.Now().Add(150 * time.Millisecond)); err != nil {
+		t.Fatalf("SetAbsoluteDeadline failed: %v", err)
+	}
+	buf := make([]byte, 1)
+	start := time.Now()
+	_, rerr := tc.Read(buf)
+	if rerr == nil {
+		t.Fatal("expected an error when reading from an idle connection past its deadline")
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Errorf("idle read took %v, expected the deadline to fire well under the 30s rolling timeout", elapsed)
+	}
+}

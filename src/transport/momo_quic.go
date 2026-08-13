@@ -28,10 +28,22 @@ import (
 	"github.com/quic-go/quic-go"
 )
 
+// quicStreamConn adapts a quic.Stream to net.Conn by providing LocalAddr and
+// RemoteAddr from the owning quic.Connection. It does NOT override Close —
+// closing the stream is handled separately by MomoQUICCommunicator.Close.
+type quicStreamConn struct {
+	*quic.Stream
+	conn *quic.Conn
+}
+
+func (q *quicStreamConn) LocalAddr() net.Addr  { return q.conn.LocalAddr() }
+func (q *quicStreamConn) RemoteAddr() net.Addr { return q.conn.RemoteAddr() }
+
 // MomoQUICCommunicator implements the Communicator interface for the Momo protocol over QUIC.
 type MomoQUICCommunicator struct {
 	*quic.Stream
 	conn             *quic.Conn
+	timeoutConn      *common.IdleTimeoutConn
 	closeOnce        sync.Once
 	store            storage.Store
 	globalLister     GlobalLister
@@ -46,9 +58,18 @@ type MomoQUICCommunicator struct {
 // NewMomoQUICCommunicator creates a new MomoQUICCommunicator.
 func NewMomoQUICCommunicator(stream *quic.Stream, conn *quic.Conn) *MomoQUICCommunicator {
 	return &MomoQUICCommunicator{
-		Stream: stream,
-		conn:   conn,
+		Stream:      stream,
+		conn:        conn,
+		timeoutConn: common.NewIdleTimeoutConn(&quicStreamConn{Stream: stream, conn: conn}, 30*time.Second),
 	}
+}
+
+func (m *MomoQUICCommunicator) Read(b []byte) (int, error) {
+	return m.timeoutConn.Read(b)
+}
+
+func (m *MomoQUICCommunicator) Write(b []byte) (int, error) {
+	return m.timeoutConn.Write(b)
 }
 
 // SetChallengeResponse enables or disables challenge-response authentication.
@@ -190,7 +211,7 @@ func (m *MomoQUICCommunicator) SetAbsoluteDeadline(t interface{}) (err error) {
 	if !ok {
 		return fmt.Errorf("invalid deadline type: expected time.Time")
 	}
-	m.Stream.SetDeadline(deadline)
+	m.timeoutConn.SetAbsoluteDeadline(deadline)
 	return nil
 }
 
@@ -767,7 +788,7 @@ func (m *MomoQUICCommunicator) Close() (err error) {
 	// calling goroutine so it is guaranteed to execute — no fire-and-forget
 	// goroutine that could be dropped on process exit or leak on repeat Close.
 	m.closeOnce.Do(func() {
-		streamErr := m.Stream.Close()
+		streamErr := m.timeoutConn.Close()
 		// Allow the peer to drain the stream before tearing down the conn;
 		// otherwise pending reads are aborted with an application error.
 		time.Sleep(quicCloseGracePeriod)
