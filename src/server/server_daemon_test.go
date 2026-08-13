@@ -216,3 +216,102 @@ func TestDaemonReal(t *testing.T) {
 		}
 	}
 }
+
+// TestDaemonReplicationForwardTimeout verifies that a hung replication
+// forwarder does not block the connection handler forever: after the bounded
+// wait deadline the server abandons forwarding, suppresses the success ACK, and
+// the handler returns. Regression test for issue #628.
+func TestDaemonReplicationForwardTimeout(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	tempDir := t.TempDir()
+	primaryAddr := freeAddr(t)
+	daemons := []*common.Daemon{
+		{Host: primaryAddr, Data: tempDir + "/000"},
+		{Host: freeAddr(t), Data: tempDir + "/001"},
+		{Host: freeAddr(t), Data: tempDir + "/002"},
+	}
+	for _, d := range daemons {
+		os.MkdirAll(d.Data, 0755)
+	}
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	cfg := common.Configuration{
+		Daemons: daemons,
+		Global: common.ConfigurationGlobal{
+			AuthToken:         authToken,
+			Protocol:          "momo-tcp",
+			ReplicationFactor: 3,
+		},
+	}
+
+	SetReplicationState(common.ReplicationChain, time.Now().UnixNano())
+
+	// Override the forwarder to block forever, simulating a hung peer/S3 store.
+	blocked := make(chan struct{})
+	originalForward := connectToPeerStream
+	connectToPeerStream = func(cfg common.Configuration, content io.Reader, name, hash string, size int64, remotePath string, s3Headers map[string]string, serverId int, timestamp int64, requestedMode int, replicationFactor int) {
+		<-blocked
+	}
+	defer func() { connectToPeerStream = originalForward }()
+
+	// Shorten the forward wait deadline so the test completes quickly.
+	originalTimeout := replicationForwardTimeout
+	replicationForwardTimeout = 500 * time.Millisecond
+	defer func() { replicationForwardTimeout = originalTimeout }()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go Daemon(ctx, cfg, 0)
+
+	var conn net.Conn
+	var err error
+	for i := 0; i < 20; i++ {
+		conn, err = net.Dial("tcp", primaryAddr)
+		if err == nil {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if err != nil {
+		t.Fatalf("Failed to dial primary Daemon: %v", err)
+	}
+	defer conn.Close()
+
+	comm := transport.NewMomoTCPCommunicator(conn)
+	if _, err := comm.HandshakeClient(authToken, common.DummyEpoch, 0); err != nil {
+		t.Fatalf("Handshake failed: %v", err)
+	}
+
+	meta := &common.FileMetadata{
+		Name: "forward-hang.txt",
+		Hash: common.HashBytes([]byte("forward-hang-data")),
+		Size: 16,
+	}
+	status, err := comm.SendMetadata(meta)
+	if err != nil {
+		t.Fatalf("Failed to send metadata: %v", err)
+	}
+	if status != transport.MetadataStatusSendPayload {
+		t.Fatalf("Expected status %d, got %d", transport.MetadataStatusSendPayload, status)
+	}
+	if _, err := comm.Write([]byte("forward-hang-data")); err != nil {
+		t.Fatalf("Failed to write payload: %v", err)
+	}
+
+	// The blocked forwarder means no success ACK is ever sent. ReceiveACK must
+	// fail (connection closed after abandonment), proving the handler unblocked.
+	done := make(chan error, 1)
+	go func() {
+		comm.SetAbsoluteDeadline(time.Now().Add(5 * time.Second))
+		done <- comm.ReceiveACK()
+	}()
+	select {
+	case ackErr := <-done:
+		if ackErr == nil {
+			t.Fatalf("Expected ReceiveACK to fail when forwarding timed out, but it succeeded")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("Handler blocked forever waiting for a hung forwarder")
+	}
+}

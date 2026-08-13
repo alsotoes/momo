@@ -32,6 +32,13 @@ var connectToPeer = client.Connect
 // replication forwarding from a store reader instead of a local file path.
 var connectToPeerStream = client.ConnectStream
 
+// replicationForwardTimeout bounds how long the server waits for replication
+// forwarding goroutines to complete before abandoning them. Without this bound,
+// a hung peer or stalled backing store would block the connection-handler
+// goroutine indefinitely (issue #628). It is a variable to allow tests to
+// shorten the window.
+var replicationForwardTimeout = 30 * time.Second
+
 // Daemon is the core of the momo server.
 // It listens for incoming connections and handles file uploads and replication.
 // The server's behavior is determined by the replicationMode, which is received from the client.
@@ -431,6 +438,31 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 
 			var wg sync.WaitGroup
 
+			// forwardTimedOut records whether a replication forwarder was abandoned
+			// due to the hard wait deadline, so the success ACK is suppressed.
+			forwardTimedOut := false
+
+			// waitForForwarders blocks until all replication forwarding goroutines
+			// complete, bounded by a hard deadline. If a forwarder hangs (e.g. an
+			// unresponsive peer or stalled S3 backing store), the forwarding is
+			// abandoned so the connection-handler goroutine is never leaked
+			// forever, and the failure is recorded (Rule 4 / issue #628).
+			waitForForwarders := func() {
+				done := make(chan struct{})
+				go func() {
+					defer close(done)
+					wg.Wait()
+				}()
+				select {
+				case <-done:
+					// all forwarders completed
+				case <-time.After(replicationForwardTimeout):
+					log.Printf("AUDIT: Replication forwarding timed out after %v for %s", replicationForwardTimeout, fileName)
+					metricsCollector.IncErrors()
+					forwardTimedOut = true
+				}
+			}
+
 			// Handle the file based on the replication mode
 			switch replicationMode {
 			case common.ReplicationNone, common.ReplicationPrimarySplay:
@@ -506,7 +538,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 				} else {
 					wg.Done()
 				}
-				wg.Wait()
+				waitForForwarders()
 
 			case common.ReplicationSplay:
 				// In Splay mode, the primary (first node in placement) forwards to all others.
@@ -555,7 +587,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 							metricsCollector.IncReplication()
 						}(targetId)
 					}
-					wg.Wait()
+					waitForForwarders()
 				} else {
 					// We are a secondary in a splay, just receive the file if needed.
 					if canDedup {
@@ -576,6 +608,11 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 				}
 			default:
 				log.Printf("AUDIT: *** ERROR: Unknown replication type from %s", remoteAddr)
+				metricsCollector.IncErrors()
+				return
+			}
+			if forwardTimedOut {
+				log.Printf("AUDIT: Upload from %s stored locally but replication forwarding timed out", remoteAddr)
 				metricsCollector.IncErrors()
 				return
 			}
