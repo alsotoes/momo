@@ -4,11 +4,13 @@ import (
 	"errors"
 	"syscall"
 	"testing"
+	"go.uber.org/goleak"
 
 	"github.com/alsotoes/momo/src/common"
 )
 
 func TestMomoQUICCommunicator_SendMetadataCRLF(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	// For SendMetadata validation errors, we just need a non-nil struct so it can do memory validation.
 	comm := &MomoQUICCommunicator{}
 

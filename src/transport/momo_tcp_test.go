@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/goleak"
+
 	"github.com/alsotoes/momo/src/common"
 )
 
@@ -530,6 +532,7 @@ func TestMomoTCPCommunicator_SendMetadataPathTraversal(t *testing.T) {
 }
 
 func TestMomoTCPCommunicator_SendMetadataCRLF(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	clientConn, serverConn := net.Pipe()
 	defer clientConn.Close()
 	defer serverConn.Close()
