@@ -412,9 +412,9 @@ func (g *Gossiper) handlePing(rpc *RPC) {
 
 	if peer := g.transport.Peers().Get(rpc.From); peer != nil {
 		peer.Touch()
-		if peer.State() == PeerStateSuspect {
+		if peer.State() == PeerStateSuspect || peer.State() == PeerStateOffline {
 			peer.SetState(PeerStateAlive)
-			log.Printf("Gossip: peer %d restored to ALIVE via ping", rpc.From)
+			log.Printf("Gossip: peer %d restored to ALIVE via ping (was %d)", rpc.From, peer.State())
 		}
 	}
 }
@@ -446,9 +446,9 @@ func (g *Gossiper) handleAck(rpc *RPC) {
 
 	if peer := g.transport.Peers().Get(rpc.From); peer != nil {
 		peer.Touch()
-		if peer.State() == PeerStateSuspect {
+		if peer.State() == PeerStateSuspect || peer.State() == PeerStateOffline {
 			peer.SetState(PeerStateAlive)
-			log.Printf("Gossip: peer %d restored to ALIVE via ack", rpc.From)
+			log.Printf("Gossip: peer %d restored to ALIVE via ack (was %d)", rpc.From, peer.State())
 		}
 	}
 }
@@ -667,9 +667,9 @@ func (g *Gossiper) handleHeartbeat(rpc *RPC) {
 
 	if peer := g.transport.Peers().Get(rpc.From); peer != nil {
 		peer.Touch()
-		if peer.State() == PeerStateSuspect {
+		if peer.State() == PeerStateSuspect || peer.State() == PeerStateOffline {
 			peer.SetState(PeerStateAlive)
-			log.Printf("Gossip: peer %d restored to ALIVE via heartbeat", rpc.From)
+			log.Printf("Gossip: peer %d restored to ALIVE via heartbeat (was %d)", rpc.From, peer.State())
 		}
 	}
 }

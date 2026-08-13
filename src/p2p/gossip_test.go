@@ -186,6 +186,54 @@ func TestGossiper_SuspicionTimeout(t *testing.T) {
 	}
 }
 
+// TestGossiper_OfflinePeerRestore verifies that an OFFLINE peer is restored to
+// ALIVE upon receiving a ping, ack, or heartbeat, rather than remaining
+// permanently dead (issue #632).
+func TestGossiper_OfflinePeerRestore(t *testing.T) {
+	tr := NewTCPTransport(TCPTransportConfig{LocalID: 1})
+	defer tr.Close()
+
+	g := NewGossiper(DefaultGossipConfig(1), tr)
+	defer g.Close()
+
+	subtests := []struct {
+		name string
+		run  func(peer *Peer)
+	}{
+		{
+			name: "ping",
+			run: func(peer *Peer) {
+				payload := &PingPayload{PingID: 99, TargetID: 1, Timestamp: time.Now().UnixNano()}
+				g.handlePing(&RPC{From: peer.ID, Type: MsgPing, Payload: payload.Encode()})
+			},
+		},
+		{
+			name: "heartbeat",
+			run: func(peer *Peer) {
+				payload := &HeartbeatPayload{Peers: []PeerInfo{}}
+				g.handleHeartbeat(&RPC{From: peer.ID, Type: MsgHeartbeat, Payload: payload.Encode()})
+			},
+		},
+	}
+
+	for _, st := range subtests {
+		t.Run(st.name, func(t *testing.T) {
+			peer := NewPeer(2, "127.0.0.1:4451")
+			peer.SetState(PeerStateOffline)
+			tr.Peers().Add(peer)
+
+			st.run(peer)
+
+			if peer.State() != PeerStateAlive {
+				t.Fatalf("expected peer %d restored to ALIVE via %s, got %v", peer.ID, st.name, peer.State())
+			}
+
+			// Clean up for the next subtest.
+			tr.Peers().Remove(2)
+		})
+	}
+}
+
 func TestGossiper_PingIDUniquenessAcrossNodes(t *testing.T) {
 	tr1 := NewTCPTransport(TCPTransportConfig{LocalID: 1})
 	tr2 := NewTCPTransport(TCPTransportConfig{LocalID: 2})
