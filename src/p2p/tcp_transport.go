@@ -102,6 +102,25 @@ func (t *TCPTransport) acceptLoop() {
 	}
 }
 
+// cleanupConn removes a connection from the transport's tracked connection set
+// and detaches it from its peer once the read loop for that connection exits.
+// This prevents closed net.Conn objects from accumulating in t.conns (memory
+// leak) and stops downstream code from writing to a stale, closed connection
+// (issue #631). The peer itself stays in the peer map so gossip can track its
+// liveness state.
+func (t *TCPTransport) cleanupConn(conn net.Conn, peerID int32) {
+	t.mu.Lock()
+	delete(t.conns, conn)
+	t.mu.Unlock()
+
+	if peerID < 0 {
+		return
+	}
+	if peer := t.peerMap.Get(peerID); peer != nil && peer.Conn() == conn {
+		peer.SetConn(nil)
+	}
+}
+
 // handleConn reads RPCs from a single connection and delivers them to rpcCh.
 // The peer ID is extracted from the first RPC received.
 func (t *TCPTransport) handleConn(conn net.Conn) (err error) {
@@ -116,6 +135,8 @@ func (t *TCPTransport) handleConn(conn net.Conn) (err error) {
 
 	var peer *Peer
 	var peerID int32 = -1
+
+	defer func() { t.cleanupConn(conn, peerID) }()
 
 	for {
 		conn.SetReadDeadline(time.Now().Add(p2pReadTimeout))
@@ -251,6 +272,7 @@ func (t *TCPTransport) Connect(peer *Peer) (err error) {
 func (t *TCPTransport) readLoop(peerID int32, conn net.Conn) {
 	defer t.wg.Done()
 	defer conn.Close()
+	defer func() { t.cleanupConn(conn, peerID) }()
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("P2P readLoop panic recovered for peer %d: %v (errno=%d)", peerID, r, syscall.EIO)
