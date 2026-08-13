@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -29,9 +30,16 @@ import (
 // connectToPeer is an alias for the client.Connect function, used to connect to other servers in the cluster for data replication.
 var connectToPeer = client.Connect
 
-// connectToPeerStream is an alias for client.ConnectStream, used for streaming
+// forwardStreamFunc is the signature of client.ConnectStream, used for streaming
 // replication forwarding from a store reader instead of a local file path.
-var connectToPeerStream = client.ConnectStream
+// It is a named type so tests may swap it atomically without racing concurrent
+// connection-handler goroutines (issue #628).
+type forwardStreamFunc func(cfg common.Configuration, content io.Reader, name, hash string, size int64, remotePath string, s3Headers map[string]string, serverId int, timestamp int64, requestedMode int, replicationFactor int) error
+
+// connectToPeerStream is an atomic pointer to client.ConnectStream. It is atomic
+// so tests may override the forwarder without a data race against the daemon's
+// concurrent forwarding goroutines.
+var connectToPeerStream atomic.Pointer[forwardStreamFunc]
 
 // replicationForwardTimeout bounds how long the server waits for replication
 // forwarding goroutines to complete before abandoning them. Without this bound,
@@ -42,11 +50,18 @@ var replicationForwardTimeout atomic.Int64
 
 func init() {
 	replicationForwardTimeout.Store(int64(30 * time.Second))
+	fwd := forwardStreamFunc(client.ConnectStream)
+	connectToPeerStream.Store(&fwd)
 }
 
 // forwardTimeout returns the current replication forwarding wait deadline.
 func forwardTimeout() time.Duration {
 	return time.Duration(replicationForwardTimeout.Load())
+}
+
+// forwardStream returns the current connectToPeerStream implementation.
+func forwardStream() forwardStreamFunc {
+	return *connectToPeerStream.Load()
 }
 
 // Daemon is the core of the momo server.
@@ -550,7 +565,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 							return
 						}
 						defer reader.Close()
-						fwdErr := connectToPeerStream(cfg, reader, storageKey, metadata.Hash, metadata.Size, "", getS3Meta(store, storageKey), id, finalTs, replicationMode, factor)
+						fwdErr := forwardStream()(cfg, reader, storageKey, metadata.Hash, metadata.Size, "", getS3Meta(store, storageKey), id, finalTs, replicationMode, factor)
 						if fwdErr != nil {
 							log.Printf("AUDIT: Chain forwarding to node %d failed: %v", id, common.SanitizeLog(fwdErr.Error()))
 							metricsCollector.IncErrors()
@@ -610,7 +625,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 								return
 							}
 							defer reader.Close()
-							fwdErr := connectToPeerStream(cfg, reader, storageKey, metadata.Hash, metadata.Size, "", getS3Meta(store, storageKey), id, finalTs, replicationMode, factor)
+						fwdErr := forwardStream()(cfg, reader, storageKey, metadata.Hash, metadata.Size, "", getS3Meta(store, storageKey), id, finalTs, replicationMode, factor)
 							if fwdErr != nil {
 								log.Printf("AUDIT: Splay forwarding to node %d failed: %v", id, common.SanitizeLog(fwdErr.Error()))
 								metricsCollector.IncErrors()

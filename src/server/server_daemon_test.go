@@ -304,11 +304,12 @@ func TestDaemonReplicationForwardFailure(t *testing.T) {
 	comm, cleanup := startDaemonForForwardTest(t)
 	defer cleanup()
 
-	originalForward := connectToPeerStream
-	connectToPeerStream = func(cfg common.Configuration, content io.Reader, name, hash string, size int64, remotePath string, s3Headers map[string]string, serverId int, timestamp int64, requestedMode int, replicationFactor int) error {
+	originalForward := connectToPeerStream.Load()
+	failFn := forwardStreamFunc(func(cfg common.Configuration, content io.Reader, name, hash string, size int64, remotePath string, s3Headers map[string]string, serverId int, timestamp int64, requestedMode int, replicationFactor int) error {
 		return net.ErrClosed
-	}
-	defer func() { connectToPeerStream = originalForward }()
+	})
+	connectToPeerStream.Store(&failFn)
+	defer func() { connectToPeerStream.Store(originalForward) }()
 
 	uploadToForwardTest(t, comm, "forward-fail.txt", "forward-fail-data")
 
@@ -329,12 +330,13 @@ func TestDaemonReplicationForwardTimeout(t *testing.T) {
 	defer cleanup()
 
 	blocked := make(chan struct{})
-	originalForward := connectToPeerStream
-	connectToPeerStream = func(cfg common.Configuration, content io.Reader, name, hash string, size int64, remotePath string, s3Headers map[string]string, serverId int, timestamp int64, requestedMode int, replicationFactor int) error {
+	originalForward := connectToPeerStream.Load()
+	hangFn := forwardStreamFunc(func(cfg common.Configuration, content io.Reader, name, hash string, size int64, remotePath string, s3Headers map[string]string, serverId int, timestamp int64, requestedMode int, replicationFactor int) error {
 		<-blocked
 		return nil
-	}
-	defer func() { connectToPeerStream = originalForward }()
+	})
+	connectToPeerStream.Store(&hangFn)
+	defer func() { connectToPeerStream.Store(originalForward) }()
 
 	originalTimeout := forwardTimeout()
 	replicationForwardTimeout.Store(int64(2 * time.Second))
