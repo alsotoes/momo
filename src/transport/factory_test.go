@@ -13,6 +13,7 @@ import (
 
 	"github.com/alsotoes/momo/src/common"
 	"github.com/alsotoes/momo/src/storage"
+	"go.uber.org/goleak"
 )
 
 func TestProtocolFactory_Listen_S3TCP_TLSEnforcement(t *testing.T) {
@@ -292,6 +293,12 @@ func TestMomoQUICCommunicator_Metadata_And_Payload(t *testing.T) {
 }
 
 func TestMomoQUICCommunicator_RejectsEmptyHash(t *testing.T) {
+	defer goleak.VerifyNone(t,
+		goleak.IgnoreAnyFunction("github.com/quic-go/quic-go.(*Transport).runSendQueue"),
+		goleak.IgnoreAnyFunction("github.com/quic-go/quic-go.(*Transport).listen"),
+		goleak.IgnoreAnyFunction("github.com/quic-go/quic-go.(*Conn).run"),
+	)
+
 	authToken := "test-token" // notsecret
 	addr := "127.0.0.1:0"
 
