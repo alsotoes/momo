@@ -64,11 +64,23 @@ func NewMomoQUICCommunicator(stream *quic.Stream, conn *quic.Conn) *MomoQUICComm
 	}
 }
 
-func (m *MomoQUICCommunicator) Read(b []byte) (int, error) {
+func (m *MomoQUICCommunicator) Read(b []byte) (n int, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in MomoQUIC Read: %v", r)
+			err = fmt.Errorf("panic in MomoQUIC Read: %v: %w", r, syscall.EIO)
+		}
+	}()
 	return m.timeoutConn.Read(b)
 }
 
-func (m *MomoQUICCommunicator) Write(b []byte) (int, error) {
+func (m *MomoQUICCommunicator) Write(b []byte) (n int, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in MomoQUIC Write: %v", r)
+			err = fmt.Errorf("panic in MomoQUIC Write: %v: %w", r, syscall.EIO)
+		}
+	}()
 	return m.timeoutConn.Write(b)
 }
 

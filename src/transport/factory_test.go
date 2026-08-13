@@ -744,12 +744,12 @@ func TestMomoQUICCommunicator_IdleTimeoutApplied(t *testing.T) {
 	}
 	factory := NewProtocolFactory(cfg)
 
-	addr := "127.0.0.1:45701"
-	l, err := factory.Listen(addr)
+	l, err := factory.Listen("127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Server failed to listen: %v", err)
 	}
 	defer l.Close()
+	addr := l.Addr().String()
 
 	accepted := make(chan *MomoQUICCommunicator, 1)
 	acceptErr := make(chan error, 1)
