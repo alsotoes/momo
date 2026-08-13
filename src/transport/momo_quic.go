@@ -620,6 +620,12 @@ func (m *MomoQUICCommunicator) SendMetadata(meta *common.FileMetadata) (status i
 	if len(wireName) > common.FileInfoLength {
 		return 0, fmt.Errorf("metadata name exceeds limit: %w", syscall.ENAMETOOLONG)
 	}
+
+	// 🛡️ Sentinel: Reject carriage returns or line feeds in the path to prevent HTTP Request Smuggling (CRLF Injection).
+	if strings.ContainsAny(wireName, "\r\n") {
+		return 0, fmt.Errorf("invalid characters in wireName: %w", syscall.EBADMSG)
+	}
+
 	for _, part := range strings.Split(wireName, "/") {
 		if common.HasPathTraversalChars(part) {
 			return 0, fmt.Errorf("path traversal in wireName: %w", syscall.EBADMSG)
