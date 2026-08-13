@@ -431,6 +431,17 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 
 			var wg sync.WaitGroup
 
+			// forwardFailed tracks whether any replication forwarding goroutine failed.
+			// It gates the success ACK: if a replica could not be written, the client
+			// must not be told the upload fully succeeded (no silent data loss, Rule 9).
+			var forwardMu sync.Mutex
+			forwardFailed := false
+			markForwardFail := func() {
+				forwardMu.Lock()
+				forwardFailed = true
+				forwardMu.Unlock()
+			}
+
 			// Handle the file based on the replication mode
 			switch replicationMode {
 			case common.ReplicationNone, common.ReplicationPrimarySplay:
@@ -497,10 +508,17 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 						if err != nil {
 							log.Printf("AUDIT: Failed to get blob for chain forwarding: %v", common.SanitizeLog(err.Error()))
 							metricsCollector.IncErrors()
+							markForwardFail()
 							return
 						}
 						defer reader.Close()
-						connectToPeerStream(cfg, reader, storageKey, metadata.Hash, metadata.Size, "", getS3Meta(store, storageKey), id, finalTs, replicationMode, factor)
+						fwdErr := connectToPeerStream(cfg, reader, storageKey, metadata.Hash, metadata.Size, "", getS3Meta(store, storageKey), id, finalTs, replicationMode, factor)
+						if fwdErr != nil {
+							log.Printf("AUDIT: Chain forwarding to node %d failed: %v", id, common.SanitizeLog(fwdErr.Error()))
+							metricsCollector.IncErrors()
+							markForwardFail()
+							return
+						}
 						metricsCollector.IncReplication()
 					}(nextHop.ID)
 				} else {
@@ -548,10 +566,17 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 							if err != nil {
 								log.Printf("AUDIT: Failed to get blob for splay forwarding: %v", common.SanitizeLog(err.Error()))
 								metricsCollector.IncErrors()
+								markForwardFail()
 								return
 							}
 							defer reader.Close()
-							connectToPeerStream(cfg, reader, storageKey, metadata.Hash, metadata.Size, "", getS3Meta(store, storageKey), id, finalTs, replicationMode, factor)
+							fwdErr := connectToPeerStream(cfg, reader, storageKey, metadata.Hash, metadata.Size, "", getS3Meta(store, storageKey), id, finalTs, replicationMode, factor)
+							if fwdErr != nil {
+								log.Printf("AUDIT: Splay forwarding to node %d failed: %v", id, common.SanitizeLog(fwdErr.Error()))
+								metricsCollector.IncErrors()
+								markForwardFail()
+								return
+							}
 							metricsCollector.IncReplication()
 						}(targetId)
 					}
@@ -576,6 +601,14 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 				}
 			default:
 				log.Printf("AUDIT: *** ERROR: Unknown replication type from %s", remoteAddr)
+				metricsCollector.IncErrors()
+				return
+			}
+			forwardMu.Lock()
+			forwardFailedFlag := forwardFailed
+			forwardMu.Unlock()
+			if forwardFailedFlag {
+				log.Printf("AUDIT: Upload from %s stored locally but replication forwarding to one or more peers failed", remoteAddr)
 				metricsCollector.IncErrors()
 				return
 			}

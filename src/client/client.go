@@ -392,11 +392,12 @@ func sendFile(wg *sync.WaitGroup, comm transport.Communicator, filePath string, 
 // (e.g., S3 or raw device backends).
 // s3Headers carries preserved S3 object metadata (Content-Type, x-amz-meta-*)
 // to replicated peers (issue #772); it may be nil.
-func ConnectStream(cfg common.Configuration, content io.Reader, name string, hash string, size int64, remotePath string, s3Headers map[string]string, serverId int, timestamp int64, requestedMode int, replicationFactor int) {
+func ConnectStream(cfg common.Configuration, content io.Reader, name string, hash string, size int64, remotePath string, s3Headers map[string]string, serverId int, timestamp int64, requestedMode int, replicationFactor int) error {
 	daemons := cfg.Daemons
 	if serverId < 0 || serverId >= len(daemons) {
-		log.Printf("Server ID %d is out of range", serverId)
-		return
+		err := fmt.Errorf("server ID %d is out of range: %w", serverId, syscall.EINVAL)
+		log.Printf("%v", err)
+		return err
 	}
 	authToken := cfg.Global.AuthToken
 	peerToken := common.DerivePeerTokenString(authToken)
@@ -405,14 +406,14 @@ func ConnectStream(cfg common.Configuration, content io.Reader, name string, has
 	comm, err := factory.Dial(daemons[serverId].Host)
 	if err != nil {
 		log.Printf("Failed to connect to daemon %s: %v", daemons[serverId].Host, common.SanitizeLog(err.Error()))
-		return
+		return err
 	}
 	defer comm.Close()
 
 	_, err = comm.HandshakeClient(peerToken, timestamp, requestedMode)
 	if err != nil {
 		log.Printf("Handshake failed with %s: %v", daemons[serverId].Host, common.SanitizeLog(err.Error()))
-		return
+		return err
 	}
 
 	meta := &common.FileMetadata{
@@ -428,34 +429,36 @@ func ConnectStream(cfg common.Configuration, content io.Reader, name string, has
 		normalized, err := common.NormalizeVirtualPath(meta.RemotePath)
 		if err != nil {
 			log.Printf("Failed to upload %s: invalid remote path %q: %v", common.SanitizeLog(name), common.SanitizeLog(meta.RemotePath), err)
-			return
+			return err
 		}
 		wireName = normalized + "/" + meta.Name
 	}
 	if len(wireName) > common.FileInfoLength {
-		log.Printf("Failed to upload %s: remote path and filename exceed limit of %d characters", common.SanitizeLog(name), common.FileInfoLength)
-		return
+		err := fmt.Errorf("remote path and filename exceed limit of %d characters: %w", common.FileInfoLength, syscall.ENAMETOOLONG)
+		log.Printf("Failed to upload %s: %v", common.SanitizeLog(name), err)
+		return err
 	}
 
 	log.Printf("=> Hash:    %s", common.SanitizeLog(meta.Hash))
 	log.Printf("=> Name:    %s", common.SanitizeLog(meta.Name))
 	log.Printf("=> Size:    %d", meta.Size)
 
-	sendFileStream(comm, content, meta)
+	return sendFileStream(comm, content, meta)
 }
 
 // sendFileStream sends file content from an io.Reader over a network connection.
-func sendFileStream(comm transport.Communicator, content io.Reader, meta *common.FileMetadata) {
+func sendFileStream(comm transport.Communicator, content io.Reader, meta *common.FileMetadata) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Panic recovered in sendFileStream for %s: %v", common.SanitizeLog(meta.Name), r)
+			err = fmt.Errorf("panic in sendFileStream: %v: %w", r, syscall.EIO)
 		}
 	}()
 
 	status, err := comm.SendMetadata(meta)
 	if err != nil {
 		log.Printf("Failed to send metadata for %s: %v", common.SanitizeLog(meta.Name), common.SanitizeLog(err.Error()))
-		return
+		return err
 	}
 
 	if status == transport.MetadataStatusSkipPayload {
@@ -463,16 +466,17 @@ func sendFileStream(comm transport.Communicator, content io.Reader, meta *common
 	} else {
 		if _, err := io.Copy(comm, content); err != nil {
 			log.Printf("Error sending file %s: %v", common.SanitizeLog(meta.Name), common.SanitizeLog(err.Error()))
-			return
+			return err
 		}
 	}
 
 	if err := comm.ReceiveACK(); err != nil {
 		log.Printf("Failed to read ACK from server: %v", common.SanitizeLog(err.Error()))
-		return
+		return err
 	}
 
 	log.Printf("File %s sent successfully.", common.SanitizeLog(meta.Name))
+	return nil
 }
 
 // Download retrieves an encrypted file from a daemon, decrypts it, and writes

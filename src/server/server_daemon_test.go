@@ -216,3 +216,91 @@ func TestDaemonReal(t *testing.T) {
 		}
 	}
 }
+
+// TestDaemonReplicationForwardFailure verifies that when replication forwarding
+// to a peer fails, the server does NOT send a success ACK to the client (Rule 9:
+// no silent data loss). It drives the real Daemon in Chain mode and overrides
+// the connectToPeerStream forwarder to always fail.
+func TestDaemonReplicationForwardFailure(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	tempDir := t.TempDir()
+	primaryAddr := freeAddr(t)
+	daemons := []*common.Daemon{
+		{Host: primaryAddr, Data: tempDir + "/000"},
+		{Host: freeAddr(t), Data: tempDir + "/001"},
+		{Host: freeAddr(t), Data: tempDir + "/002"},
+	}
+	for _, d := range daemons {
+		os.MkdirAll(d.Data, 0755)
+	}
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	cfg := common.Configuration{
+		Daemons: daemons,
+		Global: common.ConfigurationGlobal{
+			AuthToken:                  authToken,
+			Protocol:                   "momo-tcp",
+			ReplicationFactor:          3,
+			ReplicationOrder:           nil,
+			ClientSideReplicationModes: nil,
+		},
+	}
+
+	// Force server-side Chain replication mode.
+	SetReplicationState(common.ReplicationChain, time.Now().UnixNano())
+
+	// Override the forwarder to fail every call.
+	originalForward := connectToPeerStream
+	connectToPeerStream = func(cfg common.Configuration, content io.Reader, name, hash string, size int64, remotePath string, s3Headers map[string]string, serverId int, timestamp int64, requestedMode int, replicationFactor int) error {
+		return net.ErrClosed
+	}
+	defer func() { connectToPeerStream = originalForward }()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go Daemon(ctx, cfg, 0)
+
+	// Retry-dial until the daemon is up.
+	var conn net.Conn
+	var err error
+	for i := 0; i < 20; i++ {
+		conn, err = net.Dial("tcp", primaryAddr)
+		if err == nil {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if err != nil {
+		t.Fatalf("Failed to dial primary Daemon: %v", err)
+	}
+	defer conn.Close()
+
+	comm := transport.NewMomoTCPCommunicator(conn)
+	if _, err := comm.HandshakeClient(authToken, common.DummyEpoch, 0); err != nil {
+		t.Fatalf("Handshake failed: %v", err)
+	}
+
+	meta := &common.FileMetadata{
+		Name: "forward-fail.txt",
+		Hash: common.HashBytes([]byte("forward-fail-data")),
+		Size: 16,
+	}
+	status, err := comm.SendMetadata(meta)
+	if err != nil {
+		t.Fatalf("Failed to send metadata: %v", err)
+	}
+	if status != transport.MetadataStatusSendPayload {
+		t.Fatalf("Expected status %d, got %d", transport.MetadataStatusSendPayload, status)
+	}
+	if _, err := comm.Write([]byte("forward-fail-data")); err != nil {
+		t.Fatalf("Failed to write payload: %v", err)
+	}
+
+	// With replication forwarding failing, the server must NOT send a success
+	// ACK. ReceiveACK should return an error (read acts as if no ACK is sent).
+	comm.SetAbsoluteDeadline(time.Now().Add(3 * time.Second))
+	if err := comm.ReceiveACK(); err == nil {
+		t.Fatalf("Expected ReceiveACK to fail when replication forwarding failed, but it succeeded")
+	}
+}
