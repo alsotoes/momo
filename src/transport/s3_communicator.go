@@ -2501,7 +2501,13 @@ func writeXMLResponse(w io.Writer, xmlBody []byte) (int, error) {
 
 // ─── CreateMultipartUpload ─────────────────────────────────────────────────
 
-func (m *S3Communicator) handleCreateMultipartUpload(bucket, key string) (int, int64, error) {
+func (m *S3Communicator) handleCreateMultipartUpload(bucket, key string) (requestedMode int, timestamp int64, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in S3 handleCreateMultipartUpload: %v", r)
+			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+		}
+	}()
 	uploadID := generateUploadID()
 
 	muUploads.Lock()
@@ -2528,7 +2534,13 @@ func (m *S3Communicator) handleCreateMultipartUpload(bucket, key string) (int, i
 
 // ─── UploadPart ────────────────────────────────────────────────────────────
 
-func (m *S3Communicator) handleUploadPart(req *http.Request, bucket, key string) (int, int64, error) {
+func (m *S3Communicator) handleUploadPart(req *http.Request, bucket, key string) (requestedMode int, timestamp int64, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in S3 handleUploadPart: %v", r)
+			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+		}
+	}()
 	q := req.URL.Query()
 	uploadID := q.Get("uploadId")
 	partStr := q.Get("partNumber")
@@ -2578,7 +2590,13 @@ func (m *S3Communicator) handleUploadPart(req *http.Request, bucket, key string)
 
 // ─── CompleteMultipartUpload ───────────────────────────────────────────────
 
-func (m *S3Communicator) handleCompleteMultipartUpload(req *http.Request, bucket, key string) (int, int64, error) {
+func (m *S3Communicator) handleCompleteMultipartUpload(req *http.Request, bucket, key string) (requestedMode int, timestamp int64, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in S3 handleCompleteMultipartUpload: %v", r)
+			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+		}
+	}()
 	q := req.URL.Query()
 	uploadID := q.Get("uploadId")
 
@@ -2645,7 +2663,13 @@ func (m *S3Communicator) handleCompleteMultipartUpload(req *http.Request, bucket
 
 // ─── AbortMultipartUpload ─────────────────────────────────────────────────
 
-func (m *S3Communicator) handleAbortMultipartUpload(uploadID string) (int, int64, error) {
+func (m *S3Communicator) handleAbortMultipartUpload(uploadID string) (requestedMode int, timestamp int64, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in S3 handleAbortMultipartUpload: %v", r)
+			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+		}
+	}()
 	muUploads.Lock()
 	delete(uploads, uploadID)
 	muUploads.Unlock()
@@ -2662,7 +2686,13 @@ func (m *S3Communicator) handleAbortMultipartUpload(uploadID string) (int, int64
 
 // ─── ListParts ─────────────────────────────────────────────────────────────
 
-func (m *S3Communicator) handleListParts(bucket, key, uploadID string) (int, int64, error) {
+func (m *S3Communicator) handleListParts(bucket, key, uploadID string) (requestedMode int, timestamp int64, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in S3 handleListParts: %v", r)
+			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+		}
+	}()
 	muUploads.Lock()
 	up, ok := uploads[uploadID]
 	muUploads.Unlock()
@@ -2717,7 +2747,13 @@ func (m *S3Communicator) handleListParts(bucket, key, uploadID string) (int, int
 
 // ─── ListMultipartUploads ─────────────────────────────────────────────────
 
-func (m *S3Communicator) handleListMultipartUploads(bucket string) (int, int64, error) {
+func (m *S3Communicator) handleListMultipartUploads(bucket string) (requestedMode int, timestamp int64, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in S3 handleListMultipartUploads: %v", r)
+			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+		}
+	}()
 	muUploads.Lock()
 	type uploadEntry struct {
 		id  string
