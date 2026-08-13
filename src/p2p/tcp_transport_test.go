@@ -369,3 +369,64 @@ func TestTCPTransport_AuthFunc(t *testing.T) {
 		t.Fatalf("Dial for authorized peer 2 failed: %v", err)
 	}
 }
+
+// TestTCPTransport_PeerDisconnectCleanup verifies that when a connection ends,
+// the closed net.Conn is removed from the transport's tracked connection set
+// and detached from the peer, preventing a memory leak and writes to stale
+// closed connections (issue #631).
+func TestTCPTransport_PeerDisconnectCleanup(t *testing.T) {
+	tr2 := NewTCPTransport(TCPTransportConfig{LocalID: 2})
+	defer tr2.Close()
+
+	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	addr := ln.Addr().String()
+	ln.Close()
+
+	if err := tr2.Listen(addr); err != nil {
+		t.Fatalf("tr2 Listen failed: %v", err)
+	}
+
+	tr1 := NewTCPTransport(TCPTransportConfig{LocalID: 1})
+	defer tr1.Close()
+
+	peer, err := tr1.Dial(2, addr)
+	if err != nil {
+		t.Fatalf("Dial failed: %v", err)
+	}
+	if peer.Conn() == nil {
+		t.Fatal("expected live connection after dial")
+	}
+
+	// Give the read loop time to register the conn.
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		tr1.mu.Lock()
+		n := len(tr1.conns)
+		tr1.mu.Unlock()
+		if n > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("expected a tracked connection after dial")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// Force disconnect by closing the connection.
+	peer.Conn().Close()
+
+	// After the read loop exits, the conn must be removed and detached.
+	deadline = time.Now().Add(2 * time.Second)
+	for {
+		tr1.mu.Lock()
+		n := len(tr1.conns)
+		tr1.mu.Unlock()
+		if n == 0 && peer.Conn() == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("conn not cleaned up after disconnect: tracked=%d, peerConn=nil?%v", n, peer.Conn() == nil)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}

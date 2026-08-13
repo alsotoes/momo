@@ -542,7 +542,9 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 
 			case common.ReplicationSplay:
 				// In Splay mode, the primary (first node in placement) forwards to all others.
-				if placement[0].ID == serverId {
+				// Guard against an empty placement list (e.g. ReplicationFactor 0 or no
+				// nodes) to avoid an index-out-of-range panic — fall through to local receive.
+				if len(placement) > 0 && placement[0].ID == serverId {
 					wg.Add(len(placement) - 1)
 					if canDedup {
 						// ⚡ Bolt: Deduplication hit. Just update metadata mapping.
