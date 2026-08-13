@@ -2505,6 +2505,7 @@ func (m *S3Communicator) handleCreateMultipartUpload(bucket, key string) (reques
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Panic recovered in S3 handleCreateMultipartUpload: %v", r)
+			m.conn.Close()
 			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
 		}
 	}()
@@ -2538,6 +2539,7 @@ func (m *S3Communicator) handleUploadPart(req *http.Request, bucket, key string)
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Panic recovered in S3 handleUploadPart: %v", r)
+			m.conn.Close()
 			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
 		}
 	}()
@@ -2594,7 +2596,8 @@ func (m *S3Communicator) handleCompleteMultipartUpload(req *http.Request, bucket
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Panic recovered in S3 handleCompleteMultipartUpload: %v", r)
-			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+			m.conn.Close()
+						err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
 		}
 	}()
 	q := req.URL.Query()
@@ -2667,7 +2670,8 @@ func (m *S3Communicator) handleAbortMultipartUpload(uploadID string) (requestedM
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Panic recovered in S3 handleAbortMultipartUpload: %v", r)
-			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+			m.conn.Close()
+						err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
 		}
 	}()
 	muUploads.Lock()
@@ -2690,7 +2694,8 @@ func (m *S3Communicator) handleListParts(bucket, key, uploadID string) (requeste
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Panic recovered in S3 handleListParts: %v", r)
-			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+			m.conn.Close()
+						err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
 		}
 	}()
 	muUploads.Lock()
@@ -2751,7 +2756,8 @@ func (m *S3Communicator) handleListMultipartUploads(bucket string) (requestedMod
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Panic recovered in S3 handleListMultipartUploads: %v", r)
-			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+			m.conn.Close()
+						err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
 		}
 	}()
 	muUploads.Lock()
