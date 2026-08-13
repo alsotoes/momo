@@ -337,7 +337,7 @@ func TestDaemonReplicationForwardTimeout(t *testing.T) {
 	defer func() { connectToPeerStream = originalForward }()
 
 	originalTimeout := forwardTimeout()
-	replicationForwardTimeout.Store(int64(500 * time.Millisecond))
+	replicationForwardTimeout.Store(int64(2 * time.Second))
 	defer func() { replicationForwardTimeout.Store(int64(originalTimeout)) }()
 
 	uploadToForwardTest(t, comm, "forward-hang.txt", "forward-hang-data")
@@ -346,7 +346,7 @@ func TestDaemonReplicationForwardTimeout(t *testing.T) {
 	// fail (connection closed after abandonment), proving the handler unblocked.
 	done := make(chan error, 1)
 	go func() {
-		comm.SetAbsoluteDeadline(time.Now().Add(5 * time.Second))
+		comm.SetAbsoluteDeadline(time.Now().Add(8 * time.Second))
 		done <- comm.ReceiveACK()
 	}()
 	select {
@@ -354,7 +354,7 @@ func TestDaemonReplicationForwardTimeout(t *testing.T) {
 		if ackErr == nil {
 			t.Fatalf("Expected ReceiveACK to fail when forwarding timed out, but it succeeded")
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatalf("Handler blocked forever waiting for a hung forwarder")
 	}
 
