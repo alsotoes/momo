@@ -99,6 +99,30 @@ func TestMajorityQuorum(t *testing.T) {
 	}
 }
 
+// TestLeaseManager_PartitionGuard verifies that a lease is NOT granted when the
+// cluster has configured peers but none are reachable (network partition). This
+// prevents split-brain: each partition would otherwise grant the same key with a
+// zero-quorum lease (issue #630).
+func TestLeaseManager_PartitionGuard(t *testing.T) {
+	tr := NewTCPTransport(TCPTransportConfig{LocalID: 1})
+	defer tr.Close()
+
+	// Configure a peer in the map that is NOT alive, simulating a peer that was
+	// once connected but is now unreachable (network partition).
+	offlinePeer := NewPeer(2, "127.0.0.1:4451")
+	offlinePeer.SetState(PeerStateOffline)
+	tr.Peers().Add(offlinePeer)
+
+	lm := NewLeaseManager(1, tr)
+	lm.Start()
+	defer lm.Stop()
+
+	_, err := lm.Acquire("test-key", 1*time.Second)
+	if err == nil {
+		t.Fatal("expected lease acquisition to fail when cluster is partitioned (no reachable peers)")
+	}
+}
+
 func TestLeaseManager_NoPeers(t *testing.T) {
 	tr := NewTCPTransport(TCPTransportConfig{LocalID: 1})
 	defer tr.Close()
