@@ -211,6 +211,16 @@ func (lm *LeaseManager) Acquire(key string, duration time.Duration) (*Lease, err
 		}
 	}
 
+	// Split-brain guard (issue #630): if the cluster is configured with peers
+	// (the peer map is non-empty) but none of them are currently reachable, this
+	// is a network partition, not a single-node cluster. Granting a zero-quorum
+	// lease here would let every partition independently grant the same key.
+	// Distinguish "no peers configured" (single node, lenient self-grant) from
+	// "peers configured but unreachable" (partition, must fail).
+	if lm.transport.Peers().Count() > 0 && peerCount == 0 {
+		return nil, fmt.Errorf("no reachable peers for quorum: cluster partitioned (errno=%d)", syscall.EHOSTUNREACH)
+	}
+
 	quorum := majorityQuorum(peerCount)
 
 	leaseID := lm.nextLeaseID.Add(1)
