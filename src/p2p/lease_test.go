@@ -78,6 +78,27 @@ func TestLeaseManager_AcquireRelease(t *testing.T) {
 	}
 }
 
+func TestMajorityQuorum(t *testing.T) {
+	tests := []struct {
+		peers int
+		want  int
+	}{
+		{0, 0},  // no peers: no quorum possible (also guards split-brain)
+		{1, 1},  // 1 of 1
+		{2, 2},  // 2 of 2
+		{3, 2},  // 2 of 3 (majority, not supermajority)
+		{4, 3},  // 3 of 4
+		{5, 3},  // 3 of 5 (majority, not supermajority)
+		{9, 5},  // 5 of 9
+		{10, 6}, // 6 of 10
+	}
+	for _, tc := range tests {
+		if got := majorityQuorum(tc.peers); got != tc.want {
+			t.Errorf("majorityQuorum(%d) = %d, want %d", tc.peers, got, tc.want)
+		}
+	}
+}
+
 func TestLeaseManager_NoPeers(t *testing.T) {
 	tr := NewTCPTransport(TCPTransportConfig{LocalID: 1})
 	defer tr.Close()
