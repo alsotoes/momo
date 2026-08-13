@@ -39,18 +39,18 @@ Each table compares the previous commit (left) to the current commit (right).
 ```
                            │ /tmp/old_bench_filtered.txt │      /tmp/new_bench_filtered.txt      │
                            │           sec/op            │    sec/op      vs base                │
-CrushOriginal-8                             487.7n ± ∞ ¹    478.0n ± ∞ ¹       ~ (p=1.000 n=1) ²
-CrushOptimized-8                            366.1n ± ∞ ¹    379.5n ± ∞ ¹       ~ (p=1.000 n=1) ²
-LoadGlobalConfig-8                          7.718µ ± ∞ ¹    8.451µ ± ∞ ¹       ~ (p=1.000 n=1) ²
-PadString-8                                 49.53n ± ∞ ¹    54.41n ± ∞ ¹       ~ (p=1.000 n=1) ²
-SanitizeLog/Safe-8                          518.2n ± ∞ ¹    452.5n ± ∞ ¹       ~ (p=1.000 n=1) ²
-SanitizeLog/Unsafe-8                        602.1n ± ∞ ¹    679.2n ± ∞ ¹       ~ (p=1.000 n=1) ²
-AWSChunkedReaderSigned-8                    498.7µ ± ∞ ¹    497.8µ ± ∞ ¹       ~ (p=1.000 n=1) ²
-AWSChunkedReaderUnsigned-8                  459.5µ ± ∞ ¹    536.3µ ± ∞ ¹       ~ (p=1.000 n=1) ²
-CheckMetricsAndSwap-8                       9.192n ± ∞ ¹   10.130n ± ∞ ¹       ~ (p=1.000 n=1) ²
-IndexSearch-8                               3.015n ± ∞ ¹    3.097n ± ∞ ¹       ~ (p=1.000 n=1) ²
-IndexDirectTracking-8                      0.3606n ± ∞ ¹   0.3686n ± ∞ ¹       ~ (p=1.000 n=1) ²
-geomean                                     405.5n          423.8n        +4.50%
+CrushOriginal-8                             454.2n ± ∞ ¹    474.5n ± ∞ ¹       ~ (p=1.000 n=1) ²
+CrushOptimized-8                            331.8n ± ∞ ¹    360.9n ± ∞ ¹       ~ (p=1.000 n=1) ²
+LoadGlobalConfig-8                          7.900µ ± ∞ ¹    8.306µ ± ∞ ¹       ~ (p=1.000 n=1) ²
+PadString-8                                 44.37n ± ∞ ¹    43.86n ± ∞ ¹       ~ (p=1.000 n=1) ²
+SanitizeLog/Safe-8                          480.8n ± ∞ ¹    443.5n ± ∞ ¹       ~ (p=1.000 n=1) ²
+SanitizeLog/Unsafe-8                        594.9n ± ∞ ¹    640.7n ± ∞ ¹       ~ (p=1.000 n=1) ²
+AWSChunkedReaderSigned-8                    485.1µ ± ∞ ¹    489.5µ ± ∞ ¹       ~ (p=1.000 n=1) ²
+AWSChunkedReaderUnsigned-8                  453.3µ ± ∞ ¹    476.1µ ± ∞ ¹       ~ (p=1.000 n=1) ²
+CheckMetricsAndSwap-8                       10.71n ± ∞ ¹    10.38n ± ∞ ¹       ~ (p=1.000 n=1) ²
+IndexSearch-8                               2.830n ± ∞ ¹    2.943n ± ∞ ¹       ~ (p=1.000 n=1) ²
+IndexDirectTracking-8                      0.4151n ± ∞ ¹   0.4267n ± ∞ ¹       ~ (p=1.000 n=1) ²
+geomean                                     399.9n          409.2n        +2.33%
 ¹ need >= 6 samples for confidence interval at level 0.95
 ² need >= 4 samples to detect a difference at alpha level 0.05
 
@@ -63,11 +63,11 @@ PadString-8                                  64.00 ± ∞ ¹     64.00 ± ∞ ¹
 SanitizeLog/Safe-8                           0.000 ± ∞ ¹     0.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
 SanitizeLog/Unsafe-8                         704.0 ± ∞ ¹     704.0 ± ∞ ¹       ~ (p=1.000 n=1) ²
 AWSChunkedReaderSigned-8                   11.03Ki ± ∞ ¹   11.03Ki ± ∞ ¹       ~ (p=1.000 n=1) ³
-AWSChunkedReaderUnsigned-8                 76.72Ki ± ∞ ¹   76.73Ki ± ∞ ¹       ~ (p=1.000 n=1) ³
+AWSChunkedReaderUnsigned-8                 76.73Ki ± ∞ ¹   76.74Ki ± ∞ ¹       ~ (p=1.000 n=1) ³
 CheckMetricsAndSwap-8                        0.000 ± ∞ ¹     0.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
 IndexSearch-8                                0.000 ± ∞ ¹     0.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
 IndexDirectTracking-8                        0.000 ± ∞ ¹     0.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
-geomean                                                ⁴                  +0.00%               ⁴
+geomean                                                ⁴                  +0.01%               ⁴
 ¹ need >= 6 samples for confidence interval at level 0.95
 ² all samples are equal
 ³ need >= 4 samples to detect a difference at alpha level 0.05
@@ -93,9 +93,9 @@ geomean                                                ³                +0.00% 
 
                            │ /tmp/old_bench_filtered.txt │      /tmp/new_bench_filtered.txt      │
                            │             B/s             │      B/s       vs base                │
-AWSChunkedReaderSigned-8                   127.3Mi ± ∞ ¹   127.5Mi ± ∞ ¹       ~ (p=1.000 n=1) ²
-AWSChunkedReaderUnsigned-8                 138.1Mi ± ∞ ¹   118.4Mi ± ∞ ¹       ~ (p=1.000 n=1) ²
-geomean                                    132.6Mi         122.9Mi        -7.35%
+AWSChunkedReaderSigned-8                   130.9Mi ± ∞ ¹   129.7Mi ± ∞ ¹       ~ (p=1.000 n=1) ²
+AWSChunkedReaderUnsigned-8                 140.0Mi ± ∞ ¹   133.3Mi ± ∞ ¹       ~ (p=1.000 n=1) ²
+geomean                                    135.4Mi         131.5Mi        -2.86%
 ¹ need >= 6 samples for confidence interval at level 0.95
 ² need >= 4 samples to detect a difference at alpha level 0.05
 ```
@@ -108,17 +108,17 @@ three columns: time (speed), bytes (memory), allocs (GC pressure).
 
 | Benchmark | Avg. Time/Op | Avg. Bytes/Op | Avg. Allocs/Op |
 |-----------|--------------|---------------|----------------|
-| BenchmarkAWSChunkedReaderSigned-8 | 497756.00 ns/op | 133.72 B/op | 11293.00 allocs/op |
-| BenchmarkAWSChunkedReaderUnsigned-8 | 536306.00 ns/op | 124.11 B/op | 78571.00 allocs/op |
-| BenchmarkCheckMetricsAndSwap-8 | 10.13 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkCrushOptimized-8 | 379.50 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkCrushOriginal-8 | 478.00 ns/op | 164.00 B/op | 3.00 allocs/op |
-| BenchmarkIndexDirectTracking-8 | 0.37 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkIndexSearch-8 | 3.10 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkLoadGlobalConfig-8 | 8451.00 ns/op | 1576.00 B/op | 46.00 allocs/op |
-| BenchmarkPadString-8 | 54.41 ns/op | 64.00 B/op | 1.00 allocs/op |
-| BenchmarkSanitizeLog/Safe-8 | 452.50 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkSanitizeLog/Unsafe-8 | 679.20 ns/op | 704.00 B/op | 1.00 allocs/op |
+| BenchmarkAWSChunkedReaderSigned-8 | 489489.00 ns/op | 135.98 B/op | 11299.00 allocs/op |
+| BenchmarkAWSChunkedReaderUnsigned-8 | 476121.00 ns/op | 139.80 B/op | 78579.00 allocs/op |
+| BenchmarkCheckMetricsAndSwap-8 | 10.38 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkCrushOptimized-8 | 360.90 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkCrushOriginal-8 | 474.50 ns/op | 164.00 B/op | 3.00 allocs/op |
+| BenchmarkIndexDirectTracking-8 | 0.43 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkIndexSearch-8 | 2.94 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkLoadGlobalConfig-8 | 8306.00 ns/op | 1576.00 B/op | 46.00 allocs/op |
+| BenchmarkPadString-8 | 43.86 ns/op | 64.00 B/op | 1.00 allocs/op |
+| BenchmarkSanitizeLog/Safe-8 | 443.50 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkSanitizeLog/Unsafe-8 | 640.70 ns/op | 704.00 B/op | 1.00 allocs/op |
 
 
 ### Performance History
@@ -147,20 +147,20 @@ xychart-beta
     title "Performance Trend (Avg. Time, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Time (ns/op)"
-    x-axis [1e21e2b,66be498,f0a2af8,2ec767e,b81faa4,0107378,98d8518,fcd41b1,4280270,0654afc]
-    line "AWSChunkedReaderSigned" [623314,485586,428699,494161,536055,474487,547638,593420,540561,497756]
-    line "AWSChunkedReaderUnsigned" [637133,458443,420916,489488,535372,470934,542477,539873,507878,536306]
-    line "CheckMetricsAndSwap" [13,9,8,8,11,8,9,11,10,10]
-    line "CrushOptimized" [419,355,342,351,359,357,366,358,402,380]
-    line "CrushOriginal" [628,459,465,587,501,444,519,560,494,478]
-    line "IndexDirectTracking" [1,0,0,0,0,0,0,0,1,0]
+    x-axis [66be498,f0a2af8,2ec767e,b81faa4,0107378,98d8518,fcd41b1,9ebbbcc,b20b2a6,52ec614]
+    line "AWSChunkedReaderSigned" [485586,428699,494161,536055,474487,547638,501193,509071,461874,489489]
+    line "AWSChunkedReaderUnsigned" [458443,420916,489488,535372,470934,542477,475383,492103,469009,476121]
+    line "CheckMetricsAndSwap" [9,8,8,11,8,9,8,10,11,10]
+    line "CrushOptimized" [355,342,351,359,357,366,378,382,341,361]
+    line "CrushOriginal" [459,465,587,501,444,519,462,546,467,474]
+    line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [3,3,3,3,3,3,3,3,3,3]
-    line "LoadGlobalConfig" [11680,7877,7811,8699,9154,7311,8381,9076,8636,8451]
-    line "PadString" [64,43,49,49,50,41,54,51,52,54]
+    line "LoadGlobalConfig" [7877,7811,8699,9154,7311,8381,7902,8218,8010,8306]
+    line "PadString" [43,49,49,50,41,54,44,44,47,44]
     line "ParseReplicationOrder_NoPrealloc" [350,349,357,354,345,225,229,165,232,234]
     line "ParseReplicationOrder_Prealloc" [229,231,237,234,229,108,107,80,110,109]
-    line "SanitizeLog/Safe" [585,444,426,532,520,440,468,493,456,452]
-    line "SanitizeLog/Unsafe" [794,568,519,657,616,544,677,712,678,679]
+    line "SanitizeLog/Safe" [444,426,532,520,440,468,490,508,542,444]
+    line "SanitizeLog/Unsafe" [568,519,657,616,544,677,581,581,596,641]
 ```
 
 #### Memory per Operation (B/op)
@@ -173,9 +173,9 @@ xychart-beta
     title "Memory Trend (Avg. Bytes/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Bytes/Op"
-    x-axis [1e21e2b,66be498,f0a2af8,2ec767e,b81faa4,0107378,98d8518,fcd41b1,4280270,0654afc]
-    line "AWSChunkedReaderSigned" [107,137,155,135,124,140,122,112,123,134]
-    line "AWSChunkedReaderUnsigned" [104,145,158,136,124,141,123,123,131,124]
+    x-axis [66be498,f0a2af8,2ec767e,b81faa4,0107378,98d8518,fcd41b1,9ebbbcc,b20b2a6,52ec614]
+    line "AWSChunkedReaderSigned" [137,155,135,124,140,122,133,131,144,136]
+    line "AWSChunkedReaderUnsigned" [145,158,136,124,141,123,140,135,142,140]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "CrushOptimized" [0,0,0,0,0,0,0,0,0,0]
     line "CrushOriginal" [164,164,164,164,164,164,164,164,164,164]
@@ -199,9 +199,9 @@ xychart-beta
     title "Allocation Trend (Avg. Allocs/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Allocs/Op"
-    x-axis [1e21e2b,66be498,f0a2af8,2ec767e,b81faa4,0107378,98d8518,fcd41b1,4280270,0654afc]
-    line "AWSChunkedReaderSigned" [11320,11284,11279,11295,11290,11295,11316,11301,11294,11293]
-    line "AWSChunkedReaderUnsigned" [78612,78570,78565,78569,78578,78577,78586,78579,78587,78571]
+    x-axis [66be498,f0a2af8,2ec767e,b81faa4,0107378,98d8518,fcd41b1,9ebbbcc,b20b2a6,52ec614]
+    line "AWSChunkedReaderSigned" [11284,11279,11295,11290,11295,11316,11296,11282,11278,11299]
+    line "AWSChunkedReaderUnsigned" [78570,78565,78569,78578,78577,78586,78573,78566,78584,78579]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "CrushOptimized" [0,0,0,0,0,0,0,0,0,0]
     line "CrushOriginal" [3,3,3,3,3,3,3,3,3,3]
