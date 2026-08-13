@@ -3190,6 +3190,7 @@ fcd41b1,BenchmarkLoadGlobalConfig-8,7902.00,1576.00,46.00
 fcd41b1,BenchmarkPadString-8,43.62,64.00,1.00
 fcd41b1,BenchmarkSanitizeLog/Safe-8,490.10,0.00,0.00
 fcd41b1,BenchmarkSanitizeLog/Unsafe-8,580.60,704.00,1.00
+<<<<<<< HEAD
 9ebbbcc,BenchmarkAWSChunkedReaderSigned-8,533599.00,124.74,11289.00
 9ebbbcc,BenchmarkAWSChunkedReaderUnsigned-8,495431.00,134.35,78580.00
 9ebbbcc,BenchmarkCheckMetricsAndSwap-8,8.83,0.00,0.00
@@ -3201,3 +3202,38 @@ fcd41b1,BenchmarkSanitizeLog/Unsafe-8,580.60,704.00,1.00
 9ebbbcc,BenchmarkPadString-8,47.26,64.00,1.00
 9ebbbcc,BenchmarkSanitizeLog/Safe-8,465.50,0.00,0.00
 9ebbbcc,BenchmarkSanitizeLog/Unsafe-8,634.90,704.00,1.00
+=======
+9ebbbcc,BenchmarkAWSChunkedReaderSigned-8,509071.00,130.75,11282.00
+9ebbbcc,BenchmarkAWSChunkedReaderUnsigned-8,492103.00,135.26,78566.00
+9ebbbcc,BenchmarkCheckMetricsAndSwap-8,10.31,0.00,0.00
+9ebbbcc,BenchmarkCrushOptimized-8,382.10,0.00,0.00
+9ebbbcc,BenchmarkCrushOriginal-8,546.20,164.00,3.00
+9ebbbcc,BenchmarkIndexDirectTracking-8,0.38,0.00,0.00
+9ebbbcc,BenchmarkIndexSearch-8,2.82,0.00,0.00
+9ebbbcc,BenchmarkLoadGlobalConfig-8,8218.00,1576.00,46.00
+9ebbbcc,BenchmarkPadString-8,43.79,64.00,1.00
+9ebbbcc,BenchmarkSanitizeLog/Safe-8,508.10,0.00,0.00
+9ebbbcc,BenchmarkSanitizeLog/Unsafe-8,581.20,704.00,1.00
+b20b2a6,BenchmarkAWSChunkedReaderSigned-8,461874.00,144.11,11278.00
+b20b2a6,BenchmarkAWSChunkedReaderUnsigned-8,469009.00,141.92,78584.00
+b20b2a6,BenchmarkCheckMetricsAndSwap-8,10.86,0.00,0.00
+b20b2a6,BenchmarkCrushOptimized-8,341.30,0.00,0.00
+b20b2a6,BenchmarkCrushOriginal-8,467.10,164.00,3.00
+b20b2a6,BenchmarkIndexDirectTracking-8,0.38,0.00,0.00
+b20b2a6,BenchmarkIndexSearch-8,3.07,0.00,0.00
+b20b2a6,BenchmarkLoadGlobalConfig-8,8010.00,1576.00,46.00
+b20b2a6,BenchmarkPadString-8,47.05,64.00,1.00
+b20b2a6,BenchmarkSanitizeLog/Safe-8,541.60,0.00,0.00
+b20b2a6,BenchmarkSanitizeLog/Unsafe-8,596.20,704.00,1.00
+>>>>>>> origin/master
+ab1cc4f,BenchmarkAWSChunkedReaderSigned-8,412315.00,161.43,11278.00
+ab1cc4f,BenchmarkAWSChunkedReaderUnsigned-8,406907.00,163.58,78559.00
+ab1cc4f,BenchmarkCheckMetricsAndSwap-8,7.53,0.00,0.00
+ab1cc4f,BenchmarkCrushOptimized-8,331.40,0.00,0.00
+ab1cc4f,BenchmarkCrushOriginal-8,475.90,164.00,3.00
+ab1cc4f,BenchmarkIndexDirectTracking-8,0.33,0.00,0.00
+ab1cc4f,BenchmarkIndexSearch-8,2.85,0.00,0.00
+ab1cc4f,BenchmarkLoadGlobalConfig-8,7732.00,1576.00,46.00
+ab1cc4f,BenchmarkPadString-8,42.47,64.00,1.00
+ab1cc4f,BenchmarkSanitizeLog/Safe-8,448.30,0.00,0.00
+ab1cc4f,BenchmarkSanitizeLog/Unsafe-8,486.20,704.00,1.00

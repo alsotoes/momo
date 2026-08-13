@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -31,6 +32,22 @@ var connectToPeer = client.Connect
 // connectToPeerStream is an alias for client.ConnectStream, used for streaming
 // replication forwarding from a store reader instead of a local file path.
 var connectToPeerStream = client.ConnectStream
+
+// replicationForwardTimeout bounds how long the server waits for replication
+// forwarding goroutines to complete before abandoning them. Without this bound,
+// a hung peer or stalled backing store would block the connection-handler
+// goroutine indefinitely (issue #628). It is atomic so tests may shorten the
+// window without a data race against concurrent connection handlers.
+var replicationForwardTimeout atomic.Int64
+
+func init() {
+	replicationForwardTimeout.Store(int64(30 * time.Second))
+}
+
+// forwardTimeout returns the current replication forwarding wait deadline.
+func forwardTimeout() time.Duration {
+	return time.Duration(replicationForwardTimeout.Load())
+}
 
 // Daemon is the core of the momo server.
 // It listens for incoming connections and handles file uploads and replication.
@@ -431,15 +448,36 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 
 			var wg sync.WaitGroup
 
-			// forwardFailed tracks whether any replication forwarding goroutine failed.
-			// It gates the success ACK: if a replica could not be written, the client
-			// must not be told the upload fully succeeded (no silent data loss, Rule 9).
+			// forwardFailed tracks whether any replication forwarding goroutine
+			// failed or timed out, so the success ACK is suppressed and no silent
+			// data loss goes undetected (Rule 9 / issue #627).
 			var forwardMu sync.Mutex
 			forwardFailed := false
 			markForwardFail := func() {
 				forwardMu.Lock()
 				forwardFailed = true
 				forwardMu.Unlock()
+			}
+
+			// waitForForwarders blocks until all replication forwarding goroutines
+			// complete, bounded by a hard deadline. If a forwarder hangs (e.g. an
+			// unresponsive peer or stalled S3 backing store), the forwarding is
+			// abandoned so the connection-handler goroutine is never leaked
+			// forever (Rule 4 / issue #628).
+			waitForForwarders := func() {
+				done := make(chan struct{})
+				go func() {
+					defer close(done)
+					wg.Wait()
+				}()
+				select {
+				case <-done:
+					// all forwarders completed
+				case <-time.After(forwardTimeout()):
+					log.Printf("AUDIT: Replication forwarding timed out after %v for %s", forwardTimeout(), fileName)
+					metricsCollector.IncErrors()
+					markForwardFail()
+				}
 			}
 
 			// Handle the file based on the replication mode
@@ -524,11 +562,13 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 				} else {
 					wg.Done()
 				}
-				wg.Wait()
+				waitForForwarders()
 
 			case common.ReplicationSplay:
 				// In Splay mode, the primary (first node in placement) forwards to all others.
-				if placement[0].ID == serverId {
+				// Guard against an empty placement list (e.g. ReplicationFactor 0 or no
+				// nodes) to avoid an index-out-of-range panic — fall through to local receive.
+				if len(placement) > 0 && placement[0].ID == serverId {
 					wg.Add(len(placement) - 1)
 					if canDedup {
 						// ⚡ Bolt: Deduplication hit. Just update metadata mapping.
@@ -580,7 +620,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 							metricsCollector.IncReplication()
 						}(targetId)
 					}
-					wg.Wait()
+					waitForForwarders()
 				} else {
 					// We are a secondary in a splay, just receive the file if needed.
 					if canDedup {
@@ -608,7 +648,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 			forwardFailedFlag := forwardFailed
 			forwardMu.Unlock()
 			if forwardFailedFlag {
-				log.Printf("AUDIT: Upload from %s stored locally but replication forwarding to one or more peers failed", remoteAddr)
+				log.Printf("AUDIT: Upload from %s stored locally but replication forwarding failed", remoteAddr)
 				metricsCollector.IncErrors()
 				return
 			}

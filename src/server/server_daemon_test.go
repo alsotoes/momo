@@ -217,13 +217,11 @@ func TestDaemonReal(t *testing.T) {
 	}
 }
 
-// TestDaemonReplicationForwardFailure verifies that when replication forwarding
-// to a peer fails, the server does NOT send a success ACK to the client (Rule 9:
-// no silent data loss). It drives the real Daemon in Chain mode and overrides
-// the connectToPeerStream forwarder to always fail.
-func TestDaemonReplicationForwardFailure(t *testing.T) {
-	defer goleak.VerifyNone(t)
-
+// startDaemonForForwardTest boots a real Chain-mode Daemon and dials it with a
+// fresh client communicator. It returns the communicator, the forwarder-reset
+// function, and a cleanup to stop the daemon.
+func startDaemonForForwardTest(t *testing.T) (*transport.MomoTCPCommunicator, func()) {
+	t.Helper()
 	tempDir := t.TempDir()
 	primaryAddr := freeAddr(t)
 	daemons := []*common.Daemon{
@@ -239,29 +237,17 @@ func TestDaemonReplicationForwardFailure(t *testing.T) {
 	cfg := common.Configuration{
 		Daemons: daemons,
 		Global: common.ConfigurationGlobal{
-			AuthToken:                  authToken,
-			Protocol:                   "momo-tcp",
-			ReplicationFactor:          3,
-			ReplicationOrder:           nil,
-			ClientSideReplicationModes: nil,
+			AuthToken:         authToken,
+			Protocol:          "momo-tcp",
+			ReplicationFactor: 3,
 		},
 	}
 
-	// Force server-side Chain replication mode.
 	SetReplicationState(common.ReplicationChain, time.Now().UnixNano())
 
-	// Override the forwarder to fail every call.
-	originalForward := connectToPeerStream
-	connectToPeerStream = func(cfg common.Configuration, content io.Reader, name, hash string, size int64, remotePath string, s3Headers map[string]string, serverId int, timestamp int64, requestedMode int, replicationFactor int) error {
-		return net.ErrClosed
-	}
-	defer func() { connectToPeerStream = originalForward }()
-
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	go Daemon(ctx, cfg, 0)
 
-	// Retry-dial until the daemon is up.
 	var conn net.Conn
 	var err error
 	for i := 0; i < 20; i++ {
@@ -272,19 +258,30 @@ func TestDaemonReplicationForwardFailure(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	if err != nil {
+		cancel()
 		t.Fatalf("Failed to dial primary Daemon: %v", err)
 	}
-	defer conn.Close()
 
 	comm := transport.NewMomoTCPCommunicator(conn)
 	if _, err := comm.HandshakeClient(authToken, common.DummyEpoch, 0); err != nil {
+		cancel()
+		conn.Close()
 		t.Fatalf("Handshake failed: %v", err)
 	}
 
+	return comm, func() {
+		comm.Close()
+		cancel()
+	}
+}
+
+// uploadToForwardTest sends metadata + payload over the supplied communicator.
+func uploadToForwardTest(t *testing.T, comm *transport.MomoTCPCommunicator, name, content string) {
+	t.Helper()
 	meta := &common.FileMetadata{
-		Name: "forward-fail.txt",
-		Hash: common.HashBytes([]byte("forward-fail-data")),
-		Size: 16,
+		Name: name,
+		Hash: common.HashBytes([]byte(content)),
+		Size: int64(len(content)),
 	}
 	status, err := comm.SendMetadata(meta)
 	if err != nil {
@@ -293,14 +290,75 @@ func TestDaemonReplicationForwardFailure(t *testing.T) {
 	if status != transport.MetadataStatusSendPayload {
 		t.Fatalf("Expected status %d, got %d", transport.MetadataStatusSendPayload, status)
 	}
-	if _, err := comm.Write([]byte("forward-fail-data")); err != nil {
+	if _, err := comm.Write([]byte(content)); err != nil {
 		t.Fatalf("Failed to write payload: %v", err)
 	}
+}
 
-	// With replication forwarding failing, the server must NOT send a success
-	// ACK. ReceiveACK should return an error (read acts as if no ACK is sent).
+// TestDaemonReplicationForwardFailure verifies that when replication forwarding
+// to a peer fails, the server does NOT send a success ACK to the client (Rule 9:
+// no silent data loss). Regression test for issue #627.
+func TestDaemonReplicationForwardFailure(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	comm, cleanup := startDaemonForForwardTest(t)
+	defer cleanup()
+
+	originalForward := connectToPeerStream
+	connectToPeerStream = func(cfg common.Configuration, content io.Reader, name, hash string, size int64, remotePath string, s3Headers map[string]string, serverId int, timestamp int64, requestedMode int, replicationFactor int) error {
+		return net.ErrClosed
+	}
+	defer func() { connectToPeerStream = originalForward }()
+
+	uploadToForwardTest(t, comm, "forward-fail.txt", "forward-fail-data")
+
 	comm.SetAbsoluteDeadline(time.Now().Add(3 * time.Second))
 	if err := comm.ReceiveACK(); err == nil {
 		t.Fatalf("Expected ReceiveACK to fail when replication forwarding failed, but it succeeded")
 	}
+}
+
+// TestDaemonReplicationForwardTimeout verifies that a hung replication
+// forwarder does not block the connection handler forever: after the bounded
+// wait deadline the server abandons forwarding, suppresses the success ACK, and
+// the handler returns. Regression test for issue #628.
+func TestDaemonReplicationForwardTimeout(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	comm, cleanup := startDaemonForForwardTest(t)
+	defer cleanup()
+
+	blocked := make(chan struct{})
+	originalForward := connectToPeerStream
+	connectToPeerStream = func(cfg common.Configuration, content io.Reader, name, hash string, size int64, remotePath string, s3Headers map[string]string, serverId int, timestamp int64, requestedMode int, replicationFactor int) error {
+		<-blocked
+		return nil
+	}
+	defer func() { connectToPeerStream = originalForward }()
+
+	originalTimeout := forwardTimeout()
+	replicationForwardTimeout.Store(int64(500 * time.Millisecond))
+	defer func() { replicationForwardTimeout.Store(int64(originalTimeout)) }()
+
+	uploadToForwardTest(t, comm, "forward-hang.txt", "forward-hang-data")
+
+	// The blocked forwarder means no success ACK is ever sent. ReceiveACK must
+	// fail (connection closed after abandonment), proving the handler unblocked.
+	done := make(chan error, 1)
+	go func() {
+		comm.SetAbsoluteDeadline(time.Now().Add(5 * time.Second))
+		done <- comm.ReceiveACK()
+	}()
+	select {
+	case ackErr := <-done:
+		if ackErr == nil {
+			t.Fatalf("Expected ReceiveACK to fail when forwarding timed out, but it succeeded")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("Handler blocked forever waiting for a hung forwarder")
+	}
+
+	// Unblock the forwarder so the daemon's forwarding goroutines (and the
+	// waitForForwarders waiter) can drain before the test ends and goleak runs.
+	close(blocked)
 }
