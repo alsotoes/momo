@@ -3234,3 +3234,14 @@ efc2005,BenchmarkLoadGlobalConfig-8,8266.00,1576.00,46.00
 efc2005,BenchmarkPadString-8,46.98,64.00,1.00
 efc2005,BenchmarkSanitizeLog/Safe-8,429.80,0.00,0.00
 efc2005,BenchmarkSanitizeLog/Unsafe-8,655.90,704.00,1.00
+8685cff6,BenchmarkAWSChunkedReaderSigned-8,465777.00,142.90,11291.00
+8685cff6,BenchmarkAWSChunkedReaderUnsigned-8,450952.00,147.60,78562.00
+8685cff6,BenchmarkCheckMetricsAndSwap-8,9.40,0.00,0.00
+8685cff6,BenchmarkCrushOptimized-8,409.30,0.00,0.00
+8685cff6,BenchmarkCrushOriginal-8,590.20,164.00,3.00
+8685cff6,BenchmarkIndexDirectTracking-8,0.43,0.00,0.00
+8685cff6,BenchmarkIndexSearch-8,3.25,0.00,0.00
+8685cff6,BenchmarkLoadGlobalConfig-8,11444.00,1576.00,46.00
+8685cff6,BenchmarkPadString-8,56.33,64.00,1.00
+8685cff6,BenchmarkSanitizeLog/Safe-8,509.10,0.00,0.00
+8685cff6,BenchmarkSanitizeLog/Unsafe-8,683.50,704.00,1.00

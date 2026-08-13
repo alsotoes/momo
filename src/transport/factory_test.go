@@ -13,6 +13,7 @@ import (
 
 	"github.com/alsotoes/momo/src/common"
 	"github.com/alsotoes/momo/src/storage"
+	"go.uber.org/goleak"
 )
 
 func TestProtocolFactory_Listen_S3TCP_TLSEnforcement(t *testing.T) {
@@ -287,6 +288,100 @@ func TestMomoQUICCommunicator_Metadata_And_Payload(t *testing.T) {
 	}
 
 	if err := <-errChan; err != nil {
+		t.Fatalf("Server error: %v", err)
+	}
+}
+
+func TestMomoQUICCommunicator_RejectsEmptyHash(t *testing.T) {
+	defer goleak.VerifyNone(t,
+		goleak.IgnoreAnyFunction("github.com/quic-go/quic-go.(*Transport).runSendQueue"),
+		goleak.IgnoreAnyFunction("github.com/quic-go/quic-go.(*Transport).listen"),
+		goleak.IgnoreAnyFunction("github.com/quic-go/quic-go.(*Conn).run"),
+	)
+
+	authToken := "test-token" // notsecret
+	addr := "127.0.0.1:0"
+
+	cfg := common.Configuration{
+		Global: common.ConfigurationGlobal{
+			AuthToken:   authToken,
+			Protocol:    "momo-quic",
+			TLSInsecure: true,
+		},
+	}
+	factory := NewProtocolFactory(cfg)
+
+	l, err := factory.Listen(addr)
+	if err != nil {
+		t.Fatalf("Server failed to listen: %v", err)
+	}
+	defer l.Close()
+
+	actualAddr := l.Addr().String()
+	errChan := make(chan error, 1)
+	serverOK := make(chan bool, 1)
+
+	go func() {
+		comm, err := l.Accept()
+		if err != nil {
+			errChan <- err
+			return
+		}
+		defer comm.Close()
+
+		_, _, err = comm.HandshakeServer([]byte(common.PadString(authToken, common.AuthTokenLength)))
+		if err != nil {
+			errChan <- err
+			return
+		}
+
+		if tc, ok := comm.(*MomoQUICCommunicator); ok {
+			tc.SendReplicationMode(0)
+		}
+
+		_, err = comm.ReceiveMetadata()
+		if err == nil {
+			errChan <- fmt.Errorf("expected ReceiveMetadata to reject empty hash")
+			return
+		}
+		if !errors.Is(err, syscall.EBADMSG) {
+			errChan <- fmt.Errorf("expected EBADMSG for empty hash, got: %v", err)
+			return
+		}
+
+		// Send a status so the client's SendMetadata returns cleanly.
+		if err := comm.SendMetadataStatus(MetadataStatusSendPayload); err != nil {
+			errChan <- err
+			return
+		}
+
+		serverOK <- true
+	}()
+
+	clientComm, err := factory.Dial(actualAddr)
+	if err != nil {
+		t.Fatalf("Client failed to dial: %v", err)
+	}
+	defer clientComm.Close()
+
+	if _, err := clientComm.HandshakeClient(authToken, 0, 0); err != nil {
+		t.Fatalf("Client handshake failed: %v", err)
+	}
+
+	// Send metadata with an empty hash — must be rejected by the server.
+	emptyHashMeta := &common.FileMetadata{
+		Name: "empty-hash.txt",
+		Hash: "",
+		Size: 5,
+	}
+	_, err = clientComm.SendMetadata(emptyHashMeta)
+	if err != nil {
+		t.Fatalf("SendMetadata should not fail client-side: %v", err)
+	}
+
+	select {
+	case <-serverOK:
+	case err := <-errChan:
 		t.Fatalf("Server error: %v", err)
 	}
 }
