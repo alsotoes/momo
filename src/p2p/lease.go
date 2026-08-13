@@ -211,12 +211,7 @@ func (lm *LeaseManager) Acquire(key string, duration time.Duration) (*Lease, err
 		}
 	}
 
-	quorum := (peerCount+1)/2 + 1
-	if peerCount == 0 {
-		quorum = 0
-	} else if peerCount == 1 {
-		quorum = 1
-	}
+	quorum := majorityQuorum(peerCount)
 
 	leaseID := lm.nextLeaseID.Add(1)
 	expiry := time.Now().Add(duration)
@@ -280,6 +275,18 @@ func (lm *LeaseManager) Acquire(key string, duration time.Duration) (*Lease, err
 	lm.heldMu.Unlock()
 
 	return lease, nil
+}
+
+// majorityQuorum returns the smallest integer quorum that requires a strict
+// majority of peers: floor(n/2)+1 for n >= 1, and 0 for an empty cluster.
+// Examples: 2 of 3, 3 of 5. The previous formula ((n+1)/2 + 1) used a
+// supermajority for odd n (3 of 3, 4 of 5), so a single failure blocked every
+// lease in a small cluster (issue #629).
+func majorityQuorum(peerCount int) int {
+	if peerCount == 0 {
+		return 0
+	}
+	return peerCount/2 + 1
 }
 
 // Release broadcasts a lease release to all peers.
