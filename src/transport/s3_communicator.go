@@ -3,8 +3,12 @@ package transport
 import (
 	"bufio"
 	"bytes"
+	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -19,6 +23,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -418,11 +423,37 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 
 	bucket, key := extractS3BucketAndKey(req)
 
-	// Intercept POST /{bucket}?delete (DeleteObjects batch) — fully handled here:
-	// each key goes through the same single-DELETE path (lease -> store.Delete ->
-	// scatter-gather) and the per-key results are aggregated into DeleteResult XML.
+	// Intercept POST for multipart operations (issue #764)
 	if req.Method == "POST" {
-		if _, hasDelete := req.URL.Query()["delete"]; hasDelete {
+		q := req.URL.Query()
+
+		// POST /{bucket}/{key}?uploads -> CreateMultipartUpload
+		if _, hasUploads := q["uploads"]; hasUploads && key != "" {
+			if !m.validBucket(bucket) {
+				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				writeS3Error(m.conn, http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", bucket)
+				return 0, 0, fmt.Errorf("unknown bucket %q: %w", bucket, syscall.ENOENT)
+			}
+			return m.handleCreateMultipartUpload(bucket, key)
+		}
+
+		// POST /{bucket}/{key}?uploadId=X -> CompleteMultipartUpload
+		if _, hasUploadID := q["uploadId"]; hasUploadID && key != "" {
+			if !m.validBucket(bucket) {
+				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				writeS3Error(m.conn, http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", bucket)
+				return 0, 0, fmt.Errorf("unknown bucket %q: %w", bucket, syscall.ENOENT)
+			}
+			if m.store == nil {
+				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "The storage store is not initialized.", "")
+				return 0, 0, fmt.Errorf("storage store not initialized")
+			}
+			return m.handleCompleteMultipartUpload(req, bucket, key)
+		}
+
+		// POST /{bucket}?delete (DeleteObjects batch)
+		if _, hasDelete := q["delete"]; hasDelete {
 			if m.store == nil {
 				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 				writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "The storage store is not initialized.", "")
@@ -544,6 +575,28 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			}
 
 			return 0, 0, ErrRequestHandled
+		}
+
+		// GET /{bucket}/{key}?uploadId=X -> ListParts (issue #764).
+		if _, hasUploadID := q["uploadId"]; hasUploadID && key != "" {
+			if !m.validBucket(bucket) {
+				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				writeS3Error(m.conn, http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", bucket)
+				return 0, 0, fmt.Errorf("unknown bucket %q: %w", bucket, syscall.ENOENT)
+			}
+			return m.handleListParts(bucket, key, q.Get("uploadId"))
+		}
+
+		// GET /?uploads -> ListMultipartUploads (issue #764).
+		if key == "" && q.Get("list-type") == "" {
+			if _, hasUploads := q["uploads"]; hasUploads {
+				if !m.validBucket(bucket) {
+					m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+					writeS3Error(m.conn, http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", bucket)
+					return 0, 0, fmt.Errorf("unknown bucket %q: %w", bucket, syscall.ENOENT)
+				}
+				return m.handleListMultipartUploads(bucket)
+			}
 		}
 
 		// GetObject (file download)
@@ -786,8 +839,13 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		return 0, 0, ErrRequestHandled
 	}
 
-	// Intercept DELETE requests
+	// Intercept DELETE requests (also AbortMultipartUpload, issue #764)
 	if req.Method == "DELETE" {
+		// DELETE /{bucket}/{key}?uploadId=X -> AbortMultipartUpload.
+		if uploadID := req.URL.Query().Get("uploadId"); uploadID != "" && key != "" {
+			return m.handleAbortMultipartUpload(uploadID)
+		}
+
 		if m.store == nil {
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "The storage store is not initialized.", "")
@@ -904,6 +962,21 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		// and unknown algorithms are rejected instead of being silently downgraded.
 		if err := m.validateSSEHeaders(req); err != nil {
 			return 0, 0, err
+		}
+
+		// UploadPart: PUT /{bucket}/{key}?uploadId=X&partNumber=N (issue #764).
+		// Intercepted before CopyObject/CreateBucket because the query params
+		// are distinct from those operations.
+		q := req.URL.Query()
+		if _, hasUploadID := q["uploadId"]; hasUploadID && key != "" {
+			if _, hasPartNum := q["partNumber"]; hasPartNum {
+				if !m.validBucket(bucket) {
+					m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+					writeS3Error(m.conn, http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", bucket)
+					return 0, 0, fmt.Errorf("unknown bucket %q: %w", bucket, syscall.ENOENT)
+				}
+				return m.handleUploadPart(req, bucket, key)
+			}
 		}
 
 		// CopyObject: PUT with x-amz-copy-source copies an existing object within
@@ -2377,4 +2450,361 @@ func writeS3Error(w io.Writer, status int, code, message, resource string) (int,
 		return 0, fmt.Errorf("failed to write S3 error body: %v: %w", err, syscall.EPIPE)
 	}
 	return len(b) + bodyBuf.Len(), nil
+}
+
+// ─── Multipart Upload Support (issue #764) ─────────────────────────────────
+
+// multipartUpload tracks a single multipart upload session.
+type multipartUpload struct {
+	bucket    string
+	key       string
+	createdAt time.Time
+	parts     []multipartPart
+	mu        sync.Mutex
+}
+
+type multipartPart struct {
+	partNumber int
+	etag       string
+	data       []byte
+}
+
+var (
+	muUploads sync.Mutex
+	uploads   = map[string]*multipartUpload{} // uploadId → session
+)
+
+// generateUploadID returns a unique upload ID string.
+func generateUploadID() string {
+	var buf [32]byte
+	now := time.Now().UnixNano()
+	binary.LittleEndian.PutUint64(buf[:8], uint64(now))
+	rand.Read(buf[8:])
+	return hex.EncodeToString(buf[:])
+}
+
+// WriteXMLResponse writes an HTTP 200 XML response to the connection.
+func writeXMLResponse(w io.Writer, xmlBody []byte) (int, error) {
+	var hdrBuf [256]byte
+	b := hdrBuf[:0]
+	b = append(b, "HTTP/1.1 200 OK\r\nContent-Type: application/xml\r\nContent-Length: "...)
+	b = strconv.AppendInt(b, int64(len(xmlBody)), 10)
+	b = append(b, "\r\nConnection: close\r\n\r\n"...)
+	if _, err := w.Write(b); err != nil {
+		return 0, fmt.Errorf("failed to write XML response headers: %v: %w", err, syscall.EPIPE)
+	}
+	if _, err := w.Write(xmlBody); err != nil {
+		return 0, fmt.Errorf("failed to write XML response body: %v: %w", err, syscall.EPIPE)
+	}
+	return len(b) + len(xmlBody), nil
+}
+
+// ─── CreateMultipartUpload ─────────────────────────────────────────────────
+
+func (m *S3Communicator) handleCreateMultipartUpload(bucket, key string) (requestedMode int, timestamp int64, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in S3 handleCreateMultipartUpload: %v", r)
+			m.conn.Close()
+			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+		}
+	}()
+	uploadID := generateUploadID()
+
+	muUploads.Lock()
+	uploads[uploadID] = &multipartUpload{
+		bucket:    bucket,
+		key:       key,
+		createdAt: time.Now(),
+		parts:     make([]multipartPart, 0),
+	}
+	muUploads.Unlock()
+
+	var buf bytes.Buffer
+	buf.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)
+	buf.WriteString(`<InitiateMultipartUploadResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">`)
+	writeXMLString(&buf, "Bucket", bucket)
+	writeXMLString(&buf, "Key", key)
+	writeXMLString(&buf, "UploadId", uploadID)
+	buf.WriteString(`</InitiateMultipartUploadResult>`)
+
+	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	writeXMLResponse(m.conn, buf.Bytes())
+	return 0, 0, ErrRequestHandled
+}
+
+// ─── UploadPart ────────────────────────────────────────────────────────────
+
+func (m *S3Communicator) handleUploadPart(req *http.Request, bucket, key string) (requestedMode int, timestamp int64, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in S3 handleUploadPart: %v", r)
+			m.conn.Close()
+			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+		}
+	}()
+	q := req.URL.Query()
+	uploadID := q.Get("uploadId")
+	partStr := q.Get("partNumber")
+	partNumber, err := strconv.Atoi(partStr)
+	if err != nil || partNumber < 1 {
+		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		writeS3Error(m.conn, http.StatusBadRequest, "InvalidArgument", "Part number must be a positive integer.", "")
+		return 0, 0, fmt.Errorf("invalid part number %q: %w", partStr, syscall.EINVAL)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(req.Body, 5<<30))
+	if err != nil {
+		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to read part body.", "")
+		return 0, 0, fmt.Errorf("upload part read body: %w", err)
+	}
+	req.Body.Close()
+
+	hasher := sha256.New()
+	hasher.Write(body)
+	etag := hex.EncodeToString(hasher.Sum(nil))
+
+	muUploads.Lock()
+	up, ok := uploads[uploadID]
+	if !ok || up.bucket != bucket || up.key != key {
+		muUploads.Unlock()
+		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		writeS3Error(m.conn, http.StatusNotFound, "NoSuchUpload", "The specified upload does not exist.", "")
+		return 0, 0, ErrRequestHandled
+	}
+	up.mu.Lock()
+	up.parts = append(up.parts, multipartPart{partNumber: partNumber, etag: etag, data: body})
+	up.mu.Unlock()
+	muUploads.Unlock()
+
+	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	var hdrBuf [256]byte
+	b := hdrBuf[:0]
+	b = append(b, "HTTP/1.1 200 OK\r\nETag: \""...)
+	b = append(b, etag...)
+	b = append(b, "\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"...)
+	if _, err := m.conn.Write(b); err != nil {
+		return 0, 0, fmt.Errorf("failed to write UploadPart response: %v: %w", err, syscall.EPIPE)
+	}
+	return 0, 0, ErrRequestHandled
+}
+
+// ─── CompleteMultipartUpload ───────────────────────────────────────────────
+
+func (m *S3Communicator) handleCompleteMultipartUpload(req *http.Request, bucket, key string) (requestedMode int, timestamp int64, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in S3 handleCompleteMultipartUpload: %v", r)
+			m.conn.Close()
+						err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+		}
+	}()
+	q := req.URL.Query()
+	uploadID := q.Get("uploadId")
+
+	muUploads.Lock()
+	up, ok := uploads[uploadID]
+	if !ok || up.bucket != bucket || up.key != key {
+		muUploads.Unlock()
+		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		writeS3Error(m.conn, http.StatusNotFound, "NoSuchUpload", "The specified upload does not exist.", "")
+		return 0, 0, fmt.Errorf("upload %s not found: %w", uploadID, syscall.ENOENT)
+	}
+	delete(uploads, uploadID)
+	muUploads.Unlock()
+
+	up.mu.Lock()
+	parts := up.parts
+	up.mu.Unlock()
+
+	sort.Slice(parts, func(i, j int) bool {
+		return parts[i].partNumber < parts[j].partNumber
+	})
+
+	var assembled bytes.Buffer
+	for _, p := range parts {
+		assembled.Write(p.data)
+	}
+
+	data := assembled.Bytes()
+	hasher := sha256.New()
+	hasher.Write(data)
+	finalHash := hex.EncodeToString(hasher.Sum(nil))
+	finalSize := int64(len(data))
+
+	if m.store == nil {
+		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "The storage store is not initialized.", "")
+		return 0, 0, fmt.Errorf("storage store not initialized")
+	}
+
+	m.meta.Name = key
+	m.meta.Hash = finalHash
+	m.meta.Size = finalSize
+
+	if err := m.store.Put(key, finalHash, finalSize, "", bytes.NewReader(data)); err != nil {
+		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to store assembled object.", "")
+		return 0, 0, fmt.Errorf("store.Put of assembled multipart object: %w", err)
+	}
+
+	var buf bytes.Buffer
+	buf.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)
+	buf.WriteString(`<CompleteMultipartUploadResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">`)
+	writeXMLString(&buf, "Bucket", bucket)
+	writeXMLString(&buf, "Key", key)
+	buf.WriteString(`<ETag>"`)
+	xmlEscape(&buf, finalHash)
+	buf.WriteString(`"</ETag>`)
+	buf.WriteString(`</CompleteMultipartUploadResult>`)
+
+	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	writeXMLResponse(m.conn, buf.Bytes())
+	return 0, 0, ErrRequestHandled
+}
+
+// ─── AbortMultipartUpload ─────────────────────────────────────────────────
+
+func (m *S3Communicator) handleAbortMultipartUpload(uploadID string) (requestedMode int, timestamp int64, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in S3 handleAbortMultipartUpload: %v", r)
+			m.conn.Close()
+						err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+		}
+	}()
+	muUploads.Lock()
+	delete(uploads, uploadID)
+	muUploads.Unlock()
+
+	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	var hdrBuf [256]byte
+	b := hdrBuf[:0]
+	b = append(b, "HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"...)
+	if _, err := m.conn.Write(b); err != nil {
+		return 0, 0, fmt.Errorf("failed to write AbortMultipartUpload response: %v: %w", err, syscall.EPIPE)
+	}
+	return 0, 0, ErrRequestHandled
+}
+
+// ─── ListParts ─────────────────────────────────────────────────────────────
+
+func (m *S3Communicator) handleListParts(bucket, key, uploadID string) (requestedMode int, timestamp int64, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in S3 handleListParts: %v", r)
+			m.conn.Close()
+						err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+		}
+	}()
+	muUploads.Lock()
+	up, ok := uploads[uploadID]
+	muUploads.Unlock()
+	if !ok || up.bucket != bucket || up.key != key {
+		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		writeS3Error(m.conn, http.StatusNotFound, "NoSuchUpload", "The specified upload does not exist.", "")
+		return 0, 0, ErrRequestHandled
+	}
+
+	up.mu.Lock()
+	parts := make([]multipartPart, len(up.parts))
+	copy(parts, up.parts)
+	up.mu.Unlock()
+
+	sort.Slice(parts, func(i, j int) bool {
+		return parts[i].partNumber < parts[j].partNumber
+	})
+
+	var buf bytes.Buffer
+	buf.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)
+	buf.WriteString(`<ListPartsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">`)
+	writeXMLString(&buf, "Bucket", bucket)
+	writeXMLString(&buf, "Key", key)
+	writeXMLString(&buf, "UploadId", uploadID)
+	writeXMLString(&buf, "StorageClass", "STANDARD")
+	buf.WriteString(`<IsTruncated>false</IsTruncated>`)
+	buf.WriteString(`<PartNumberMarker>0</PartNumberMarker>`)
+	buf.WriteString(`<NextPartNumberMarker>0</NextPartNumberMarker>`)
+	buf.WriteString(`<MaxParts>1000</MaxParts>`)
+	for _, p := range parts {
+		buf.WriteString(`<Part>`)
+		buf.WriteString(`<PartNumber>`)
+		buf.WriteString(strconv.Itoa(p.partNumber))
+		buf.WriteString(`</PartNumber>`)
+		buf.WriteString(`<ETag>"`)
+		xmlEscape(&buf, p.etag)
+		buf.WriteString(`"</ETag>`)
+		buf.WriteString(`<Size>`)
+		buf.WriteString(strconv.Itoa(len(p.data)))
+		buf.WriteString(`</Size>`)
+		buf.WriteString(`<LastModified>`)
+		buf.WriteString(time.Now().UTC().Format(time.RFC3339))
+		buf.WriteString(`</LastModified>`)
+		buf.WriteString(`</Part>`)
+	}
+	buf.WriteString(`</ListPartsResult>`)
+
+	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	writeXMLResponse(m.conn, buf.Bytes())
+	return 0, 0, ErrRequestHandled
+}
+
+// ─── ListMultipartUploads ─────────────────────────────────────────────────
+
+func (m *S3Communicator) handleListMultipartUploads(bucket string) (requestedMode int, timestamp int64, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in S3 handleListMultipartUploads: %v", r)
+			m.conn.Close()
+						err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+		}
+	}()
+	muUploads.Lock()
+	type uploadEntry struct {
+		id  string
+		key string
+		ts  time.Time
+	}
+	var entries []uploadEntry
+	for id, up := range uploads {
+		if up.bucket == bucket {
+			entries = append(entries, uploadEntry{id: id, key: up.key, ts: up.createdAt})
+		}
+	}
+	muUploads.Unlock()
+
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].ts.Before(entries[j].ts)
+	})
+
+	var buf bytes.Buffer
+	buf.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)
+	buf.WriteString(`<ListMultipartUploadsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">`)
+	writeXMLString(&buf, "Bucket", bucket)
+	buf.WriteString(`<IsTruncated>false</IsTruncated>`)
+	for _, e := range entries {
+		buf.WriteString(`<Upload>`)
+		writeXMLString(&buf, "Key", e.key)
+		buf.WriteString(`<UploadId>`)
+		xmlEscape(&buf, e.id)
+		buf.WriteString(`</UploadId>`)
+		buf.WriteString(`</Upload>`)
+	}
+	buf.WriteString(`</ListMultipartUploadsResult>`)
+
+	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	writeXMLResponse(m.conn, buf.Bytes())
+	return 0, 0, ErrRequestHandled
+}
+
+// writeXMLString writes an XML element with the given name and escaped value.
+func writeXMLString(w *bytes.Buffer, name, value string) {
+	w.WriteByte('<')
+	w.WriteString(name)
+	w.WriteByte('>')
+	xmlEscape(w, value)
+	w.WriteString("</")
+	w.WriteString(name)
+	w.WriteByte('>')
 }
