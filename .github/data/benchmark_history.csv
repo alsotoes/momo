@@ -3223,3 +3223,14 @@ b20b2a6,BenchmarkSanitizeLog/Unsafe-8,784.60,704.00,1.00
 619bf40,BenchmarkPadString-8,48.98,64.00,1.00
 619bf40,BenchmarkSanitizeLog/Safe-8,560.30,0.00,0.00
 619bf40,BenchmarkSanitizeLog/Unsafe-8,677.60,704.00,1.00
+efc2005,BenchmarkAWSChunkedReaderSigned-8,511934.00,130.02,11310.00
+efc2005,BenchmarkAWSChunkedReaderUnsigned-8,523389.00,127.17,78573.00
+efc2005,BenchmarkCheckMetricsAndSwap-8,10.89,0.00,0.00
+efc2005,BenchmarkCrushOptimized-8,332.80,0.00,0.00
+efc2005,BenchmarkCrushOriginal-8,489.00,164.00,3.00
+efc2005,BenchmarkIndexDirectTracking-8,0.45,0.00,0.00
+efc2005,BenchmarkIndexSearch-8,3.14,0.00,0.00
+efc2005,BenchmarkLoadGlobalConfig-8,8266.00,1576.00,46.00
+efc2005,BenchmarkPadString-8,46.98,64.00,1.00
+efc2005,BenchmarkSanitizeLog/Safe-8,429.80,0.00,0.00
+efc2005,BenchmarkSanitizeLog/Unsafe-8,655.90,704.00,1.00
