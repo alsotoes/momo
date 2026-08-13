@@ -383,6 +383,8 @@ When P2P is enabled, nodes exchange gossip membership and failure detection RPCs
 | `MsgPing` | 9 | Direct ping for SWIM failure detection |
 | `MsgAck` | 10 | Ack response to a ping |
 | `MsgIndirectPing` | 11 | Indirect ping request via intermediary |
+| `MsgOPRFEvalRequest` | 12 | OPRF evaluation request (confidential dedup) |
+| `MsgOPRFEvalResponse` | 13 | OPRF evaluation response |
 
 ### Ping Payload (MsgPing / MsgAck / MsgIndirectPing)
 
@@ -544,13 +546,71 @@ factory (`NewStore`) wraps the blob store with `EncryptedBlobStore` before
 passing it to `CASStore`. No changes to S3 key handling or S3 communicator
 logic are required.
 
+## Streaming AEAD Wire Format
+
+Both Phase 3 client-side E2EE and the SSE `EncryptedBlobStore` use the same streaming AEAD format via `EncryptStream` / `DecryptStream`. This format provides chunk-bound authenticated encryption with a cryptographic integrity footer that prevents undetected truncation.
+
+### Stream Layout
+
+```
+[1B version][8B seed][4B sealedLen][N sealed chunk] ... [4B sealedLen][M sealed footer]
+```
+
+| Field | Size | Description |
+|-------|------|-------------|
+| **version** | 1 byte | `0x03` (current v3); `0x02` (legacy v2, no integrity footer) |
+| **seed** | 8 bytes | Random per-stream seed, never reused with the same key |
+| **sealedLen** | 4 bytes | Big-endian uint32 length of the sealed chunk/footer body (max `MaxChunkSize` = 4128) |
+| **sealed chunk** | sealedLen bytes | AEAD-sealed (AES-256-GCM) data chunk |
+| **sealed footer** | sealedLen bytes | AEAD-sealed integrity footer (v3 only) |
+
+The stream is a sequence of zero or more data chunks followed by exactly one footer chunk. The footer is mandatory in v3; v2 (the prior format) stops after the last data chunk with no footer and is decoded for backward compatibility.
+
+### Data Chunk
+
+Each data chunk encrypts up to 4096 bytes of plaintext:
+
+```
+nonce  = seed[0:8] || big-endian(chunkIndex)[8:12]   (12 bytes)
+sealed = AES-256-GCM.Seal(nonce, plaintext, aad=nil)  (plaintext + 16B tag)
+```
+
+- **chunkIndex** starts at 0 and increments by 1 for each data chunk.
+- The first 8 bytes of the nonce come from the stream seed. The last 4 bytes are the big-endian chunk counter, guaranteeing a unique (key, nonce) pair across every chunk in the stream.
+- Chunk AAD is `nil`. Only the footer uses domain-separated AAD.
+
+### Integrity Footer (v3 only)
+
+The footer is a single AEAD-authenticated record appended after the last data chunk:
+
+```
+nonce  = seed[0:8] || 0xFFFFFFFF
+aad    = "momo:stream-footer:v1"
+footer = AES-256-GCM.Seal(nonce, big-endian(chunkCount)[0:4], aad)
+```
+
+- **chunkCount**: the exact number of data chunks in the stream (4 bytes, big-endian).
+- The nonce index `0xFFFFFFFF` is reserved for the footer and will never collide with a data chunk index.
+- The AAD `"momo:stream-footer:v1"` is domain-separated from data chunks. If an attacker tries to reorder a footer as a data chunk (or vice versa), the AEAD authentication fails.
+- **On decode (v3)**: `DecryptStream` first tries data-chunk AAD (`nil`). If that fails, it retries with the footer AAD and nonce. If both fail, the stream is declared tampered (`ErrTampered`). If a footer authenticates but `chunkCount` does not match the actual decoded chunk count, the stream is rejected (`EBADMSG`). If the stream ends before a footer is found, it is rejected as truncated (`EIO`).
+
+### Wire Format Diagram (v3)
+
+```
+         +--------+--------+--------+---------+---+--------+----------+
+Stream:  | 0x03   | seed   | len(0) | chunk(0)|...| len(F) | footer   |
+         +--------+--------+--------+---------+---+--------+----------+
+Byte:    0        1        9        13          N         N+4        N+4+len(F)
+         version  8B rand  4BE len  ciphertext         4BE len   sealed(4B + 16B tag)
+```
+
 ## Envelope E2EE (Phase 4, issue #780)
 
 The `encryption_key` model above is **shared secret**: both the client and the
 server hold the same master key, so the server could decrypt content in
-principle. For **zero-trust vs. the serving node**, the native protocol
-(`momo-tcp` / `momo-quic`) supports a client-held envelope model modeled on the
-AWS S3 Encryption Client v3:
+principle. For **zero-trust vs. the serving node**, Momo supports a client-held
+envelope model (all 4 protocols: `momo-tcp`, `momo-quic`, `s3-tcp`, `s3-quic`)
+modeled on the AWS S3 Encryption Client v3:
 
 - A **client-held** `e2ee_key` (64-hex, 256-bit) is configured client-side
   only; it is **never** configured on, or sent to, any server daemon.

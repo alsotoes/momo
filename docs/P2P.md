@@ -186,12 +186,12 @@ adaptive_timeout = max(SuspicionTimeout, min(RTT * 10, 5 * SuspicionTimeout))
 
 ### Suspicion Restoration
 
-A peer in `SUSPECT` state is restored to `ALIVE` when any of the following arrives:
+A peer in `SUSPECT` or `OFFLINE` state is restored to `ALIVE` when any of the following arrives:
 - `MsgHeartbeat` from the peer
 - `MsgPing` from the peer
 - `MsgAck` from the peer
 
-This prevents false positives during transient network partitions.
+This prevents false positives during transient network partitions and enables recovery of formerly offline nodes without operator intervention.
 
 ### Message Types
 
@@ -281,7 +281,7 @@ The `LeaseManager` provides time-bound, self-expiring leases for destructive ope
 
 1. **Acquire**: Node broadcasts `MsgLeaseRequest` to all alive peers
 2. **Grant**: Each peer checks if the key is available (no active lease) and responds with `MsgLeaseGrant` (expiry > 0 = granted, expiry = 0 = denied)
-3. **Quorum**: Acquirer needs `(peerCount+1)/2 + 1` grants from peers within timeout/2, where `peerCount` excludes self. For small clusters this effectively requires unanimous peer agreement.
+3. **Quorum**: Acquirer needs `peerCount/2 + 1` grants from peers within timeout/2, where `peerCount` excludes self. For small clusters this effectively requires unanimous peer agreement.
 4. **Release**: After operation completes, broadcasts `MsgLeaseRelease`
 5. **Expiry**: Background loop cleans up expired leases every 500ms
 
