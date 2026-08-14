@@ -36,39 +36,46 @@ These platforms are not officially supported. While Momo might compile or run, f
 
 ## Protocol Feature Parity Matrix
 
-Momo has two distinct API surfaces: the **native** transports (`momo-tcp`, `momo-quic`) speaking the custom binary momo framing, and the **S3 gateway** transports (`s3-tcp`, `s3-quic`) speaking standard HTTP/S3 REST. Every capability that applies to a surface is implemented identically on that surface's transports; the two surfaces differ only where the wire protocol itself is different by design.
+Momo has two distinct API surfaces: the **native** transports (`momo-tcp`, `momo-quic`) speaking the custom binary momo framing, and the **S3 gateway** transports (`s3-tcp`, `s3-quic`) speaking standard HTTP/S3 REST. Every capability that applies to a surface is implemented identically on that surface's transports; the two surfaces differ only where the wire protocol itself is different by design. Client-driven momo-native RPCs (e.g. threshold-OPRF synonym dedup) are designed to be exercised by momo clients over the native transports, not by third-party S3 clients.
 
-Legend: ✅ supported · ❌ not applicable to that API surface (by design)
+Legend: ✅ supported · ◐ supported as an RPC mirror on a surface it is not natively designed for · ❌ not applicable to that API surface (by design). The **S3 API standard** column compares Momo's `s3-*` implementation against the standard S3 REST protocol (as published by SNIA SM3/The AI Data Storage API, § per feature): **N/A** = the feature is not part of the S3 API; **✅ conforms** = standard-compliant; **⚠ partial/extension** = deviates from or extends the standard.
 
-| Feature | momo-tcp | momo-quic | s3-tcp | s3-quic |
-|---|---|---|---|---|
-| **Binary momo handshake** (84B plaintext / 20B challenge-response) | ✅ | ✅ | ❌ | ❌ |
-| **Handshake auth mechanism** | binary token / challenge-response (HMAC-SHA256) | binary token / challenge-response | SigV4 (`Authorization`/presigned) + Bearer | SigV4 (`Authorization`/presigned) + Bearer |
-| **Metadata / payload framing** (192B metadata, ACK) | ✅ | ✅ | ❌ (HTTP framing instead) | ❌ |
-| **Replication modes** (None/Chain/Splay/Primary-Splay) | ✅ | ✅ | ✅ (server-side downgrade for external clients) | ✅ |
-| **E2EE Phase 3** (AES-GCM-256, tenant keys) | ✅ | ✅ | ✅ | ✅ |
-| **Envelope E2EE Phase 4** (client-held `e2ee_key`) | ✅ | ✅ | ✅ (via `s3enc`/`s3dec`) | ✅ |
-| **Threshold-OPRF confidential dedup** | ✅ (`'O'` binary mode) | ✅ (`'O'` binary mode) | ✅ (`POST /?momo-oprf-eval`) | ✅ (`POST /?momo-oprf-eval`) |
-| **At-rest encryption** (`EncryptedBlobStore` SSE) | ✅ | ✅ | ✅ | ✅ |
-| **Outbound S3-blob-store TLS** (issue #774) | ✅ | ✅ | ✅ | ✅ |
-| **Streaming AEAD wire format** (chunked + footer) | ✅ | ✅ | ✅ | ✅ |
-| **Native list / delete / get** (`'L'`/`'D'`/`'G'`) | ✅ | ✅ | ❌ (S3 REST instead) | ❌ |
-| **Rolling idle timeout** (30s `IdleTimeoutConn`) | ✅ | ✅ | ✅ (`s3ReadHeaderTimeout` 10s header + per-op deadlines) | ✅ |
-| **TLS** | TLS 1.2+ (optional) | TLS 1.3 (mandatory) | TLS required (or explicit `tls_insecure=true`) | TLS 1.3 (mandatory) |
-| **Metrics** (`MetricsHook` / Prometheus) | ✅ | ✅ | ✅ | ✅ |
-| **P2P gossip / SWIM / lease / scatter-gather** | ✅ (separate `gossip_port`) | ✅ | ✅ | ✅ |
-| **Presigned URLs** (query-string SigV4) | ❌ | ❌ | ✅ | ✅ |
-| **aws-chunked streaming upload** (signed/unsigned) | ❌ | ❌ | ✅ | ✅ |
-| **Multipart upload** (6 endpoints) | ❌ | ❌ | ✅ | ✅ |
-| **CopyObject / batch DeleteObjects** | ❌ | ❌ | ✅ | ✅ |
-| **SSE header validation** (AES256 honored; SSE-C/KMS rejected) | ❌ | ❌ | ✅ | ✅ |
+| Feature | momo-tcp | momo-quic | s3-tcp | s3-quic | S3 API standard |
+|---|---|---|---|---|---|
+| **Binary momo handshake** (84B plaintext / 20B challenge-response) | ✅ | ✅ | ❌ | ❌ | **N/A** — S3 is HTTPS REST, no binary framing |
+| **Handshake auth mechanism** | binary token / challenge-response (HMAC-SHA256) | binary token / challenge-response | SigV4 (`Authorization`/presigned) + Bearer | SigV4 (`Authorization`/presigned) + Bearer | **✅ conforms** — SigV4 + presigned query-string (Bearer is a momo extension) |
+| **Metadata / payload framing** (192B metadata, ACK) | ✅ | ✅ | ❌ (HTTP framing instead) | ❌ | **✅ conforms** — HTTP headers + XML payloads |
+| **Replication modes** (None/Chain/Splay/Primary-Splay) | ✅ | ✅ | ✅ (server-side downgrade for external clients) | ✅ | **N/A** — server-side momo feature, not part of S3 API |
+| **E2EE Phase 3** (AES-GCM-256, tenant keys) | ✅ | ✅ | ✅ | ✅ | **N/A** — momo client encryption, S3 does not define it |
+| **Envelope E2EE Phase 4** (client-held `e2ee_key`) | ✅ | ✅ | ✅ (via `s3enc`/`s3dec`) | ✅ | **⚠ extension** — momo derives keys client-side (`s3enc`/`s3dec`); not SSE-C/KMS |
+| **Threshold-OPRF confidential dedup** | ✅ (`'O'` binary mode, designed) | ✅ (`'O'` binary mode, designed) | ◐ (`POST /?momo-oprf-eval`, mirror, not designed surface) | ◐ (`POST /?momo-oprf-eval`, mirror, not designed surface) | **N/A** — not part of S3 API |
+| **At-rest encryption** (`EncryptedBlobStore` SSE) | ✅ | ✅ | ✅ | ✅ | **⚠ partial** — SSE-S3 AES256 style; SSE-C/SSE-KMS not supported (see SSE row) |
+| **Outbound S3-blob-store TLS** (issue #774) | ✅ | ✅ | ✅ | ✅ | **✅ conforms** — TLS 1.2+ transport (issue #774) |
+| **Streaming AEAD wire format** (chunked + footer) | ✅ | ✅ | ✅ | ✅ | **N/A** — momo's own format; S3 streaming = `aws-chunked` (row below) |
+| **Native list / delete / get** (`'L'`/`'D'`/`'G'`) | ✅ | ✅ | ❌ (S3 REST instead) | ❌ | **✅ conforms** — Object-level ops map to `ListObjectsV2` / `GetObject` / `DeleteObject` |
+| **Bucket operations** | ❌ | ❌ | ✅ | ✅ | **✅ conforms** — `ListBuckets`, `GetBucketLocation`, `HeadBucket`, `CreateBucket`, `DeleteBucket` (empty only) |
+| **ListObjectsV2 pagination & prefixes** | ❌ | ❌ | ✅ | ✅ | **✅ conforms** — `prefix`, `delimiter` (+ `CommonPrefixes`), `max-keys` (≤1000), `continuation-token`, `start-after`, `fetch-owner` |
+| **Object HTTP semantics** (Range, conditional GET) | ❌ | ❌ | ✅ | ✅ | **✅ conforms** — `Range`→`206 Partial Content`, `If-Match`(412), `If-None-Match`(304), `If-Modified-Since`, `If-Range`, ETag, Last-Modified |
+| **Preserved object metadata** (Content-Type, `x-amz-meta-*`, cache headers) | ❌ | ❌ | ✅ | ✅ | **✅ conforms** — stored at rest and echoed on GET/HEAD (issue #772) |
+| **Rolling idle timeout** (30s `IdleTimeoutConn`) | ✅ | ✅ | ✅ (`s3ReadHeaderTimeout` 10s header + per-op deadlines) | ✅ | **N/A** — not part of S3 API |
+| **TLS** | TLS 1.2+ (optional) | TLS 1.3 (mandatory) | TLS required (or explicit `tls_insecure=true`) | TLS 1.3 (mandatory) | **✅ conforms** — HTTPS/TLS; `tls_insecure=true` is a non-standard opt-out |
+| **Metrics** (`MetricsHook` / Prometheus) | ✅ | ✅ | ✅ | ✅ | **N/A** — not part of S3 API |
+| **P2P gossip / SWIM / lease / scatter-gather** | ✅ (separate `gossip_port`) | ✅ | ✅ | ✅ | **N/A** — not part of S3 API |
+| **Presigned URLs** (query-string SigV4) | ❌ | ❌ | ✅ | ✅ | **✅ conforms** — `X-Amz-Credential`/`X-Amz-Signature` query-string auth |
+| **aws-chunked streaming upload** (signed/unsigned) | ❌ | ❌ | ✅ | ✅ | **✅ conforms** — `Content-Encoding: aws-chunked`, `STREAMING-AWS4-HMAC-SHA256-PAYLOAD` / `UNSIGNED-PAYLOAD` |
+| **Multipart upload** (6 endpoints) | ❌ | ❌ | ✅ | ✅ | **✅ conforms** — `CreateMultipartUpload` / `UploadPart` / `ListParts` / `ListMultipartUploads` / `CompleteMultipartUpload` / `AbortMultipartUpload` (issue #764) |
+| **CopyObject / batch DeleteObjects** | ❌ | ❌ | ✅ | ✅ | **✅ conforms** — `PUT ...&x-amz-copy-source` (CopyObject), `POST /?delete` (batch delete) |
+| **SSE header validation** (AES256 honored; SSE-C/KMS rejected) | ❌ | ❌ | ✅ | ✅ | **⚠ partial** — honors `AES256` (SSE-S3); rejects `aws:kms` (SSE-KMS) and SSE-C rather than implementing them |
 
 ### Notes
 
 - **`s3-tcp` vs `s3-quic`** are served by the same `S3Communicator` and are functionally identical; the only difference is the carrier (TCP+TLS vs QUIC/UDP+TLS 1.3).
 - **`momo-tcp` vs `momo-quic`** share byte-identical binary framing; the only differences are the carrier, the mandatory-vs-optional TLS posture, and the idempotent `Close` guard (QUIC).
-- **Rolling idle timeout:** the native transports use a rolling 30s `IdleTimeoutConn`; the S3 gateway relies on its own bounded header/body deadlines (`s3ReadHeaderTimeout`, per-op and size-proportional deadlines, issue #592/#620) instead of a rolling wrapper, so it is not double-wrapped.
+- **Rolling idle timeout:** the native transports use a rolling 30s `IdleTimeoutConn`; the S3 gateway relies on its own bounded header/body deadlines (`s3ReadHeaderTimeout`, per-op and size-proportional deadlines, issue #592/#620, issue #816) instead of a rolling wrapper, so it is not double-wrapped.
+- **Reading the `S3 API standard` column:** it grades only the `s3-tcp` / `s3-quic` cells against the standard S3 protocol. Rows marked `N/A` are momo-internal capabilities the standard does not govern; rows below `⚠` are the main known gaps/extensions (SSE-C/SSE-KMS via the SSE validation row, and the custom `s3enc`/`s3dec` envelope path).
+- **Threshold-OPRF on S3 (`◐`):** OPRF is a momo-native client handshake; a momo client uses `momo-tcp`/`momo-quic` for OPRF evaluation. The `POST /?momo-oprf-eval` endpoint on the S3 gateway is an RPC mirror of the native evaluation, provided for completeness and driven by `S3Communicator.SendOPRFEval`. It is **not a designed parity surface** — standard S3 clients cannot perform OPRF, so it has no designed consumer (issue #817, closed as not-planned).
 - **P2P gossip** runs on a dedicated `gossip_port` (default `4450`) independent of the four data-plane protocols, so it behaves identically regardless of which transport is configured.
+- **Standard S3 features not implemented:** those NOT listed above are absent by scope. Aware scope gaps include versioning (`?versioning`/`?versions`), bucket policies / ACLs, bucket `?cors`/`?website`/`?lifecycle`/`?tagging`, object lock / retention, `UploadPartCopy`, bucket-level SSE/config, checksum headers (`x-amz-checksum-*`), and SelectObjectContent. Routing matches only on the known query parameters and methods listed above, so unsupported subresources are not specially recognized and fall through to the nearest method handler. The one explicit `501 NotImplemented` path is SSE-KMS (`s3_communicator.go` `validateSSEHeaders`, issue #776); SSE-C is rejected up-front with `400 InvalidRequest` and unknown SSE algorithms with `400 InvalidArgument` rather than honored.
 
 ## Known Issues and Considerations
 

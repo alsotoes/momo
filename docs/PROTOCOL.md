@@ -178,9 +178,9 @@ When confidential dedup is enabled (`oprf_enabled`), the client calls this nativ
     -   If the quorum (< `oprf_threshold` distinct evaluations) is not met, the server responds with count `0` and the client **fails closed** (the upload/download aborts; there is no convergent fallback).
 5.  **Client Combine/Unblind:** The client interpolates the Shamir secret at `f(0)` over at least `oprf_threshold` distinct share evaluations, unblinds with `1/r`, and derives the content key = `SHA-256(OPRF output)`. Identical plaintexts always yield the same key across tenants and clients.
 
-### Threshold-OPRF Evaluation over S3 (`s3-tcp` / `s3-quic`, issue #817)
+### Threshold-OPRF Evaluation over S3 (`s3-tcp` / `s3-quic`)
 
-On the S3 transports (`s3-tcp`, `s3-quic`), the gateway serves OPRF evaluation over a dedicated HTTP endpoint instead of the binary `'O'` mode, so confidential dedup works identically across all four protocols:
+OPRF is inherently a **momo-native, client-driven** handshake (raw binary `'O'` mode above). A momo client that enables `oprf_enabled` uses the native transports for OPRF evaluation. The S3 gateway existed to serve standard S3-ecosystem clients (aws-cli, SDKs), which cannot perform OPRF; therefore OPRF-on-S3 is **not a designed parity surface**. For completeness, `S3Communicator` also exposes an RPC mirror of the evaluation over a dedicated HTTP endpoint, which is available but has no designed consumer:
 
 ```
 POST /?momo-oprf-eval HTTP/1.1
