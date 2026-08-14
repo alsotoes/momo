@@ -518,3 +518,45 @@ oprf_share = ` + validOPRFShare + `
 		})
 	}
 }
+
+func TestGetConfig_AuthBackoffDelay(t *testing.T) {
+	write := func(globalKey string) string {
+		return strings.Replace(validConfig, "polymorphic_system = true",
+			"polymorphic_system = true\n"+globalKey, 1)
+	}
+
+	// Explicit value parses into the struct.
+	tmp := filepath.Join(t.TempDir(), "momo.conf")
+	if err := os.WriteFile(tmp, []byte(write("auth_backoff_delay = 250")), 0666); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := GetConfig(tmp)
+	if err != nil {
+		t.Fatalf("GetConfig failed: %v", err)
+	}
+	if cfg.Global.AuthBackoffDelay != 250 {
+		t.Fatalf("expected AuthBackoffDelay=250, got %d", cfg.Global.AuthBackoffDelay)
+	}
+
+	// Absent defaults to 0 (disabled).
+	tmp2 := filepath.Join(t.TempDir(), "momo.conf")
+	if err := os.WriteFile(tmp2, []byte(validConfig), 0666); err != nil {
+		t.Fatal(err)
+	}
+	cfg2, err := GetConfig(tmp2)
+	if err != nil {
+		t.Fatalf("GetConfig failed: %v", err)
+	}
+	if cfg2.Global.AuthBackoffDelay != 0 {
+		t.Fatalf("expected default AuthBackoffDelay=0, got %d", cfg2.Global.AuthBackoffDelay)
+	}
+
+	// Negative value is rejected.
+	tmp3 := filepath.Join(t.TempDir(), "momo.conf")
+	if err := os.WriteFile(tmp3, []byte(write("auth_backoff_delay = -5")), 0666); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := GetConfig(tmp3); err == nil {
+		t.Fatal("expected negative auth_backoff_delay to be rejected")
+	}
+}

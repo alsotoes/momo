@@ -141,6 +141,10 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 	metricsCollector := NewMetricsCollector()
 	StartMetricsServer(ctx, cfg.Metrics.PrometheusPort, metricsCollector)
 
+	// 🛡️ Sentinel: Adaptive failed-auth backoff & temporary lockout (issue #821).
+	// Disabled (Allow always true) when auth_backoff_delay is 0.
+	authLimiter := common.NewAuthLimiter(time.Duration(cfg.Global.AuthBackoffDelay) * time.Millisecond)
+
 	// 🛡️ Zero-Crash: Log a warning if the cluster cannot meet the desired durability goal.
 	if cfg.Global.ReplicationFactor > len(daemons) {
 		log.Printf("⚠️ WARNING: Desired replication factor (%d) exceeds available node count (%d). Data will be stored in DEGRADED mode.", cfg.Global.ReplicationFactor, len(daemons))
@@ -224,6 +228,17 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 			// 🛡️ Sentinel: Capture remote address for audit logging and traceability
 			remoteAddr := common.SanitizeLog(comm.RemoteAddr().String())
 
+			// 🛡️ Sentinel: Adaptive failed-auth backoff & temporary lockout (issue #821).
+			// When enabled, reject a source that is under backoff/lockout BEFORE any
+			// crypto/network work to meter online brute-force attempts.
+			if authLimiter.Enabled() && !authLimiter.Allow(remoteAddr) {
+				log.Printf("AUTH: rejected connection from rate-limited source %s", remoteAddr)
+				defer func() {
+					metricsCollector.IncErrors()
+				}()
+				return
+			}
+
 			// Inject storage store if the communicator supports it (e.g. S3 for list/delete)
 			if s3Comm, ok := comm.(interface{ SetStore(storage.Store) }); ok {
 				s3Comm.SetStore(store)
@@ -290,11 +305,19 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 				}
 				log.Printf("AUDIT: Handshake failed from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
 				metricsCollector.IncErrors()
+				// 🛡️ Sentinel: record the failure for adaptive backoff (issue #821).
+				if authLimiter.Enabled() {
+					authLimiter.RecordFailure(remoteAddr)
+				}
 				return
 			}
 
 			// 🛡️ Sentinel: Add audit logging for successful authentication
 			log.Printf("AUDIT: Successful authentication from %s", remoteAddr)
+			// 🛡️ Sentinel: successful auth releases any backoff/lockout (issue #821).
+			if authLimiter.Enabled() {
+				authLimiter.RecordSuccess(remoteAddr)
+			}
 
 			// Determine the replication mode based on whether we are the Primary or a Secondary.
 			// 🛡️ CVE-007: Use cryptographic peer authentication (IsPeer) instead of the
@@ -625,7 +648,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 								return
 							}
 							defer reader.Close()
-						fwdErr := forwardStream()(cfg, reader, storageKey, metadata.Hash, metadata.Size, "", getS3Meta(store, storageKey), id, finalTs, replicationMode, factor)
+							fwdErr := forwardStream()(cfg, reader, storageKey, metadata.Hash, metadata.Size, "", getS3Meta(store, storageKey), id, finalTs, replicationMode, factor)
 							if fwdErr != nil {
 								log.Printf("AUDIT: Splay forwarding to node %d failed: %v", id, common.SanitizeLog(fwdErr.Error()))
 								metricsCollector.IncErrors()

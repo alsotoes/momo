@@ -110,6 +110,9 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 	// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
 	expectedAuthToken := []byte(common.PadString(cfg.Global.AuthToken, common.AuthTokenLength))
 
+	// 🛡️ Sentinel: Adaptive failed-auth backoff & temporary lockout (issue #821).
+	authLimiter := common.NewAuthLimiter(time.Duration(cfg.Global.AuthBackoffDelay) * time.Millisecond)
+
 	// 🛡️ Sentinel: Enforce a limit on concurrent connections to prevent resource exhaustion (DoS).
 	const maxConcurrentConnections = 1000
 	sem := make(chan struct{}, maxConcurrentConnections)
@@ -151,16 +154,28 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 
 			remoteAddr := common.SanitizeLog(connection.RemoteAddr().String())
 
+			// 🛡️ Sentinel: Adaptive failed-auth backoff & temporary lockout (issue #821).
+			if authLimiter.Enabled() && !authLimiter.Allow(remoteAddr) {
+				log.Printf("AUTH: rejected connection from rate-limited source %s", remoteAddr)
+				return
+			}
+
 			// HandshakeServer performs the server-side handshake: receives AuthToken + Timestamp,
 			// validates the token, and returns the timestamp.
 			_, ts, err := comm.HandshakeServer(expectedAuthToken)
 			if err != nil {
 				log.Printf("AUDIT: Handshake failed from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
+				if authLimiter.Enabled() {
+					authLimiter.RecordFailure(remoteAddr)
+				}
 				return
 			}
 
 			// 🛡️ Sentinel: Add audit logging for successful authentication
 			log.Printf("AUDIT: Successful authentication for changeReplicationMode from %s", remoteAddr)
+			if authLimiter.Enabled() {
+				authLimiter.RecordSuccess(remoteAddr)
+			}
 
 			// Send a dummy replication mode back to complete the handshake
 			if err := comm.SendReplicationMode(0); err != nil {

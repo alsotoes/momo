@@ -22,6 +22,11 @@ This section contains cluster-wide settings that affect all daemons.
     -   **Default:** None (required)
     -   **Example:** `a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6` <!-- notsecret -->
 
+-   **`auth_backoff_delay`**
+    -   **Description:** Base delay (in milliseconds) for the adaptive failed-auth backoff (issue #821). When **0** (default), auth throttling is disabled and authentication behaves exactly as before. When **> 0**, consecutive failed challenge-response handshakes from a single source grow the per-source rejection delay exponentially (factor 2, capped at 8s), and a source exceeding 5 consecutive failures is temporarily locked out. A successful authentication releases the source immediately. Applies to the `momo-tcp` and `momo-quic` data handshakes and the change-replication control channel.
+    -   **Type:** Integer (milliseconds, `>= 0`)
+    -   **Default:** `0` (disabled)
+
 -   **`debug`**
     -   **Description:** When set to `true`, enables verbose debug logging for all daemons in the cluster.
     -   **Type:** Boolean (`true` or `false`)
