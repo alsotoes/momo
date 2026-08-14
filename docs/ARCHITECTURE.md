@@ -232,7 +232,7 @@ The defining feature of Momo is its **Dual-Dimensional Polymorphic Architecture*
 
 ### 📈 Dimension 1: Dynamic Replication Polymorphism (Runtime Adaptation)
 Momo monitors local CPU and Memory metrics continuously on every node. 
-- **Under Surge Load:** If system metrics exceed specified thresholds (e.g., 80% usage), nodes coordinate to dynamically shift the cluster replication mode to a lower-overhead strategy (such as **No Replication** or **Primary-Splay**) to prevent bottleneck queues and protect cluster stability.
+- **Under Surge Load:** If system metrics exceed specified thresholds (e.g., 80% usage), nodes coordinate to dynamically shift the cluster replication mode to a lower-overhead strategy (such as **No Replication** or **Primary-Splay**) to prevent bottleneck queues and protect cluster stability. An optional `minimum_durability_factor` (issue #822) caps this degradation: the controller refuses to auto-select a mode whose achievable replica count (≈ `min(replication_factor, daemons)`, `1` for `ReplicationNone`) is below the floor, holding the current higher-durability mode and logging the refusal rather than silently losing durability.
 - **Under Low Load:** When resource usage settles below thresholds (e.g., 20% usage), the system automatically promotes the mode to highly consistent, durable strategies (like **Chain** or **Splay**), optimizing data safety.
 - **Decentralized Execution:** This state change is broadcast dynamically to all potential "Primary" nodes via the `ChangeReplication` endpoint, keeping the cluster seamlessly in sync without a single point of failure.
 

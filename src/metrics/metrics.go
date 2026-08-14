@@ -88,6 +88,45 @@ func checkMetricsAndSwap(sm SystemMetrics, currentIndex int, replicationOrder []
 	return currentIndex, false
 }
 
+// effectiveModeDurability returns the achievable replica copy count for a
+// replication mode, bounded by cluster size. ReplicationNone holds only the
+// source copy (1); all replicated modes hold up to min(replicationFactor,
+// clusterSize) copies (issue #822).
+func effectiveModeDurability(mode, replicationFactor, clusterSize int) int {
+	if mode == common.ReplicationNone {
+		return 1
+	}
+	if clusterSize < 1 {
+		clusterSize = 1
+	}
+	if replicationFactor < clusterSize {
+		return replicationFactor
+	}
+	return clusterSize
+}
+
+// shouldSwitchMode reports whether the metrics controller may move to newIdx
+// given the durability floor. Escalating to a higher-durability mode is always
+// allowed; degrading to a mode whose achievable replica count falls below the
+// configured minimum is refused so durability is never silently lost
+// (Rule 9 / issue #822). The floor is disabled when <= 0.
+func shouldSwitchMode(minFloor int, replicationOrder []int, newIdx, replicationFactor, clusterSize int) bool {
+	if minFloor <= 0 {
+		return true
+	}
+	// Refuse any move to a mode whose achievable replica count falls below the
+	// floor. This guards the metastable degrade path (checkMetricsAndSwap and
+	// the timeout fallback) against silently dropping durability under load.
+	if newIdx >= 0 && newIdx < len(replicationOrder) {
+		if effectiveModeDurability(replicationOrder[newIdx], replicationFactor, clusterSize) >= minFloor {
+			return true
+		}
+		log.Printf("WARNING: metrics controller refused to switch to mode %d (durability below configured minimum %d) — holding at current mode", replicationOrder[newIdx], minFloor)
+		return false
+	}
+	return true
+}
+
 // GetMetrics is the main loop for the metrics daemon.
 //
 // It periodically checks the system metrics and, if the polymorphic system is enabled,
@@ -121,6 +160,11 @@ func GetMetrics(ctx context.Context, cfg common.Configuration, serverId int) {
 	currentIndex := 0
 	pushNewReplicationMode(cfg, paddedAuthToken, replicationOrder[currentIndex])
 
+	// Durability floor (issue #822): the controller must never automatically
+	// select a mode whose achievable replica count is below this value.
+	minFloor := cfg.Global.MinimumDurabilityFactor
+	clusterSize := len(cfg.Daemons)
+
 	sm := &RealSystemMetrics{}
 	start := time.Now()
 
@@ -136,7 +180,7 @@ func GetMetrics(ctx context.Context, cfg common.Configuration, serverId int) {
 			return
 		case <-ticker.C:
 			newIndex, changed := checkMetricsAndSwap(sm, currentIndex, replicationOrder, maxThreshPercent, minThreshPercent)
-			if changed {
+			if changed && shouldSwitchMode(minFloor, replicationOrder, newIndex, cfg.Global.ReplicationFactor, clusterSize) {
 				currentIndex = newIndex
 				pushNewReplicationMode(cfg, paddedAuthToken, replicationOrder[currentIndex])
 				start = time.Now()
@@ -146,10 +190,15 @@ func GetMetrics(ctx context.Context, cfg common.Configuration, serverId int) {
 			now := time.Now()
 			if now.Sub(start) > fallbackDuration {
 				if currentIndex > 0 {
-					log.Printf("Replication fallback because of timeout")
-					currentIndex--
-					pushNewReplicationMode(cfg, paddedAuthToken, replicationOrder[currentIndex])
-					start = time.Now()
+					if shouldSwitchMode(minFloor, replicationOrder, currentIndex-1, cfg.Global.ReplicationFactor, clusterSize) {
+						log.Printf("Replication fallback because of timeout")
+						currentIndex--
+						pushNewReplicationMode(cfg, paddedAuthToken, replicationOrder[currentIndex])
+						start = time.Now()
+					} else {
+						log.Printf("Replication fallback held because of durability floor")
+						start = time.Now()
+					}
 				} else {
 					log.Printf("Replication method has no fallback")
 				}

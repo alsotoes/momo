@@ -69,6 +69,13 @@ type ConfigurationGlobal struct {
 	ClientSideReplicationModes []int
 	// ReplicationFactor is the number of replicas to maintain for each object.
 	ReplicationFactor int
+	// MinimumDurabilityFactor is the minimum achievable replica count the
+	// metrics-driven controller may select (issue #822). A value of 0 (default)
+	// disables the floor so the controller behaves as before. When > 0, the
+	// controller refuses to automatically degrade to a mode whose achievable
+	// replica count is below this floor, holding the current higher-durability
+	// mode and logging the refusal instead of silently losing durability.
+	MinimumDurabilityFactor int
 	// PolymorphicSystem enables or disables the polymorphic system.
 	PolymorphicSystem bool
 	// CACertPath is the path to a PEM-encoded CA certificate file used to verify

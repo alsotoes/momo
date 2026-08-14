@@ -256,6 +256,22 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 		globalCfg.ReplicationFactor = factor
 	}
 
+	// minimum_durability_factor: the floor on replica copies the metrics
+	// controller may select under load. 0 (default) disables the floor.
+	// Must be >= 0 and, when enabled, must not exceed the desired replication
+	// factor (issue #822).
+	if key, err := section.GetKey("minimum_durability_factor"); err == nil {
+		if v, e := key.Int(); e == nil {
+			if v < 0 {
+				return ConfigurationGlobal{}, fmt.Errorf("'minimum_durability_factor' must be >= 0: %w", syscall.EINVAL)
+			}
+			if v > globalCfg.ReplicationFactor {
+				return ConfigurationGlobal{}, fmt.Errorf("'minimum_durability_factor' %d exceeds 'replication_factor' %d: %w", v, globalCfg.ReplicationFactor, syscall.EINVAL)
+			}
+			globalCfg.MinimumDurabilityFactor = v
+		}
+	}
+
 	protocolKey, err := section.GetKey("protocol")
 	if err != nil {
 		log.Printf("WARNING: No protocol definition found, falling back to default (momo-tcp)")

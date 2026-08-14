@@ -49,6 +49,11 @@ This section contains cluster-wide settings that affect all daemons.
     -   **Default:** `3`
     -   **Logic:** If the cluster contains fewer than `replication_factor` nodes, the system will store as many copies as possible and log a warning (**Degraded Mode**).
 
+-   **`minimum_durability_factor`**
+    -   **Description:** The minimum achievable replica copy count the metrics-driven controller may select under load (issue #822). When **0** (default), the durability floor is disabled and the controller behaves exactly as before. When **> 0**, the controller refuses to automatically degrade to a replication mode whose achievable replica count (computed as `min(replication_factor, number_of_daemons)` for replicated modes, and `1` for `ReplicationNone`) falls below this floor — it holds the current higher-durability mode and logs the refusal instead of silently losing durability. Operator-driven mode changes via the change-replication control channel are not affected.
+    -   **Type:** Integer (`>= 0`, and `<= replication_factor` when enabled)
+    -   **Default:** `0` (disabled)
+
 -   **`client_side_replication_modes`**
     -   **Description:** A comma-separated list of replication mode IDs that require a momo-aware client. External S3 clients (e.g., `aws-cli`) cannot perform these modes, so when such a client connects, the server downgrades to the next server-side mode in `replication_order` per connection.
     -   **Type:** Comma-separated list of integers
