@@ -34,6 +34,8 @@
   `docs/PERFORMANCE.md`.
 - [x] C3. `go build ./...`, `go test -race ./...` (incl. crypto),
   `go vet ./...`, `gofmt`.
+- [x] C4. Update `.github/scripts/test-e2e-encryption.sh` blob version assertion
+  to accept the new `0x04` (v4) stream version alongside legacy `0x02`/`0x03`.
 
 ## Steering-Rule Compliance Notes
 
