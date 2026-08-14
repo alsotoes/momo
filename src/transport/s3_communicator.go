@@ -2893,6 +2893,7 @@ func (m *S3Communicator) handleAbortMultipartUpload(uploadID string) (requestedM
 // ─── ListParts ─────────────────────────────────────────────────────────────
 
 func (m *S3Communicator) handleListParts(bucket, key, uploadID string) (requestedMode int, timestamp int64, err error) {
+		// 🛡️ Rule 37 (Unified Observable Panic Recovery): Catch and log panics, returning mapped syscall error
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Panic recovered in S3 handleListParts: %v", r)
@@ -2917,6 +2918,13 @@ func (m *S3Communicator) handleListParts(bucket, key, uploadID string) (requeste
 	sort.Slice(parts, func(i, j int) bool {
 		return parts[i].partNumber < parts[j].partNumber
 	})
+
+	// 🛡️ Rule 35 (Safe Manual Serialization): Pre-validate input metadata sizes to prevent large buffer attacks
+	if len(bucket) > 64 || len(key) > 1024 || len(uploadID) > 128 {
+		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		writeS3Error(m.conn, http.StatusBadRequest, "InvalidArgument", "Invalid upload parameter length.", "")
+		return 0, 0, ErrRequestHandled
+	}
 
 	var buf bytes.Buffer
 	// ⚡ Bolt: Eliminate heap allocations in S3 ListParts XML generation by using
