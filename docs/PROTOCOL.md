@@ -28,6 +28,13 @@ QUIC protocols (`s3-quic`, `momo-quic`) always use TLS 1.3 via QUIC. When no `tl
 
 When TLS is enabled, the momo handshake uses **challenge-response authentication** instead of sending the auth token in plaintext.
 
+Servers may optionally throttle challenge-response failures via `auth_backoff_delay`
+(see `CONFIGURATION.md`): a source that repeatedly fails authentication is met
+with adaptive exponential backoff and, past a threshold, a temporary lockout.
+This is a **server-side admission-policy only** — it adds no bytes to the wire
+handshake (nonce and response sizes are unchanged), so the protocol framing is
+bit-for-bit stable regardless of the setting (issue #821).
+
 ## Handshake
 
 The handshake is initiated by the client and is used to authenticate the connection and establish the replication mode.

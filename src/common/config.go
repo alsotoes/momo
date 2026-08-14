@@ -276,6 +276,17 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 		return ConfigurationGlobal{}, fmt.Errorf("'auth_token' length exceeds maximum allowed length of %d bytes", AuthTokenLength)
 	}
 
+	// auth_backoff_delay (ms): base delay for adaptive failed-auth backoff.
+	// 0 (default) disables throttling.
+	if key, err := section.GetKey("auth_backoff_delay"); err == nil {
+		if v, e := key.Int(); e == nil {
+			if v < 0 {
+				return ConfigurationGlobal{}, fmt.Errorf("'auth_backoff_delay' must be >= 0: %w", syscall.EINVAL)
+			}
+			globalCfg.AuthBackoffDelay = v
+		}
+	}
+
 	if key, err := section.GetKey("ca_cert"); err == nil {
 		globalCfg.CACertPath = key.String()
 	}

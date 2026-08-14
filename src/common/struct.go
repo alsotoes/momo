@@ -113,6 +113,12 @@ type ConfigurationGlobal struct {
 	// E2EEKeyID is the key identifier stored in the envelope header. Defaults
 	// to "default" when empty.
 	E2EEKeyID string
+	// AuthBackoffDelay is the base delay (in milliseconds) applied to the
+	// adaptive backoff after a failed authentication, per source. A value of 0
+	// (default) disables auth throttling entirely so existing behavior is
+	// unchanged. When > 0, consecutive failures from a source grow the delay
+	// exponentially and, past a threshold, trigger a temporary lockout.
+	AuthBackoffDelay int
 }
 
 // ConfigurationMetrics holds the metrics configuration for the application.
