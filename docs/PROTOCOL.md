@@ -530,7 +530,7 @@ Client → [E2EE encryption] → Server → EncryptedBlobStore → Underlying Bl
 ```
 
 - **Decorator pattern:** `EncryptedBlobStore` implements the `BlobStore` interface, wrapping any underlying implementation.
-- **Streaming AEAD:** `PutBlob` uses `EncryptStream` (4KB chunks); `GetBlob` uses `DecryptStream` via `io.Pipe` for zero-copy streaming.
+- **Streaming AEAD:** `PutBlob` uses `EncryptStream` (default 4KB chunk size, v4 format); `GetBlob` uses `DecryptStream` via `io.Pipe` for zero-copy streaming.
 - **Dedup preserved:** The hash key remains the plaintext content hash (computed by `CASStore` before calling `PutBlob`), so CAS dedup works on plaintext content.
 - **Delete passthrough:** `DeleteBlob` delegates directly to the underlying store — encryption does not affect deletion semantics.
 - **S3 metadata (filenames) remain plaintext** — only blob content is encrypted at rest.
@@ -575,22 +575,23 @@ Both Phase 3 client-side E2EE and the SSE `EncryptedBlobStore` use the same stre
 ### Stream Layout
 
 ```
-[1B version][8B seed][4B sealedLen][N sealed chunk] ... [4B sealedLen][M sealed footer]
+[1B version][2B chunkSize][8B seed][4B sealedLen][N sealed chunk] ... [4B sealedLen][M sealed footer]
 ```
 
 | Field | Size | Description |
 |-------|------|-------------|
-| **version** | 1 byte | `0x03` (current v3); `0x02` (legacy v2, no integrity footer) |
+| **version** | 1 byte | `0x04` (current v4); `0x03` (legacy v3); `0x02` (legacy v2, no integrity footer) |
+| **chunkSize** | 2 bytes | Big-endian plaintext chunk length, `[MinChunkSize, MaxChunkSize]` = `[512, 4096]` (v4 only) |
 | **seed** | 8 bytes | Random per-stream seed, never reused with the same key |
 | **sealedLen** | 4 bytes | Big-endian uint32 length of the sealed chunk/footer body (max `MaxChunkSize` = 4128) |
 | **sealed chunk** | sealedLen bytes | AEAD-sealed (AES-256-GCM) data chunk |
-| **sealed footer** | sealedLen bytes | AEAD-sealed integrity footer (v3 only) |
+| **sealed footer** | sealedLen bytes | AEAD-sealed integrity footer (v3/v4 only) |
 
-The stream is a sequence of zero or more data chunks followed by exactly one footer chunk. The footer is mandatory in v3; v2 (the prior format) stops after the last data chunk with no footer and is decoded for backward compatibility.
+The stream is a sequence of zero or more data chunks followed by exactly one footer chunk. The footer is mandatory in v3 and v4; v2 (the prior format) stops after the last data chunk with no footer and is decoded for backward compatibility. The v4 header carries a **self-describing chunk size** so a decoder can validate the bound before allocating (Rule 32) and read streams written with a non-default chunk size; `SetStreamChunkSize` raises/lowers this within `[512, 4096]` (issue #824).
 
 ### Data Chunk
 
-Each data chunk encrypts up to 4096 bytes of plaintext:
+Each data chunk encrypts up to the stream's declared `chunkSize` bytes of plaintext (default `4096`):
 
 ```
 nonce  = seed[0:8] || big-endian(chunkIndex)[8:12]   (12 bytes)
@@ -601,7 +602,7 @@ sealed = AES-256-GCM.Seal(nonce, plaintext, aad=nil)  (plaintext + 16B tag)
 - The first 8 bytes of the nonce come from the stream seed. The last 4 bytes are the big-endian chunk counter, guaranteeing a unique (key, nonce) pair across every chunk in the stream.
 - Chunk AAD is `nil`. Only the footer uses domain-separated AAD.
 
-### Integrity Footer (v3 only)
+### Integrity Footer (v3/v4)
 
 The footer is a single AEAD-authenticated record appended after the last data chunk:
 
@@ -614,16 +615,16 @@ footer = AES-256-GCM.Seal(nonce, big-endian(chunkCount)[0:4], aad)
 - **chunkCount**: the exact number of data chunks in the stream (4 bytes, big-endian).
 - The nonce index `0xFFFFFFFF` is reserved for the footer and will never collide with a data chunk index.
 - The AAD `"momo:stream-footer:v1"` is domain-separated from data chunks. If an attacker tries to reorder a footer as a data chunk (or vice versa), the AEAD authentication fails.
-- **On decode (v3)**: `DecryptStream` first tries data-chunk AAD (`nil`). If that fails, it retries with the footer AAD and nonce. If both fail, the stream is declared tampered (`ErrTampered`). If a footer authenticates but `chunkCount` does not match the actual decoded chunk count, the stream is rejected (`EBADMSG`). If the stream ends before a footer is found, it is rejected as truncated (`EIO`).
+- **On decode (v3/v4)**: `DecryptStream` first tries data-chunk AAD (`nil`). If that fails, it retries with the footer AAD and nonce. If both fail, the stream is declared tampered (`ErrTampered`). If a footer authenticates but `chunkCount` does not match the actual decoded chunk count, the stream is rejected (`EBADMSG`). If the stream ends before a footer is found, it is rejected as truncated (`EIO`).
 
-### Wire Format Diagram (v3)
+### Wire Format Diagram (v4)
 
 ```
-         +--------+--------+--------+---------+---+--------+----------+
-Stream:  | 0x03   | seed   | len(0) | chunk(0)|...| len(F) | footer   |
-         +--------+--------+--------+---------+---+--------+----------+
-Byte:    0        1        9        13          N         N+4        N+4+len(F)
-         version  8B rand  4BE len  ciphertext         4BE len   sealed(4B + 16B tag)
+         +--------+----------+--------+--------+---------+---+--------+----------+
+Stream:  | 0x04   | chunkSize| seed   | len(0) | chunk(0)|...| len(F) | footer   |
+         +--------+----------+--------+--------+---------+---+--------+----------+
+Byte:    0        1          3        11       15          N         N+4        N+4+len(F)
+         version 2BE size   8B rand  4BE len  ciphertext         4BE len   sealed(4B + 16B tag)
 ```
 
 ## Envelope E2EE (Phase 4, issue #780)
