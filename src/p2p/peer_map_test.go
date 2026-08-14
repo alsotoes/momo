@@ -3,6 +3,7 @@ package p2p
 import (
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestPeerMap_AddGetRemove(t *testing.T) {
@@ -64,6 +65,81 @@ func TestPeerMap_Alive(t *testing.T) {
 	}
 	if alive[0].ID != 1 {
 		t.Errorf("expected peer 1, got %d", alive[0].ID)
+	}
+}
+
+func TestPeerRRT(t *testing.T) {
+	p := NewPeer(1, "addr")
+	if p.RTT() != 0 {
+		t.Fatalf("expected initial RTT 0, got %v", p.RTT())
+	}
+	d := 15 * time.Millisecond
+	p.SetRTT(d)
+	if got := p.RTT(); got != d {
+		t.Fatalf("expected RTT %v, got %v", d, got)
+	}
+	// SetRTT(0) clears back to unknown.
+	p.SetRTT(0)
+	if p.RTT() != 0 {
+		t.Fatalf("expected RTT cleared to 0, got %v", p.RTT())
+	}
+}
+
+func TestPeerMap_AliveByQuality(t *testing.T) {
+	m := NewPeerMap()
+	a := NewPeer(1, "a")
+	b := NewPeer(2, "b")
+	c := NewPeer(3, "c")
+	d := NewPeer(4, "d")
+	e := NewPeer(5, "e")
+	f := NewPeer(6, "f")
+
+	a.SetRTT(5 * time.Millisecond)
+	b.SetRTT(50 * time.Millisecond)
+	c.SetRTT(2 * time.Millisecond)
+	// d, e: unknown RTT (0)
+	e.SetState(PeerStateSuspect)
+	f.SetState(PeerStateOffline)
+
+	m.Add(a)
+	m.Add(b)
+	m.Add(c)
+	m.Add(d)
+	m.Add(e)
+	m.Add(f)
+
+	got := m.AliveByQuality()
+	// Expect c(2ms), a(5ms), b(50ms), d(unknown) — suspect e and offline f excluded.
+	if len(got) != 4 {
+		t.Fatalf("expected 4 peers, got %d: %+v", len(got), got)
+	}
+	wantIDs := []int32{3, 1, 2, 4}
+	for i, want := range wantIDs {
+		if got[i].ID != want {
+			t.Fatalf("expected order [%v] index %d = %d, got %d", wantIDs, i, want, got[i].ID)
+		}
+	}
+}
+
+func TestPeerMap_AliveByQuality_StableWhenAllUnknown(t *testing.T) {
+	m := NewPeerMap()
+	m.Add(NewPeer(1, "a"))
+	m.Add(NewPeer(2, "b"))
+	m.Add(NewPeer(3, "c"))
+
+	got := m.AliveByQuality()
+	if len(got) != 3 {
+		t.Fatalf("expected all 3 alive peers, got %d", len(got))
+	}
+	// All alive peers preserved regardless of ordering.
+	seen := map[int32]bool{}
+	for _, p := range got {
+		seen[p.ID] = true
+	}
+	for id := int32(1); id <= 3; id++ {
+		if !seen[id] {
+			t.Fatalf("peer %d missing from quality set", id)
+		}
 	}
 }
 

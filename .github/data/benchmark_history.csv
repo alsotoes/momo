@@ -3366,3 +3366,14 @@ a060b83,BenchmarkSanitizeLog/Unsafe-8,503.90,704.00,1.00
 30715e0,BenchmarkPadString-8,48.06,64.00,1.00
 30715e0,BenchmarkSanitizeLog/Safe-8,313.30,0.00,0.00
 30715e0,BenchmarkSanitizeLog/Unsafe-8,812.50,704.00,1.00
+5a6bd0d,BenchmarkAWSChunkedReaderSigned-8,526187.00,126.50,11293.00
+5a6bd0d,BenchmarkAWSChunkedReaderUnsigned-8,474985.00,140.13,78569.00
+5a6bd0d,BenchmarkCheckMetricsAndSwap-8,9.21,0.00,0.00
+5a6bd0d,BenchmarkCrushOptimized-8,338.50,0.00,0.00
+5a6bd0d,BenchmarkCrushOriginal-8,507.80,164.00,3.00
+5a6bd0d,BenchmarkIndexDirectTracking-8,0.39,0.00,0.00
+5a6bd0d,BenchmarkIndexSearch-8,3.16,0.00,0.00
+5a6bd0d,BenchmarkLoadGlobalConfig-8,11173.00,1848.00,54.00
+5a6bd0d,BenchmarkPadString-8,48.74,64.00,1.00
+5a6bd0d,BenchmarkSanitizeLog/Safe-8,284.30,0.00,0.00
+5a6bd0d,BenchmarkSanitizeLog/Unsafe-8,895.50,704.00,1.00

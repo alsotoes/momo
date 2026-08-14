@@ -120,7 +120,8 @@ func (sg *ScatterGather) handleQueryResponse(rpc *RPC) {
 // the given timeout. Returns the collected responses and the number of peers
 // that responded.
 func (sg *ScatterGather) Query(qt QueryType, data []byte, timeout time.Duration) ([]QueryResponsePayload, int) {
-	peers := sg.transport.Peers().Alive()
+	// Quality-aware: prefer low-RTT alive peers (issue #823).
+	peers := sg.transport.Peers().AliveByQuality()
 	peerCount := 0
 	for _, p := range peers {
 		if p.ID != sg.localID {
