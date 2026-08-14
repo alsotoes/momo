@@ -519,6 +519,58 @@ oprf_share = ` + validOPRFShare + `
 	}
 }
 
+func TestGetConfig_MinimumDurabilityFactor(t *testing.T) {
+	write := func(globalKey string) string {
+		return strings.Replace(validConfig, "polymorphic_system = true",
+			"polymorphic_system = true\n"+globalKey, 1)
+	}
+
+	// Valid explicit value parses. validConfig sets replication_factor? It does
+	// not, so it defaults to 3 — a floor of 2 is <= 3 and accepted.
+	tmp := filepath.Join(t.TempDir(), "momo.conf")
+	if err := os.WriteFile(tmp, []byte(write("minimum_durability_factor = 2")), 0666); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := GetConfig(tmp)
+	if err != nil {
+		t.Fatalf("GetConfig failed: %v", err)
+	}
+	if cfg.Global.MinimumDurabilityFactor != 2 {
+		t.Fatalf("expected MinimumDurabilityFactor=2, got %d", cfg.Global.MinimumDurabilityFactor)
+	}
+
+	// Absent defaults to 0 (disabled).
+	tmp2 := filepath.Join(t.TempDir(), "momo.conf")
+	if err := os.WriteFile(tmp2, []byte(validConfig), 0666); err != nil {
+		t.Fatal(err)
+	}
+	cfg2, err := GetConfig(tmp2)
+	if err != nil {
+		t.Fatalf("GetConfig failed: %v", err)
+	}
+	if cfg2.Global.MinimumDurabilityFactor != 0 {
+		t.Fatalf("expected default MinimumDurabilityFactor=0, got %d", cfg2.Global.MinimumDurabilityFactor)
+	}
+
+	// Negative rejected.
+	tmp3 := filepath.Join(t.TempDir(), "momo.conf")
+	if err := os.WriteFile(tmp3, []byte(write("minimum_durability_factor = -1")), 0666); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := GetConfig(tmp3); err == nil {
+		t.Fatal("expected negative minimum_durability_factor to be rejected")
+	}
+
+	// Floor exceeding replication_factor (default 3) rejected.
+	tmp4 := filepath.Join(t.TempDir(), "momo.conf")
+	if err := os.WriteFile(tmp4, []byte(write("minimum_durability_factor = 4")), 0666); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := GetConfig(tmp4); err == nil {
+		t.Fatal("expected floor > replication_factor to be rejected")
+	}
+}
+
 func TestGetConfig_AuthBackoffDelay(t *testing.T) {
 	write := func(globalKey string) string {
 		return strings.Replace(validConfig, "polymorphic_system = true",
