@@ -178,6 +178,21 @@ When confidential dedup is enabled (`oprf_enabled`), the client calls this nativ
     -   If the quorum (< `oprf_threshold` distinct evaluations) is not met, the server responds with count `0` and the client **fails closed** (the upload/download aborts; there is no convergent fallback).
 5.  **Client Combine/Unblind:** The client interpolates the Shamir secret at `f(0)` over at least `oprf_threshold` distinct share evaluations, unblinds with `1/r`, and derives the content key = `SHA-256(OPRF output)`. Identical plaintexts always yield the same key across tenants and clients.
 
+### Threshold-OPRF Evaluation over S3 (`s3-tcp` / `s3-quic`, issue #817)
+
+On the S3 transports (`s3-tcp`, `s3-quic`), the gateway serves OPRF evaluation over a dedicated HTTP endpoint instead of the binary `'O'` mode, so confidential dedup works identically across all four protocols:
+
+```
+POST /?momo-oprf-eval HTTP/1.1
+Authorization: Bearer <authToken>   (or SigV4)
+X-Momo-Timestamp: <unix nano>       (optional)
+Content-Length: 32                  (always 32)
+
+<32-byte blinded Ristretto255 element>
+```
+
+Response `200 OK` body carries the same evaluation wire layout as the native mode — `[4-byte BE count N]` then `N × [4-byte BE ShareIndex + 4-byte BE EvalLen + EvalLen bytes]` — so the client decoder is shared. Errors: `400 InvalidRequest` for a non-32-byte blinded tag, `501 NotImplemented` when OPRF is not enabled on the node, `500 InternalError` if the server-side evaluation fails. The endpoint is authenticated like every S3 request; unauthenticated callers are rejected before the handler runs. On quorum failure the server returns count `0` and the client fails closed (`EAGAIN`), matching the native transports.
+
 The CAS/dedup key remains `H(plaintext)`, so identical blobs deduplicate cluster-wide.
 
 ### Payload
