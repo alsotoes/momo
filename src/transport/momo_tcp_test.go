@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/goleak"
+
 	"github.com/alsotoes/momo/src/common"
 )
 
@@ -523,6 +525,29 @@ func TestMomoTCPCommunicator_SendMetadataPathTraversal(t *testing.T) {
 	_, err := comm.SendMetadata(badMeta)
 	if err == nil {
 		t.Fatal("Expected SendMetadata to fail with path traversal name")
+	}
+	if !errors.Is(err, syscall.EBADMSG) {
+		t.Errorf("Expected EBADMSG error, got: %v", err)
+	}
+}
+
+func TestMomoTCPCommunicator_SendMetadataCRLF(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	comm := NewMomoTCPCommunicator(clientConn)
+
+	// Malicious Name with CRLF
+	badMeta := &common.FileMetadata{
+		Name: "test\r\nName",
+		Hash: "hash123",
+		Size: 100,
+	}
+	_, err := comm.SendMetadata(badMeta)
+	if err == nil {
+		t.Fatal("Expected SendMetadata to fail with CRLF in name")
 	}
 	if !errors.Is(err, syscall.EBADMSG) {
 		t.Errorf("Expected EBADMSG error, got: %v", err)
