@@ -295,7 +295,8 @@ func (g *Gossiper) sendPing() {
 	select {
 	case <-pp.ackCh:
 		rtt := time.Since(pp.sentAt)
-		g.rtt.Update(target.ID, rtt)
+		ewma := g.rtt.Update(target.ID, rtt)
+		target.SetRTT(ewma)
 		g.removePendingPing(pingID)
 	case <-time.After(g.cfg.PingTimeout):
 		helperContacted := g.sendIndirectPing(target.ID, pingID, now)
@@ -312,7 +313,8 @@ func (g *Gossiper) sendPing() {
 		select {
 		case <-pp.ackCh:
 			rtt := time.Since(pp.sentAt)
-			g.rtt.Update(target.ID, rtt)
+			ewma := g.rtt.Update(target.ID, rtt)
+			target.SetRTT(ewma)
 		case <-time.After(g.cfg.PingTimeout):
 			if peer := g.transport.Peers().Get(target.ID); peer != nil {
 				if peer.State() == PeerStateAlive {

@@ -70,6 +70,66 @@ func TestGossiper_HeartbeatExchange(t *testing.T) {
 	}
 }
 
+// TestGossiper_RTTPropagationToPeer verifies (issue #823) that a successful
+// ping writes the EWMA RTT back to the target Peer, so quality-aware quorum
+// selection can rank peers by their per-peer RTT.
+func TestGossiper_RTTPropagationToPeer(t *testing.T) {
+	tr1 := NewTCPTransport(TCPTransportConfig{LocalID: 1})
+	tr2 := NewTCPTransport(TCPTransportConfig{LocalID: 2})
+	defer tr1.Close()
+	defer tr2.Close()
+
+	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	addr1 := ln.Addr().String()
+	ln.Close()
+	ln2, _ := net.Listen("tcp", "127.0.0.1:0")
+	addr2 := ln2.Addr().String()
+	ln2.Close()
+
+	tr1.Listen(addr1)
+	tr2.Listen(addr2)
+
+	tr1.Dial(2, addr2)
+	time.Sleep(100 * time.Millisecond)
+
+	cfg1 := GossipConfig{
+		LocalID:           1,
+		HeartbeatInterval: 20 * time.Millisecond,
+		SuspicionTimeout:  500 * time.Millisecond,
+		Fanout:            3,
+		PingTimeout:       100 * time.Millisecond,
+		IndirectPingCount: 3,
+		RTTAlpha:          0.25,
+	}
+	cfg2 := GossipConfig{
+		LocalID:           2,
+		HeartbeatInterval: 20 * time.Millisecond,
+		SuspicionTimeout:  500 * time.Millisecond,
+		Fanout:            3,
+		PingTimeout:       100 * time.Millisecond,
+		IndirectPingCount: 3,
+		RTTAlpha:          0.25,
+	}
+
+	g1 := NewGossiper(cfg1, tr1)
+	g2 := NewGossiper(cfg2, tr2)
+	defer g1.Close()
+	defer g2.Close()
+
+	g1.Run()
+	g2.Run()
+
+	// Let pings flow for a while; then the per-peer RTT should be populated.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if peer := tr1.Peers().Get(2); peer != nil && peer.RTT() > 0 {
+			return // success: RTT propagated to the Peer value
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Error("expected peer 2 RTT to be populated on tr1 after pings")
+}
+
 func TestGossiper_MembershipDissemination(t *testing.T) {
 	tr1 := NewTCPTransport(TCPTransportConfig{LocalID: 1})
 	tr2 := NewTCPTransport(TCPTransportConfig{LocalID: 2})

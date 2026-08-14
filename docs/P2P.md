@@ -225,7 +225,7 @@ indirect_ping_count = 3     # peers to ask for indirect ping
 
 ### Overview
 
-The `ScatterGather` struct enables distributed queries across the cluster. When a node receives a list request, it broadcasts a `MsgQuery` RPC to all alive peers, collects their responses within a timeout, and merges/deduplicates the results.
+The `ScatterGather` struct enables distributed queries across the cluster. When a node receives a list request, it broadcasts a `MsgQuery` RPC to alive peers, collects their responses within a timeout, and merges/deduplicates the results. Peer selection uses **quality-aware ordering** (issue #823): alive peers are ranked by EWMA RTT (`AliveByQuality`), so low-latency peers are contacted first and suspect/offline peers are excluded.
 
 ### Message Types
 
@@ -267,7 +267,7 @@ scatter_gather_timeout = 5  # seconds
 
 ### Overview
 
-The `LeaseManager` provides time-bound, self-expiring leases for destructive operations (deletes). A lease must be granted by a majority quorum of alive peers before the operation proceeds. Leases are kept in-memory and expire automatically.
+The `LeaseManager` provides time-bound, self-expiring leases for destructive operations (deletes). A lease must be granted by a majority quorum of alive peers before the operation proceeds. Leases are kept in-memory and expire automatically. Quorum membership is selected with **quality-aware ordering** (issue #823): alive peers are ranked by EWMA RTT so low-latency peers are preferred, and suspect/offline peers are excluded.
 
 ### Message Types
 
