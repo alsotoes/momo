@@ -2971,7 +2971,7 @@ func (m *S3Communicator) handleListMultipartUploads(bucket string) (requestedMod
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Panic recovered in S3 handleListMultipartUploads: %v", r)
 			m.conn.Close()
-			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+			err = syscall.EIO
 		}
 	}()
 	muUploads.Lock()
