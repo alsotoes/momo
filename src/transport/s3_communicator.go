@@ -95,6 +95,10 @@ type S3Communicator struct {
 	leaseAcquirer LeaseAcquirer
 	// DeletePropagator for P2P delete fan-out (optional)
 	deletePropagator DeletePropagator
+	// OPRFService for threshold-OPRF evaluation (optional). Configured by the
+	// server daemon so the dedicated /?momo-oprf-eval endpoint can gather peer
+	// evaluations over P2P. Nil disables OPRF on this connection (issue #817).
+	oprfService OPRFService
 	// MetricsHook for instrumentation (optional)
 	metricsHook MetricsHook
 	// isPeer is always false for S3 connections (S3 clients are never peers).
@@ -171,14 +175,123 @@ func (m *S3Communicator) SetMetricsHook(hook MetricsHook) {
 	m.metricsHook = hook
 }
 
-// SetOPRFService is a no-op for the S3 gateway: external S3 clients cannot
-// perform threshold-OPRF evaluation, so ModeOPRFEval is never served here.
-func (m *S3Communicator) SetOPRFService(s OPRFService) {}
+// SetOPRFService stores the threshold-OPRF evaluation service so the dedicated
+// POST /?momo-oprf-eval endpoint can serve confidential-dedup evaluations on
+// the S3 gateway (issue #817). Nil disables OPRF on this connection.
+func (m *S3Communicator) SetOPRFService(s OPRFService) {
+	m.oprfService = s
+}
 
-// SendOPRFEval is unsupported on the S3 gateway. External S3 clients do not
-// speak the momo OPRF handshake.
-func (m *S3Communicator) SendOPRFEval(authToken string, timestamp int64, blinded []byte, threshold int) ([]OPRFEvalResult, error) {
-	return nil, fmt.Errorf("oprf evaluation not supported on S3 gateway: %w", syscall.ENOTSUP)
+// s3OPRFEvalTimeout bounds the threshold-OPRF evaluation performed server-side
+// when serving a /?momo-oprf-eval request (issue #817). It must be generous
+// enough for the P2P round-trips to peers, while preventing a hung evaluation
+// from pinning the connection.
+const s3OPRFEvalTimeout = 10 * time.Second
+
+// SendOPRFEval implements the Communicator interface for the S3 gateway over a
+// dedicated HTTP endpoint. It sends the 32-byte blinded dedup tag and reads the
+// evaluation records back in the same wire layout the native protocols use, so
+// confidential dedup works uniformly across all four transports (issue #817).
+func (m *S3Communicator) SendOPRFEval(authToken string, timestamp int64, blinded []byte, threshold int) (results []OPRFEvalResult, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in S3 SendOPRFEval: %v", r)
+			err = fmt.Errorf("internal S3 OPRF protocol panic: %w", syscall.EIO)
+		}
+	}()
+
+	if len(blinded) != 32 {
+		return nil, fmt.Errorf("oprf: blinded tag must be 32 bytes: %w", syscall.EINVAL)
+	}
+	if strings.ContainsAny(authToken, "\r\n") {
+		return nil, fmt.Errorf("auth token contains CRLF characters: %w", syscall.EINVAL)
+	}
+
+	host := "127.0.0.1"
+	if m.remoteAddr != nil {
+		host = m.remoteAddr.String()
+	}
+	if strings.ContainsAny(host, "\r\n") {
+		return nil, fmt.Errorf("host contains CRLF characters: %w", syscall.EINVAL)
+	}
+
+	// ⚡ Bolt: stack-allocated request header buffer.
+	var buf [384]byte
+	b := buf[:0]
+	b = append(b, "POST /?momo-oprf-eval HTTP/1.1\r\nHost: "...)
+	b = append(b, host...)
+	b = append(b, "\r\nAuthorization: Bearer "...)
+	b = append(b, authToken...)
+	b = append(b, "\r\nX-Momo-Timestamp: "...)
+	b = strconv.AppendInt(b, timestamp, 10)
+	b = append(b, "\r\nContent-Length: 32\r\nConnection: close\r\n\r\n"...)
+	if len(b) > len(buf) {
+		return nil, fmt.Errorf("oprf: request header exceeds stack buffer: %w", syscall.ENOBUFS)
+	}
+
+	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	defer m.conn.SetWriteDeadline(time.Time{})
+	if _, werr := m.conn.Write(b); werr != nil {
+		return nil, fmt.Errorf("oprf: failed to write request header: %v: %w", werr, syscall.EPIPE)
+	}
+	if _, werr := m.conn.Write(blinded); werr != nil {
+		return nil, fmt.Errorf("oprf: failed to write blinded tag: %v: %w", werr, syscall.EPIPE)
+	}
+
+	m.conn.SetReadDeadline(time.Now().Add(s3ReadHeaderTimeout))
+	resp, rerr := http.ReadResponse(m.reader, nil)
+	m.conn.SetReadDeadline(time.Time{})
+	if rerr != nil {
+		return nil, fmt.Errorf("oprf: failed to read response: %v: %w", rerr, syscall.EBADMSG)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("oprf: server returned HTTP %d: %w", resp.StatusCode, syscall.EBADMSG)
+	}
+
+	// Parse the eval body in the same wire layout as the native protocols:
+	// [4-byte BE count] then count × (4-byte BE ShareIndex + 4-byte BE EvalLen + EvalLen bytes).
+	var countBuf [4]byte
+	if _, err := io.ReadFull(resp.Body, countBuf[:]); err != nil {
+		return nil, fmt.Errorf("oprf: failed to read result count: %v: %w", err, syscall.EBADMSG)
+	}
+	count := int(binary.BigEndian.Uint32(countBuf[:]))
+	if count == 0 {
+		return nil, fmt.Errorf("oprf: no evaluations returned (quorum not met): %w", syscall.EAGAIN)
+	}
+	if count > 255 {
+		return nil, fmt.Errorf("oprf: implausible evaluation count %d: %w", count, syscall.EBADMSG)
+	}
+
+	results = make([]OPRFEvalResult, 0, count)
+	for i := 0; i < count; i++ {
+		var idxBuf [4]byte
+		if _, err := io.ReadFull(resp.Body, idxBuf[:]); err != nil {
+			return nil, fmt.Errorf("oprf: failed to read share index: %v: %w", err, syscall.EBADMSG)
+		}
+		var lenBuf [4]byte
+		if _, err := io.ReadFull(resp.Body, lenBuf[:]); err != nil {
+			return nil, fmt.Errorf("oprf: failed to read eval length: %v: %w", err, syscall.EBADMSG)
+		}
+		evalLen := int(binary.BigEndian.Uint32(lenBuf[:]))
+		if evalLen > 32 {
+			return nil, fmt.Errorf("oprf: implausible eval length %d: %w", evalLen, syscall.EBADMSG)
+		}
+		eval := make([]byte, evalLen)
+		if _, err := io.ReadFull(resp.Body, eval); err != nil {
+			return nil, fmt.Errorf("oprf: failed to read eval: %v: %w", err, syscall.EBADMSG)
+		}
+		results = append(results, OPRFEvalResult{
+			ShareIndex: int(binary.BigEndian.Uint32(idxBuf[:])),
+			Eval:       eval,
+		})
+	}
+
+	if len(results) < threshold {
+		return nil, fmt.Errorf("oprf: only %d evaluations, need %d: %w", len(results), threshold, syscall.EAGAIN)
+	}
+	return results, nil
 }
 
 func (m *S3Communicator) Read(p []byte) (n int, err error) {
@@ -327,10 +440,13 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to read handshake request: %v: %w", err, syscall.EBADMSG)
 	}
-	// Keep the body open for PUT (upload) and for POST ?delete (batch DeleteObjects),
-	// whose XML payload must be read inside the handler.
+	// Keep the body open for PUT (upload), for POST ?delete (batch DeleteObjects),
+	// and for the POST /?momo-oprf-eval endpoint (issue #817), whose bodies must
+	// be read inside their handlers.
 	if req.Method != "PUT" {
-		if _, hasDelete := req.URL.Query()["delete"]; req.Method != "POST" || !hasDelete {
+		_, hasDelete := req.URL.Query()["delete"]
+		_, isOPRFEval := req.URL.Query()["momo-oprf-eval"]
+		if req.Method != "POST" || (!hasDelete && !isOPRFEval) {
 			req.Body.Close()
 		}
 	}
@@ -419,6 +535,21 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		writeS3Error(m.conn, http.StatusBadRequest, "InvalidArgument", "Invalid key path.", req.URL.Path)
 		return 0, 0, fmt.Errorf("invalid key path traversal: %s: %w", req.URL.Path, syscall.EBADMSG)
+	}
+
+	// 🛡️ Dedicated threshold-OPRF evaluation endpoint (issue #817): POST
+	// /?momo-oprf-eval carries a 32-byte blinded dedup tag and returns the peer
+	// evaluations. It is intercepted before S3 REST routing so the momo client
+	// gets confidential dedup uniformly across all four transports. Only
+	// authenticated callers reach here (auth validated above).
+	_, isOPRFEval := req.URL.Query()["momo-oprf-eval"]
+	if req.Method == "POST" && isOPRFEval {
+		if m.oprfService == nil {
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			writeS3Error(m.conn, http.StatusNotImplemented, "NotImplemented", "Threshold-OPRF confidential dedup is not enabled on this node.", "")
+			return 0, 0, fmt.Errorf("oprf evaluation not enabled: %w", syscall.ENOTSUP)
+		}
+		return m.handleOPRFEval(req)
 	}
 
 	bucket, key := extractS3BucketAndKey(req)
@@ -1084,6 +1215,73 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 	}
 
 	return requestedMode, timestamp, nil
+}
+
+// handleOPRFEval serves the dedicated threshold-OPRF evaluation endpoint
+// (POST /?momo-oprf-eval, issue #817). It reads the client's 32-byte blinded
+// dedup tag, gathers peer evaluations via the configured OPRFService, and
+// writes them back in the native wire layout so the client-side decoder is
+// shared across all four transports. Returns ErrRequestHandled so the daemon
+// closes the connection after the exchange.
+func (m *S3Communicator) handleOPRFEval(req *http.Request) (requestedMode int, timestamp int64, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in S3 handleOPRFEval: %v", r)
+			err = fmt.Errorf("internal S3 OPRF protocol panic: %w", syscall.EIO)
+		}
+	}()
+
+	// 🛡️ Sentinel: bounded read of the 32-byte blinded tag from the request
+	// body (Rule 24). Reject a wrong-length body instead of trusting any
+	// Content-Length, preventing framing confusion.
+	blinded := make([]byte, 32)
+	if _, rerr := io.ReadFull(req.Body, blinded); rerr != nil {
+		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		writeS3Error(m.conn, http.StatusBadRequest, "InvalidRequest", "OPRF evaluation requires a 32-byte blinded tag.", "")
+		return 0, 0, fmt.Errorf("oprf: failed to read blinded tag: %v: %w", rerr, syscall.EBADMSG)
+	}
+
+	results, evalErr := m.oprfService.EvaluateOPRF(blinded, s3OPRFEvalTimeout)
+	if evalErr != nil {
+		log.Printf("OPRF evaluation failed: %v", evalErr)
+		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "OPRF evaluation failed.", "")
+		return 0, 0, fmt.Errorf("oprf: evaluation failed: %w", evalErr)
+	}
+
+	// Serialize the evaluations in the native wire layout. The daemon's
+	// OPRFService fails closed (returns 0 results) when the quorum is unmet, so
+	// the client-side decoder detects the same EAGAIN as on native transports.
+	var body [1024]byte
+	b := body[:0]
+	var countBuf [4]byte
+	binary.BigEndian.PutUint32(countBuf[:], uint32(len(results)))
+	b = append(b, countBuf[:]...)
+	for _, r := range results {
+		binary.BigEndian.PutUint32(countBuf[:], uint32(r.ShareIndex))
+		b = append(b, countBuf[:]...)
+		binary.BigEndian.PutUint32(countBuf[:], uint32(len(r.Eval)))
+		b = append(b, countBuf[:]...)
+		b = append(b, r.Eval...)
+	}
+	if len(b) > len(body) {
+		return 0, 0, fmt.Errorf("oprf: eval response exceeds stack buffer: %w", syscall.ENOBUFS)
+	}
+
+	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	var hbuf [128]byte
+	h := hbuf[:0]
+	h = append(h, "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: "...)
+	h = strconv.AppendInt(h, int64(len(b)), 10)
+	h = append(h, "\r\nConnection: close\r\n\r\n"...)
+	if _, werr := m.conn.Write(h); werr != nil {
+		return 0, 0, fmt.Errorf("oprf: failed to write response header: %v: %w", werr, syscall.EPIPE)
+	}
+	if _, werr := m.conn.Write(b); werr != nil {
+		return 0, 0, fmt.Errorf("oprf: failed to write eval body: %v: %w", werr, syscall.EPIPE)
+	}
+
+	return 0, 0, ErrRequestHandled
 }
 
 // decodeStreamingPayload fully consumes an aws-chunked body, verifies the

@@ -2911,3 +2911,166 @@ func TestS3FormatDeleteObjectsResultXML(t *testing.T) {
 		t.Errorf("Missing Error entry, got: %s", got)
 	}
 }
+
+func TestS3Communicator_SendOPRFEval_RoundTrip(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	expectedAuthToken := []byte(common.PadString(testAuthToken, common.AuthTokenLength))
+	blinded := bytes.Repeat([]byte{0xEE}, 32)
+	eval1 := bytes.Repeat([]byte{0x11}, 32)
+	eval2 := bytes.Repeat([]byte{0x22}, 32)
+
+	cfg := common.Configuration{
+		Global: common.ConfigurationGlobal{
+			Protocol:    "s3-tcp",
+			AuthToken:   testAuthToken,
+			TLSInsecure: true,
+		},
+	}
+	factory := NewProtocolFactory(cfg)
+
+	l, err := factory.Listen("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen failed: %v", err)
+	}
+	defer l.Close()
+
+	svc := &mockOPRFService{
+		results: []OPRFEvalResult{
+			{ShareIndex: 1, Eval: eval1},
+			{ShareIndex: 2, Eval: eval2},
+		},
+	}
+
+	// Server side: accept, inject the OPRF service, and serve the dedicated
+	// /?momo-oprf-eval endpoint via HandshakeServer.
+	go func() {
+		comm, aerr := l.Accept()
+		if aerr != nil {
+			return
+		}
+		defer comm.Close()
+		if sc, ok := comm.(interface{ SetOPRFService(OPRFService) }); ok {
+			sc.SetOPRFService(svc)
+		}
+		_, _, _ = comm.HandshakeServer(expectedAuthToken)
+	}()
+
+	clientComm, err := factory.Dial(l.Addr().String())
+	if err != nil {
+		t.Fatalf("Dial failed: %v", err)
+	}
+	defer clientComm.Close()
+
+	results, err := clientComm.SendOPRFEval(testAuthToken, time.Now().UnixNano(), blinded, 2)
+	if err != nil {
+		t.Fatalf("SendOPRFEval failed: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+	if !bytes.Equal(svc.gotBlinded(), blinded) {
+		t.Errorf("server received wrong blinded tag: %x", svc.gotBlinded())
+	}
+	if results[0].ShareIndex != 1 || !bytes.Equal(results[0].Eval, eval1) {
+		t.Errorf("result[0] mismatch: %+v", results[0])
+	}
+	if results[1].ShareIndex != 2 || !bytes.Equal(results[1].Eval, eval2) {
+		t.Errorf("result[1] mismatch: %+v", results[1])
+	}
+}
+
+func TestS3Communicator_SendOPRFEval_QuorumNotMet(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	expectedAuthToken := []byte(common.PadString(testAuthToken, common.AuthTokenLength))
+	blinded := bytes.Repeat([]byte{0xAB}, 32)
+
+	cfg := common.Configuration{
+		Global: common.ConfigurationGlobal{
+			Protocol:    "s3-tcp",
+			AuthToken:   testAuthToken,
+			TLSInsecure: true,
+		},
+	}
+	factory := NewProtocolFactory(cfg)
+
+	l, err := factory.Listen("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen failed: %v", err)
+	}
+	defer l.Close()
+
+	// A service that returns zero evaluations (quorum unmet) — must fail closed.
+	svc := &mockOPRFService{results: nil}
+
+	go func() {
+		comm, aerr := l.Accept()
+		if aerr != nil {
+			return
+		}
+		defer comm.Close()
+		if sc, ok := comm.(interface{ SetOPRFService(OPRFService) }); ok {
+			sc.SetOPRFService(svc)
+		}
+		_, _, _ = comm.HandshakeServer(expectedAuthToken)
+	}()
+
+	clientComm, err := factory.Dial(l.Addr().String())
+	if err != nil {
+		t.Fatalf("Dial failed: %v", err)
+	}
+	defer clientComm.Close()
+
+	_, err = clientComm.SendOPRFEval(testAuthToken, time.Now().UnixNano(), blinded, 2)
+	if err == nil {
+		t.Fatal("expected EAGAIN when quorum is not met, got nil")
+	}
+	if !errors.Is(err, syscall.EAGAIN) {
+		t.Errorf("expected EAGAIN, got: %v", err)
+	}
+}
+
+func TestS3Communicator_SendOPRFEval_NotEnabled(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	expectedAuthToken := []byte(common.PadString(testAuthToken, common.AuthTokenLength))
+	blinded := bytes.Repeat([]byte{0xCD}, 32)
+
+	cfg := common.Configuration{
+		Global: common.ConfigurationGlobal{
+			Protocol:    "s3-tcp",
+			AuthToken:   testAuthToken,
+			TLSInsecure: true,
+		},
+	}
+	factory := NewProtocolFactory(cfg)
+
+	l, err := factory.Listen("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen failed: %v", err)
+	}
+	defer l.Close()
+
+	// No SetOPRFService is called on the server: the endpoint must reject with
+	// 501 / ENOTSUP instead of silently succeeding.
+	go func() {
+		comm, aerr := l.Accept()
+		if aerr != nil {
+			return
+		}
+		defer comm.Close()
+		_, _, _ = comm.HandshakeServer(expectedAuthToken)
+	}()
+
+	clientComm, err := factory.Dial(l.Addr().String())
+	if err != nil {
+		t.Fatalf("Dial failed: %v", err)
+	}
+	defer clientComm.Close()
+
+	_, err = clientComm.SendOPRFEval(testAuthToken, time.Now().UnixNano(), blinded, 2)
+	if err == nil {
+		t.Fatal("expected an error when OPRF is not enabled on the server, got nil")
+	}
+}
