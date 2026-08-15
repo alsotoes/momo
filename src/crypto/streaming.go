@@ -236,24 +236,27 @@ func (c *Cipher) DecryptStream(ciphertext io.Reader, dst io.Writer) (err error) 
 func (c *Cipher) decryptStreamV4(ciphertext io.Reader, dst io.Writer) (err error) {
 	defer recoverStreamErr(&err, "decryptStreamV4")
 
-	var sizeField [chunkSizeFieldBytes]byte
-	if _, err := io.ReadFull(ciphertext, sizeField[:]); err != nil {
-		return fmt.Errorf("crypto: failed to read stream chunk-size header: %w", err)
+	// Read the chunk-size field and the seed in a single allocation so the
+	// header parse introduces no additional heap escape versus the v3 decoder
+	// (which allocates the seed buffer once). The field is validated before any
+	// per-chunk buffer is sized (Rule 32).
+	head := make([]byte, streamSeedSize+chunkSizeFieldBytes)
+	if _, err := io.ReadFull(ciphertext, head); err != nil {
+		return fmt.Errorf("crypto: failed to read stream chunk-size header/seed: %w", err)
 	}
-	declared := int(sizeField[0])<<8 | int(sizeField[1])
+	declared := int(head[0])<<8 | int(head[1])
 	if declared < MinChunkSize || declared > MaxChunkSize {
 		return wrapStreamErr(ErrStreamFormat, "invalid v4 stream chunk size %d (must be within [%d, %d])", declared, MinChunkSize, MaxChunkSize)
 	}
-
-	seed := make([]byte, streamSeedSize)
-	if _, err := io.ReadFull(ciphertext, seed); err != nil {
-		return fmt.Errorf("crypto: failed to read stream seed: %w", err)
-	}
+	seed := head[chunkSizeFieldBytes:]
 
 	lenBuf := make([]byte, ChunkHeader)
 	nonce := make([]byte, NonceSize)
 	sealedBuf := make([]byte, MaxChunkSize)
-	plaintextBuf := make([]byte, 0, declared)
+	// Cap the plaintext scratch buffer at MaxChunkSize (a constant) so the
+	// compiler can keep it off the heap regardless of the validated `declared`
+	// header value (Rule 4/32; avoids an allocation regression vs v3).
+	plaintextBuf := make([]byte, 0, MaxChunkSize)
 	chunkIndex := uint32(0)
 
 	for {
