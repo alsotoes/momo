@@ -69,7 +69,10 @@ Maximum peers per heartbeat: `MaxPeersInHeartbeat = 256` (prevents CPU exhaustio
 ### Heartbeat Loop
 
 Every `HeartbeatInterval` (default: 1s), the gossiper:
-1. Selects up to `Fanout` (default: 3) random alive peers
+1. Selects up to `Fanout` random alive peers. When `fanout` is unset/`0`, it is
+   **adaptive** (issue #825): `ceil(ln N)` for `N` alive peers, bounded to
+   `[1, 10]`, so small clusters stay lean and large clusters converge faster. A
+   positive `fanout` is a fixed override.
 2. Encodes its current peer list as a `HeartbeatPayload`
 3. Sends a `MsgHeartbeat` RPC to each selected peer
 

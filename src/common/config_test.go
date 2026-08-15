@@ -612,3 +612,46 @@ func TestGetConfig_AuthBackoffDelay(t *testing.T) {
 		t.Fatal("expected negative auth_backoff_delay to be rejected")
 	}
 }
+
+func TestGetConfig_GossipFanout(t *testing.T) {
+	// Append a [p2p] section to validConfig.
+	base := validConfig + "\n[p2p]\nenabled = true\n"
+
+	// Absent fanout defaults to 0 (adaptive).
+	tmp := filepath.Join(t.TempDir(), "momo.conf")
+	if err := os.WriteFile(tmp, []byte(base), 0666); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := GetConfig(tmp)
+	if err != nil {
+		t.Fatalf("GetConfig failed: %v", err)
+	}
+	if !cfg.P2P.Enabled {
+		t.Fatal("expected p2p enabled")
+	}
+	if cfg.P2P.Fanout != 0 {
+		t.Fatalf("expected default adaptive fanout 0, got %d", cfg.P2P.Fanout)
+	}
+
+	// Explicit positive fanout preserved.
+	tmp2 := filepath.Join(t.TempDir(), "momo.conf")
+	if err := os.WriteFile(tmp2, []byte(base+"fanout = 3\n"), 0666); err != nil {
+		t.Fatal(err)
+	}
+	cfg2, err := GetConfig(tmp2)
+	if err != nil {
+		t.Fatalf("GetConfig failed: %v", err)
+	}
+	if cfg2.P2P.Fanout != 3 {
+		t.Fatalf("expected explicit fanout 3, got %d", cfg2.P2P.Fanout)
+	}
+
+	// Negative fanout rejected.
+	tmp3 := filepath.Join(t.TempDir(), "momo.conf")
+	if err := os.WriteFile(tmp3, []byte(base+"fanout = -1\n"), 0666); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := GetConfig(tmp3); err == nil {
+		t.Fatal("expected negative fanout to be rejected")
+	}
+}

@@ -99,6 +99,20 @@ func (m *PeerMap) AliveByQuality() []*Peer {
 	return result
 }
 
+// AliveCount returns the number of peers in the PeerStateAlive state without
+// allocating a slice (used by adaptive gossip fanout, issue #825).
+func (m *PeerMap) AliveCount() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	n := 0
+	for _, p := range m.peers {
+		if p.State() == PeerStateAlive {
+			n++
+		}
+	}
+	return n
+}
+
 // RandomPeers returns up to k random alive peers, excluding the peer with excludeID.
 func (m *PeerMap) RandomPeers(k int, excludeID int32) []*Peer {
 	if k <= 0 {
