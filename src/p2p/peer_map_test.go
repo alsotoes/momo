@@ -143,6 +143,19 @@ func TestPeerMap_AliveByQuality_StableWhenAllUnknown(t *testing.T) {
 	}
 }
 
+func TestPeerMap_AliveCount(t *testing.T) {
+	m := NewPeerMap()
+	m.Add(NewPeer(1, "a"))
+	m.Add(NewPeer(2, "b"))
+	m.Add(NewPeer(3, "c"))
+	m.Get(2).SetState(PeerStateSuspect)
+	m.Get(3).SetState(PeerStateOffline)
+
+	if got := m.AliveCount(); got != 1 {
+		t.Fatalf("expected AliveCount 1 (only peer 1 alive), got %d", got)
+	}
+}
+
 func TestPeerMap_RandomPeers(t *testing.T) {
 	m := NewPeerMap()
 	for i := int32(1); i <= 10; i++ {

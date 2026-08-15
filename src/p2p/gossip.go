@@ -12,6 +12,14 @@ import (
 // heartbeat or membership RPC to prevent CPU exhaustion via malicious packets.
 const MaxPeersInHeartbeat = 256
 
+// minGossipFanout is the lower bound on the adaptive gossip fanout. Even a tiny
+// cluster should gossip to at least one peer.
+const minGossipFanout = 1
+
+// maxGossipFanout bounds the adaptive gossip fanout so a single node never
+// floods a very large cluster with heartbeats (Rule 32).
+const maxGossipFanout = 10
+
 // GossipConfig holds configuration for the Gossiper.
 type GossipConfig struct {
 	LocalID           int32
@@ -34,6 +42,36 @@ func DefaultGossipConfig(localID int32) GossipConfig {
 		IndirectPingCount: 3,
 		RTTAlpha:          0.25,
 	}
+}
+
+// effectiveFanout resolves the fanout to use for a heartbeat. An explicitly
+// configured fanout > 0 is honored verbatim (backward compatible); a fanout
+// of 0 (or negative) means adaptive, scaling with the current alive peer count
+// (issue #825).
+func effectiveFanout(cfgFanout, aliveCount int) int {
+	if cfgFanout > 0 {
+		return cfgFanout
+	}
+	return adaptiveFanout(aliveCount)
+}
+
+// adaptiveFanout returns ceil(ln(N)) clamped to [minGossipFanout, maxGossipFanout],
+// so gossip fanout scales with cluster size while remaining bounded (Rule 32).
+// N <= 0 yields minGossipFanout.
+func adaptiveFanout(aliveCount int) int {
+	if aliveCount <= 1 {
+		return minGossipFanout
+	}
+	// ceil(ln(N)) via integer math: count multiplications of e until >= N.
+	f := minGossipFanout
+	n := float64(aliveCount)
+	for v := 2.718281828459045; v < n; v *= 2.718281828459045 {
+		f++
+		if f >= maxGossipFanout {
+			return maxGossipFanout
+		}
+	}
+	return f
 }
 
 // rttTracker tracks round-trip times per peer using an exponentially
@@ -199,7 +237,11 @@ func (g *Gossiper) heartbeatLoop() {
 // sendHeartbeat sends a heartbeat RPC with the current peer list to k random peers.
 func (g *Gossiper) sendHeartbeat() {
 	pm := g.transport.Peers()
-	peers := pm.RandomPeers(g.cfg.Fanout, g.cfg.LocalID)
+	// Resolve the effective fanout from the current alive peer count so gossip
+	// scales with cluster size unless an explicit fanout is configured
+	// (issue #825).
+	fanout := effectiveFanout(g.cfg.Fanout, pm.AliveCount())
+	peers := pm.RandomPeers(fanout, g.cfg.LocalID)
 	if len(peers) == 0 {
 		return
 	}

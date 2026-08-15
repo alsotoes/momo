@@ -456,8 +456,14 @@ func loadP2PConfig(section *ini.Section) (ConfigurationP2P, error) {
 	}
 
 	p2pCfg.Fanout, err = section.Key("fanout").Int()
-	if err != nil || p2pCfg.Fanout <= 0 {
-		p2pCfg.Fanout = 3
+	if err != nil {
+		p2pCfg.Fanout = 0
+	}
+	// fanout == 0 (default) means adaptive gossip fanout (ceil(ln N)), bounded.
+	// A positive fanout is an explicit fixed override. Negative/zero is clamped
+	// to adaptive (issue #825).
+	if p2pCfg.Fanout < 0 {
+		return ConfigurationP2P{}, fmt.Errorf("'fanout' must be >= 0 (0 = adaptive): %w", syscall.EINVAL)
 	}
 
 	p2pCfg.PingTimeout, err = section.Key("ping_timeout").Int()

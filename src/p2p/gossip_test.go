@@ -73,6 +73,67 @@ func TestGossiper_HeartbeatExchange(t *testing.T) {
 // TestGossiper_RTTPropagationToPeer verifies (issue #823) that a successful
 // ping writes the EWMA RTT back to the target Peer, so quality-aware quorum
 // selection can rank peers by their per-peer RTT.
+func TestAdaptiveFanout(t *testing.T) {
+	cases := []struct {
+		name  string
+		alive int
+		want  int
+	}{
+		{"zero", 0, minGossipFanout},
+		{"one", 1, minGossipFanout},
+		{"two", 2, 1},
+		{"three", 3, 2},
+		{"seven", 7, 2},
+		{"twenty", 20, 3},
+		{"fifty five", 55, 5},
+		{"hundred", 100, 5},
+		{"thousand", 1000, 7},
+		{"huge capped", 100_000, maxGossipFanout},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := adaptiveFanout(tc.alive)
+			if got != tc.want {
+				t.Fatalf("adaptiveFanout(%d) = %d, want %d", tc.alive, got, tc.want)
+			}
+			if got < minGossipFanout || got > maxGossipFanout {
+				t.Fatalf("adaptiveFanout(%d) = %d out of bounds [%d, %d]", tc.alive, got, minGossipFanout, maxGossipFanout)
+			}
+		})
+	}
+
+	// Monotonic: fanout(N1) <= fanout(N2) for N1 < N2.
+	prev := 0
+	for n := 1; n <= 500; n++ {
+		cur := adaptiveFanout(n)
+		if cur < prev {
+			t.Fatalf("fanout not monotonic at N=%d: %d < %d", n, cur, prev)
+		}
+		prev = cur
+	}
+}
+
+func TestEffectiveFanout(t *testing.T) {
+	cases := []struct {
+		name  string
+		cfg   int
+		alive int
+		want  int
+	}{
+		{"adaptive default", 0, 55, 5},
+		{"adaptive negative treated as auto", -1, 100, 5},
+		{"explicit override", 3, 1000, 3},
+		{"explicit override small cluster", 5, 2, 5},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := effectiveFanout(tc.cfg, tc.alive); got != tc.want {
+				t.Fatalf("effectiveFanout(%d, %d) = %d, want %d", tc.cfg, tc.alive, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestGossiper_RTTPropagationToPeer(t *testing.T) {
 	tr1 := NewTCPTransport(TCPTransportConfig{LocalID: 1})
 	tr2 := NewTCPTransport(TCPTransportConfig{LocalID: 2})

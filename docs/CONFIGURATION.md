@@ -246,9 +246,9 @@ This section controls the P2P gossip transport layer for decentralized cluster c
     -   **Default:** `5`
 
 -   **`fanout`**
-    -   **Description:** The number of peers to contact per gossip round for heartbeat exchange.
-    -   **Type:** Integer
-    -   **Default:** `3`
+    -   **Description:** The number of peers to contact per gossip round for heartbeat exchange. When **0** (default), fanout is **adaptive** and scales with the number of alive peers as `ceil(ln N)`, bounded to `[1, 10]` — low on small clusters, higher on large clusters for faster convergence (issue #825). A positive value is an explicit fixed override.
+    -   **Type:** Integer (`>= 0`; `0` = adaptive)
+    -   **Default:** `0` (adaptive)
 
 -   **`ping_timeout`**
     -   **Description:** The timeout in milliseconds for SWIM direct ping/ack probes.
