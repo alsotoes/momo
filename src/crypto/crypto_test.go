@@ -213,7 +213,7 @@ func TestEncryptStreamNonceNotReused(t *testing.T) {
 	}
 
 	// The stream seeds differ, so no nonce can collide.
-	if bytes.Equal(encBuf.Bytes()[1:1+streamSeedSize], encBuf2.Bytes()[1:1+streamSeedSize]) {
+	if bytes.Equal(encBuf.Bytes()[streamHeaderSize:streamHeaderSize+streamSeedSize], encBuf2.Bytes()[streamHeaderSize:streamHeaderSize+streamSeedSize]) {
 		t.Fatal("two encryptions of the same stream reused the same seed")
 	}
 }
@@ -303,7 +303,7 @@ func TestDecryptStreamRejectsFooterChunkCountMismatch(t *testing.T) {
 	buf := encBuf.Bytes()
 
 	// Locate and re-seal the footer with an incorrect chunk count.
-	seed := buf[1 : 1+streamSeedSize]
+	seed := buf[streamHeaderSize : streamHeaderSize+streamSeedSize]
 	nonce := make([]byte, NonceSize)
 	copy(nonce[0:streamSeedSize], seed)
 	binary.BigEndian.PutUint32(nonce[streamSeedSize:], footerNonceIndex)
@@ -395,14 +395,132 @@ func TestDecryptStreamTampered(t *testing.T) {
 	var encBuf bytes.Buffer
 	c.EncryptStream(bytes.NewReader(plaintext), &encBuf)
 
-	// Header (1) + seed (8) + first chunk length (4) = 13 bytes; flip a byte
+	// Header (3) + seed (8) + first chunk length (4) = 15 bytes; flip a byte
 	// inside the first chunk's GCM payload so the auth tag fails.
-	encBuf.Bytes()[13+ChunkSize/2] ^= 0xFF
+	encBuf.Bytes()[streamHeaderSize+streamSeedSize+ChunkHeader+ChunkSize/2] ^= 0xFF
 
 	var decBuf bytes.Buffer
 	err := c.DecryptStream(&encBuf, &decBuf)
 	if err != ErrTampered {
 		t.Fatalf("expected ErrTampered, got: %v", err)
+	}
+}
+
+// TestStreamV4HeaderCarriesChunkSize verifies the v4 header encodes the
+// default and non-default chunk sizes, and that a v4 header decodes them
+// round-trip (issue #824).
+func TestStreamV4HeaderCarriesChunkSize(t *testing.T) {
+	key, _ := GenerateKey()
+	c, _ := NewCipher(key)
+
+	plaintext := bytes.Repeat([]byte("v4"), ChunkSize+100)
+
+	var encBuf bytes.Buffer
+	if err := c.EncryptStream(bytes.NewReader(plaintext), &encBuf); err != nil {
+		t.Fatalf("EncryptStream failed: %v", err)
+	}
+	// Default chunk size in the header.
+	if encBuf.Bytes()[0] != StreamVersion {
+		t.Fatalf("expected v4 stream version, got %d", encBuf.Bytes()[0])
+	}
+	gotChunk := int(encBuf.Bytes()[1])<<8 | int(encBuf.Bytes()[2])
+	if gotChunk != ChunkSize {
+		t.Fatalf("expected header chunk size %d, got %d", ChunkSize, gotChunk)
+	}
+
+	// Configure a non-default chunk size and verify it round-trips.
+	if err := c.SetStreamChunkSize(1024); err != nil {
+		t.Fatalf("SetStreamChunkSize(1024) failed: %v", err)
+	}
+	encBuf.Reset()
+	if err := c.EncryptStream(bytes.NewReader(plaintext), &encBuf); err != nil {
+		t.Fatalf("EncryptStream with 1024 chunk failed: %v", err)
+	}
+	gotChunk = int(encBuf.Bytes()[1])<<8 | int(encBuf.Bytes()[2])
+	if gotChunk != 1024 {
+		t.Fatalf("expected header chunk size 1024, got %d", gotChunk)
+	}
+	var decBuf bytes.Buffer
+	if err := c.DecryptStream(&encBuf, &decBuf); err != nil {
+		t.Fatalf("DecryptStream of 1024-chunk stream failed: %v", err)
+	}
+	if !bytes.Equal(plaintext, decBuf.Bytes()) {
+		t.Fatal("non-default chunk size round-trip mismatch")
+	}
+}
+
+// TestStreamV4Legacy3StillDecodes verifies v3 blobs remain readable after the
+// v4 introduction (issue #824).
+func TestStreamV4Legacy3StillDecodes(t *testing.T) {
+	key, _ := GenerateKey()
+	c, _ := NewCipher(key)
+
+	// Craft a minimal v3 stream: version byte 3, fixed seed, sealed data chunk,
+	// then an integrity footer (no chunk-size field).
+	seed := bytes.Repeat([]byte{0x22}, streamSeedSize)
+	nonce := make([]byte, NonceSize)
+	copy(nonce[0:streamSeedSize], seed)
+
+	plaintext := []byte("legacy-v3-data")
+	sealed := c.aead.Seal(nil, nonce, plaintext, nil)
+
+	var stream bytes.Buffer
+	stream.WriteByte(StreamVersionLegacy3)
+	stream.Write(seed)
+	var lenBuf [ChunkHeader]byte
+	binary.BigEndian.PutUint32(lenBuf[:], uint32(len(sealed)))
+	stream.Write(lenBuf[:])
+	stream.Write(sealed)
+
+	// Footer (chunk count = 1).
+	footerNonce := make([]byte, NonceSize)
+	copy(footerNonce[0:streamSeedSize], seed)
+	binary.BigEndian.PutUint32(footerNonce[streamSeedSize:], footerNonceIndex)
+	var fcount [4]byte
+	binary.BigEndian.PutUint32(fcount[:], 1)
+	sealedFooter := c.aead.Seal(nil, footerNonce, fcount[:], streamFooterAAD)
+	binary.BigEndian.PutUint32(lenBuf[:], uint32(len(sealedFooter)))
+	stream.Write(lenBuf[:])
+	stream.Write(sealedFooter)
+
+	var decBuf bytes.Buffer
+	if err := c.DecryptStream(&stream, &decBuf); err != nil {
+		t.Fatalf("DecryptStream rejected v3 stream: %v", err)
+	}
+	if !bytes.Equal(decBuf.Bytes(), plaintext) {
+		t.Fatalf("v3 decode mismatch: got %q, want %q", decBuf.Bytes(), plaintext)
+	}
+}
+
+// TestSetStreamChunkSizeBounds verifies out-of-range chunk sizes are rejected
+// and the prior size is retained (issue #824, Rule 32).
+func TestSetStreamChunkSizeBounds(t *testing.T) {
+	key, _ := GenerateKey()
+	c, _ := NewCipher(key)
+
+	if err := c.SetStreamChunkSize(MinChunkSize); err != nil {
+		t.Fatalf("setting MinChunkSize should succeed: %v", err)
+	}
+	if err := c.SetStreamChunkSize(MaxChunkSize); err != nil {
+		t.Fatalf("setting MaxChunkSize should succeed: %v", err)
+	}
+
+	// Out of range below.
+	if err := c.SetStreamChunkSize(MinChunkSize - 1); err == nil {
+		t.Fatal("expected error for chunk size below MinChunkSize")
+	} else if !errors.Is(err, unix.EINVAL) {
+		t.Fatalf("expected EINVAL, got: %v", err)
+	}
+	// Out of range above.
+	if err := c.SetStreamChunkSize(MaxChunkSize + 1); err == nil {
+		t.Fatal("expected error for chunk size above MaxChunkSize")
+	}
+
+	// Prior size retained after a rejected set.
+	c.SetStreamChunkSize(2048)
+	c.SetStreamChunkSize(999999) // invalid
+	if c.chunkSize != 2048 {
+		t.Fatalf("chunk size changed after rejected set: got %d, want 2048", c.chunkSize)
 	}
 }
 

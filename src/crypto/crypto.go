@@ -10,6 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -39,6 +41,10 @@ var (
 
 type Cipher struct {
 	aead cipher.AEAD
+	// chunkSize is the plaintext chunk length used by EncryptStream. It
+	// defaults to ChunkSize and may be changed via SetStreamChunkSize within
+	// [MinChunkSize, MaxChunkSize] (issue #824).
+	chunkSize int
 }
 
 func NewCipher(key []byte) (*Cipher, error) {
@@ -56,7 +62,19 @@ func NewCipher(key []byte) (*Cipher, error) {
 		return nil, fmt.Errorf("crypto: failed to create GCM: %w", err)
 	}
 
-	return &Cipher{aead: aead}, nil
+	return &Cipher{aead: aead, chunkSize: ChunkSize}, nil
+}
+
+// SetStreamChunkSize sets the plaintext chunk length used by EncryptStream.
+// It validates the size is within [MinChunkSize, MaxChunkSize] (Rule 32) and
+// returns an error that maps to EINVAL for out-of-range values; on error the
+// cipher retains its prior chunk size (issue #824).
+func (c *Cipher) SetStreamChunkSize(n int) error {
+	if n < MinChunkSize || n > MaxChunkSize {
+		return fmt.Errorf("crypto: invalid stream chunk size %d (must be within [%d, %d]): %w", n, MinChunkSize, MaxChunkSize, unix.EINVAL)
+	}
+	c.chunkSize = n
+	return nil
 }
 
 func NewCipherFromHex(hexKey string) (*Cipher, error) {

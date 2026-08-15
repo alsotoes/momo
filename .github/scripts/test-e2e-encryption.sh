@@ -125,13 +125,14 @@ if [ "$TOTAL_BLOBS" -eq 0 ]; then
 fi
 
 # 3. Blob content must start with a valid stream version byte (EncryptStream
-#    header): 0x02 (legacy v2) or 0x03 (current v3 with integrity footer).
+#    header): 0x02 (legacy v2), 0x03 (legacy v3), or 0x04 (current v4 with
+#    integrity footer and self-describing chunk size).
 if [ -n "$PRIMARY_SERVER" ]; then
   FIRST_BLOB=$(find "$E2E_DIR/$PRIMARY_SERVER/blobs" -type f 2>/dev/null | head -1)
   if [ -n "$FIRST_BLOB" ]; then
     FIRST_BYTE=$(xxd -l 1 -p "$FIRST_BLOB" 2>/dev/null)
-    if [ "$FIRST_BYTE" != "02" ] && [ "$FIRST_BYTE" != "03" ]; then
-        echo "FAIL: Blob on Server $PRIMARY_SERVER has unexpected stream version byte (got 0x$FIRST_BYTE, want 0x02 or 0x03)"
+    if [ "$FIRST_BYTE" != "02" ] && [ "$FIRST_BYTE" != "03" ] && [ "$FIRST_BYTE" != "04" ]; then
+        echo "FAIL: Blob on Server $PRIMARY_SERVER has unexpected stream version byte (got 0x$FIRST_BYTE, want 0x02, 0x03 or 0x04)"
         FAIL=1
     fi
   fi
