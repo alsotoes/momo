@@ -123,6 +123,10 @@ func (r *RawBlobStore) PutBlob(hash string, content io.Reader) (err error) {
 		}
 	}()
 
+	if common.HasPathTraversalChars(hash) {
+		return fmt.Errorf("raw: invalid hash contains path traversal characters: %w", syscall.EINVAL)
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -202,6 +206,10 @@ func (r *RawBlobStore) GetBlob(hash string) (rc io.ReadCloser, err error) {
 		}
 	}()
 
+	if common.HasPathTraversalChars(hash) {
+		return nil, fmt.Errorf("raw: invalid hash contains path traversal characters: %w", syscall.EINVAL)
+	}
+
 	var offset, length int64
 	var found bool
 	err = r.allocDB.View(func(tx *bbolt.Tx) error {
@@ -239,6 +247,10 @@ func (r *RawBlobStore) GetBlob(hash string) (rc io.ReadCloser, err error) {
 // reclaimed (bump allocator; compaction is a future enhancement).
 // Missing blobs are silently ignored.
 func (r *RawBlobStore) DeleteBlob(hash string) error {
+	if common.HasPathTraversalChars(hash) {
+		return fmt.Errorf("raw: invalid hash contains path traversal characters: %w", syscall.EINVAL)
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 

@@ -396,6 +396,39 @@ func TestRawBlobStore_OverflowCheckBeforeAllocation(t *testing.T) {
 	}
 }
 
+func TestRawBlobStore_PathTraversal(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	tempDir := t.TempDir()
+	devicePath := filepath.Join(tempDir, "fake-device")
+	dataDir := filepath.Join(tempDir, "data")
+
+	cfg := common.ConfigurationStorage{Backend: "raw", RawDevicePath: devicePath}
+	daemon := &common.Daemon{Data: dataDir}
+
+	store, err := NewRawBlobStore(cfg, daemon)
+	if err != nil {
+		t.Fatalf("NewRawBlobStore failed: %v", err)
+	}
+	defer store.Close()
+
+	badHash := "../../../etc/passwd"
+
+	// Test PutBlob path traversal
+	if err := store.PutBlob(badHash, bytes.NewReader([]byte("test"))); err == nil {
+		t.Errorf("PutBlob with path traversal should fail")
+	}
+
+	// Test GetBlob path traversal
+	if _, err := store.GetBlob(badHash); err == nil {
+		t.Errorf("GetBlob with path traversal should fail")
+	}
+
+	// Test DeleteBlob path traversal
+	if err := store.DeleteBlob(badHash); err == nil {
+		t.Errorf("DeleteBlob with path traversal should fail")
+	}
+}
+
 func TestRawBlobStore_GetBlobStreaming(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	tempDir := t.TempDir()
