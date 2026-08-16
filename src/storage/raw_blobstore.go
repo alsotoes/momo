@@ -246,7 +246,14 @@ func (r *RawBlobStore) GetBlob(hash string) (rc io.ReadCloser, err error) {
 // DeleteBlob removes a blob's allocation entry. The device space is not
 // reclaimed (bump allocator; compaction is a future enhancement).
 // Missing blobs are silently ignored.
-func (r *RawBlobStore) DeleteBlob(hash string) error {
+func (r *RawBlobStore) DeleteBlob(hash string) (err error) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			log.Printf("CRITICAL: Panic recovered in RawBlobStore.DeleteBlob: %v", rec)
+			err = fmt.Errorf("raw: delete panic: %v: %w", rec, syscall.EIO)
+		}
+	}()
+
 	if common.HasPathTraversalChars(hash) {
 		return fmt.Errorf("raw: invalid hash contains path traversal characters: %w", syscall.EINVAL)
 	}
@@ -254,7 +261,7 @@ func (r *RawBlobStore) DeleteBlob(hash string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	err := r.allocDB.Update(func(tx *bbolt.Tx) error {
+	err = r.allocDB.Update(func(tx *bbolt.Tx) error {
 		b := tx.Bucket(bucketRawAlloc)
 		if b == nil {
 			return nil
