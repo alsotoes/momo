@@ -2919,6 +2919,9 @@ func (m *S3Communicator) handleListParts(bucket, key, uploadID string) (requeste
 	})
 
 	var buf bytes.Buffer
+	// Use a stack-allocated buffer with strconv.AppendInt to eliminate
+	// heap allocations when writing integer values inside the loop.
+	var intBuf [32]byte
 	buf.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)
 	buf.WriteString(`<ListPartsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">`)
 	writeXMLString(&buf, "Bucket", bucket)
@@ -2932,13 +2935,13 @@ func (m *S3Communicator) handleListParts(bucket, key, uploadID string) (requeste
 	for _, p := range parts {
 		buf.WriteString(`<Part>`)
 		buf.WriteString(`<PartNumber>`)
-		buf.WriteString(strconv.Itoa(p.partNumber))
+		buf.Write(strconv.AppendInt(intBuf[:0], int64(p.partNumber), 10))
 		buf.WriteString(`</PartNumber>`)
 		buf.WriteString(`<ETag>"`)
 		xmlEscape(&buf, p.etag)
 		buf.WriteString(`"</ETag>`)
 		buf.WriteString(`<Size>`)
-		buf.WriteString(strconv.Itoa(len(p.data)))
+		buf.Write(strconv.AppendInt(intBuf[:0], int64(len(p.data)), 10))
 		buf.WriteString(`</Size>`)
 		buf.WriteString(`<LastModified>`)
 		buf.WriteString(time.Now().UTC().Format(time.RFC3339))
