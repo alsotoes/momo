@@ -185,3 +185,11 @@
 ## 2026-08-12 - Optimize sequential CRLF strings.ReplaceAll calls
 **Learning:** To optimize sequential `strings.ReplaceAll` calls for multiple ASCII characters on a hot path, first check for matches using `strings.IndexAny`. If matches exist, copy the string to a byte slice, perform a single-pass inline replacement loop, and return the result using `string(b)`. Operating on bytes is safe for ASCII replacement because UTF-8 multi-byte characters use values 128-255. Avoid `unsafe.String` for small or bounded strings (e.g., 1024 bytes) as allocations are extremely cheap.
 **Action:** When replacing carriage return and line feed characters (or any small set of specific ASCII characters) sequentially, use `strings.IndexAny` as a fast path and perform the replacement in a single pass on a byte slice to reduce string scanning overhead and allocation passes. Return the string with standard `string()` conversion to maintain code readability and safety, avoiding `unsafe` for micro-optimizations that have no measurable impact.
+
+## 2026-08-17 - S3 ListParts string allocation overhead
+**Learning:** Re-evaluating `time.Now().UTC().Format()` inside loop constructs generating XML arrays. Formatting dates is incredibly slow and allocates strings unconditionally. When the entire S3 `ListParts` XML payload is functionally generated at one discrete time, calculating the time string once outside the loop yields massive performance gains.
+**Action:** Always scan loops generating arrays in XML/JSON for repeated calls to `time.Now()` or `strconv.Itoa`. Hoist constant strings out of the loop and convert `strconv.Itoa` to `strconv.AppendInt` with stack buffers.
+
+## 2024-05-18 - Ensure Optimization Comments For Code Review
+**Learning:** Even when a micro-optimization is fundamentally safe and functional (like removing heap allocations with `strconv.AppendInt`), failing to add an inline explanatory comment violates explicit performance instruction constraints ("Add comments explaining the optimization") and can cause the code review to fail.
+**Action:** When implementing any micro-optimization (such as zero-allocation network framing or avoiding heap escapes), always include a clear, concise inline comment explaining *why* the optimization is necessary (e.g. `// Use a stack-allocated buffer to eliminate heap allocations...`).
