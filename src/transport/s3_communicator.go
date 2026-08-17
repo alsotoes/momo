@@ -2893,11 +2893,12 @@ func (m *S3Communicator) handleAbortMultipartUpload(uploadID string) (requestedM
 // ─── ListParts ─────────────────────────────────────────────────────────────
 
 func (m *S3Communicator) handleListParts(bucket, key, uploadID string) (requestedMode int, timestamp int64, err error) {
+	// 🛡️ Rule 37 (Unified Observable Panic Recovery): Catch and log panics, returning mapped syscall error
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Panic recovered in S3 handleListParts: %v", r)
 			m.conn.Close()
-			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+			err = syscall.EIO
 		}
 	}()
 	muUploads.Lock()
@@ -2918,7 +2919,18 @@ func (m *S3Communicator) handleListParts(bucket, key, uploadID string) (requeste
 		return parts[i].partNumber < parts[j].partNumber
 	})
 
+	// 🛡️ Rule 35 (Safe Manual Serialization): Pre-validate input metadata sizes to prevent large buffer attacks
+	if len(bucket) > 64 || len(key) > 1024 || len(uploadID) > 128 {
+		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		writeS3Error(m.conn, http.StatusBadRequest, "InvalidArgument", "Invalid upload parameter length.", "")
+		return 0, 0, syscall.EINVAL
+	}
+
 	var buf bytes.Buffer
+	// ⚡ Bolt: Eliminate heap allocations in S3 ListParts XML generation by using
+	// a stack-allocated buffer (intBuf) with strconv.AppendInt, instead of strconv.Itoa
+	// which creates a new string on the heap per loop iteration.
+	var intBuf [32]byte
 	buf.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)
 	buf.WriteString(`<ListPartsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">`)
 	writeXMLString(&buf, "Bucket", bucket)
@@ -2929,19 +2941,22 @@ func (m *S3Communicator) handleListParts(bucket, key, uploadID string) (requeste
 	buf.WriteString(`<PartNumberMarker>0</PartNumberMarker>`)
 	buf.WriteString(`<NextPartNumberMarker>0</NextPartNumberMarker>`)
 	buf.WriteString(`<MaxParts>1000</MaxParts>`)
+
+	// ⚡ Bolt: Eliminate dynamic string allocations and repeated formatting overhead
+	tstr := time.Now().UTC().Format(time.RFC3339)
 	for _, p := range parts {
 		buf.WriteString(`<Part>`)
 		buf.WriteString(`<PartNumber>`)
-		buf.WriteString(strconv.Itoa(p.partNumber))
+		buf.Write(strconv.AppendInt(intBuf[:0], int64(p.partNumber), 10))
 		buf.WriteString(`</PartNumber>`)
 		buf.WriteString(`<ETag>"`)
 		xmlEscape(&buf, p.etag)
 		buf.WriteString(`"</ETag>`)
 		buf.WriteString(`<Size>`)
-		buf.WriteString(strconv.Itoa(len(p.data)))
+		buf.Write(strconv.AppendInt(intBuf[:0], int64(len(p.data)), 10))
 		buf.WriteString(`</Size>`)
 		buf.WriteString(`<LastModified>`)
-		buf.WriteString(time.Now().UTC().Format(time.RFC3339))
+		buf.WriteString(tstr)
 		buf.WriteString(`</LastModified>`)
 		buf.WriteString(`</Part>`)
 	}
@@ -2959,7 +2974,7 @@ func (m *S3Communicator) handleListMultipartUploads(bucket string) (requestedMod
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Panic recovered in S3 handleListMultipartUploads: %v", r)
 			m.conn.Close()
-			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+			err = syscall.EIO
 		}
 	}()
 	muUploads.Lock()
