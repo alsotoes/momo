@@ -139,7 +139,8 @@ func (o *OPRFProvider) handleEvalResponse(rpc *RPC) {
 // and the number of peers that responded. The caller is responsible for combining
 // enough distinct evaluations to meet the configured threshold.
 func (o *OPRFProvider) Evaluate(blinded []byte, timeout time.Duration) ([]OPRFEvalResponsePayload, int) {
-	peers := o.transport.Peers().Alive()
+	// Quality-aware: prefer low-RTT alive peers for evaluation (issue #823).
+	peers := o.transport.Peers().AliveByQuality()
 	peerCount := 0
 	for _, p := range peers {
 		if p.ID != o.localID {

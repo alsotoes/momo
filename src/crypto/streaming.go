@@ -13,10 +13,35 @@ import (
 )
 
 const (
-	ChunkSize     = 4096
-	ChunkHeader   = 4
-	MaxChunkSize  = ChunkSize + ChunkHeader + NonceSize + TagSize
-	StreamVersion = 3
+	// ChunkSize is the default plaintext chunk length for streaming AEAD. It is
+	// the historical value so existing callers observe identical behavior unless
+	// a different size is set via SetStreamChunkSize.
+	ChunkSize = 4096
+
+	// MinChunkSize is the lower bound for a configurable stream chunk size
+	// (Rule 32 — bounded allocation).
+	MinChunkSize = 512
+
+	// ChunkHeader is the width of a chunk's big-endian length prefix.
+	ChunkHeader = 4
+
+	// MaxChunkSize bounds a stream chunk's full encoded length (plaintext chunk
+	// + length prefix + nonce + AEAD tag). It is the decoder's allocation cap.
+	MaxChunkSize = ChunkSize + ChunkHeader + NonceSize + TagSize
+
+	// headerVersionBytes is the width of the stream version field; the v4
+	// header is [version][chunkSizeHi][chunkSizeLo].
+	headerVersionBytes = 1
+	// chunkSizeFieldBytes is the width of the big-endian chunk-size field in
+	// the v4 stream header.
+	chunkSizeFieldBytes = 2
+	// streamHeaderSize is the total v4 header length (version + chunk size).
+	streamHeaderSize = headerVersionBytes + chunkSizeFieldBytes
+
+	// StreamVersion is the current wire stream format. v4 adds a self-describing
+	// chunk-size field so the decoder can validate backups bounds before
+	// allocating and accept streams written with a different chunk size.
+	StreamVersion = 4
 
 	// streamSeedSize is the number of random bytes seeded per stream. It is
 	// XORed into the first part of the nonce so that a (key, nonce) pair is
@@ -27,6 +52,11 @@ const (
 	// footer. It is still decoded (insecure against truncation) for backward
 	// compatibility with blobs written before the footer was added.
 	StreamVersionLegacy2 = 2
+
+	// StreamVersionLegacy3 is the immediate predecessor format (fixed 4096
+	// chunks with an integrity footer, 1-byte header). It is still decoded for
+	// backward compatibility with blobs written before v4.
+	StreamVersionLegacy3 = 3
 )
 
 // streamFooterAAD is the AEAD additional authenticated data bound to the
@@ -87,8 +117,19 @@ const footerNonceIndex = 0xFFFFFFFF
 func (c *Cipher) EncryptStream(plaintext io.Reader, dst io.Writer) (err error) {
 	defer recoverStreamErr(&err, "EncryptStream")
 
-	header := []byte{StreamVersion}
-	if _, err := dst.Write(header); err != nil {
+	chunk := c.chunkSize
+	if chunk < MinChunkSize || chunk > MaxChunkSize {
+		// Defensive: the field is set via NewCipher/SetStreamChunkSize which
+		// both validate, but never allow an unbounded allocation (Rule 4/32).
+		chunk = ChunkSize
+	}
+
+	// v4 header: [version][chunkSizeHi][chunkSizeLo].
+	var header [streamHeaderSize]byte
+	header[0] = StreamVersion
+	header[1] = byte(chunk >> 8)
+	header[2] = byte(chunk)
+	if _, err := dst.Write(header[:]); err != nil {
 		return fmt.Errorf("crypto: failed to write stream header: %w", err)
 	}
 
@@ -101,7 +142,7 @@ func (c *Cipher) EncryptStream(plaintext io.Reader, dst io.Writer) (err error) {
 		return fmt.Errorf("crypto: failed to write stream seed: %w", err)
 	}
 
-	buf := make([]byte, ChunkSize)
+	buf := make([]byte, chunk)
 	nonce := make([]byte, NonceSize)
 	lenBuf := make([]byte, ChunkHeader)
 	sealedBuf := make([]byte, 0, MaxChunkSize)
@@ -178,12 +219,97 @@ func (c *Cipher) DecryptStream(ciphertext io.Reader, dst io.Writer) (err error) 
 
 	switch versionBuf[0] {
 	case StreamVersion:
+		return c.decryptStreamV4(ciphertext, dst)
+	case StreamVersionLegacy3:
 		return c.decryptStreamV3(ciphertext, dst)
 	case StreamVersionLegacy2:
 		return c.decryptStreamLegacy(ciphertext, dst)
 	default:
 		return wrapStreamErr(ErrStreamFormat, "unsupported version %d", versionBuf[0])
 	}
+}
+
+// decryptStreamV4 decodes the current (v4) format, which carries a
+// self-describing chunk-size field so the decoder can validate the bound and
+// allocate accordingly. Framing after the header matches v3 (per-chunk length
+// prefix, AEAD seal, integrity footer).
+func (c *Cipher) decryptStreamV4(ciphertext io.Reader, dst io.Writer) (err error) {
+	defer recoverStreamErr(&err, "decryptStreamV4")
+
+	// Read the chunk-size field and the seed in a single allocation so the
+	// header parse introduces no additional heap escape versus the v3 decoder
+	// (which allocates the seed buffer once). The field is validated before any
+	// per-chunk buffer is sized (Rule 32).
+	head := make([]byte, streamSeedSize+chunkSizeFieldBytes)
+	if _, err := io.ReadFull(ciphertext, head); err != nil {
+		return fmt.Errorf("crypto: failed to read stream chunk-size header/seed: %w", err)
+	}
+	declared := int(head[0])<<8 | int(head[1])
+	if declared < MinChunkSize || declared > MaxChunkSize {
+		return wrapStreamErr(ErrStreamFormat, "invalid v4 stream chunk size %d (must be within [%d, %d])", declared, MinChunkSize, MaxChunkSize)
+	}
+	seed := head[chunkSizeFieldBytes:]
+
+	lenBuf := make([]byte, ChunkHeader)
+	nonce := make([]byte, NonceSize)
+	sealedBuf := make([]byte, MaxChunkSize)
+	// Cap the plaintext scratch buffer at MaxChunkSize (a constant) so the
+	// compiler can keep it off the heap regardless of the validated `declared`
+	// header value (Rule 4/32; avoids an allocation regression vs v3).
+	plaintextBuf := make([]byte, 0, MaxChunkSize)
+	chunkIndex := uint32(0)
+
+	for {
+		sealedLen, err := readChunkLen(ciphertext, lenBuf)
+		if err == io.EOF {
+			// Encountered EOF before a footer: the stream was truncated.
+			return wrapStreamErr(ErrStreamTruncated, "expected integrity footer after %d chunk(s)", chunkIndex)
+		}
+		if err != nil {
+			return err
+		}
+
+		if sealedLen > uint32(MaxChunkSize) {
+			return wrapStreamErr(ErrStreamFormat, "invalid chunk size %d", sealedLen)
+		}
+		if sealedLen == 0 {
+			return wrapStreamErr(ErrStreamFormat, "invalid zero-length chunk")
+		}
+
+		sealed := sealedBuf[:sealedLen]
+		if _, err := io.ReadFull(ciphertext, sealed); err != nil {
+			return fmt.Errorf("crypto: failed to read chunk ciphertext: %w", err)
+		}
+
+		// Data chunk nonce.
+		copy(nonce[0:streamSeedSize], seed)
+		binary.BigEndian.PutUint32(nonce[streamSeedSize:], chunkIndex)
+
+		plaintext, err := c.aead.Open(plaintextBuf[:0], nonce, sealed, nil)
+		if err != nil {
+			// May be the stream footer — retry with footer nonce/AAD.
+			plaintext, err = c.aead.Open(plaintextBuf[:0], footerNonce(nonce, seed), sealed, streamFooterAAD)
+			if err != nil {
+				return ErrTampered
+			}
+			if len(plaintext) != 4 {
+				return wrapStreamErr(ErrStreamFormat, "malformed stream footer")
+			}
+			footerCount := binary.BigEndian.Uint32(plaintext)
+			if footerCount != chunkIndex {
+				return wrapStreamErr(ErrStreamFormat, "footer chunk count %d != %d chunks decoded", footerCount, chunkIndex)
+			}
+			break
+		}
+
+		if _, err := dst.Write(plaintext); err != nil {
+			return fmt.Errorf("crypto: failed to write decrypted chunk: %w", err)
+		}
+
+		chunkIndex++
+	}
+
+	return nil
 }
 
 func (c *Cipher) decryptStreamLegacy(ciphertext io.Reader, dst io.Writer) (err error) {

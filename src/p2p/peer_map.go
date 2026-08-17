@@ -2,6 +2,7 @@ package p2p
 
 import (
 	"math/rand"
+	"sort"
 	"sync"
 	"time"
 )
@@ -65,6 +66,51 @@ func (m *PeerMap) Alive() []*Peer {
 	}
 	m.mu.RUnlock()
 	return result
+}
+
+// AliveByQuality returns all alive peers (excluding Suspect/Offline) sorted by
+// EWMA RTT ascending, so the lowest-RTT (highest-quality) peers come first.
+// Peers with an unknown RTT (0) sort after known-RTT peers but remain included
+// while alive. This drives quality-aware quorum selection (issue #823).
+func (m *PeerMap) AliveByQuality() []*Peer {
+	m.mu.RLock()
+	result := make([]*Peer, 0, len(m.peers))
+	for _, p := range m.peers {
+		if p.State() == PeerStateAlive {
+			result = append(result, p)
+		}
+	}
+	m.mu.RUnlock()
+
+	sort.SliceStable(result, func(i, j int) bool {
+		ri, rj := result[i].RTT(), result[j].RTT()
+		// Unknown RTT (0) ranks last; otherwise ascending.
+		if ri == 0 {
+			if rj == 0 {
+				return false
+			}
+			return false
+		}
+		if rj == 0 {
+			return true
+		}
+		return ri < rj
+	})
+	return result
+}
+
+// AliveCount returns the number of peers in the PeerStateAlive state without
+// allocating a slice (used by adaptive gossip fanout, issue #825).
+func (m *PeerMap) AliveCount() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	n := 0
+	for _, p := range m.peers {
+		if p.State() == PeerStateAlive {
+			n++
+		}
+	}
+	return n
 }
 
 // RandomPeers returns up to k random alive peers, excluding the peer with excludeID.

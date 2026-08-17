@@ -203,7 +203,8 @@ func (lm *LeaseManager) handleLeaseRelease(rpc *RPC) {
 // Acquire requests a lease for the given resource key from a majority of alive peers.
 // Returns the lease if the quorum is reached, or an error otherwise.
 func (lm *LeaseManager) Acquire(key string, duration time.Duration) (*Lease, error) {
-	peers := lm.transport.Peers().Alive()
+	// Quality-aware: prefer low-RTT alive peers for quorum (issue #823).
+	peers := lm.transport.Peers().AliveByQuality()
 	peerCount := 0
 	for _, p := range peers {
 		if p.ID != lm.localID {

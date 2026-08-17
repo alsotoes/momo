@@ -31,6 +31,7 @@ type Peer struct {
 	Addr     string
 	state    atomic.Int32
 	lastSeen atomic.Int64
+	rtt      atomic.Int64 // EWMA round-trip time in nanoseconds (0 = unknown)
 	conn     net.Conn
 	mu       sync.Mutex
 	writeMu  sync.Mutex
@@ -65,6 +66,17 @@ func (p *Peer) LastSeen() time.Time {
 // Touch updates the last seen timestamp to now.
 func (p *Peer) Touch() {
 	p.lastSeen.Store(time.Now().UnixNano())
+}
+
+// SetRTT records the peer's EWMA round-trip time. A zero value clears it back
+// to "unknown".
+func (p *Peer) SetRTT(rtt time.Duration) {
+	p.rtt.Store(int64(rtt))
+}
+
+// RTT returns the peer's last recorded EWMA round-trip time, or 0 if unknown.
+func (p *Peer) RTT() time.Duration {
+	return time.Duration(p.rtt.Load())
 }
 
 // SetConn sets the underlying network connection for this peer.
