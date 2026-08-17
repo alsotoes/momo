@@ -62,3 +62,6 @@ repomix-output.*
 *.repomix.*
 
 node_modules/
+package-lock.json
+package.json
+
