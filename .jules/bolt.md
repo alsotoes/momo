@@ -189,3 +189,7 @@
 ## 2026-08-17 - S3 ListParts string allocation overhead
 **Learning:** Re-evaluating `time.Now().UTC().Format()` inside loop constructs generating XML arrays. Formatting dates is incredibly slow and allocates strings unconditionally. When the entire S3 `ListParts` XML payload is functionally generated at one discrete time, calculating the time string once outside the loop yields massive performance gains.
 **Action:** Always scan loops generating arrays in XML/JSON for repeated calls to `time.Now()` or `strconv.Itoa`. Hoist constant strings out of the loop and convert `strconv.Itoa` to `strconv.AppendInt` with stack buffers.
+
+## 2024-05-18 - Ensure Optimization Comments For Code Review
+**Learning:** Even when a micro-optimization is fundamentally safe and functional (like removing heap allocations with `strconv.AppendInt`), failing to add an inline explanatory comment violates explicit performance instruction constraints ("Add comments explaining the optimization") and can cause the code review to fail.
+**Action:** When implementing any micro-optimization (such as zero-allocation network framing or avoiding heap escapes), always include a clear, concise inline comment explaining *why* the optimization is necessary (e.g. `// Use a stack-allocated buffer to eliminate heap allocations...`).
