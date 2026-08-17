@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"sync"
 	"syscall"
 
 	momocrypto "github.com/alsotoes/momo/src/crypto"
@@ -15,10 +14,15 @@ import (
 // using AES-GCM-256 streaming AEAD. The underlying BlobStore stores
 // only ciphertext. The hash key remains the plaintext content hash
 // (used for CAS dedup), so dedup works on plaintext content.
+//
+// Concurrency: EncryptedBlobStore is safe for concurrent use when the
+// underlying inner BlobStore is itself concurrency-safe. All
+// implementations in this package (LocalBlobStore, RawBlobStore,
+// S3BlobStore, CASStore) are internally synchronized, so this decorator
+// needs no lock of its own.
 type EncryptedBlobStore struct {
 	inner  BlobStore
 	cipher *momocrypto.Cipher
-	mu     sync.Mutex
 }
 
 // Compile-time interface assertion.
@@ -120,7 +124,16 @@ func (e *EncryptedBlobStore) GetBlob(hash string) (result io.ReadCloser, err err
 
 // DeleteBlob is a passthrough to the underlying store. Encryption does
 // not affect deletion semantics.
-func (e *EncryptedBlobStore) DeleteBlob(hash string) error {
+func (e *EncryptedBlobStore) DeleteBlob(hash string) (err error) {
+	// 🛡️ Zero-Crash (Rule 37): a panic in the underlying store must not
+	// escape through this passthrough.
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in EncryptedBlobStore.DeleteBlob: %v", r)
+			err = fmt.Errorf("panic in DeleteBlob: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	return e.inner.DeleteBlob(hash)
 }
 
