@@ -3498,3 +3498,14 @@ baf52a7,BenchmarkSanitizeLog/Unsafe-8,536.90,704.00,1.00
 2766ce2,BenchmarkPadString-8,62.73,64.00,1.00
 2766ce2,BenchmarkSanitizeLog/Safe-8,569.30,0.00,0.00
 2766ce2,BenchmarkSanitizeLog/Unsafe-8,816.10,704.00,1.00
+ea64898,BenchmarkAWSChunkedReaderSigned-8,620631.00,107.25,11309.00
+ea64898,BenchmarkAWSChunkedReaderUnsigned-8,652637.00,101.99,78604.00
+ea64898,BenchmarkCheckMetricsAndSwap-8,10.00,0.00,0.00
+ea64898,BenchmarkCrushOptimized-8,420.20,0.00,0.00
+ea64898,BenchmarkCrushOriginal-8,873.50,164.00,3.00
+ea64898,BenchmarkIndexDirectTracking-8,0.38,0.00,0.00
+ea64898,BenchmarkIndexSearch-8,3.18,0.00,0.00
+ea64898,BenchmarkLoadGlobalConfig-8,12014.00,1848.00,54.00
+ea64898,BenchmarkPadString-8,55.89,64.00,1.00
+ea64898,BenchmarkSanitizeLog/Safe-8,613.90,0.00,0.00
+ea64898,BenchmarkSanitizeLog/Unsafe-8,804.40,704.00,1.00
