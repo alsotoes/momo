@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"sync"
 	"syscall"
 
 	momocrypto "github.com/alsotoes/momo/src/crypto"
@@ -18,7 +17,6 @@ import (
 type EncryptedBlobStore struct {
 	inner  BlobStore
 	cipher *momocrypto.Cipher
-	mu     sync.Mutex
 }
 
 // Compile-time interface assertion.
