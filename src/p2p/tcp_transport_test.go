@@ -430,3 +430,74 @@ func TestTCPTransport_PeerDisconnectCleanup(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
+
+// countingConn wraps a net.Conn and counts how many times Close is called.
+// It is used to assert that Close() releases each live connection exactly once.
+type countingConn struct {
+	net.Conn
+	mu       sync.Mutex
+	closeCnt int
+}
+
+func (c *countingConn) Close() error {
+	c.mu.Lock()
+	c.closeCnt++
+	c.mu.Unlock()
+	return c.Conn.Close()
+}
+
+func (c *countingConn) closeCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.closeCnt
+}
+
+// TestTCPTransport_CloseClosesEachConnOnce verifies that Close() does not
+// double-close a live connection that is both tracked in t.conns and attached
+// to a peer in the peer map (fix #668). Each underlying net.Conn must be
+// closed exactly once.
+func TestTCPTransport_CloseClosesEachConnOnce(t *testing.T) {
+	tr := NewTCPTransport(TCPTransportConfig{LocalID: 1})
+
+	// Two independent live connections, each both tracked in t.conns and
+	// attached to a peer — mirroring the state after Dial/Connect.
+	var peerEnds []net.Conn
+	conns := make([]*countingConn, 2)
+	for i := range conns {
+		left, right := net.Pipe()
+		cc := &countingConn{Conn: left}
+		conns[i] = cc
+		peerEnds = append(peerEnds, right)
+		tr.mu.Lock()
+		tr.conns[cc] = struct{}{}
+		tr.mu.Unlock()
+
+		p := NewPeer(int32(i+2), "127.0.0.1:0")
+		p.SetConn(cc)
+		tr.peerMap.Add(p)
+	}
+
+	if err := tr.Close(); err != nil {
+		t.Fatalf("Close failed: %v", err)
+	}
+	for _, rc := range peerEnds {
+		rc.Close()
+	}
+
+	for i, cc := range conns {
+		if n := cc.closeCount(); n != 1 {
+			t.Errorf("conn[%d] closed %d times, want exactly 1", i, n)
+		}
+	}
+
+	// Belt-and-braces: a second Close must be a no-op and must not close
+	// again (transport sets closed and returns early).
+	if err := tr.Close(); err != nil {
+		t.Fatalf("second Close failed: %v", err)
+	}
+	for i, cc := range conns {
+		if n := cc.closeCount(); n != 1 {
+			t.Errorf("conn[%d] closed %d times after second Close, want still 1", i, n)
+		}
+	}
+}

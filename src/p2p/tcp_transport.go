@@ -397,17 +397,16 @@ func (t *TCPTransport) Close() error {
 		t.ln.Close()
 	}
 
+	// 🛡️ Close each live connection exactly once. t.conns is the
+	// authoritative set of every open socket (accepted + dialed). Peer
+	// connections in peerMap are the same net.Conn objects, so closing
+	// them again here would double-close; the peer conn refs are instead
+	// nulled by cleanupConn once each conn's read loop exits (fix #668).
 	t.mu.Lock()
 	for conn := range t.conns {
 		conn.Close()
 	}
 	t.mu.Unlock()
-
-	for _, p := range t.peerMap.All() {
-		if conn := p.Conn(); conn != nil {
-			conn.Close()
-		}
-	}
 
 	t.wg.Wait()
 	return nil
