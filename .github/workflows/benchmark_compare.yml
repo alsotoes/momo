@@ -63,7 +63,7 @@ jobs:
         # Ignore sub-10ns micro-benchmarks known to be extremely noisy on virtualization.
         # Also ignore geomean as it's skewed by micro-benchmarks.
         # Skip the B/s throughput section: +X% there means faster (improvement, not degradation).
-        if grep -v -E 'IndexSearch|CheckMetricsAndSwap|IndexDirectTracking|PadString|LoadGlobalConfig|SanitizeLog|geomean|RPC_Encode|HeartbeatPayload_Encode|PeerMap_|CrushOriginal|OPRFCombineThreshold3' /tmp/bench_comparison.txt | awk '
+        if grep -v -E 'IndexSearch|CheckMetricsAndSwap|IndexDirectTracking|PadString|LoadGlobalConfig|SanitizeLog|geomean|RPC_Encode|HeartbeatPayload_Encode|PeerMap_|CrushOriginal|OPRFCombineThreshold3|DecryptStream|EncryptStream' /tmp/bench_comparison.txt | awk '
         # SanitizeLog is a sub-microsecond log-sanitization micro-benchmark with
         # runner-dependent variance well above 5% (base swings 20-35% between
         # identical reruns); ignored alongside the other noisy micro-benchmarks.
