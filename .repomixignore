@@ -1,0 +1,17 @@
+# Exclude build artifacts & caches
+dist/
+build/
+target/
+.cache/
+
+# Exclude large binary/data assets
+*.png
+*.jpg
+*.svg
+*.csv
+*.parquet
+
+# Exclude sensitive configs & lockfiles
+.env*
+*-lock.json
+*.lock

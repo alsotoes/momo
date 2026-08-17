@@ -51,3 +51,14 @@ body*.txt
 pentest/server-logs/
 pentest/fuzzing-reports/
 pentest-results/
+
+# Repomix bundled outputs
+# Repomix outputs
+repomix-output.*
+repomix-output.xml
+repomix-output.txt
+repomix-output.json
+repomix-output.*
+*.repomix.*
+
+node_modules/
