@@ -2929,19 +2929,23 @@ func (m *S3Communicator) handleListParts(bucket, key, uploadID string) (requeste
 	buf.WriteString(`<PartNumberMarker>0</PartNumberMarker>`)
 	buf.WriteString(`<NextPartNumberMarker>0</NextPartNumberMarker>`)
 	buf.WriteString(`<MaxParts>1000</MaxParts>`)
+
+	// ⚡ Bolt: Eliminate dynamic string allocations and repeated formatting overhead
+	var intBuf [32]byte
+	tstr := time.Now().UTC().Format(time.RFC3339)
 	for _, p := range parts {
 		buf.WriteString(`<Part>`)
 		buf.WriteString(`<PartNumber>`)
-		buf.WriteString(strconv.Itoa(p.partNumber))
+		buf.Write(strconv.AppendInt(intBuf[:0], int64(p.partNumber), 10))
 		buf.WriteString(`</PartNumber>`)
 		buf.WriteString(`<ETag>"`)
 		xmlEscape(&buf, p.etag)
 		buf.WriteString(`"</ETag>`)
 		buf.WriteString(`<Size>`)
-		buf.WriteString(strconv.Itoa(len(p.data)))
+		buf.Write(strconv.AppendInt(intBuf[:0], int64(len(p.data)), 10))
 		buf.WriteString(`</Size>`)
 		buf.WriteString(`<LastModified>`)
-		buf.WriteString(time.Now().UTC().Format(time.RFC3339))
+		buf.WriteString(tstr)
 		buf.WriteString(`</LastModified>`)
 		buf.WriteString(`</Part>`)
 	}
