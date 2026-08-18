@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -133,6 +134,9 @@ func TestSafeParseIntErrorContext(t *testing.T) {
 			}
 			if !errors.Is(err, tt.wantSentinel) {
 				t.Errorf("SafeParseInt(%q) err = %v, want errors.Is(%v)", tt.input, err, tt.wantSentinel)
+			}
+			if !errors.Is(err, syscall.EINVAL) {
+				t.Errorf("SafeParseInt(%q) err = %v, want errors.Is(syscall.EINVAL) per Rule 10", tt.input, err)
 			}
 			if !strings.Contains(err.Error(), tt.contains) {
 				t.Errorf("SafeParseInt(%q) err = %q, want context containing %q", tt.input, err, tt.contains)
