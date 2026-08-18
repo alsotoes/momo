@@ -598,7 +598,28 @@ func (s *CASStore) GetBlobPath(name string) (path string, err error) {
 		return "", err
 	}
 
+	// GetBlobPath exposes a local filesystem path for file serving. For
+	// remote or raw-device backends no such path exists on the local disk
+	// (fix #639).
+	if !s.isLocalBackend() {
+		return "", fmt.Errorf("GetBlobPath unsupported for non-local backend: %w", syscall.ENOTSUP)
+	}
+
 	return s.getBlobPath(hash), nil
+}
+
+// isLocalBackend reports whether blobs are stored on the local filesystem
+// (including via the encryption decorator), for which getBlobPath is valid.
+func (s *CASStore) isLocalBackend() bool {
+	switch b := s.blobs.(type) {
+	case *LocalBlobStore:
+		return true
+	case *EncryptedBlobStore:
+		_, ok := b.inner.(*LocalBlobStore)
+		return ok
+	default:
+		return false
+	}
 }
 
 // getBlobPath transforms a hash into a tiered directory path.
