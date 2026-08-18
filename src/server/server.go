@@ -381,6 +381,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 			if err != nil {
 				log.Printf("AUDIT: Error getting metadata from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
 				metricsCollector.IncErrors()
+				comm.Close()
 				return
 			}
 

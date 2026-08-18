@@ -24,9 +24,9 @@ import (
 // Null characters are trimmed because the buffers are fixed size, and the actual data may be smaller.
 func getMetadata(r io.Reader) (metadata common.FileMetadata, err error) {
 	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Recovered from panic in getMetadata: %v", r)
-			err = fmt.Errorf("panic in getMetadata: %v: %w", r, syscall.EIO)
+		if rcv := recover(); rcv != nil {
+			log.Printf("CRITICAL: Recovered from panic in getMetadata: %v", rcv)
+			err = syscall.EIO
 		}
 	}()
 
