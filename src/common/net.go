@@ -123,7 +123,9 @@ func (c *IdleTimeoutConn) Read(b []byte) (n int, err error) {
 		if isTimeout(err) {
 			err = fmt.Errorf("%w: %w", err, syscall.ETIMEDOUT)
 		} else {
-			err = fmt.Errorf("%w: %w", err, syscall.ECONNABORTED)
+			// Unify with Write's non-timeout errno (fix #641): both
+			// surface generic I/O failures as EIO.
+			err = fmt.Errorf("%w: %w", err, syscall.EIO)
 		}
 	}
 	return n, err
