@@ -2,6 +2,7 @@ package server
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/alsotoes/momo/src/common"
@@ -36,5 +37,51 @@ func TestDecodeFileMetadataList_RejectsOversizedCount(t *testing.T) {
 	bad := []byte{0, 0, 0, 200} // count=200 with no actual entries
 	if _, err := DecodeFileMetadataList(bad); err == nil {
 		t.Fatal("Expected error for oversized count, got nil")
+	}
+}
+
+// TestEncodeFileMetadataList_SkipsOversizedEntries verifies that entries whose
+// name/hash exceed FileInfoLength or whose remote path exceeds MaxPathLength
+// are skipped during encoding, so the output is always decodable by peers
+// (fix #665).
+func TestEncodeFileMetadataList_SkipsOversizedEntries(t *testing.T) {
+	longName := strings.Repeat("n", common.FileInfoLength+1)
+	longHash := strings.Repeat("h", common.FileInfoLength+1)
+	longPath := strings.Repeat("p", common.MaxPathLength+1)
+
+	files := []common.FileMetadata{
+		{Name: "ok.txt", Hash: "hash", Size: 10, RemotePath: "", ModTime: 1},
+		{Name: longName, Hash: "hash", Size: 10, RemotePath: "", ModTime: 1},
+		{Name: "ok2.txt", Hash: longHash, Size: 10, RemotePath: "", ModTime: 1},
+		{Name: "ok3.txt", Hash: "hash", Size: 10, RemotePath: longPath, ModTime: 1},
+	}
+
+	encoded := EncodeFileMetadataList(files)
+	decoded, err := DecodeFileMetadataList(encoded)
+	if err != nil {
+		t.Fatalf("DecodeFileMetadataList failed on encoded output: %v", err)
+	}
+	if len(decoded) != 1 {
+		t.Fatalf("Expected 1 surviving entry (only the fully-valid one), got %d", len(decoded))
+	}
+	if decoded[0].Name != "ok.txt" {
+		t.Errorf("Expected surviving entry 'ok.txt', got %q", decoded[0].Name)
+	}
+}
+
+// TestEncodeFileMetadataList_BoundarySizes verifies entries at exactly the
+// length limits are kept (not skipped) — the decoder accepts them.
+func TestEncodeFileMetadataList_BoundarySizes(t *testing.T) {
+	files := []common.FileMetadata{
+		{Name: strings.Repeat("n", common.FileInfoLength), Hash: "hash", Size: 10, RemotePath: "", ModTime: 1},
+		{Name: "x.txt", Hash: strings.Repeat("h", common.FileInfoLength), Size: 10, RemotePath: strings.Repeat("p", common.MaxPathLength), ModTime: 1},
+	}
+	encoded := EncodeFileMetadataList(files)
+	decoded, err := DecodeFileMetadataList(encoded)
+	if err != nil {
+		t.Fatalf("DecodeFileMetadataList failed on boundary-length entries: %v", err)
+	}
+	if len(decoded) != 2 {
+		t.Fatalf("Expected 2 boundary entries to survive, got %d", len(decoded))
 	}
 }

@@ -135,16 +135,37 @@ func (h *StorageQueryHandler) handleDelete(data []byte) (result []byte, err erro
 // Format: [4B count] [for each: 4B nameLen + name + 4B hashLen + hash + 8B size + 4B pathLen + path + 8B modtime]
 // Uses dynamic length prefixes (not fixed 64-byte buffers), so Rule 35's
 // 64-byte padding limit does not apply here. Buffer is pre-sized exactly
-// and copy() prevents overflow. Metadata comes from trusted local store.
+// and copy() prevents overflow.
+//
+// 🛡️ Sentinel: Entries whose name/hash exceed FileInfoLength or whose remote
+// path exceeds MaxPathLength are skipped. DecodeFileMetadataList rejects such
+// entries (Rule 32); encoding them would produce a list that every peer
+// silently drops on decode, so they are excluded here instead (fix #665).
+// Metadata comes from trusted local store.
 func EncodeFileMetadataList(files []common.FileMetadata) []byte {
-	size := 4
+	// Pre-filter: drop entries that DecodeFileMetadataList would reject.
+	filtered := make([]common.FileMetadata, 0, len(files))
 	for _, f := range files {
+		if len(f.Name) > common.FileInfoLength {
+			continue
+		}
+		if len(f.Hash) > common.FileInfoLength {
+			continue
+		}
+		if len(f.RemotePath) > common.MaxPathLength {
+			continue
+		}
+		filtered = append(filtered, f)
+	}
+
+	size := 4
+	for _, f := range filtered {
 		size += 4 + len(f.Name) + 4 + len(f.Hash) + 8 + 4 + len(f.RemotePath) + 8
 	}
 	buf := make([]byte, size)
-	binary.BigEndian.PutUint32(buf[0:4], uint32(len(files)))
+	binary.BigEndian.PutUint32(buf[0:4], uint32(len(filtered)))
 	off := 4
-	for _, f := range files {
+	for _, f := range filtered {
 		binary.BigEndian.PutUint32(buf[off:off+4], uint32(len(f.Name)))
 		off += 4
 		copy(buf[off:], f.Name)
