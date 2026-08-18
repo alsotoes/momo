@@ -127,8 +127,8 @@ func TestIdleTimeoutConn_ReadError(t *testing.T) {
 	if !mc.readDeadlineSet {
 		t.Error("Expected Read to set read deadline before returning error")
 	}
-	if !errors.Is(err, syscall.ECONNABORTED) {
-		t.Errorf("Expected err to wrap %v, got %v", syscall.ECONNABORTED, err)
+	if !errors.Is(err, syscall.EIO) {
+		t.Errorf("Expected err to wrap %v, got %v", syscall.EIO, err)
 	}
 	if !errors.Is(err, net.ErrClosed) {
 		t.Errorf("Expected err to also wrap %v, got %v", net.ErrClosed, err)
