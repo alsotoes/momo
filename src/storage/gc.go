@@ -86,7 +86,10 @@ func (s *CASStore) sweepOrphanedBlobs() error {
 			if len(v) != 24 {
 				continue
 			}
-			meta := decodeObjectMeta(v)
+			meta, err := decodeObjectMeta(v)
+			if err != nil {
+				return fmt.Errorf("CAS GC: failed to decode metadata for blob %s: %w", k, err)
+			}
 			if meta.RefCount <= 0 {
 				hash := string(k)
 				orphanedHashes = append(orphanedHashes, hash)
@@ -210,7 +213,11 @@ func (s *CASStore) ApplyTombstone(name string, deletedAt int64) (err error) {
 		if h != nil {
 			hash := string(h)
 			if val := obj.Get([]byte(hash)); val != nil {
-				meta := decodeObjectMeta(val)
+				decoded, err := decodeObjectMeta(val)
+				if err != nil {
+					return fmt.Errorf("failed to decode metadata for hash %s: %w", hash, err)
+				}
+				meta := decoded
 				meta.RefCount--
 				if meta.RefCount <= 0 {
 					meta.RefCount = 0

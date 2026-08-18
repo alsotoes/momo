@@ -2,7 +2,9 @@ package storage
 
 import (
 	"bytes"
+	"errors"
 	"os"
+	"syscall"
 	"testing"
 	"time"
 
@@ -504,7 +506,10 @@ func TestLegacyObjectMetaCompatibility(t *testing.T) {
 	store.mu.Unlock()
 
 	// Decode should handle legacy format
-	meta := decodeObjectMeta([]byte("6"))
+	meta, err := decodeObjectMeta([]byte("6"))
+	if err != nil {
+		t.Fatalf("Legacy decode failed: %v", err)
+	}
 	if meta.Size != 6 || meta.RefCount != 1 || meta.DeletedAt != 0 {
 		t.Fatalf("Legacy decode wrong: %+v", meta)
 	}
@@ -512,8 +517,16 @@ func TestLegacyObjectMetaCompatibility(t *testing.T) {
 	// New format should encode/decode correctly
 	newMeta := ObjectMeta{Size: 42, RefCount: 3, DeletedAt: 12345}
 	encoded := newMeta.encode()
-	decoded := decodeObjectMeta(encoded)
+	decoded, err := decodeObjectMeta(encoded)
+	if err != nil {
+		t.Fatalf("Round-trip decode failed: %v", err)
+	}
 	if decoded != newMeta {
 		t.Fatalf("Round-trip failed: %+v != %+v", decoded, newMeta)
+	}
+
+	// Corrupted legacy metadata must error instead of silently returning Size:0 (fix #640)
+	if _, err := decodeObjectMeta([]byte("not-a-number")); !errors.Is(err, syscall.EBADMSG) {
+		t.Fatalf("Expected EBADMSG for corrupt legacy metadata, got %v", err)
 	}
 }

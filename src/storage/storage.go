@@ -45,20 +45,22 @@ func (m ObjectMeta) encode() []byte {
 
 // decodeObjectMeta deserializes a 24-byte binary slice into ObjectMeta.
 // Falls back to legacy ASCII size format for backward compatibility.
-func decodeObjectMeta(val []byte) ObjectMeta {
+// A legacy value that cannot be parsed returns an error instead of silently
+// degrading to a zero-size object (fix #640).
+func decodeObjectMeta(val []byte) (ObjectMeta, error) {
 	if len(val) == 24 {
 		return ObjectMeta{
 			Size:      int64(binary.BigEndian.Uint64(val[0:8])),
 			RefCount:  int64(binary.BigEndian.Uint64(val[8:16])),
 			DeletedAt: int64(binary.BigEndian.Uint64(val[16:24])),
-		}
+		}, nil
 	}
 	// Legacy format: ASCII integer = size only, refCount=1, not deleted
 	size, err := strconv.ParseInt(string(val), 10, 64)
 	if err != nil {
-		log.Printf("AUDIT: legacy metadata decode failed: %v", err)
+		return ObjectMeta{}, fmt.Errorf("legacy object metadata parse failed for %q: %w", val, syscall.EBADMSG)
 	}
-	return ObjectMeta{Size: size, RefCount: 1}
+	return ObjectMeta{Size: size, RefCount: 1}, nil
 }
 
 // Store defines the interface for object storage operations.
@@ -207,7 +209,11 @@ func (s *CASStore) Put(name string, hash string, size int64, remotePath string, 
 		// Update or create object metadata with reference counting.
 		var meta ObjectMeta
 		if existing := obj.Get([]byte(hash)); existing != nil {
-			meta = decodeObjectMeta(existing)
+			decoded, err := decodeObjectMeta(existing)
+			if err != nil {
+				return fmt.Errorf("failed to decode existing metadata for hash %s: %w", hash, err)
+			}
+			meta = decoded
 			meta.RefCount++
 		} else {
 			meta = ObjectMeta{Size: size, RefCount: 1}
@@ -301,7 +307,11 @@ func (s *CASStore) Get(name string) (rc io.ReadCloser, meta common.FileMetadata,
 			return fmt.Errorf("metadata missing for hash %s: %w", hash, syscall.ENOENT)
 		}
 
-		meta := decodeObjectMeta(val)
+		decoded, err := decodeObjectMeta(val)
+		if err != nil {
+			return err
+		}
+		meta := decoded
 		size = meta.Size
 
 		if size < 0 {
@@ -448,7 +458,11 @@ func (s *CASStore) Delete(name string) (err error) {
 		if h != nil {
 			hash := string(h)
 			if val := obj.Get([]byte(hash)); val != nil {
-				meta := decodeObjectMeta(val)
+				decoded, err := decodeObjectMeta(val)
+				if err != nil {
+					return fmt.Errorf("failed to decode metadata for hash %s: %w", hash, err)
+				}
+				meta := decoded
 				meta.RefCount--
 				if meta.RefCount <= 0 {
 					meta.RefCount = 0
@@ -535,7 +549,11 @@ func (s *CASStore) List() (list []common.FileMetadata, err error) {
 			if obj != nil {
 				sizeBytes := obj.Get(v)
 				if len(sizeBytes) > 0 {
-					size = decodeObjectMeta(sizeBytes).Size
+					decoded, err := decodeObjectMeta(sizeBytes)
+					if err != nil {
+						return fmt.Errorf("failed to decode metadata for %s: %w", name, err)
+					}
+					size = decoded.Size
 				}
 			}
 
