@@ -346,8 +346,3 @@ func hexHMAC(key []byte, data string) string {
 
 // Ensure S3BlobStore satisfies BlobStore at compile time.
 var _ BlobStore = (*S3BlobStore)(nil)
-
-// logS3Error logs an S3 error with sanitized output (Rule 10).
-func logS3Error(op string, hash string, err error) {
-	log.Printf("S3BlobStore %s %s: %v", op, common.SanitizeLog(hash), common.SanitizeLog(err.Error()))
-}
