@@ -269,8 +269,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 			}
 			if leaseManager != nil {
 				if laComm, ok := comm.(interface{ SetLeaseAcquirer(transport.LeaseAcquirer) }); ok {
-					laComm.SetLeaseAcquirer(NewLeaseAcquirerAdapter(leaseManager,
-						time.Duration(cfg.P2P.LeaseTimeout)*time.Second))
+					laComm.SetLeaseAcquirer(NewLeaseAcquirerAdapter(leaseManager))
 				}
 			}
 			if oprfService != nil {
