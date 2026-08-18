@@ -2,6 +2,7 @@ package common
 
 import (
 	"bytes"
+	"fmt"
 	"strconv"
 )
 
@@ -15,7 +16,7 @@ func SafeParseInt(b []byte) (int64, error) {
 	}
 
 	if idx == 0 {
-		return 0, strconv.ErrSyntax
+		return 0, fmt.Errorf("parse int %q: %w", b[:idx], strconv.ErrSyntax)
 	}
 
 	// Manual iteration to avoid string allocation and provide defensive character checking
@@ -31,7 +32,7 @@ func SafeParseInt(b []byte) (int64, error) {
 	}
 
 	if start == idx {
-		return 0, strconv.ErrSyntax
+		return 0, fmt.Errorf("parse int %q: %w", b[:idx], strconv.ErrSyntax)
 	}
 
 	// Constants for overflow checks
@@ -41,7 +42,7 @@ func SafeParseInt(b []byte) (int64, error) {
 	for i := start; i < idx; i++ {
 		c := b[i]
 		if c < '0' || c > '9' {
-			return 0, strconv.ErrSyntax
+			return 0, fmt.Errorf("parse int %q: %w", b[:idx], strconv.ErrSyntax)
 		}
 
 		v := uint64(c - '0')
@@ -53,7 +54,7 @@ func SafeParseInt(b []byte) (int64, error) {
 				res = uint64(1 << 63)
 				continue
 			}
-			return 0, strconv.ErrRange
+			return 0, fmt.Errorf("parse int %q: %w", b[:idx], strconv.ErrRange)
 		}
 
 		res = res*10 + v

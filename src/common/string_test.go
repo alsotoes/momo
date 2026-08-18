@@ -1,6 +1,8 @@
 package common
 
 import (
+	"errors"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -107,6 +109,33 @@ func TestSafeParseInt(t *testing.T) {
 			}
 			if got != tt.want {
 				t.Errorf("SafeParseInt(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSafeParseIntErrorContext(t *testing.T) {
+	tests := []struct {
+		name         string
+		input        []byte
+		wantSentinel error
+		contains     string
+	}{
+		{"Syntax error context", []byte("12a34"), strconv.ErrSyntax, "12a34"},
+		{"Range error context", []byte("9223372036854775808"), strconv.ErrRange, "9223372036854775808"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := SafeParseInt(tt.input)
+			if err == nil {
+				t.Fatalf("SafeParseInt(%q) expected error, got nil", tt.input)
+			}
+			if !errors.Is(err, tt.wantSentinel) {
+				t.Errorf("SafeParseInt(%q) err = %v, want errors.Is(%v)", tt.input, err, tt.wantSentinel)
+			}
+			if !strings.Contains(err.Error(), tt.contains) {
+				t.Errorf("SafeParseInt(%q) err = %q, want context containing %q", tt.input, err, tt.contains)
 			}
 		})
 	}
