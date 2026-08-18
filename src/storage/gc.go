@@ -28,13 +28,18 @@ func DefaultGCConfig() GCConfig {
 }
 
 // StartGC launches the background garbage collector goroutine.
-// It is safe to call at most once per CASStore instance.
+// It is safe to call at most once per CASStore instance — the sync.Once
+// guard makes repeated invocations no-ops so multiple GC goroutines cannot
+// be spawned (fix #638).
 func (s *CASStore) StartGC(cfg GCConfig) {
-	s.gcWG.Add(1)
-	go s.gcLoop(cfg)
+	s.gcOnce.Do(func() {
+		s.gcWG.Add(1)
+		go s.gcLoop(cfg)
+	})
 }
 
 func (s *CASStore) gcLoop(cfg GCConfig) {
+	s.gcStarted.Store(1)
 	defer s.gcWG.Done()
 	defer func() {
 		if r := recover(); r != nil {

@@ -443,6 +443,35 @@ func TestGCBackgroundSweeper(t *testing.T) {
 	}
 }
 
+// TestStartGCDoubleInvocationGuard verifies StartGC's sync.Once guard:
+// a second invocation must not spawn a second GC goroutine (fix #638).
+func TestStartGCDoubleInvocationGuard(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	tmpDir, err := os.MkdirTemp("", "momo-gc-once-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	store, err := NewCASStore(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to create CASStore: %v", err)
+	}
+	defer store.Close()
+
+	cfg := GCConfig{Interval: 50 * time.Millisecond, TombstoneRetention: time.Hour}
+	store.StartGC(cfg)
+	store.StartGC(cfg)
+	store.StartGC(cfg)
+
+	// Give any (wrong) additional goroutines time to start.
+	time.Sleep(200 * time.Millisecond)
+
+	if got := store.gcStarted.Load(); got != 1 {
+		t.Fatalf("Expected exactly 1 GC goroutine, started %d (StartGC must be idempotent)", got)
+	}
+}
+
 func TestQueryDeleteHandler(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	tmpDir, err := os.MkdirTemp("", "momo-gc-test-*")

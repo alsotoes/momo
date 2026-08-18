@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -83,6 +84,8 @@ type CASStore struct {
 	gcDone    chan struct{}
 	gcWG      sync.WaitGroup
 	closeOnce sync.Once
+	gcOnce    sync.Once
+	gcStarted atomic.Int32
 }
 
 // NewCASStore initializes a CAS store with a LocalBlobStore backend.
