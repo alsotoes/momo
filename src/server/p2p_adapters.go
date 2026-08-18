@@ -61,23 +61,31 @@ func (s *ScatterGatherLister) GlobalList(timeout time.Duration) ([]common.FileMe
 	return MergeFileMetadataLists(allLists...), nil
 }
 
+// leaseManager is the minimal contract LeaseAcquirerAdapter needs. It is
+// satisfied by *p2p.LeaseManager and lets tests inject a recording fake.
+type leaseManager interface {
+	Acquire(key string, duration time.Duration) (*p2p.Lease, error)
+	ReleaseByKey(key string) error
+}
+
 // LeaseAcquirerAdapter adapts p2p.LeaseManager to the transport.LeaseAcquirer interface.
 type LeaseAcquirerAdapter struct {
-	lm       *p2p.LeaseManager
-	duration time.Duration
+	lm leaseManager
 }
 
 // NewLeaseAcquirerAdapter creates a new LeaseAcquirerAdapter.
-func NewLeaseAcquirerAdapter(lm *p2p.LeaseManager, duration time.Duration) *LeaseAcquirerAdapter {
-	return &LeaseAcquirerAdapter{lm: lm, duration: duration}
+func NewLeaseAcquirerAdapter(lm *p2p.LeaseManager) *LeaseAcquirerAdapter {
+	return &LeaseAcquirerAdapter{lm: lm}
 }
 
-// AcquireLease acquires a lease for the given key.
+// AcquireLease acquires a lease for the given key for the caller-provided
+// timeout duration (fix #666). The caller's timeout must be respected rather
+// than a value captured at construction.
 func (l *LeaseAcquirerAdapter) AcquireLease(key string, timeout time.Duration) error {
 	if l.lm == nil {
 		return fmt.Errorf("lease manager not initialized")
 	}
-	_, err := l.lm.Acquire(key, l.duration)
+	_, err := l.lm.Acquire(key, timeout)
 	return err
 }
 
