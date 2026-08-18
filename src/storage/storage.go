@@ -288,8 +288,13 @@ func (s *CASStore) Get(name string) (rc io.ReadCloser, meta common.FileMetadata,
 		}
 	}()
 
-	// Read metadata from DB
+	// Read metadata from DB in a single View (size, remotePath, modTime) to
+	// minimize bbolt read-lock acquisition (perf: was 3 separate Views).
+	// The blob open above intentionally stays outside any transaction so a
+	// slow S3 download does not hold the bbolt read lock and block writers.
 	var size int64
+	var remotePath string
+	var modTime int64
 	err = s.db.View(func(tx *bbolt.Tx) error {
 		val := tx.Bucket(bucketObjects).Get([]byte(hash))
 		if val == nil {
@@ -302,34 +307,18 @@ func (s *CASStore) Get(name string) (rc io.ReadCloser, meta common.FileMetadata,
 		if size < 0 {
 			return fmt.Errorf("invalid size %d for hash %s: %w", size, hash, syscall.EBADMSG)
 		}
-		return nil
-	})
-	if err != nil {
-		return nil, common.FileMetadata{}, err
-	}
 
-	var remotePath string
-	err = s.db.View(func(tx *bbolt.Tx) error {
-		p := tx.Bucket(bucketPaths).Get([]byte(name))
-		if p != nil {
+		if p := tx.Bucket(bucketPaths).Get([]byte(name)); p != nil {
 			remotePath = string(p)
 		}
-		return nil
-	})
-	if err != nil {
-		return nil, common.FileMetadata{}, fmt.Errorf("failed to read remotePath: %w", err)
-	}
 
-	var modTime int64
-	err = s.db.View(func(tx *bbolt.Tx) error {
-		mt := tx.Bucket(bucketModTimes).Get([]byte(name))
-		if len(mt) >= 8 {
+		if mt := tx.Bucket(bucketModTimes).Get([]byte(name)); len(mt) >= 8 {
 			modTime = int64(binary.BigEndian.Uint64(mt[:8]))
 		}
 		return nil
 	})
 	if err != nil {
-		return nil, common.FileMetadata{}, fmt.Errorf("failed to read modtime: %w", err)
+		return nil, common.FileMetadata{}, err
 	}
 
 	return f, common.FileMetadata{Name: name, Hash: hash, Size: size, RemotePath: remotePath, ModTime: modTime}, nil
