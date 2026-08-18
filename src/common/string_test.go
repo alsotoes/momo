@@ -142,6 +142,15 @@ func TestPadString_OverlongInputPanics(t *testing.T) {
 	PadString("hello world", 5)
 }
 
+func TestPadString_NegativeLengthPanics(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Errorf("PadString(%q, %d) expected panic, got nil", "hello", -1)
+		}
+	}()
+	PadString("hello", -1)
+}
+
 func TestNormalizeVirtualPath(t *testing.T) {
 	tests := []struct {
 		name    string

@@ -48,12 +48,13 @@ func HasPathTraversalChars(s string) bool {
 }
 
 // PadString pads a string with null bytes to the given length.
-// Overlong input is a programming error that would silently corrupt wire
-// fields (hashes, auth tokens, names). Failing loudly via panic (Rule 37:
-// recovered at caller boundaries) is safer than silent truncation (Rule 4).
+// Overlong input and negative lengths are programming errors that would
+// silently corrupt wire fields (hashes, auth tokens, names). Failing loudly
+// via panic (Rule 37: recovered at caller boundaries) is safer than silent
+// truncation (Rule 4).
 func PadString(input string, length int) string {
 	if length < 0 {
-		return input
+		panic(fmt.Sprintf("PadString: negative length %d", length))
 	}
 	if len(input) > length {
 		panic(fmt.Sprintf("PadString: input length %d exceeds length %d", len(input), length))
