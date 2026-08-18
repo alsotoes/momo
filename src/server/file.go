@@ -54,6 +54,11 @@ func getMetadata(r io.Reader) (metadata common.FileMetadata, err error) {
 
 	fileHash := trimNull(bufferFileHash)
 
+	// 🛡️ Sentinel: Reject carriage returns or line feeds in the path to prevent HTTP Request Smuggling (CRLF Injection).
+	if strings.ContainsAny(fileHash, "\r\n") {
+		return metadata, fmt.Errorf("invalid hash received: contains CRLF: %w", syscall.EBADMSG)
+	}
+
 	// 🛡️ Sentinel: Sanitize Hash immediately to prevent path traversal in all downstream consumers.
 	if fileHash == "" || common.HasPathTraversalChars(fileHash) {
 		return metadata, fmt.Errorf("invalid hash received: %s: %w", common.SanitizeLog(fileHash), syscall.EBADMSG)
@@ -61,6 +66,12 @@ func getMetadata(r io.Reader) (metadata common.FileMetadata, err error) {
 
 	// 🛡️ Sentinel: Sanitize and normalize fileName to prevent path traversal attacks (Rule 4).
 	rawFileName := trimNull(bufferFileName)
+
+	// 🛡️ Sentinel: Reject carriage returns or line feeds in the path to prevent HTTP Request Smuggling (CRLF Injection).
+	if strings.ContainsAny(rawFileName, "\r\n") {
+		return metadata, fmt.Errorf("invalid characters in rawFileName: %w", syscall.EBADMSG)
+	}
+
 	if rawFileName == "." || rawFileName == ".." || strings.Contains(rawFileName, "../") || strings.Contains(rawFileName, "\\") {
 		return metadata, &os.PathError{Op: "getMetadata", Path: rawFileName, Err: os.ErrInvalid}
 	}
