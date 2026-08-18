@@ -139,7 +139,11 @@ func (s *CASStore) sweepExpiredTombstones(retention time.Duration) error {
 		}
 
 		for _, name := range expiredNames {
-			ts.Delete(name)
+			// 🔊 Log Delete failures instead of swallowing them; sweep
+			// continues so one bad entry can't block the rest.
+			if err := ts.Delete(name); err != nil {
+				log.Printf("CAS GC: failed to delete expired tombstone for %q: %v", name, err)
+			}
 		}
 		return nil
 	})
