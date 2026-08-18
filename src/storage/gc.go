@@ -28,13 +28,18 @@ func DefaultGCConfig() GCConfig {
 }
 
 // StartGC launches the background garbage collector goroutine.
-// It is safe to call at most once per CASStore instance.
+// It is safe to call at most once per CASStore instance — the sync.Once
+// guard makes repeated invocations no-ops so multiple GC goroutines cannot
+// be spawned (fix #638).
 func (s *CASStore) StartGC(cfg GCConfig) {
-	s.gcWG.Add(1)
-	go s.gcLoop(cfg)
+	s.gcOnce.Do(func() {
+		s.gcWG.Add(1)
+		go s.gcLoop(cfg)
+	})
 }
 
 func (s *CASStore) gcLoop(cfg GCConfig) {
+	s.gcStarted.Store(1)
 	defer s.gcWG.Done()
 	defer func() {
 		if r := recover(); r != nil {
@@ -86,7 +91,10 @@ func (s *CASStore) sweepOrphanedBlobs() error {
 			if len(v) != 24 {
 				continue
 			}
-			meta := decodeObjectMeta(v)
+			meta, err := decodeObjectMeta(v)
+			if err != nil {
+				return fmt.Errorf("CAS GC: failed to decode metadata for blob %s: %w", k, err)
+			}
 			if meta.RefCount <= 0 {
 				hash := string(k)
 				orphanedHashes = append(orphanedHashes, hash)
@@ -214,7 +222,11 @@ func (s *CASStore) ApplyTombstone(name string, deletedAt int64) (err error) {
 		if h != nil {
 			hash := string(h)
 			if val := obj.Get([]byte(hash)); val != nil {
-				meta := decodeObjectMeta(val)
+				decoded, err := decodeObjectMeta(val)
+				if err != nil {
+					return fmt.Errorf("failed to decode metadata for hash %s: %w", hash, err)
+				}
+				meta := decoded
 				meta.RefCount--
 				if meta.RefCount <= 0 {
 					meta.RefCount = 0

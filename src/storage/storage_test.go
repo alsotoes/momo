@@ -2,9 +2,11 @@ package storage
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"os"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -212,6 +214,45 @@ func TestCASStore_EdgeCases(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "internal storage panic") {
 		t.Errorf("Expected internal storage panic error, got %v", err)
+	}
+}
+
+// fakeRemoteBlobStore is a minimal BlobStore that does not store blobs on
+// the local filesystem, used to verify GetBlobPath rejects non-local backends.
+type fakeRemoteBlobStore struct{}
+
+func (fakeRemoteBlobStore) PutBlob(hash string, content io.Reader) error { return nil }
+func (fakeRemoteBlobStore) GetBlob(hash string) (io.ReadCloser, error) {
+	return io.NopCloser(strings.NewReader("")), nil
+}
+func (fakeRemoteBlobStore) DeleteBlob(hash string) error { return nil }
+func (fakeRemoteBlobStore) Close() error                 { return nil }
+
+// TestGetBlobPathRejectsNonLocalBackend verifies GetBlobPath returns
+// ENOTSUP for backends that do not store blobs on the local filesystem,
+// such as S3 or raw devices (fix #639).
+func TestGetBlobPathRejectsNonLocalBackend(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	tmpDir, err := os.MkdirTemp("", "momo-getblobpath-s3-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	hash := "1234567890abcdef1234567890abcdef"
+	store, err := newCASStore(tmpDir, fakeRemoteBlobStore{})
+	if err != nil {
+		t.Fatalf("Failed to create CASStore: %v", err)
+	}
+	defer store.Close()
+
+	if err := store.Put("remote.txt", hash, 1, "", bytes.NewReader([]byte("x"))); err != nil {
+		t.Fatalf("Put failed: %v", err)
+	}
+
+	_, err = store.GetBlobPath("remote.txt")
+	if !errors.Is(err, syscall.ENOTSUP) {
+		t.Fatalf("Expected ENOTSUP for non-local backend, got %v", err)
 	}
 }
 

@@ -2,7 +2,9 @@ package storage
 
 import (
 	"bytes"
+	"errors"
 	"os"
+	"syscall"
 	"testing"
 	"time"
 
@@ -443,6 +445,35 @@ func TestGCBackgroundSweeper(t *testing.T) {
 	}
 }
 
+// TestStartGCDoubleInvocationGuard verifies StartGC's sync.Once guard:
+// a second invocation must not spawn a second GC goroutine (fix #638).
+func TestStartGCDoubleInvocationGuard(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	tmpDir, err := os.MkdirTemp("", "momo-gc-once-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	store, err := NewCASStore(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to create CASStore: %v", err)
+	}
+	defer store.Close()
+
+	cfg := GCConfig{Interval: 50 * time.Millisecond, TombstoneRetention: time.Hour}
+	store.StartGC(cfg)
+	store.StartGC(cfg)
+	store.StartGC(cfg)
+
+	// Give any (wrong) additional goroutines time to start.
+	time.Sleep(200 * time.Millisecond)
+
+	if got := store.gcStarted.Load(); got != 1 {
+		t.Fatalf("Expected exactly 1 GC goroutine, started %d (StartGC must be idempotent)", got)
+	}
+}
+
 func TestQueryDeleteHandler(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	tmpDir, err := os.MkdirTemp("", "momo-gc-test-*")
@@ -504,7 +535,10 @@ func TestLegacyObjectMetaCompatibility(t *testing.T) {
 	store.mu.Unlock()
 
 	// Decode should handle legacy format
-	meta := decodeObjectMeta([]byte("6"))
+	meta, err := decodeObjectMeta([]byte("6"))
+	if err != nil {
+		t.Fatalf("Legacy decode failed: %v", err)
+	}
 	if meta.Size != 6 || meta.RefCount != 1 || meta.DeletedAt != 0 {
 		t.Fatalf("Legacy decode wrong: %+v", meta)
 	}
@@ -512,8 +546,16 @@ func TestLegacyObjectMetaCompatibility(t *testing.T) {
 	// New format should encode/decode correctly
 	newMeta := ObjectMeta{Size: 42, RefCount: 3, DeletedAt: 12345}
 	encoded := newMeta.encode()
-	decoded := decodeObjectMeta(encoded)
+	decoded, err := decodeObjectMeta(encoded)
+	if err != nil {
+		t.Fatalf("Round-trip decode failed: %v", err)
+	}
 	if decoded != newMeta {
 		t.Fatalf("Round-trip failed: %+v != %+v", decoded, newMeta)
+	}
+
+	// Corrupted legacy metadata must error instead of silently returning Size:0 (fix #640)
+	if _, err := decodeObjectMeta([]byte("not-a-number")); !errors.Is(err, syscall.EBADMSG) {
+		t.Fatalf("Expected EBADMSG for corrupt legacy metadata, got %v", err)
 	}
 }
