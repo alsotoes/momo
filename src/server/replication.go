@@ -15,10 +15,23 @@ import (
 	"github.com/alsotoes/momo/src/transport"
 )
 
+// payloadPoolCapacity is the fixed capacity of the reusable byte slices
+// handed out by payloadPool. Only buffers with this exact capacity are ever
+// returned to the pool; growth beyond it is discarded (fix #667).
+const payloadPoolCapacity = 1024
+
+// payloadPoolc is the minimal contract payloadPool needs: fetch a buffer and
+// hand one back. sync.Pool satisfies it; tests substitute an instrumented
+// implementation to assert returned capacities.
+type payloadPoolc interface {
+	Get() interface{}
+	Put(interface{})
+}
+
 // payloadPool provides reusable byte slices for replication broadcasts to reduce allocations.
-var payloadPool = sync.Pool{
+var payloadPool payloadPoolc = &sync.Pool{
 	New: func() interface{} {
-		return make([]byte, 1024)
+		return make([]byte, payloadPoolCapacity)
 	},
 }
 
@@ -276,7 +289,12 @@ func ChangeReplicationModeClient(factory *transport.ProtocolFactory, replication
 	payload = payload[:0]
 	payload = append(payload, replicationJson...)
 	payload = append(payload, '\n')
-	defer payloadPool.Put(payload[:cap(payload)])
+	// 🛡️ Sentinel: Only return the buffer to the pool if append did not
+	// reallocate it. When the payload exceeds payloadPoolCapacity, a new,
+	// larger slice is allocated and the fixed-capacity pool buffer is lost.
+	// Returning the grown slice thrashes the pool and defeats its purpose,
+	// so it is released instead (fix #667).
+	defer releasePayload(payload)
 
 	if _, err := comm.Write(payload); err != nil {
 		log.Printf("Failed to send ReplicationData to %d: %v", serverId, common.SanitizeLog(err.Error()))
@@ -293,4 +311,15 @@ func ChangeReplicationModeClient(factory *transport.ProtocolFactory, replication
 	}
 
 	log.Printf("ReplicationData sent to serverId: %d", serverId)
+}
+
+// releasePayload returns a replication payload buffer to the pool, but only if
+// it still has the fixed pool capacity. A payload that outgrew its original
+// buffer (append reallocated) never came from the pool as the grown slice, so
+// the pooled fixed-capacity buffer has already been lost; returning the grown
+// slice would poison the pool with oversized buffers (fix #667).
+func releasePayload(payload []byte) {
+	if cap(payload) == payloadPoolCapacity {
+		payloadPool.Put(payload[:payloadPoolCapacity])
+	}
 }
