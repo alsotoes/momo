@@ -373,6 +373,57 @@ func TestCASStore_GetHashForName(t *testing.T) {
 	}
 }
 
+func TestCASStoreGetReturnsFullMetadata(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	tmpDir, err := os.MkdirTemp("", "momo-get-meta-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	store, err := NewCASStore(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to create CASStore: %v", err)
+	}
+	defer store.Close()
+
+	content := []byte("hello metadata")
+	hash := common.HashBytes(content)
+	size := int64(len(content))
+	name := "dirA/meta.txt"
+	remotePath := "virtual/dir"
+
+	if err := store.Put(name, hash, size, remotePath, bytes.NewReader(content)); err != nil {
+		t.Fatalf("Failed to Put: %v", err)
+	}
+
+	rc, meta, err := store.Get(name)
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	defer rc.Close()
+
+	got, err := io.ReadAll(rc)
+	if err != nil {
+		t.Fatalf("ReadAll failed: %v", err)
+	}
+	if !bytes.Equal(got, content) {
+		t.Errorf("Content mismatch: got %q", got)
+	}
+	if meta.Hash != hash {
+		t.Errorf("Hash: got %s, want %s", meta.Hash, hash)
+	}
+	if meta.Size != size {
+		t.Errorf("Size: got %d, want %d", meta.Size, size)
+	}
+	if meta.RemotePath != remotePath {
+		t.Errorf("RemotePath: got %q, want %q", meta.RemotePath, remotePath)
+	}
+	if meta.ModTime == 0 {
+		t.Error("ModTime: expected non-zero after Put")
+	}
+}
+
 func TestCASStoreDeleteRemovesBlobImmediately(t *testing.T) {
 	defer goleak.VerifyNone(t)
 	tmpDir, err := os.MkdirTemp("", "momo-cve006-test-*")
