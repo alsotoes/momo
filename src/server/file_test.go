@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 	"math"
 	"net"
@@ -336,7 +337,7 @@ func TestParsePaddedIntFast(t *testing.T) {
 			if result != tt.expected {
 				t.Errorf("expected %d, got %d", tt.expected, result)
 			}
-			if err != tt.err {
+			if !errors.Is(err, tt.err) {
 				t.Errorf("expected error %v, got %v", tt.err, err)
 			}
 		})
