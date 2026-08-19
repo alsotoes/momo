@@ -32,19 +32,19 @@ func WritePaddedInt(dst []byte, val int64, width int) error {
 }
 
 // HasPathTraversalChars returns true if the string contains path separators (/ or \)
-// or the parent directory sequence (..). Single dots (file extensions) are allowed.
+// or consists solely of the parent directory component (..). Only a complete ".."
+// path component is flagged as traversal — legitimate dotted names such as
+// "file..txt", "version..1.txt", ".hidden" or "..." remain allowed (issue #648).
 // It is inlineable and operates directly on the string bytes without any heap allocation (Rule 19).
 func HasPathTraversalChars(s string) bool {
 	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c == '/' || c == '\\' {
-			return true
-		}
-		if c == '.' && i+1 < len(s) && s[i+1] == '.' {
+		if c := s[i]; c == '/' || c == '\\' {
 			return true
 		}
 	}
-	return false
+	// No path separators remain: the input is a single path component.
+	// Directory traversal requires an exact ".." component, not a substring.
+	return s == ".."
 }
 
 // PadString pads a string with null bytes to the given length.
