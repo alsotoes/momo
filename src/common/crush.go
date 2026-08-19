@@ -63,6 +63,8 @@ func (m *ClusterMap) Placement(objectHash string, replicationFactor int) (nodes 
 	}
 
 	if replicationFactor > len(eligible) {
+		log.Printf("WARNING: replication factor %d exceeds %d eligible nodes in cluster map, capping to %d",
+			replicationFactor, len(eligible), len(eligible))
 		replicationFactor = len(eligible)
 	}
 
