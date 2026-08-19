@@ -104,8 +104,10 @@ func (m *ClusterMap) Placement(objectHash string, replicationFactor int) (nodes 
 		scores[i] = score{node: node, value: finalScore}
 	}
 
-	// Sort nodes by score descending.
-	sort.Slice(scores, func(i, j int) bool {
+	// Sort nodes by score descending. SliceStable guarantees that nodes with
+	// tied scores keep their declaration order, making placement deterministic
+	// when node order varies between runs (fix #646).
+	sort.SliceStable(scores, func(i, j int) bool {
 		return scores[i].value > scores[j].value
 	})
 
