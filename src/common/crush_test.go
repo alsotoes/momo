@@ -199,6 +199,46 @@ func TestClusterMap_Placement_AllZeroWeight(t *testing.T) {
 	}
 }
 
+// TestHashToScoreValue_Precision verifies the 52-bit mantissa fold does not
+// lose precision for hashes that differ only in their low bits (fix #647).
+// A full uint64 → float64 conversion would round those differences away.
+func TestHashToScoreValue_Precision(t *testing.T) {
+	base := make([]byte, 32)
+	// Single lowest-bit difference in the folded tail (sum[28] is the LSB of
+	// the little-endian tail uint32, inside the 20-bit mask).
+	low := make([]byte, 32)
+	low[28] = 0x01
+
+	// Difference in the top bucket bits: sum[3] is the MSB of the little-endian
+	// head uint32; 0x80 there sets mantissa 1<<51 (exact 0.5).
+	high := make([]byte, 32)
+	high[3] = 0x80
+
+	vBase := hashToScoreValue(base)
+	vLow := hashToScoreValue(low)
+	vHigh := hashToScoreValue(high)
+
+	if vBase == vLow {
+		t.Errorf("Expected distinct scores for digests differing in low tail bit, both %v", vBase)
+	}
+	if vHigh <= vBase {
+		t.Errorf("Expected digest with high bit to score above all-zero digest, got %v <= %v", vHigh, vBase)
+	}
+
+	// Determinism and range.
+	if vBase != hashToScoreValue(make([]byte, 32)) {
+		t.Error("hashToScoreValue is not deterministic")
+	}
+	if vHigh < 0 || vHigh >= 1.0 {
+		t.Errorf("Score out of [0,1) range: %v", vHigh)
+	}
+
+	// Mantissa 1<<51 is exactly representable: score must be exactly 0.5.
+	if vHigh != 0.5 {
+		t.Errorf("Expected exactly 0.5 for 1<<51 mantissa, got %v", vHigh)
+	}
+}
+
 // TestClusterMap_Placement_TiedScoresStableOrder verifies that nodes with equal
 // scores keep their declaration order in the result (fix #646). Two nodes with
 // identical ID and weight hash to identical float values, guaranteeing a score
