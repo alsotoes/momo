@@ -152,6 +152,43 @@ func TestGetConfig_Failures(t *testing.T) {
 	}
 }
 
+// TestLoadDaemons_MissingFieldsDeterministic ensures that when multiple required
+// daemon fields are missing, the reported error is deterministic across runs
+// (map iteration order must not influence the chosen field, issue #644).
+func TestLoadDaemons_MissingFieldsDeterministic(t *testing.T) {
+	// Drop both host and drive from the daemon section.
+	content := strings.Replace(validConfig, "host = localhost:8080", "", 1)
+	content = strings.Replace(content, "drive = /dev/sda1", "", 1)
+
+	tmpDir := t.TempDir()
+	tmpfile := filepath.Join(tmpDir, "momo.conf")
+	if err := os.WriteFile(tmpfile, []byte(content), 0666); err != nil {
+		t.Fatalf("Failed to write to temporary config file: %v", err)
+	}
+
+	var firstErr error
+	const iterations = 100
+	for i := 0; i < iterations; i++ {
+		_, err := GetConfig(tmpfile)
+		if err == nil {
+			t.Fatalf("Expected an error for missing fields, got none")
+		}
+		if i == 0 {
+			firstErr = err
+			continue
+		}
+		if err.Error() != firstErr.Error() {
+			t.Fatalf("Non-deterministic error: iteration %d got %q, wanted %q", i, err.Error(), firstErr.Error())
+		}
+	}
+
+	// Sorted field order is: change_replication, data, drive, host.
+	// "drive" is the alphabetically-first missing field, so it must be reported.
+	if !strings.Contains(firstErr.Error(), "missing 'drive' in section [daemon.0]") {
+		t.Errorf("Expected deterministic error for alphabetically-first missing field, got %q", firstErr.Error())
+	}
+}
+
 func TestGetConfig_FileErrors(t *testing.T) {
 	// 1. Non-existent file
 	_, err := GetConfig("nonexistent-config.conf")
