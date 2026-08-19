@@ -285,14 +285,25 @@ func DecodeFileMetadataList(data []byte) (result []common.FileMetadata, err erro
 	return files, nil
 }
 
-// MergeFileMetadataLists merges multiple file lists and deduplicates by hash.
+// fileKey uniquely identifies a file entry as a name+hash pair. Files with the
+// same content hash but different names (dedup aliases) are distinct entries.
+type fileKey struct {
+	name string
+	hash string
+}
+
+// MergeFileMetadataLists merges multiple file lists and deduplicates by
+// name+hash. Alternate names for the same content hash (legitimate dedup
+// aliases) are all kept, while identical name+hash entries from different
+// node lists are collapsed (fix #664).
 func MergeFileMetadataLists(lists ...[]common.FileMetadata) []common.FileMetadata {
-	seen := make(map[string]bool)
+	seen := make(map[fileKey]bool)
 	var merged []common.FileMetadata
 	for _, list := range lists {
 		for _, f := range list {
-			if !seen[f.Hash] {
-				seen[f.Hash] = true
+			key := fileKey{name: f.Name, hash: f.Hash}
+			if !seen[key] {
+				seen[key] = true
 				merged = append(merged, f)
 			}
 		}

@@ -85,3 +85,44 @@ func TestEncodeFileMetadataList_BoundarySizes(t *testing.T) {
 		t.Fatalf("Expected 2 boundary entries to survive, got %d", len(decoded))
 	}
 }
+
+// TestMergeFileMetadataLists_KeepsAliasNames verifies that files sharing a
+// content hash but having different names (dedup aliases) are all kept, while
+// identical name+hash entries from different lists are collapsed (fix #664).
+func TestMergeFileMetadataLists_KeepsAliasNames(t *testing.T) {
+	listA := []common.FileMetadata{
+		{Name: "photo.jpg", Hash: "hash-abc", Size: 100, RemotePath: "", ModTime: 1},
+	}
+	listB := []common.FileMetadata{
+		// Same content hash, different name: legitimate alias, must be kept.
+		{Name: "IMG_001.jpg", Hash: "hash-abc", Size: 100, RemotePath: "", ModTime: 1},
+		// Exact duplicate of an entry in listA: must be collapsed.
+		{Name: "photo.jpg", Hash: "hash-abc", Size: 100, RemotePath: "", ModTime: 1},
+		{Name: "doc.txt", Hash: "hash-def", Size: 200, RemotePath: "", ModTime: 2},
+	}
+
+	merged := MergeFileMetadataLists(listA, listB)
+	if len(merged) != 3 {
+		t.Fatalf("Expected 3 merged entries (2 aliases + 1 unique), got %d: %+v", len(merged), merged)
+	}
+
+	seen := make(map[string]bool)
+	for _, f := range merged {
+		key := f.Name + "|" + f.Hash
+		if seen[key] {
+			t.Errorf("Duplicate name+hash entry in merged output: %+v", f)
+		}
+		seen[key] = true
+	}
+
+	for _, want := range []common.FileMetadata{
+		{Name: "photo.jpg", Hash: "hash-abc", Size: 100, RemotePath: "", ModTime: 1},
+		{Name: "IMG_001.jpg", Hash: "hash-abc", Size: 100, RemotePath: "", ModTime: 1},
+		{Name: "doc.txt", Hash: "hash-def", Size: 200, RemotePath: "", ModTime: 2},
+	} {
+		key := want.Name + "|" + want.Hash
+		if !seen[key] {
+			t.Errorf("Merged output missing expected entry %q", key)
+		}
+	}
+}
