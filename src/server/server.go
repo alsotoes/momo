@@ -604,15 +604,28 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 
 			case common.ReplicationSplay:
 				// In Splay mode, the primary (first node in placement) forwards to all others.
-				// Guard against an empty placement list (e.g. ReplicationFactor 0 or no
-				// nodes) to avoid an index-out-of-range panic — fall through to local receive.
-				if len(placement) > 0 && placement[0].ID == serverId {
-					wg.Add(len(placement) - 1)
+				// An external client (e.g. aws-cli) connects directly without client-side
+				// placement, so it may hit any node. 🛡️ If that node is a placement member,
+				// have it drive replication too — otherwise the upload would be stored on a
+				// single node and never replicated (issue #647). Guard against an empty
+				// placement list (e.g. ReplicationFactor 0 or no nodes) to avoid an
+				// index-out-of-range panic — fall through to local receive.
+				if len(placement) > 0 && (placement[0].ID == serverId || comm.IsExternalClient()) {
+					// Forward to every placement member except this node. When self is the
+					// primary this is placement[1:]; an external client that landed on a
+					// non-primary member still replicates to the rest of the set (issue #647).
+					targets := make([]int, 0, len(placement)-1)
+					for _, n := range placement {
+						if n.ID != serverId {
+							targets = append(targets, n.ID)
+						}
+					}
+					wg.Add(len(targets))
 					if canDedup {
 						// ⚡ Bolt: Deduplication hit. Just update metadata mapping.
 						if err := store.Put(storageKey, metadata.Hash, metadata.Size, remotePath, nil); err != nil {
 							log.Printf("AUDIT: Error updating metadata for %s from %s: %v", fileName, remoteAddr, common.SanitizeLog(err.Error()))
-							for i := 0; i < len(placement)-1; i++ {
+							for range targets {
 								wg.Done()
 							}
 							metricsCollector.IncErrors()
@@ -622,7 +635,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 					} else {
 						if err := getFile(comm, store, storageKey, metadata.Hash, metadata.Size, remotePath); err != nil {
 							log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
-							for i := 0; i < len(placement)-1; i++ {
+							for range targets {
 								wg.Done()
 							}
 							metricsCollector.IncErrors()
@@ -630,8 +643,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 						}
 						persistS3Meta(store, storageKey, metadata)
 					}
-					for i := 1; i < len(placement); i++ {
-						targetId := placement[i].ID
+					for _, targetId := range targets {
 						go func(id int) {
 							defer wg.Done()
 							defer func() {

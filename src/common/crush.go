@@ -25,6 +25,19 @@ type ClusterMap struct {
 	Nodes []*Node
 }
 
+// hashToScoreValue folds a sha256 digest into a float64 in [0,1) using a
+// 52-bit mantissa. float64 has only a 52-bit mantissa, so converting a full
+// uint64 discards its low ~11 bits and distinct hashes can map to the same
+// float, biasing placement (fix #647). Taking the top 32 bits plus the bottom
+// 20 bits of the digest keeps every mantissa bit meaningful and spans the full
+// hash, using all available entropy with no precision loss.
+func hashToScoreValue(sum []byte) float64 {
+	hi := binary.LittleEndian.Uint32(sum[:4])
+	lo := binary.LittleEndian.Uint32(sum[28:32])
+	mant := uint64(hi)<<20 | uint64(lo&(1<<20-1))
+	return float64(mant) / float64(uint64(1)<<52)
+}
+
 // Placement returns an ordered list of nodes where an object should be stored, based on its hash.
 // It uses a simplified version of the CRUSH algorithm (Weighted Rendezvous Hashing)
 // to ensure perfect load balancing and minimal data movement when nodes are added/removed.
@@ -89,8 +102,10 @@ func (m *ClusterMap) Placement(objectHash string, replicationFactor int) (nodes 
 		var sumBuf [sha256.Size]byte
 		sum := h.Sum(sumBuf[:0])
 
-		val := binary.LittleEndian.Uint64(sum[:8])
-		floatVal := float64(val) / float64(math.MaxUint64)
+		// ⚡ Bolt: Fold the full 32-byte hash into a 52-bit mantissa (fix #647) —
+		// float64 cannot represent a full uint64 exactly, so using only the high
+		// 64 bits would let distinct hashes collide on the same score.
+		floatVal := hashToScoreValue(sum)
 
 		// ⚡ Bolt: Use Weighted Rendezvous Hashing (WRH) formula: -weight / log(score).
 		// This provides mathematically perfect load balancing for heterogeneous nodes.
