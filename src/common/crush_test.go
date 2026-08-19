@@ -1,8 +1,11 @@
 package common
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"log"
+	"strings"
 	"syscall"
 	"testing"
 
@@ -158,7 +161,7 @@ func TestClusterMap_Placement_SkipsZeroWeightNodes(t *testing.T) {
 	nodes := []*Node{
 		{ID: 0, Weight: 1, Addr: "127.0.0.1:4440"},
 		{ID: 1, Weight: 1, Addr: "127.0.0.1:4441"},
-		{ID: 2, Weight: 0, Addr: "127.0.0.1:4442"},   // disabled
+		{ID: 2, Weight: 0, Addr: "127.0.0.1:4442"},  // disabled
 		{ID: 3, Weight: -5, Addr: "127.0.0.1:4443"}, // decommissioned
 	}
 	m := &ClusterMap{Nodes: nodes}
@@ -194,4 +197,44 @@ func TestClusterMap_Placement_AllZeroWeight(t *testing.T) {
 	if !errors.Is(err, syscall.EINVAL) {
 		t.Errorf("Expected error to wrap syscall.EINVAL, got %v", err)
 	}
+}
+
+// TestClusterMap_Placement_CapWarning verifies that requesting a replication
+// factor larger than the eligible node count logs a warning instead of silently
+// capping (fix #645), and that no warning is logged when RF fits.
+func TestClusterMap_Placement_CapWarning(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	nodes := []*Node{
+		{ID: 0, Weight: 1, Addr: "127.0.0.1:4440"},
+		{ID: 1, Weight: 1, Addr: "127.0.0.1:4441"},
+	}
+	m := &ClusterMap{Nodes: nodes}
+
+	wantWarning := func(label, wantSub, forbiddenSub string, rf int, wantLen int) {
+		t.Helper()
+		var buf bytes.Buffer
+		prev := log.Writer()
+		log.SetOutput(&buf)
+		defer log.SetOutput(prev)
+
+		out, err := m.Placement("some-hash", rf)
+		if err != nil {
+			t.Fatalf("%s: Placement failed: %v", label, err)
+		}
+		if len(out) != wantLen {
+			t.Fatalf("%s: Expected %d nodes, got %d", label, wantLen, len(out))
+		}
+		if wantSub != "" && !strings.Contains(buf.String(), wantSub) {
+			t.Errorf("%s: Expected log to contain %q, got %q", label, wantSub, buf.String())
+		}
+		if forbiddenSub != "" && strings.Contains(buf.String(), forbiddenSub) {
+			t.Errorf("%s: Expected log to NOT contain %q, got %q", label, forbiddenSub, buf.String())
+		}
+	}
+
+	// RF=5 with 2 eligible nodes: capped to 2, warning logged.
+	wantWarning("oversized RF", "replication factor 5 exceeds 2 eligible nodes", "", 5, 2)
+	// RF=2 with 2 nodes: no capping, no warning.
+	wantWarning("fitting RF", "", "exceeds", 2, 2)
 }
