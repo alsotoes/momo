@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -569,7 +570,14 @@ func loadDaemons(cfg *ini.File) ([]*Daemon, error) {
 			"drive":              &d.Drive,
 		}
 
-		for key, ptr := range requiredFields {
+		keys := make([]string, 0, len(requiredFields))
+		for key := range requiredFields {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+
+		for _, key := range keys {
+			ptr := requiredFields[key]
 			*ptr = section.Key(key).String()
 			if *ptr == "" {
 				return nil, fmt.Errorf("missing '%s' in section [%s]", key, sectionName)
