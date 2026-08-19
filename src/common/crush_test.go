@@ -199,6 +199,45 @@ func TestClusterMap_Placement_AllZeroWeight(t *testing.T) {
 	}
 }
 
+// TestClusterMap_Placement_TiedScoresStableOrder verifies that nodes with equal
+// scores keep their declaration order in the result (fix #646). Two nodes with
+// identical ID and weight hash to identical float values, guaranteeing a score
+// tie; the stable sort must keep the first-declared tied node before the other.
+func TestClusterMap_Placement_TiedScoresStableOrder(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	m := &ClusterMap{Nodes: []*Node{
+		{ID: 1, Weight: 1, Addr: "tie-a"},
+		{ID: 1, Weight: 1, Addr: "tie-b"},
+		{ID: 2, Weight: 10, Addr: "heavy"},
+	}}
+
+	idx := func(addrs []*Node, want string) int {
+		for i, n := range addrs {
+			if n.Addr == want {
+				return i
+			}
+		}
+		return -1
+	}
+
+	for run := 0; run < 50; run++ {
+		// RF=3 selects every node: the full ordering must preserve the tied
+		// pair's declaration order (tie-a before tie-b) on every run.
+		out, err := m.Placement("some-hash", 3)
+		if err != nil {
+			t.Fatalf("run %d: Placement failed: %v", run, err)
+		}
+		ia, ib := idx(out, "tie-a"), idx(out, "tie-b")
+		if ia == -1 || ib == -1 {
+			t.Fatalf("run %d: tied nodes missing from placement: %+v", run, out)
+		}
+		if ia > ib {
+			t.Fatalf("run %d: stable sort violated: tie-a at %d, tie-b at %d", run, ia, ib)
+		}
+	}
+}
+
 // TestClusterMap_Placement_CapWarning verifies that requesting a replication
 // factor larger than the eligible node count logs a warning instead of silently
 // capping (fix #645), and that no warning is logged when RF fits.
