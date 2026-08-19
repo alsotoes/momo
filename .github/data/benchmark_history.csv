@@ -3762,3 +3762,14 @@ dcc52909,BenchmarkLoadGlobalConfig-8,8771.00,1848.00,54.00
 dcc52909,BenchmarkPadString-8,45.41,64.00,1.00
 dcc52909,BenchmarkSanitizeLog/Safe-8,504.10,0.00,0.00
 dcc52909,BenchmarkSanitizeLog/Unsafe-8,500.70,704.00,1.00
+c169bb54,BenchmarkAWSChunkedReaderSigned-8,421825.00,157.79,11276.00
+c169bb54,BenchmarkAWSChunkedReaderUnsigned-8,434524.00,153.18,78564.00
+c169bb54,BenchmarkCheckMetricsAndSwap-8,8.35,0.00,0.00
+c169bb54,BenchmarkCrushOptimized-8,337.90,0.00,0.00
+c169bb54,BenchmarkCrushOriginal-8,416.70,164.00,3.00
+c169bb54,BenchmarkIndexDirectTracking-8,0.33,0.00,0.00
+c169bb54,BenchmarkIndexSearch-8,1.52,0.00,0.00
+c169bb54,BenchmarkLoadGlobalConfig-8,8344.00,1848.00,54.00
+c169bb54,BenchmarkPadString-8,40.99,64.00,1.00
+c169bb54,BenchmarkSanitizeLog/Safe-8,229.30,0.00,0.00
+c169bb54,BenchmarkSanitizeLog/Unsafe-8,678.40,704.00,1.00
