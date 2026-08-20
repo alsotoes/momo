@@ -373,7 +373,9 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 			m.Stream.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			var emptyCount [4]byte
 			binary.BigEndian.PutUint32(emptyCount[:], 0)
-			m.Write(emptyCount[:])
+			if _, err := m.Write(emptyCount[:]); err != nil {
+				return 0, 0, fmt.Errorf("failed to send empty list count: %v: %w", err, syscall.EIO)
+			}
 			return 0, 0, ErrRequestHandled
 		}
 		if m.store == nil {
@@ -442,7 +444,9 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 		// 🛡️ Sentinel: Block path traversal
 		if strings.Contains(fileName, "..") || strings.Contains(fileName, "\\") {
 			m.Stream.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			m.Write([]byte{'1'}) // error status
+			if err := writeStatusByte(m, '1'); err != nil {
+				return 0, 0, err
+			} // error status
 			return 0, 0, fmt.Errorf("invalid delete target traversal: %s: %w", fileName, syscall.EBADMSG)
 		}
 
@@ -453,14 +457,18 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 		expectedHash, hashErr := m.store.GetHashForName(fileName)
 		if hashErr != nil || expectedHash != providedHash {
 			m.Stream.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			m.Write([]byte{'1'}) // not found / unauthorized
+			if err := writeStatusByte(m, '1'); err != nil {
+				return 0, 0, err
+			} // not found / unauthorized
 			return 0, 0, ErrRequestHandled
 		}
 
 		if m.leaseAcquirer != nil {
 			if err := m.leaseAcquirer.AcquireLease(fileName, 10*time.Second); err != nil {
 				m.Stream.SetWriteDeadline(time.Now().Add(5 * time.Second))
-				m.Write([]byte{'1'}) // error status
+				if err := writeStatusByte(m, '1'); err != nil {
+					return 0, 0, err
+				} // error status
 				return 0, 0, fmt.Errorf("failed to acquire lease for delete: %w", err)
 			}
 			defer m.leaseAcquirer.ReleaseLease(fileName)
@@ -469,7 +477,9 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 		err = m.store.Delete(fileName)
 		m.Stream.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		if err != nil {
-			m.Write([]byte{'1'}) // error status
+			if e := writeStatusByte(m, '1'); e != nil {
+				return 0, 0, e
+			} // error status
 			return 0, 0, fmt.Errorf("failed to delete file: %w", err)
 		}
 
@@ -483,7 +493,9 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 			m.metricsHook.IncDeletes()
 		}
 
-		m.Write([]byte{'0'}) // success status
+		if err := writeStatusByte(m, '0'); err != nil {
+			return 0, 0, err
+		} // success status
 		return 0, 0, ErrRequestHandled
 	}
 
@@ -503,7 +515,9 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 		// 🛡️ Sentinel: Block path traversal
 		if strings.Contains(fileName, "..") || strings.Contains(fileName, "\\") {
 			m.Stream.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			m.Write([]byte{'1'}) // error status
+			if err := writeStatusByte(m, '1'); err != nil {
+				return 0, 0, err
+			} // error status
 			return 0, 0, fmt.Errorf("invalid get target traversal: %s: %w", fileName, syscall.EBADMSG)
 		}
 
@@ -511,7 +525,9 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 		expectedHash, hashErr := m.store.GetHashForName(fileName)
 		if hashErr != nil || expectedHash != providedHash {
 			m.Stream.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			m.Write([]byte{'1'}) // not found / unauthorized
+			if err := writeStatusByte(m, '1'); err != nil {
+				return 0, 0, err
+			} // not found / unauthorized
 			return 0, 0, ErrRequestHandled
 		}
 
@@ -519,10 +535,14 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 		m.Stream.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		if err != nil {
 			if err == syscall.ENOENT || os.IsNotExist(err) {
-				m.Write([]byte{'1'}) // file not found
+				if e := writeStatusByte(m, '1'); e != nil {
+					return 0, 0, e
+				} // file not found
 				return 0, 0, ErrRequestHandled
 			}
-			m.Write([]byte{'2'}) // server error
+			if e := writeStatusByte(m, '2'); e != nil {
+				return 0, 0, e
+			} // server error
 			return 0, 0, fmt.Errorf("failed to read file: %w", err)
 		}
 		defer rc.Close()
