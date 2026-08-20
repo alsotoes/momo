@@ -453,6 +453,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 	m.conn.SetReadDeadline(time.Now().Add(s3ReadHeaderTimeout)) // 🛡️ Slowloris mitigation (issue #592)
 	req, err := http.ReadRequest(m.reader)
 	m.conn.SetReadDeadline(time.Time{})
+	m.connReader.ClearLimit() // clear immediately so body streaming is never limited (issue #653 regression)
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to read handshake request: %v: %w", err, syscall.EBADMSG)
 	}
@@ -1591,6 +1592,7 @@ func (m *S3Communicator) ReceiveMetadata() (meta common.FileMetadata, err error)
 		m.conn.SetReadDeadline(time.Now().Add(s3ReadHeaderTimeout)) // 🛡️ Slowloris mitigation (issue #592)
 		req, err := http.ReadRequest(m.reader)
 		m.conn.SetReadDeadline(time.Time{})
+		m.connReader.ClearLimit() // clear immediately so body streaming is never limited (issue #653 regression)
 		if err != nil {
 			return common.FileMetadata{}, fmt.Errorf("ReceiveMetadata ReadRequest failed: %v: %w", err, syscall.EBADMSG)
 		}
