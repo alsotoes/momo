@@ -824,13 +824,25 @@ func GenerateSelfSignedCert() (tls.Certificate, error) {
 	if err != nil {
 		return tls.Certificate{}, err
 	}
+	// Serial number must be unique per issuer (RFC 5280 §4.1.2.2). Use a random
+	// 128-bit value with the top bit forced on so the cert is never rejected as
+	// negative and serial collisions are practically impossible (issue #650).
+	maxSerial := new(big.Int).Lsh(big.NewInt(1), 128)
+	serial, err := rand.Int(rand.Reader, maxSerial)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	serial.Or(serial, new(big.Int).Lsh(big.NewInt(1), 127))
+	now := time.Now()
 	template := x509.Certificate{
-		SerialNumber: big.NewInt(1),
+		SerialNumber: serial,
 		Subject: pkix.Name{
 			Organization: []string{"Momo"},
 		},
-		NotBefore: time.Now(),
-		NotAfter:  time.Now().Add(time.Hour * 24 * 365),
+		// Start validity 5 minutes in the past so peers with slight clock skew
+		// do not reject the certificate as not-yet-valid (issue #650).
+		NotBefore: now.Add(-5 * time.Minute),
+		NotAfter:  now.Add(time.Hour * 24 * 365),
 
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
