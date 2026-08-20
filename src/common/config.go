@@ -27,6 +27,16 @@ const (
 	prefixDaemon = "daemon."
 )
 
+// Storage backend identifiers accepted by the [storage] section.
+// These are shared with the blob-store factory (storage/factory.go) so the
+// config-time validation and the runtime switch can never drift (issue #649).
+const (
+	BackendLocal = "local"
+	BackendNFS   = "nfs"
+	BackendS3    = "s3"
+	BackendRaw   = "raw"
+)
+
 // defaultClientSideReplicationModes is the default when client_side_replication_modes
 // is not specified in config. Defined at package level to avoid per-call allocation.
 var defaultClientSideReplicationModes = []int{ReplicationPrimarySplay}
@@ -500,7 +510,7 @@ func loadP2PConfig(section *ini.Section) (ConfigurationP2P, error) {
 // defaultStorageConfig returns the default storage configuration.
 func defaultStorageConfig() ConfigurationStorage {
 	return ConfigurationStorage{
-		Backend:            "local",
+		Backend:            BackendLocal,
 		GCInterval:         300,
 		TombstoneRetention: 86400,
 	}
@@ -513,7 +523,14 @@ func loadStorageConfig(section *ini.Section) (ConfigurationStorage, error) {
 
 	cfg.Backend = section.Key("backend").String()
 	if cfg.Backend == "" {
-		cfg.Backend = "local"
+		cfg.Backend = BackendLocal
+	}
+	// 🛡️ Validate the backend eagerly so an invalid value (e.g. "foobar") fails
+	// at config load time instead of surfacing as a runtime error later (issue #649).
+	switch cfg.Backend {
+	case BackendLocal, BackendNFS, BackendS3, BackendRaw:
+	default:
+		return ConfigurationStorage{}, fmt.Errorf("unsupported storage backend %q (valid: %s, %s, %s, %s): %w", cfg.Backend, BackendLocal, BackendNFS, BackendS3, BackendRaw, syscall.EINVAL)
 	}
 
 	cfg.GCInterval, err = section.Key("gc_interval").Int()

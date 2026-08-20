@@ -130,6 +130,11 @@ func TestGetConfig_Failures(t *testing.T) {
 			content:       strings.Replace(validConfig, "fallback_interval = 30", "fallback_interval = -5", 1),
 			expectedError: "failed to load [metrics] section: 'fallback_interval' must be positive",
 		},
+		{
+			name:          "Unsupported storage backend",
+			content:       validConfig + "\n[storage]\nbackend = foobar\n",
+			expectedError: "failed to load [storage] section: unsupported storage backend",
+		},
 	}
 
 	for _, tc := range testCases {
@@ -150,6 +155,44 @@ func TestGetConfig_Failures(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestGetConfig_StorageBackends_Valid ensures every supported storage backend is
+// accepted at config load time and that the default (missing [storage] section)
+// falls back to "local" (issue #649).
+func TestGetConfig_StorageBackends_Valid(t *testing.T) {
+	for _, backend := range []string{BackendLocal, BackendNFS, BackendS3, BackendRaw} {
+		t.Run(backend, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			tmpfile := filepath.Join(tmpDir, "momo.conf")
+			content := validConfig + "\n[storage]\nbackend = " + backend + "\n"
+			if err := os.WriteFile(tmpfile, []byte(content), 0666); err != nil {
+				t.Fatalf("Failed to write to temporary config file: %v", err)
+			}
+			config, err := GetConfig(tmpfile)
+			if err != nil {
+				t.Fatalf("GetConfig failed for backend %q: %v", backend, err)
+			}
+			if config.Storage.Backend != backend {
+				t.Errorf("Expected Storage.Backend to be %q, got %q", backend, config.Storage.Backend)
+			}
+		})
+	}
+
+	t.Run("default local", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		tmpfile := filepath.Join(tmpDir, "momo.conf")
+		if err := os.WriteFile(tmpfile, []byte(validConfig), 0666); err != nil {
+			t.Fatalf("Failed to write to temporary config file: %v", err)
+		}
+		config, err := GetConfig(tmpfile)
+		if err != nil {
+			t.Fatalf("GetConfig failed: %v", err)
+		}
+		if config.Storage.Backend != BackendLocal {
+			t.Errorf("Expected default Storage.Backend to be %q, got %q", BackendLocal, config.Storage.Backend)
+		}
+	})
 }
 
 // TestLoadDaemons_MissingFieldsDeterministic ensures that when multiple required

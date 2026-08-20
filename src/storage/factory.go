@@ -24,11 +24,11 @@ func NewStore(cfg common.ConfigurationStorage, daemon *common.Daemon, encKeyHex 
 	var err error
 
 	switch cfg.Backend {
-	case "", "local", "nfs":
+	case "", common.BackendLocal, common.BackendNFS:
 		blobs, err = NewLocalBlobStore(daemon.Data)
-	case "s3":
+	case common.BackendS3:
 		blobs, err = NewS3BlobStore(cfg)
-	case "raw":
+	case common.BackendRaw:
 		blobs, err = NewRawBlobStore(cfg, daemon)
 	default:
 		return nil, fmt.Errorf("unsupported storage backend %q: %w", cfg.Backend, syscall.EINVAL)
