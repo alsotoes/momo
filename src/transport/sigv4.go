@@ -13,6 +13,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode/utf8"
 )
 
 type sigV4Components struct {
@@ -63,8 +64,10 @@ func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
 func sigV4Escape(s string, encodeSlash bool) (string, error) {
 	// 🛡️ Rule 35: Validate input string bounds to prevent potential memory exhaustion via excessive capacity growth.
 	// 🛡️ Rule 37: Truncation without error breaks canonical signatures. Reject the input if it exceeds limits.
-	if len(s) > 1024 {
-		return "", fmt.Errorf("sigV4 escape input length exceeds bounds (1024 bytes): %w", syscall.EINVAL)
+	// S3 keys are limited to 1024 characters, not bytes (issue #655): use rune count so
+	// multi-byte UTF-8 keys up to 1024 characters are accepted.
+	if utf8.RuneCountInString(s) > 1024 {
+		return "", fmt.Errorf("sigV4 escape input length exceeds bounds (1024 characters): %w", syscall.EINVAL)
 	}
 
 	hexCount := 0

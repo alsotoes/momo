@@ -285,3 +285,53 @@ func TestBuildCanonicalQueryString_ExcludesSignature(t *testing.T) {
 		t.Fatalf("expected foo=bar in canonical query, got %q", qs)
 	}
 }
+
+func TestSigV4Escape_Bounds(t *testing.T) {
+	tests := []struct {
+		name     string
+		s        string
+		wantErr  bool
+		wantSame bool
+	}{
+		{name: "empty", s: ""},
+		{name: "ascii 1024 chars accepted", s: strings.Repeat("a", 1024), wantSame: true},
+		{name: "ascii 1025 chars rejected", s: strings.Repeat("a", 1025), wantErr: true},
+		{name: "multibyte 1024 runes accepted", s: strings.Repeat("é", 1024)},
+		{name: "multibyte 1024 runes over 1024 bytes accepted", s: strings.Repeat("中", 1024)},
+		{name: "multibyte 1025 runes rejected", s: strings.Repeat("é", 1025), wantErr: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := sigV4Escape(tc.s, true)
+			if tc.wantErr && err == nil {
+				t.Fatalf("expected error, got %q", got)
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tc.wantSame && err == nil && got != tc.s {
+				t.Fatalf("expected unmodified input %q, got %q", tc.s, got)
+			}
+		})
+	}
+}
+
+func TestSigV4Escape_EncodesMultibyte(t *testing.T) {
+	got, err := sigV4Escape("café/étude.txt", true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := "caf%C3%A9%2F%C3%A9tude.txt"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+
+	got, err = sigV4Escape("café/étude.txt", false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want = "caf%C3%A9/%C3%A9tude.txt"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
