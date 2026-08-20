@@ -347,9 +347,13 @@ func verifySigV4Signature(req *http.Request, authHeader, secretKey string) bool 
 		return false
 	}
 
+	// X-Amz-Date comes from the request header only. parseSigV4AuthHeader never
+	// carries a date (AmzDate is populated solely by the presigned query path),
+	// so any fallback here would be dead code (issue #654). RFC 9110 SigV4
+	// requires the header-signed form to include X-Amz-Date, making it mandatory.
 	amzDate := req.Header.Get("X-Amz-Date")
 	if amzDate == "" {
-		amzDate = components.AmzDate
+		return false
 	}
 
 	if !verifySigV4Timestamp(amzDate) {

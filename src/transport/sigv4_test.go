@@ -105,6 +105,24 @@ func TestVerifySigV4Signature_FreshRequest(t *testing.T) {
 	}
 }
 
+// TestVerifySigV4Signature_RequiresAmzDateHeader ensures the header-signed
+// SigV4 path rejects a request without X-Amz-Date instead of falling back to a
+// field that parseSigV4AuthHeader never populates (issue #654).
+func TestVerifySigV4Signature_RequiresAmzDateHeader(t *testing.T) {
+	secretKey := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+
+	now := time.Now().UTC()
+	amzDate := now.Format("20060102T150405Z")
+	dateStamp := now.Format("20060102")
+	region := "us-east-1"
+
+	req, authHeader := buildSigV4Request(t, amzDate, dateStamp, region, secretKey)
+	req.Header.Del("X-Amz-Date")
+	if verifySigV4Signature(req, authHeader, secretKey) {
+		t.Fatal("header-signed request without X-Amz-Date should be rejected")
+	}
+}
+
 // buildPresignedSigV4Request constructs a presigned (query-string SigV4) request
 // for the given method/path with a validity window and a payload hash. The
 // signature is computed over the canonical query that already contains all
