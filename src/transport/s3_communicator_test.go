@@ -176,6 +176,123 @@ func TestS3Communicator_SigV4InvalidSignature(t *testing.T) {
 	}
 }
 
+// signedSigV4PUT builds an AWS SigV4-signed PUT request header for the S3
+// gateway using distinct accessKey (Credential scope) and secretKey (HMAC
+// signing secret). Mirrors TestS3Communicator_AWSV4Auth but parameterizes the
+// two keys so the issue #656 gateway-credentials split can be exercised.
+func signedSigV4PUT(accessKey, secretKey, host string) string {
+	now := time.Now().UTC()
+	amzDate := now.Format("20060102T150405Z")
+	dateStamp := now.Format("20060102")
+	region := "us-east-1"
+	payloadHash := "dummyhash"
+	signedHeaders := "host;x-amz-content-sha256;x-amz-date"
+
+	canonicalRequest := "PUT\n/test-file2.txt\n\nhost:" + host + "\nx-amz-content-sha256:" + payloadHash + "\nx-amz-date:" + amzDate + "\n\n" + signedHeaders + "\n" + payloadHash
+	stringToSign := buildStringToSign(canonicalRequest, amzDate, dateStamp, region)
+	signingKey := deriveSigningKey(secretKey, dateStamp, region)
+	signature := computeSignature(signingKey, stringToSign)
+
+	authHeader := "AWS4-HMAC-SHA256 Credential=" + accessKey + "/" + dateStamp + "/" + region + "/s3/aws4_request, SignedHeaders=" + signedHeaders + ", Signature=" + signature
+
+	return "PUT /test-file2.txt HTTP/1.1\r\n" +
+		"Host: " + host + "\r\n" +
+		"Authorization: " + authHeader + "\r\n" +
+		"X-Amz-Date: " + amzDate + "\r\n" +
+		"X-Amz-Content-Sha256: " + payloadHash + "\r\n" +
+		"Content-Length: 2048\r\n\r\n"
+}
+
+// runS3Handshake pipes reqBody into a handshake. When expectErr is true the
+// call must fail with syscall.EACCES.
+func runS3Handshake(t *testing.T, reqBody, authToken string, creds *sigV4GatewayCreds, expectErr bool) {
+	t.Helper()
+	expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	go func() {
+		clientConn.Write([]byte(reqBody))
+		buf := make([]byte, 1024)
+		for {
+			_, err := clientConn.Read(buf)
+			if err != nil {
+				break
+			}
+		}
+	}()
+
+	comm := NewS3Communicator(serverConn)
+	if creds != nil {
+		comm.SetSigV4GatewayCredentials(creds.accessKey, creds.secretKey)
+	}
+	_, _, err := comm.HandshakeServer(expectedAuthToken)
+	if expectErr {
+		if err == nil {
+			t.Fatal("HandshakeServer should have been rejected")
+		}
+		if !errors.Is(err, syscall.EACCES) {
+			t.Fatalf("Expected EACCES, got: %v", err)
+		}
+		return
+	}
+	if err != nil {
+		t.Fatalf("HandshakeServer failed: %v", err)
+	}
+}
+
+type sigV4GatewayCreds struct {
+	accessKey string
+	secretKey string
+}
+
+func TestS3Communicator_SigV4GatewayCredentials_Valid(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	accessKey := "AKIAIOSFODNN7EXAMPLE"                                             // notsecret
+	secretKey := "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"                         // notsecret
+
+	// Signed with the gateway pair (access key and secret are distinct).
+	runS3Handshake(t, signedSigV4PUT(accessKey, secretKey, "127.0.0.1:4440"), authToken,
+		&sigV4GatewayCreds{accessKey: accessKey, secretKey: secretKey}, false)
+}
+
+func TestS3Communicator_SigV4GatewayCredentials_WrongSecret(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	accessKey := "AKIAIOSFODNN7EXAMPLE"
+	secretKey := "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+
+	// Request signed with the momo auth token as secret, not the gateway secret.
+	runS3Handshake(t, signedSigV4PUT(accessKey, authToken, "127.0.0.1:4440"), authToken,
+		&sigV4GatewayCreds{accessKey: accessKey, secretKey: secretKey}, true)
+}
+
+func TestS3Communicator_SigV4GatewayCredentials_WrongAccessKey(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	accessKey := "AKIAIOSFODNN7EXAMPLE"
+	secretKey := "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+
+	// Request presents the momo auth token as access key while gateway expects AKIA...
+	runS3Handshake(t, signedSigV4PUT(authToken, secretKey, "127.0.0.1:4440"), authToken,
+		&sigV4GatewayCreds{accessKey: accessKey, secretKey: secretKey}, true)
+}
+
+func TestS3Communicator_SigV4GatewayCredentials_LegacyStillWorks(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	// No gateway creds configured → legacy single-token mode: access key and
+	// secret are both the auth token.
+	runS3Handshake(t, signedSigV4PUT(authToken, authToken, "127.0.0.1:4440"), authToken, nil, false)
+}
+
 func TestS3Communicator_HashTraversalValidation(t *testing.T) {
 	defer verifyNoLeaks(t)
 

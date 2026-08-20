@@ -190,6 +190,17 @@ type ConfigurationStorage struct {
 	S3AccessKey string
 	// S3SecretKey is the S3 secret access key for authentication.
 	S3SecretKey string
+	// S3ServerAccessKey is the SigV4 access key ID accepted by this node's S3
+	// gateway for inbound external clients. When set, inbound SigV4 requests
+	// must present this access key and be signed with S3ServerSecretKey,
+	// decoupling gateway credentials from the momo auth token (issue #656).
+	// When empty, the legacy single-token mode applies: access key and secret
+	// are both derived from the global auth token.
+	S3ServerAccessKey string
+	// S3ServerSecretKey is the SigV4 secret key used to verify inbound SigV4
+	// signatures against this node's S3 gateway. Only meaningful together with
+	// S3ServerAccessKey (issue #656).
+	S3ServerSecretKey string
 	// S3PathStyle uses path-style addressing (bucket in URL path) instead of virtual-host style.
 	S3PathStyle bool
 	// S3Insecure allows an http:// S3 endpoint (cleartext). Defaults to false;
