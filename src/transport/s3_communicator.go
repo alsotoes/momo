@@ -36,32 +36,48 @@ import (
 // one byte at a time to keep the connection alive indefinitely (issue #592).
 var s3ReadHeaderTimeout = 10 * time.Second
 
+// LimitedConnReader wraps a net.Conn with an optional read limit used to
+// enforce a bounded read window (e.g. while parsing an HTTP request header,
+// Rule 24). All mutating methods are synchronized so the limiter can be driven
+// from a different goroutine than the reader without racing (issue #652).
 type LimitedConnReader struct {
+	mu    sync.Mutex
 	r     net.Conn
 	limit int64
 	read  int64
 }
 
 func (l *LimitedConnReader) Read(p []byte) (n int, err error) {
+	l.mu.Lock()
 	if l.limit > 0 && l.read >= l.limit {
+		l.mu.Unlock()
 		return 0, fmt.Errorf("read limit exceeded: %w", syscall.ENOBUFS)
 	}
 	if l.limit > 0 && int64(len(p)) > (l.limit-l.read) {
 		p = p[:l.limit-l.read]
 	}
+	l.mu.Unlock()
+	// Perform the blocking net read outside the lock so a stalled peer cannot
+	// starve a concurrent SetLimit/ClearLimit from a limiter goroutine.
 	n, err = l.r.Read(p)
+	l.mu.Lock()
 	l.read += int64(n)
+	l.mu.Unlock()
 	return n, err
 }
 
 func (l *LimitedConnReader) SetLimit(limit int64) {
+	l.mu.Lock()
 	l.limit = limit
 	l.read = 0
+	l.mu.Unlock()
 }
 
 func (l *LimitedConnReader) ClearLimit() {
+	l.mu.Lock()
 	l.limit = 0
 	l.read = 0
+	l.mu.Unlock()
 }
 
 type S3Communicator struct {
