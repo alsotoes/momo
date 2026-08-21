@@ -72,7 +72,13 @@ func forwardStream() forwardStreamFunc {
 //   - ReplicationNone: The server saves the file without replicating it to other nodes.
 //   - ReplicationSplay: The primary server replicates the file to all other servers in the cluster.
 //   - ReplicationChain: Servers are arranged in a chain. The primary server replicates to the next server in the chain, which then replicates to the next, and so on.
-//   - ReplicationPrimarySplay: This mode is currently handled as ReplicationNone, which means no replication is performed.
+//   - ReplicationPrimarySplay: Client-side replication. The momo client fans the
+//     upload out to replication_factor nodes (CRUSH placement) concurrently
+//     (client.go:226); the receiving server just stores locally and must NOT
+//     forward, so this mode shares the ReplicationNone store path. For external
+//     S3 clients, which cannot perform client-side fan-out, the server downgrades
+//     the mode to the next server-side mode in replication_order
+//     (client_side_replication_modes) per connection.
 //
 // The replication mode is determined by the client, and for secondary servers, it's influenced by the timestamp of the operation.
 func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err error) {
@@ -527,6 +533,10 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 
 			// Handle the file based on the replication mode
 			switch replicationMode {
+			// ReplicationPrimarySplay is intentionally grouped with ReplicationNone:
+			// replication is driven by the momo client (client.go:226), so the
+			// receiving server stores locally without forwarding. External S3
+			// clients are downgraded out of this mode earlier (issue #658).
 			case common.ReplicationNone, common.ReplicationPrimarySplay:
 				if canDedup {
 					// ⚡ Bolt: Deduplication hit. Just update metadata mapping without reading payload.
