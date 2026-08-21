@@ -3883,3 +3883,14 @@ a7dbb734,BenchmarkLoadGlobalConfig-8,7563.00,1848.00,54.00
 a7dbb734,BenchmarkPadString-8,37.33,64.00,1.00
 a7dbb734,BenchmarkSanitizeLog/Safe-8,222.50,0.00,0.00
 a7dbb734,BenchmarkSanitizeLog/Unsafe-8,643.30,704.00,1.00
+380ee51a,BenchmarkAWSChunkedReaderSigned-8,429229.00,155.07,11273.00
+380ee51a,BenchmarkAWSChunkedReaderUnsigned-8,403247.00,165.06,78558.00
+380ee51a,BenchmarkCheckMetricsAndSwap-8,8.96,0.00,0.00
+380ee51a,BenchmarkCrushOptimized-8,300.90,0.00,0.00
+380ee51a,BenchmarkCrushOriginal-8,423.40,164.00,3.00
+380ee51a,BenchmarkIndexDirectTracking-8,0.35,0.00,0.00
+380ee51a,BenchmarkIndexSearch-8,2.81,0.00,0.00
+380ee51a,BenchmarkLoadGlobalConfig-8,7976.00,1848.00,54.00
+380ee51a,BenchmarkPadString-8,39.35,64.00,1.00
+380ee51a,BenchmarkSanitizeLog/Safe-8,228.90,0.00,0.00
+380ee51a,BenchmarkSanitizeLog/Unsafe-8,668.30,704.00,1.00

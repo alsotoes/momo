@@ -187,7 +187,7 @@ func TestDaemonReal(t *testing.T) {
 	defer conn.Close()
 
 	comm := transport.NewMomoTCPCommunicator(conn)
-	if _, err := comm.HandshakeClient(authToken, 1234567890123456789, 0); err != nil {
+	if _, err := comm.HandshakeClient(authToken, time.Now().UnixNano(), 0); err != nil {
 		t.Fatalf("Handshake failed: %v", err)
 	}
 
@@ -263,7 +263,7 @@ func startDaemonForForwardTest(t *testing.T) (*transport.MomoTCPCommunicator, fu
 	}
 
 	comm := transport.NewMomoTCPCommunicator(conn)
-	if _, err := comm.HandshakeClient(authToken, common.DummyEpoch, 0); err != nil {
+	if _, err := comm.HandshakeClient(authToken, time.Now().UnixNano(), 0); err != nil {
 		cancel()
 		conn.Close()
 		t.Fatalf("Handshake failed: %v", err)

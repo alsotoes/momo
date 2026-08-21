@@ -353,6 +353,14 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 		if err != nil {
 			return 0, 0, fmt.Errorf("failed to parse timestamp: %v: %w", err, syscall.EBADMSG)
 		}
+		// 🛡️ issue #657: reject replayed handshakes carrying a stale timestamp.
+		// The plaintext token+timestamp frame has no other anti-replay mechanism
+		// (the challenge-response path already uses a random per-connection
+		// challenge).
+		if !checkHandshakeTimestampFresh(timestamp) {
+			log.Printf("AUDIT: Handshake rejected stale timestamp from %s (freshness)", m.RemoteAddr())
+			return 0, 0, fmt.Errorf("handshake timestamp is not fresh: %w", syscall.EACCES)
+		}
 
 		if requestedModeByte == 'L' || requestedModeByte == 'D' || requestedModeByte == 'G' || requestedModeByte == 'O' {
 			requestedMode = int(requestedModeByte)

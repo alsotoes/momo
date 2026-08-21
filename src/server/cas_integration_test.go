@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/alsotoes/momo/src/common"
 	"github.com/alsotoes/momo/src/storage"
@@ -151,7 +152,7 @@ func TestCAS_MultiNode_Integration(t *testing.T) {
 		comm := transport.NewMomoTCPCommunicator(conn)
 
 		// Handshake
-		_, err = comm.HandshakeClient(authToken, common.DummyEpoch, 0)
+		_, err = comm.HandshakeClient(authToken, time.Now().UnixNano(), 0)
 		if err != nil {
 			t.Fatalf("Handshake failed: %v", err)
 		}
