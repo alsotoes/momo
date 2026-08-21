@@ -415,6 +415,7 @@ func TestS3Communicator_EdgeCases(t *testing.T) {
 type mockStore struct {
 	putFunc            func(name string, hash string, size int64, remotePath string, content io.Reader) error
 	getFunc            func(name string) (io.ReadCloser, common.FileMetadata, error)
+	getMetaFunc        func(name string) (common.FileMetadata, error)
 	hasFunc            func(hash string) (bool, error)
 	getHashForNameFunc func(name string) (string, error)
 	deleteFunc         func(name string) error
@@ -434,6 +435,15 @@ func (m *mockStore) Get(name string) (io.ReadCloser, common.FileMetadata, error)
 		return m.getFunc(name)
 	}
 	return nil, common.FileMetadata{}, syscall.ENOENT
+}
+func (m *mockStore) GetMeta(name string) (common.FileMetadata, error) {
+	if m.getMetaFunc != nil {
+		return m.getMetaFunc(name)
+	}
+	if _, meta, err := m.Get(name); err == nil {
+		return meta, nil
+	}
+	return common.FileMetadata{}, syscall.ENOENT
 }
 func (m *mockStore) Has(hash string) (bool, error) {
 	if m.hasFunc != nil {

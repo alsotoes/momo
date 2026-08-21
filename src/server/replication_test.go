@@ -3,6 +3,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"io"
@@ -289,5 +290,44 @@ func TestReleasePayloadOnlyReturnsFixedCapacity(t *testing.T) {
 		if c != payloadPoolCapacity {
 			t.Errorf("client put cap=%d (idx %d), want fixed %d", c, i, payloadPoolCapacity)
 		}
+	}
+}
+
+// TestAcquireConnectionSlot_ContextCancel verifies issue #659: acquiring a
+// semaphore slot must not block forever when the context is canceled and the
+// semaphore is full.
+func TestAcquireConnectionSlot_ContextCancel(t *testing.T) {
+	sem := make(chan struct{}, 1)
+	sem <- struct{}{} // fill the single slot
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	done := make(chan bool, 1)
+	go func() { done <- acquireConnectionSlot(ctx, sem) }()
+
+	select {
+	case ok := <-done:
+		if ok {
+			t.Fatal("expected acquireConnectionSlot to return false on canceled context")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("acquireConnectionSlot blocked forever despite canceled context")
+	}
+}
+
+// TestAcquireConnectionSlot_Success verifies a free slot is acquired and
+// released correctly.
+func TestAcquireConnectionSlot_Success(t *testing.T) {
+	sem := make(chan struct{}, 1)
+	ok := acquireConnectionSlot(context.Background(), sem)
+	if !ok {
+		t.Fatal("expected slot to be acquired when the semaphore is empty")
+	}
+	// Release so the test doesn't leak the slot.
+	select {
+	case <-sem:
+	default:
+		t.Fatal("expected acquired slot to be releasable")
 	}
 }

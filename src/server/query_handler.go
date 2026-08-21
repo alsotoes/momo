@@ -66,12 +66,11 @@ func (h *StorageQueryHandler) handleGet(data []byte) (result []byte, err error) 
 	if strings.Contains(name, "..") || strings.Contains(name, "\\") {
 		return nil, fmt.Errorf("invalid name: %w", syscall.EBADMSG)
 	}
-	rc, meta, err := h.store.Get(name)
+	// Only metadata is needed for a QueryGet; use GetMeta so the content
+	// stream is not opened unnecessarily on large blobs/S3 backends (issue #660).
+	meta, err := h.store.GetMeta(name)
 	if err != nil {
 		return nil, err
-	}
-	if rc != nil {
-		defer rc.Close()
 	}
 	return EncodeFileMetadataList([]common.FileMetadata{meta}), nil
 }

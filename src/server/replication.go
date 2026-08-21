@@ -70,6 +70,19 @@ func SetReplicationState(newMode int, timestamp int64) common.ReplicationData {
 	return replicationState
 }
 
+// acquireConnectionSlot reserves a slot in the bounded concurrency semaphore.
+// It returns false without blocking if ctx is canceled before a slot frees up,
+// so a shutdown never leaves the accept loop stuck on a full semaphore
+// (issue #659). The caller must close/abandon any already-accepted connection.
+func acquireConnectionSlot(ctx context.Context, sem chan struct{}) bool {
+	select {
+	case sem <- struct{}{}:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
 // ChangeReplicationModeServer listens for connections on a dedicated port and updates the replication mode of the server.
 //
 // When a client connects, it sends a JSON object containing the new replication mode.
@@ -145,8 +158,13 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 			}
 		}
 
-		// Acquire semaphore slot before spinning up a new goroutine
-		sem <- struct{}{}
+		// Acquire semaphore slot before spinning up a new goroutine. Blocking
+		// without a ctx.Done() branch would leak this goroutine if the
+		// semaphore were full and the context canceled (issue #659).
+		if !acquireConnectionSlot(ctx, sem) {
+			connection.Close()
+			return nil // Shutting down gracefully
+		}
 
 		go func() {
 			defer func() { <-sem }() // Release semaphore slot when done
