@@ -731,13 +731,22 @@ func (m *MomoQUICCommunicator) ReceiveMetadata() (meta common.FileMetadata, err 
 	}
 
 	// ⚡ Bolt: Use common.TrimNullBytesString to eliminate string allocation overhead
-	metadata.Hash = common.SanitizeLog(common.TrimNullBytesString(buffer[:hashLength]))
+	rawHash := common.TrimNullBytesString(buffer[:hashLength])
+	// 🛡️ Sentinel: Reject carriage returns or line feeds to prevent downstream Protocol Injection.
+	if strings.ContainsAny(rawHash, "\r\n") {
+		return common.FileMetadata{}, fmt.Errorf("invalid hash: contains CRLF: %w", syscall.EBADMSG)
+	}
+	metadata.Hash = common.SanitizeLog(rawHash)
 	// 🛡️ Sentinel: Sanitize hash immediately to prevent path traversal in all downstream consumers.
 	if metadata.Hash == "" || common.HasPathTraversalChars(metadata.Hash) {
 		return common.FileMetadata{}, fmt.Errorf("invalid hash: %s: %w", metadata.Hash, syscall.EBADMSG)
 	}
 	// ⚡ Bolt: Use common.TrimNullBytesString to eliminate string allocation overhead
 	metadata.Name = common.TrimNullBytesString(buffer[hashLength : hashLength+common.FileInfoLength])
+	// 🛡️ Sentinel: Reject carriage returns or line feeds to prevent downstream Protocol Injection.
+	if strings.ContainsAny(metadata.Name, "\r\n") {
+		return common.FileMetadata{}, fmt.Errorf("invalid name: contains CRLF: %w", syscall.EBADMSG)
+	}
 
 	size, err := common.SafeParseInt(buffer[hashLength+common.FileInfoLength:])
 	if err != nil {
