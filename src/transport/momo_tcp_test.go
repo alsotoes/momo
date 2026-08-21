@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"strconv"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -603,6 +604,57 @@ func TestMomoTCPHandshakeTimestampFreshness(t *testing.T) {
 			}
 			if err != nil {
 				t.Fatalf("handshake failed: %v", err)
+			}
+		})
+	}
+}
+
+// TestMomoTCPReceiveMetadata_RejectsCRLF verifies the ReceiveMetadata CRLF
+// injection guard (PR #889 / sentinel HTTP/log-forging fix): a hash or name
+// containing \r or \n must be rejected with EBADMSG instead of being accepted
+// and forwarded to downstream consumers/logs.
+func TestMomoTCPReceiveMetadata_RejectsCRLF(t *testing.T) {
+	tests := []struct {
+		name     string
+		hash     string
+		fileName string
+		wantErr  bool
+	}{
+		{name: "valid metadata accepted", hash: strings.Repeat("a", 64), fileName: "ok.txt"},
+		{name: "cr in hash rejected", hash: strings.Repeat("a", 32) + "\r", fileName: "ok.txt", wantErr: true},
+		{name: "lf in hash rejected", hash: strings.Repeat("b", 32) + "\n", fileName: "ok.txt", wantErr: true},
+		{name: "crlf in name rejected", hash: strings.Repeat("c", 64), fileName: "bad\r\n.txt", wantErr: true},
+		{name: "lf in name rejected", hash: strings.Repeat("d", 64), fileName: "bad\n.txt", wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var buffer [64 + common.FileInfoLength + common.FileInfoLength]byte
+			copy(buffer[0:64], common.PadString(tc.hash, 64))
+			copy(buffer[64:64+common.FileInfoLength], common.PadString(tc.fileName, common.FileInfoLength))
+			common.WritePaddedInt(buffer[64+common.FileInfoLength:], 42, common.FileInfoLength)
+
+			clientConn, serverConn := net.Pipe()
+			defer clientConn.Close()
+			defer serverConn.Close()
+
+			go func() {
+				clientConn.Write(buffer[:])
+			}()
+
+			comm := NewMomoTCPCommunicator(serverConn)
+			_, err := comm.ReceiveMetadata()
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("expected ReceiveMetadata to reject CRLF metadata")
+				}
+				if !errors.Is(err, syscall.EBADMSG) {
+					t.Fatalf("expected EBADMSG, got: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ReceiveMetadata failed: %v", err)
 			}
 		})
 	}
