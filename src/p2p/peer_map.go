@@ -1,24 +1,21 @@
 package p2p
 
 import (
-	"math/rand"
+	"math/rand/v2"
 	"sort"
 	"sync"
-	"time"
 )
 
 // PeerMap is a thread-safe map of peers keyed by peer ID.
 type PeerMap struct {
 	mu    sync.RWMutex
 	peers map[int32]*Peer
-	rng   *rand.Rand
 }
 
 // NewPeerMap creates a new empty PeerMap.
 func NewPeerMap() *PeerMap {
 	return &PeerMap{
 		peers: make(map[int32]*Peer),
-		rng:   rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
 }
 
@@ -132,7 +129,7 @@ func (m *PeerMap) RandomPeers(k int, excludeID int32) []*Peer {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.rng.Shuffle(len(alive), func(i, j int) {
+	rand.Shuffle(len(alive), func(i, j int) {
 		alive[i], alive[j] = alive[j], alive[i]
 	})
 
