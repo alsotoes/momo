@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -592,5 +593,68 @@ func TestCASStore_NamespaceCollision(t *testing.T) {
 	}
 	if hashB2 != hashB {
 		t.Errorf("Expected hash %s for %s, got %s", hashB, keyB, hashB2)
+	}
+}
+
+// countingBlobStore wraps a BlobStore and counts GetBlob calls so tests can
+// assert whether a content stream was opened.
+type countingBlobStore struct {
+	BlobStore
+	getBlobCalls atomic.Int32
+}
+
+func (c *countingBlobStore) GetBlob(hash string) (io.ReadCloser, error) {
+	c.getBlobCalls.Add(1)
+	return c.BlobStore.GetBlob(hash)
+}
+
+// TestCASStore_GetMetaDoesNotOpenBlob verifies issue #660: GetMeta returns
+// metadata without opening the content stream, while Get still does.
+func TestCASStore_GetMetaDoesNotOpenBlob(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	tmpDir, err := os.MkdirTemp("", "momo-getmeta-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	base, err := NewLocalBlobStore(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to create local blob store: %v", err)
+	}
+	defer base.Close()
+
+	counting := &countingBlobStore{BlobStore: base}
+	store, err := newCASStore(tmpDir, counting)
+	if err != nil {
+		t.Fatalf("Failed to create CASStore: %v", err)
+	}
+	defer store.Close()
+
+	hash := "1234567890abcdef1234567890abcdef"
+	if err := store.Put("meta.txt", hash, 3, "", bytes.NewReader([]byte("abc"))); err != nil {
+		t.Fatalf("Put failed: %v", err)
+	}
+	counting.getBlobCalls.Store(0)
+
+	meta, err := store.GetMeta("meta.txt")
+	if err != nil {
+		t.Fatalf("GetMeta failed: %v", err)
+	}
+	if meta.Name != "meta.txt" || meta.Hash != hash || meta.Size != 3 {
+		t.Fatalf("GetMeta returned unexpected metadata: %+v", meta)
+	}
+	if calls := counting.getBlobCalls.Load(); calls != 0 {
+		t.Fatalf("GetMeta opened the content stream (%d GetBlob calls), want 0", calls)
+	}
+
+	// Sanity: Get still opens the content stream.
+	rc, _, err := store.Get("meta.txt")
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	rc.Close()
+	if calls := counting.getBlobCalls.Load(); calls != 1 {
+		t.Fatalf("Get should open the content stream once, got %d GetBlob calls", calls)
 	}
 }

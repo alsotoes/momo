@@ -69,6 +69,11 @@ type Store interface {
 	io.Closer
 	Put(name string, hash string, size int64, remotePath string, content io.Reader) error
 	Get(name string) (io.ReadCloser, common.FileMetadata, error)
+	// GetMeta returns file metadata without opening the content stream. Query
+	// paths that only need metadata (e.g. scatter-gather QueryGet) must use this
+	// to avoid an unnecessary stream open on large blobs or remote S3 backends
+	// (issue #660).
+	GetMeta(name string) (common.FileMetadata, error)
 	Has(hash string) (bool, error)
 	GetHashForName(name string) (string, error)
 	Delete(name string) error
@@ -335,6 +340,73 @@ func (s *CASStore) Get(name string) (rc io.ReadCloser, meta common.FileMetadata,
 	}
 
 	return f, common.FileMetadata{Name: name, Hash: hash, Size: size, RemotePath: remotePath, ModTime: modTime}, nil
+}
+
+// GetMeta returns only the metadata for name without opening the content
+// stream (issue #660). Query paths that only need metadata use this to avoid an
+// unnecessary blob open on large objects or remote S3 backends.
+func (s *CASStore) GetMeta(name string) (meta common.FileMetadata, err error) {
+	// 🛡️ Zero-Crash: Recover from any unexpected panics during metadata parsing.
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in CASStore.GetMeta for %s: %v", name, r)
+			err = fmt.Errorf("internal storage panic: %w", syscall.EIO)
+		}
+	}()
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var hash string
+	err = s.db.View(func(tx *bbolt.Tx) error {
+		// Check tombstone first — deleted names should appear as not found.
+		if ts := tx.Bucket(bucketTombstones).Get([]byte(name)); ts != nil {
+			return syscall.ENOENT
+		}
+		h := tx.Bucket(bucketNamespace).Get([]byte(name))
+		if h == nil {
+			return syscall.ENOENT
+		}
+		hash = string(h)
+		return nil
+	})
+	if err != nil {
+		return common.FileMetadata{}, err
+	}
+
+	// Read metadata from DB in a single View (size, remotePath, modTime).
+	var size int64
+	var remotePath string
+	var modTime int64
+	err = s.db.View(func(tx *bbolt.Tx) error {
+		val := tx.Bucket(bucketObjects).Get([]byte(hash))
+		if val == nil {
+			return fmt.Errorf("metadata missing for hash %s: %w", hash, syscall.ENOENT)
+		}
+
+		decoded, err := decodeObjectMeta(val)
+		if err != nil {
+			return err
+		}
+		size = decoded.Size
+		if size < 0 {
+			return fmt.Errorf("invalid size %d for hash %s: %w", size, hash, syscall.EBADMSG)
+		}
+
+		if p := tx.Bucket(bucketPaths).Get([]byte(name)); p != nil {
+			remotePath = string(p)
+		}
+
+		if mt := tx.Bucket(bucketModTimes).Get([]byte(name)); len(mt) >= 8 {
+			modTime = int64(binary.BigEndian.Uint64(mt[:8]))
+		}
+		return nil
+	})
+	if err != nil {
+		return common.FileMetadata{}, err
+	}
+
+	return common.FileMetadata{Name: name, Hash: hash, Size: size, RemotePath: remotePath, ModTime: modTime}, nil
 }
 
 // PutS3Meta persists optional S3 object headers (Content-Type, x-amz-meta-*,

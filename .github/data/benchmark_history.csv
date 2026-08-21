@@ -3916,3 +3916,14 @@ a7dbb734,BenchmarkSanitizeLog/Unsafe-8,643.30,704.00,1.00
 328c8f79,BenchmarkPadString-8,39.28,64.00,1.00
 328c8f79,BenchmarkSanitizeLog/Safe-8,212.00,0.00,0.00
 328c8f79,BenchmarkSanitizeLog/Unsafe-8,643.40,704.00,1.00
+ceb7e432,BenchmarkAWSChunkedReaderSigned-8,528932.00,125.84,11281.00
+ceb7e432,BenchmarkAWSChunkedReaderUnsigned-8,437150.00,152.26,78557.00
+ceb7e432,BenchmarkCheckMetricsAndSwap-8,8.96,0.00,0.00
+ceb7e432,BenchmarkCrushOptimized-8,368.80,0.00,0.00
+ceb7e432,BenchmarkCrushOriginal-8,430.70,164.00,3.00
+ceb7e432,BenchmarkIndexDirectTracking-8,0.48,0.00,0.00
+ceb7e432,BenchmarkIndexSearch-8,2.98,0.00,0.00
+ceb7e432,BenchmarkLoadGlobalConfig-8,8630.00,1848.00,54.00
+ceb7e432,BenchmarkPadString-8,42.33,64.00,1.00
+ceb7e432,BenchmarkSanitizeLog/Safe-8,221.10,0.00,0.00
+ceb7e432,BenchmarkSanitizeLog/Unsafe-8,707.40,704.00,1.00
