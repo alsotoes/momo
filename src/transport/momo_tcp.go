@@ -21,6 +21,26 @@ import (
 
 const hashLength = 64
 
+// momoHandshakeMaxSkew bounds how far a plaintext handshake timestamp may
+// deviate from the server clock (replay protection, issue #657). It matches
+// the SigV4 skew window so a multi-hop peer-forwarded chain (which relays the
+// origin timestamp unchanged) is never rejected by normal intra-cluster clock
+// drift, while stale/forged replayed handshakes are dropped.
+const momoHandshakeMaxSkew = 15 * time.Minute
+
+// checkHandshakeTimestampFresh reports whether a plaintext handshake timestamp
+// (UnixNano, wire format) is within the acceptable skew of the server clock.
+// Zero/negative values (garbage or the fixed DummyEpoch sentinel) are stale and
+// rejected.
+func checkHandshakeTimestampFresh(ts int64) bool {
+	now := time.Now().UnixNano()
+	d := time.Duration(ts - now)
+	if d < 0 {
+		d = -d
+	}
+	return d <= momoHandshakeMaxSkew
+}
+
 // MomoTCPCommunicator implements the Communicator interface for the legacy Momo TCP protocol.
 type MomoTCPCommunicator struct {
 	*common.IdleTimeoutConn
@@ -312,6 +332,14 @@ func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (request
 		timestamp, err = common.SafeParseInt(bufferTimestamp)
 		if err != nil {
 			return 0, 0, fmt.Errorf("failed to parse timestamp: %v: %w", err, syscall.EBADMSG)
+		}
+		// 🛡️ issue #657: reject replayed handshakes carrying a stale
+		// timestamp. The plaintext token+timestamp frame has no other
+		// anti-replay mechanism (the challenge-response path already uses a
+		// random per-connection challenge).
+		if !checkHandshakeTimestampFresh(timestamp) {
+			log.Printf("AUDIT: Handshake rejected stale timestamp from %s (freshness)", m.RemoteAddr())
+			return 0, 0, fmt.Errorf("handshake timestamp is not fresh: %w", syscall.EACCES)
 		}
 
 		if requestedModeByte == 'L' || requestedModeByte == 'D' || requestedModeByte == 'G' || requestedModeByte == 'O' {

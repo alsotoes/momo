@@ -107,7 +107,7 @@ func Run() {
 		}
 		var wg sync.WaitGroup
 		wg.Add(1)
-		client.Connect(&wg, cfg, *filePathPtr, *remotePathPtr, serverId, common.DummyEpoch, 0, cfg.Global.ReplicationFactor)
+		client.Connect(&wg, cfg, *filePathPtr, *remotePathPtr, serverId, time.Now().UnixNano(), 0, cfg.Global.ReplicationFactor)
 		wg.Wait()
 	case "server":
 		if err := runServer(context.Background(), cfg, *serverIdPtr); err != nil {

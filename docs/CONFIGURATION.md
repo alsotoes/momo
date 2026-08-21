@@ -17,7 +17,7 @@ The configuration file uses a standard INI-style format. The parser is flexible 
 This section contains cluster-wide settings that affect all daemons.
 
 -   **`auth_token`**
-    -   **Description:** A shared secret token used for authentication between clients and servers. All nodes in the cluster must share the same token. For S3-compatible protocols, this token is used as the AWS access key ID unless `s3_server_access_key`/`s3_server_secret_key` are configured (issue #656). Tokens longer than 64 bytes are rejected with `EINVAL` at startup.
+    -   **Description:** A shared secret token used for authentication between clients and servers. All nodes in the cluster must share the same token. For S3-compatible protocols, this token is used as the AWS access key ID unless `s3_server_access_key`/`s3_server_secret_key` are configured (issue #656). Tokens longer than 64 bytes are rejected with `EINVAL` at startup. On the plaintext (non-challenge-response) native handshake, the client sends a UnixNano timestamp that the server validates within ±15 minutes to block replayed handshakes (issue #657).
     -   **Type:** String (exactly 64 bytes when null-padded; max 64 bytes)
     -   **Default:** None (required)
     -   **Example:** `a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6` <!-- notsecret -->

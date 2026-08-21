@@ -331,7 +331,7 @@ func runNativeTCPTest(t *testing.T, requestedMode int, clientFn func(net.Conn), 
 	}
 	var handshakeBuf [common.AuthTokenLength + common.TimestampLength + 1]byte
 	copy(handshakeBuf[0:common.AuthTokenLength], common.PadString(tokenToSend, common.AuthTokenLength))
-	copy(handshakeBuf[common.AuthTokenLength:], common.PadString("1557906926566451195", common.TimestampLength))
+	copy(handshakeBuf[common.AuthTokenLength:], common.PadString(strconv.FormatInt(time.Now().UnixNano(), 10), common.TimestampLength))
 	handshakeBuf[common.AuthTokenLength+common.TimestampLength] = byte(requestedMode)
 
 	if _, err := conn.Write(handshakeBuf[:]); err != nil {
@@ -551,5 +551,59 @@ func TestMomoTCPCommunicator_SendMetadataCRLF(t *testing.T) {
 	}
 	if !errors.Is(err, syscall.EBADMSG) {
 		t.Errorf("Expected EBADMSG error, got: %v", err)
+	}
+}
+
+// TestMomoTCPHandshakeTimestampFreshness verifies issue #657: the plaintext
+// handshake path rejects a stale timestamp (replay) and accepts a fresh one.
+func TestMomoTCPHandshakeTimestampFreshness(t *testing.T) {
+	tests := []struct {
+		name      string
+		timestamp int64
+		wantErr   bool
+	}{
+		{name: "fresh accepted", timestamp: time.Now().UnixNano()},
+		{name: "stale rejected", timestamp: time.Now().Add(-time.Hour).UnixNano(), wantErr: true},
+		{name: "future rejected", timestamp: time.Now().Add(time.Hour).UnixNano(), wantErr: true},
+		{name: "zero rejected", timestamp: 0, wantErr: true},
+	}
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
+
+			var handshakeBuf [common.AuthTokenLength + common.TimestampLength + 1]byte
+			copy(handshakeBuf[0:common.AuthTokenLength], common.PadString(authToken, common.AuthTokenLength))
+			copy(handshakeBuf[common.AuthTokenLength:], common.PadString(strconv.FormatInt(tc.timestamp, 10), common.TimestampLength))
+			handshakeBuf[common.AuthTokenLength+common.TimestampLength] = '0'
+
+			clientConn, serverConn := net.Pipe()
+			defer clientConn.Close()
+			defer serverConn.Close()
+
+			go func() {
+				clientConn.Write(handshakeBuf[:])
+				buf := make([]byte, 1024)
+				// Read until the mock server stops writing (single SendReplicationMode byte).
+				_, _ = clientConn.Read(buf)
+			}()
+
+			comm := NewMomoTCPCommunicator(serverConn)
+			_, _, err := comm.HandshakeServer(expectedAuthToken)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("expected handshake to be rejected")
+				}
+				if !errors.Is(err, syscall.EACCES) {
+					t.Fatalf("expected EACCES, got: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("handshake failed: %v", err)
+			}
+		})
 	}
 }

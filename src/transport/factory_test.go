@@ -267,7 +267,7 @@ func TestMomoQUICCommunicator_Metadata_And_Payload(t *testing.T) {
 	}
 	defer clientComm.Close()
 
-	if _, err := clientComm.HandshakeClient(authToken, 0, 0); err != nil {
+	if _, err := clientComm.HandshakeClient(authToken, time.Now().UnixNano(), 0); err != nil {
 		t.Fatalf("Client handshake failed: %v", err)
 	}
 
@@ -364,7 +364,7 @@ func TestMomoQUICCommunicator_RejectsEmptyHash(t *testing.T) {
 	}
 	defer clientComm.Close()
 
-	if _, err := clientComm.HandshakeClient(authToken, 0, 0); err != nil {
+	if _, err := clientComm.HandshakeClient(authToken, time.Now().UnixNano(), 0); err != nil {
 		t.Fatalf("Client handshake failed: %v", err)
 	}
 
@@ -485,7 +485,7 @@ func runNativeQUICTest(t *testing.T, requestedMode int, clientFn func(Communicat
 	}
 	var handshakeBuf [common.AuthTokenLength + common.TimestampLength + 1]byte
 	copy(handshakeBuf[0:common.AuthTokenLength], common.PadString(tokenToSend, common.AuthTokenLength))
-	copy(handshakeBuf[common.AuthTokenLength:], common.PadString("1557906926566451195", common.TimestampLength))
+	copy(handshakeBuf[common.AuthTokenLength:], common.PadString(strconv.FormatInt(time.Now().UnixNano(), 10), common.TimestampLength))
 	handshakeBuf[common.AuthTokenLength+common.TimestampLength] = byte(requestedMode)
 
 	if _, err := clientComm.Write(handshakeBuf[:]); err != nil {

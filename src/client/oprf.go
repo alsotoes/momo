@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"syscall"
+	"time"
 
 	"github.com/alsotoes/momo/src/common"
 	momocrypto "github.com/alsotoes/momo/src/crypto"
@@ -35,7 +36,7 @@ func deriveOPRFContentKey(cfg common.Configuration, tagHex string, serverId int)
 	}
 	defer comm.Close()
 
-	results, err := comm.SendOPRFEval(cfg.Global.AuthToken, 0, blinded, threshold)
+	results, err := comm.SendOPRFEval(cfg.Global.AuthToken, time.Now().UnixNano(), blinded, threshold)
 	if err != nil {
 		// Fail closed: no convergent fallback (spec requirement).
 		return nil, fmt.Errorf("oprf: evaluation failed: %w", err)

@@ -60,9 +60,11 @@ func handleConnection(t *testing.T, connection net.Conn, cfg common.Configuratio
 
 	// The rest of the logic from the original Daemon function
 	repState := GetReplicationState()
-	// If it's a direct client connection (timestamp == 0 in this simplified test), use local state.
-	// In the real Daemon, we use common.DummyEpoch.
-	if timestamp == 0 || timestamp == common.DummyEpoch {
+	// Direct (non-peer) client connections use local state, mirroring the real
+	// Daemon's IsPeer() decision (CVE-007). The timestamp-freshness check now
+	// rejects the fixed DummyEpoch sentinel (issue #657), so this simplified
+	// harness must not key primary/secondary off the timestamp value.
+	if !comm.IsPeer() {
 		replicationMode = repState.New
 	}
 
@@ -176,8 +178,7 @@ func TestDaemonLogic(t *testing.T) {
 
 			// Test Execution
 			client.Write([]byte(common.PadString(authToken, common.AuthTokenLength)))
-			// ⚡ Bolt: Use DummyEpoch to signal that we are the primary in this test
-			timestamp := strconv.FormatInt(common.DummyEpoch, 10)
+			timestamp := strconv.FormatInt(time.Now().UnixNano(), 10)
 			client.Write([]byte(timestamp))
 			// ⚡ Bolt: Send the 84th byte (RequestedMode = 0)
 			client.Write([]byte("0"))
