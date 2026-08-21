@@ -139,7 +139,7 @@ type Gossiper struct {
 	rtt          *rttTracker
 	pendingMu    sync.Mutex
 	pendingPings map[uint64]*pendingPing
-	nextPingID   uint64
+	nextPingID   atomic.Uint64
 }
 
 // NewGossiper creates a new Gossiper.
@@ -304,7 +304,7 @@ func (g *Gossiper) sendPing() {
 		return
 	}
 	target := peers[0]
-	pingID = (uint64(g.cfg.LocalID) << 32) | (atomic.AddUint64(&g.nextPingID, 1) & 0xFFFFFFFF)
+	pingID = (uint64(g.cfg.LocalID) << 32) | (g.nextPingID.Add(1) & 0xFFFFFFFF)
 	now := time.Now().UnixNano()
 
 	payload := &PingPayload{
