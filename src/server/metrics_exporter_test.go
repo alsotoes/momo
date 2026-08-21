@@ -62,6 +62,24 @@ func TestMetricsCollector_ZeroValue(t *testing.T) {
 	}
 }
 
+func TestMetricsCollector_HostnameCached(t *testing.T) {
+	mc := NewMetricsCollector()
+
+	if mc.hostname == "" {
+		t.Errorf("Expected cached hostname to be non-empty, got %q", mc.hostname)
+	}
+
+	out1 := captureMetricsOutput(mc)
+	out2 := captureMetricsOutput(mc)
+
+	want := `momo_build_info{hostname="` + mc.hostname + `"} 1`
+	for name, output := range map[string]string{"first": out1, "second": out2} {
+		if !strings.Contains(output, want) {
+			t.Errorf("Expected %s scrape to contain %q, got output:\n%s", name, want, output)
+		}
+	}
+}
+
 func captureMetricsOutput(mc *MetricsCollector) string {
 	var buf strings.Builder
 	mc.writeMetrics(&buf)
