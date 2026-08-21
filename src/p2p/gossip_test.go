@@ -2,7 +2,6 @@ package p2p
 
 import (
 	"net"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -381,8 +380,8 @@ func TestGossiper_PingIDUniquenessAcrossNodes(t *testing.T) {
 	defer g2.Close()
 
 	for i := 0; i < 1000; i++ {
-		id1 := (uint64(g1.cfg.LocalID) << 32) | (atomic.AddUint64(&g1.nextPingID, 1) & 0xFFFFFFFF)
-		id2 := (uint64(g2.cfg.LocalID) << 32) | (atomic.AddUint64(&g2.nextPingID, 1) & 0xFFFFFFFF)
+		id1 := (uint64(g1.cfg.LocalID) << 32) | (g1.nextPingID.Add(1) & 0xFFFFFFFF)
+		id2 := (uint64(g2.cfg.LocalID) << 32) | (g2.nextPingID.Add(1) & 0xFFFFFFFF)
 		if id1 == id2 {
 			t.Fatalf("ping ID collision between node 1 and node 2: %d (iteration %d)", id1, i)
 		}
