@@ -25,12 +25,21 @@ type MetricsCollector struct {
 	bytesUploaded     atomic.Uint64
 	bytesDownloaded   atomic.Uint64
 	startTime         time.Time
+	hostname          string
 }
 
 // NewMetricsCollector creates a new MetricsCollector.
+// The process hostname is resolved once at construction and cached, so it is
+// not re-fetched via a syscall on every /metrics scrape.
 func NewMetricsCollector() *MetricsCollector {
+	hostname, err := os.Hostname()
+	if err != nil {
+		hostname = "unknown"
+		log.Printf("AUDIT: os.Hostname() failed: %v", err)
+	}
 	return &MetricsCollector{
 		startTime: time.Now(),
+		hostname:  hostname,
 	}
 }
 
@@ -106,14 +115,9 @@ func (m *MetricsCollector) writeMetrics(w io.Writer) {
 	fmt.Fprintf(w, "# TYPE momo_gc_runs_total counter\n")
 	fmt.Fprintf(w, "momo_gc_runs_total %d\n", memStats.NumGC)
 
-	hostname, err := os.Hostname()
-	if err != nil {
-		hostname = "unknown"
-		log.Printf("AUDIT: os.Hostname() failed: %v", err)
-	}
 	fmt.Fprintf(w, "# HELP momo_build_info Build information.\n")
 	fmt.Fprintf(w, "# TYPE momo_build_info gauge\n")
-	fmt.Fprintf(w, "momo_build_info{hostname=\"%s\"} 1\n", hostname)
+	fmt.Fprintf(w, "momo_build_info{hostname=\"%s\"} 1\n", m.hostname)
 }
 
 func (m *MetricsCollector) handler(w http.ResponseWriter, r *http.Request) {
