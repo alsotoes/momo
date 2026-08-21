@@ -548,6 +548,8 @@ func loadStorageConfig(section *ini.Section) (ConfigurationStorage, error) {
 	cfg.S3Bucket = section.Key("s3_bucket").String()
 	cfg.S3AccessKey = section.Key("s3_access_key").String()
 	cfg.S3SecretKey = section.Key("s3_secret_key").String()
+	cfg.S3ServerAccessKey = section.Key("s3_server_access_key").String()
+	cfg.S3ServerSecretKey = section.Key("s3_server_secret_key").String()
 	cfg.S3PathStyle, err = section.Key("s3_path_style").Bool()
 	if err != nil {
 		cfg.S3PathStyle = true
@@ -559,6 +561,18 @@ func loadStorageConfig(section *ini.Section) (ConfigurationStorage, error) {
 	}
 
 	cfg.RawDevicePath = section.Key("raw_device_path").String()
+
+	// issue #656: dedicated S3 gateway SigV4 credentials must be set as a pair
+	// and stay within the wire field bounds (PadString rejects >64 bytes).
+	if (cfg.S3ServerAccessKey == "") != (cfg.S3ServerSecretKey == "") {
+		return ConfigurationStorage{}, fmt.Errorf("'s3_server_access_key' and 's3_server_secret_key' must be configured together: %w", syscall.EINVAL)
+	}
+	if len(cfg.S3ServerAccessKey) > AuthTokenLength {
+		return ConfigurationStorage{}, fmt.Errorf("'s3_server_access_key' length exceeds maximum allowed length of %d bytes", AuthTokenLength)
+	}
+	if len(cfg.S3ServerSecretKey) > AuthTokenLength {
+		return ConfigurationStorage{}, fmt.Errorf("'s3_server_secret_key' length exceeds maximum allowed length of %d bytes", AuthTokenLength)
+	}
 
 	return cfg, nil
 }

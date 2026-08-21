@@ -249,6 +249,13 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 				bcComm.SetConfiguredBucket(cfg.Storage.S3Bucket)
 			}
 
+			// Inject dedicated S3 gateway SigV4 credentials (issue #656). When
+			// configured, inbound SigV4 requests must present these access/secret
+			// keys instead of the momo auth token.
+			if scComm, ok := comm.(interface{ SetSigV4GatewayCredentials(string, string) }); ok {
+				scComm.SetSigV4GatewayCredentials(cfg.Storage.S3ServerAccessKey, cfg.Storage.S3ServerSecretKey)
+			}
+
 			// Inject metrics hook for download/delete/error instrumentation
 			if mhComm, ok := comm.(interface{ SetMetricsHook(transport.MetricsHook) }); ok {
 				mhComm.SetMetricsHook(metricsCollector)

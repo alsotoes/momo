@@ -195,6 +195,53 @@ func TestGetConfig_StorageBackends_Valid(t *testing.T) {
 	})
 }
 
+// TestGetConfig_S3GatewayCredentials covers the issue #656 dedicated S3 gateway
+// SigV4 credential pair validation and parsing.
+func TestGetConfig_S3GatewayCredentials(t *testing.T) {
+	mk := func(t *testing.T, storage string) string {
+		t.Helper()
+		tmpDir := t.TempDir()
+		tmpfile := filepath.Join(tmpDir, "momo.conf")
+		if err := os.WriteFile(tmpfile, []byte(validConfig+"\n[storage]\n"+storage), 0666); err != nil {
+			t.Fatalf("Failed to write config: %v", err)
+		}
+		return tmpfile
+	}
+
+	t.Run("pair parsed", func(t *testing.T) {
+		cfg, err := GetConfig(mk(t, "backend = local\ns3_server_access_key = AKIAIOSFODNN7EXAMPLE\ns3_server_secret_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\n"))
+		if err != nil {
+			t.Fatalf("GetConfig failed: %v", err)
+		}
+		if cfg.Storage.S3ServerAccessKey != "AKIAIOSFODNN7EXAMPLE" {
+			t.Errorf("unexpected S3ServerAccessKey %q", cfg.Storage.S3ServerAccessKey)
+		}
+		if cfg.Storage.S3ServerSecretKey != "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY" {
+			t.Errorf("unexpected S3ServerSecretKey %q", cfg.Storage.S3ServerSecretKey)
+		}
+	})
+
+	t.Run("single key rejected", func(t *testing.T) {
+		_, err := GetConfig(mk(t, "backend = local\ns3_server_access_key = AKIAIOSFODNN7EXAMPLE\n"))
+		if err == nil {
+			t.Fatal("expected error when only access key is set")
+		}
+		if !strings.Contains(err.Error(), "must be configured together") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("overlong key rejected", func(t *testing.T) {
+		_, err := GetConfig(mk(t, "backend = local\ns3_server_access_key = AKIAIOSFODNN7EXAMPLE\ns3_server_secret_key = "+strings.Repeat("k", 65)+"\n"))
+		if err == nil {
+			t.Fatal("expected error for overlong secret key")
+		}
+		if !strings.Contains(err.Error(), "s3_server_secret_key") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
 // TestLoadDaemons_MissingFieldsDeterministic ensures that when multiple required
 // daemon fields are missing, the reported error is deterministic across runs
 // (map iteration order must not influence the chosen field, issue #644).

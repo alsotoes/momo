@@ -132,6 +132,15 @@ type S3Communicator struct {
 	// sigV4 holds the per-chunk verification context derived during SigV4
 	// verification for signed streaming PUTs (issue #773).
 	sigV4 *streamingSigningCtx
+
+	// sigV4AccessKey and sigV4SecretKey are the dedicated S3 gateway SigV4
+	// credentials (issue #656). When both are non-empty, inbound SigV4 requests
+	// must present sigV4AccessKey and be signed with sigV4SecretKey, decoupling
+	// gateway credentials from the momo auth token. When empty, the legacy
+	// single-token mode applies (access key and secret both derived from the
+	// global auth token).
+	sigV4AccessKey string
+	sigV4SecretKey string
 }
 
 func NewS3Communicator(conn net.Conn) *S3Communicator {
@@ -146,6 +155,17 @@ func NewS3Communicator(conn net.Conn) *S3Communicator {
 
 func (m *S3Communicator) SetStore(store storage.Store) {
 	m.store = store
+}
+
+// SetSigV4GatewayCredentials sets the dedicated SigV4 access/secret key pair
+// this node's S3 gateway accepts from inbound external clients (issue #656).
+// When both are non-empty the gateway requires inbound SigV4 requests to
+// present the access key and be signed with the secret key; the momo auth
+// token is then never used as either. Calling with empty values restores the
+// legacy single-token mode (access key and secret derived from the auth token).
+func (m *S3Communicator) SetSigV4GatewayCredentials(accessKey, secretKey string) {
+	m.sigV4AccessKey = accessKey
+	m.sigV4SecretKey = secretKey
 }
 
 // SetConfiguredBucket sets the single bucket name exposed by the S3 gateway for
@@ -492,19 +512,39 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		return 0, 0, fmt.Errorf("incomplete presigned auth query parameters: %w", syscall.EBADMSG)
 	}
 
-	tokenBuf := []byte(common.PadString(token, common.AuthTokenLength))
-	if subtle.ConstantTimeCompare(tokenBuf, expectedAuthToken) == 1 {
+	// issue #656: when dedicated S3 gateway SigV4 credentials are configured,
+	// inbound SigV4 requests must present the gateway access key and be signed
+	// with the gateway secret key. Otherwise the legacy single-token mode holds
+	// (access key and secret both derived from the momo auth token).
+	sigV4GatewayCreds := isSigV4 && m.sigV4AccessKey != ""
+
+	if sigV4GatewayCreds {
+		want := []byte(common.PadString(common.TrimNullBytesString([]byte(m.sigV4AccessKey)), common.AuthTokenLength))
+		if subtle.ConstantTimeCompare([]byte(common.PadString(token, common.AuthTokenLength)), want) != 1 {
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			writeS3Error(m.conn, http.StatusForbidden, "AccessDenied", "Access Denied.", "")
+			return 0, 0, syscall.EACCES
+		}
+		// External S3 client using gateway SigV4 credentials is never a peer.
 		m.isPeer = false
-	} else if peerToken := common.DerivePeerToken(expectedAuthToken); subtle.ConstantTimeCompare(tokenBuf, peerToken) == 1 {
-		m.isPeer = true
 	} else {
-		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		writeS3Error(m.conn, http.StatusForbidden, "AccessDenied", "Access Denied.", "")
-		return 0, 0, syscall.EACCES
+		tokenBuf := []byte(common.PadString(token, common.AuthTokenLength))
+		if subtle.ConstantTimeCompare(tokenBuf, expectedAuthToken) == 1 {
+			m.isPeer = false
+		} else if peerToken := common.DerivePeerToken(expectedAuthToken); subtle.ConstantTimeCompare(tokenBuf, peerToken) == 1 {
+			m.isPeer = true
+		} else {
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			writeS3Error(m.conn, http.StatusForbidden, "AccessDenied", "Access Denied.", "")
+			return 0, 0, syscall.EACCES
+		}
 	}
 
 	if isSigV4 {
 		secretKey := common.TrimNullBytesString(expectedAuthToken)
+		if sigV4GatewayCreds {
+			secretKey = common.TrimNullBytesString([]byte(m.sigV4SecretKey))
+		}
 		if !verifySigV4Signature(req, authHeader, secretKey) {
 			log.Printf("AUDIT: SigV4 signature verification failed from %s", m.conn.RemoteAddr())
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))

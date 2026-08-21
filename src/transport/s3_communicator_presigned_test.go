@@ -250,3 +250,118 @@ func TestS3Communicator_PresignedDELETE(t *testing.T) {
 		t.Errorf("expected 204 No Content, got: %s", respStr)
 	}
 }
+
+// buildPresignedGatewayRequest builds a presigned GET signed with a secretKey
+// while presenting a distinct accessKey in X-Amz-Credential (issue #656).
+func buildPresignedGatewayRequest(req *http.Request, payloadHash, accessKey, secretKey string) string {
+	now := time.Now().UTC()
+	amzDate := now.Format("20060102T150405Z")
+	dateStamp := now.Format("20060102")
+	region := "us-east-1"
+
+	signedHeaders := "host"
+	presign := &url.Values{}
+	presign.Set("X-Amz-Algorithm", "AWS4-HMAC-SHA256")
+	presign.Set("X-Amz-Credential", accessKey+"/"+dateStamp+"/"+region+"/s3/aws4_request")
+	presign.Set("X-Amz-Date", amzDate)
+	presign.Set("X-Amz-Expires", "3600")
+	presign.Set("X-Amz-SignedHeaders", signedHeaders)
+
+	req.URL = &url.URL{Scheme: "http", Host: "127.0.0.1:4440", Path: req.URL.Path, RawQuery: presign.Encode()}
+	req.Host = "127.0.0.1:4440"
+
+	canonicalRequest, err := buildCanonicalRequest(req, signedHeaders, payloadHash)
+	if err != nil {
+		panic(err)
+	}
+	stringToSign := buildStringToSign(canonicalRequest, amzDate, dateStamp, region)
+	signingKey := deriveSigningKey(secretKey, dateStamp, region)
+	q := req.URL.Query()
+	q.Set("X-Amz-Signature", computeSignature(signingKey, stringToSign))
+	req.URL.RawQuery = q.Encode()
+
+	var sb strings.Builder
+	sb.WriteString(req.Method + " " + req.URL.RequestURI() + " HTTP/1.1\r\n")
+	sb.WriteString("Host: " + req.Host + "\r\n")
+	if payloadHash != "" {
+		sb.WriteString("X-Amz-Content-Sha256: " + payloadHash + "\r\n")
+	}
+	sb.WriteString("\r\n")
+	return sb.String()
+}
+
+func TestS3Communicator_PresignedGET_GatewayCredentials(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	token := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	accessKey := "AKIAIOSFODNN7EXAMPLE"
+	secretKey := "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+	expected := []byte(common.PadString(token, common.AuthTokenLength))
+
+	req := &http.Request{Method: "GET", URL: &url.URL{Path: "/bucket/hello.txt"}}
+	rawReq := buildPresignedGatewayRequest(req, emptyStringSHA256, accessKey, secretKey)
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	go func() {
+		clientConn.Write([]byte(rawReq))
+		buf := make([]byte, 4096)
+		for {
+			if _, err := clientConn.Read(buf); err != nil {
+				return
+			}
+		}
+	}()
+
+	mock := &mockStore{
+		getFunc: func(name string) (io.ReadCloser, common.FileMetadata, error) {
+			return io.NopCloser(bytes.NewReader([]byte("data"))), common.FileMetadata{Name: "hello.txt", Hash: "hash1", Size: 4}, nil
+		},
+	}
+
+	comm := NewS3Communicator(serverConn)
+	comm.SetStore(mock)
+	comm.SetSigV4GatewayCredentials(accessKey, secretKey)
+	if _, _, err := comm.HandshakeServer(expected); err != ErrRequestHandled {
+		t.Fatalf("expected ErrRequestHandled for presigned GET with gateway creds, got: %v", err)
+	}
+}
+
+func TestS3Communicator_PresignedGET_GatewayCredentialsWrongSecret(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	token := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
+	accessKey := "AKIAIOSFODNN7EXAMPLE"
+	secretKey := "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+	expected := []byte(common.PadString(token, common.AuthTokenLength))
+
+	// Signed with the momo auth token secret, but gateway expects secretKey.
+	req := &http.Request{Method: "GET", URL: &url.URL{Path: "/bucket/hello.txt"}}
+	rawReq := buildPresignedGatewayRequest(req, emptyStringSHA256, accessKey, token)
+
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+
+	go func() {
+		clientConn.Write([]byte(rawReq))
+		buf := make([]byte, 4096)
+		for {
+			if _, err := clientConn.Read(buf); err != nil {
+				return
+			}
+		}
+	}()
+
+	comm := NewS3Communicator(serverConn)
+	comm.SetSigV4GatewayCredentials(accessKey, secretKey)
+	_, _, err := comm.HandshakeServer(expected)
+	if err == nil {
+		t.Fatal("presigned GET with wrong gateway secret should be rejected")
+	}
+	if !errors.Is(err, syscall.EACCES) {
+		t.Fatalf("Expected EACCES, got: %v", err)
+	}
+}

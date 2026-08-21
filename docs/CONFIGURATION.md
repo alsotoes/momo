@@ -17,7 +17,7 @@ The configuration file uses a standard INI-style format. The parser is flexible 
 This section contains cluster-wide settings that affect all daemons.
 
 -   **`auth_token`**
-    -   **Description:** A shared secret token used for authentication between clients and servers. All nodes in the cluster must share the same token. For S3-compatible protocols, this token is used as the AWS access key ID. Tokens longer than 64 bytes are rejected with `EINVAL` at startup.
+    -   **Description:** A shared secret token used for authentication between clients and servers. All nodes in the cluster must share the same token. For S3-compatible protocols, this token is used as the AWS access key ID unless `s3_server_access_key`/`s3_server_secret_key` are configured (issue #656). Tokens longer than 64 bytes are rejected with `EINVAL` at startup.
     -   **Type:** String (exactly 64 bytes when null-padded; max 64 bytes)
     -   **Default:** None (required)
     -   **Example:** `a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6` <!-- notsecret -->
@@ -335,6 +335,16 @@ This section controls the Content-Addressable Storage (CAS) engine, including ba
 
 -   **`s3_secret_key`**
     -   **Description:** S3 secret access key. Only used when `backend = s3`.
+    -   **Type:** String
+    -   **Default:** (none)
+
+-   **`s3_server_access_key`**
+    -   **Description:** SigV4 access key ID accepted by this node's S3 gateway for inbound external clients (issue #656). When set, inbound SigV4 requests must present this access key and be signed with `s3_server_secret_key`, decoupling gateway credentials from the momo auth token. Must be configured together with `s3_server_secret_key`. When unset, the legacy single-token mode applies (access key and secret both derived from the global auth token).
+    -   **Type:** String
+    -   **Default:** (none)
+
+-   **`s3_server_secret_key`**
+    -   **Description:** SigV4 secret key used to verify inbound SigV4 signatures against this node's S3 gateway (issue #656). Only meaningful together with `s3_server_access_key`.
     -   **Type:** String
     -   **Default:** (none)
 
