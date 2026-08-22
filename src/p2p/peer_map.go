@@ -1,6 +1,8 @@
 package p2p
 
 import (
+	crand "crypto/rand"
+	"encoding/binary"
 	"math/rand"
 	"sort"
 	"sync"
@@ -18,8 +20,22 @@ type PeerMap struct {
 func NewPeerMap() *PeerMap {
 	return &PeerMap{
 		peers: make(map[int32]*Peer),
-		rng:   rand.New(rand.NewSource(time.Now().UnixNano())),
+		rng:   newSecureRand(),
 	}
+}
+
+// newSecureRand returns a per-instance rand.Rand seeded from crypto/rand.
+// The prior seed (time.Now().UnixNano()) was predictable; a per-instance RNG
+// seeded securely preserves node-local isolation without shared global state.
+func newSecureRand() *rand.Rand {
+	var seedBytes [8]byte
+	if _, err := crand.Read(seedBytes[:]); err != nil {
+		// crypto/rand almost never fails; fall back to a time-based seed rather
+		// than panic (Zero-Crash Pattern). Still per-instance and mutex-guarded.
+		return rand.New(rand.NewSource(time.Now().UnixNano()))
+	}
+	seed := int64(binary.LittleEndian.Uint64(seedBytes[:]))
+	return rand.New(rand.NewSource(seed))
 }
 
 // Add adds or replaces a peer in the map.

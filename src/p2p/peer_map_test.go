@@ -156,6 +156,22 @@ func TestPeerMap_AliveCount(t *testing.T) {
 	}
 }
 
+func TestPeerMap_RngInitialized(t *testing.T) {
+	// The per-instance RNG is the concurrency-safe selection source; ensure it
+	// is always constructed (never nil) and distinct per PeerMap instance.
+	a := NewPeerMap()
+	b := NewPeerMap()
+	if a.rng == nil {
+		t.Fatal("expected PeerMap a to have an initialized rng")
+	}
+	if b.rng == nil {
+		t.Fatal("expected PeerMap b to have an initialized rng")
+	}
+	if a.rng == b.rng {
+		t.Fatal("expected independent rng instances per PeerMap")
+	}
+}
+
 func TestPeerMap_RandomPeers(t *testing.T) {
 	m := NewPeerMap()
 	for i := int32(1); i <= 10; i++ {
