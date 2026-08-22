@@ -1,22 +1,41 @@
 package p2p
 
 import (
-	"math/rand/v2"
+	crand "crypto/rand"
+	"encoding/binary"
+	"math/rand"
 	"sort"
 	"sync"
+	"time"
 )
 
 // PeerMap is a thread-safe map of peers keyed by peer ID.
 type PeerMap struct {
 	mu    sync.RWMutex
 	peers map[int32]*Peer
+	rng   *rand.Rand
 }
 
 // NewPeerMap creates a new empty PeerMap.
 func NewPeerMap() *PeerMap {
 	return &PeerMap{
 		peers: make(map[int32]*Peer),
+		rng:   newSecureRand(),
 	}
+}
+
+// newSecureRand returns a per-instance rand.Rand seeded from crypto/rand.
+// The prior seed (time.Now().UnixNano()) was predictable; a per-instance RNG
+// seeded securely preserves node-local isolation without shared global state.
+func newSecureRand() *rand.Rand {
+	var seedBytes [8]byte
+	if _, err := crand.Read(seedBytes[:]); err != nil {
+		// crypto/rand almost never fails; fall back to a time-based seed rather
+		// than panic (Zero-Crash Pattern). Still per-instance and mutex-guarded.
+		return rand.New(rand.NewSource(time.Now().UnixNano()))
+	}
+	seed := int64(binary.LittleEndian.Uint64(seedBytes[:]))
+	return rand.New(rand.NewSource(seed))
 }
 
 // Add adds or replaces a peer in the map.
@@ -129,7 +148,7 @@ func (m *PeerMap) RandomPeers(k int, excludeID int32) []*Peer {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	rand.Shuffle(len(alive), func(i, j int) {
+	m.rng.Shuffle(len(alive), func(i, j int) {
 		alive[i], alive[j] = alive[j], alive[i]
 	})
 
