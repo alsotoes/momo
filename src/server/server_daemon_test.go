@@ -33,6 +33,19 @@ func freeAddr(t *testing.T) string {
 	return addr
 }
 
+// freeAddrListener binds an ephemeral loopback port and returns the still-open
+// listener, reserving its address. Unlike freeAddr, the port is never released,
+// closing the TOCTOU window where another process could rebind it between the
+// free and the caller's own net.Listen (see #846).
+func freeAddrListener(t *testing.T) net.Listener {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to get free listener: %v", err)
+	}
+	return l
+}
+
 func acceptReplication(l net.Listener) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -85,9 +98,20 @@ func TestChangeReplicationModeServerReal(t *testing.T) {
 		goleak.IgnoreAnyFunction("github.com/quic-go/quic-go.(*sendQueue).Run"),
 	)
 
-	addr0 := freeAddr(t)
-	addr1 := freeAddr(t)
-	addr2 := freeAddr(t)
+	addr0 := freeAddr(t) // bound by ChangeReplicationModeServer below
+
+	// Pre-bind the peer change-replication ports with open listeners so the
+	// address is never released between selection and use (eliminates #846's
+	// TOCTOU port-rebind race).
+	l1 := freeAddrListener(t)
+	defer l1.Close()
+	addr1 := l1.Addr().String()
+	go acceptReplication(l1)
+
+	l2 := freeAddrListener(t)
+	defer l2.Close()
+	addr2 := l2.Addr().String()
+	go acceptReplication(l2)
 
 	daemons := []*common.Daemon{
 		{ChangeReplication: addr0},
@@ -105,20 +129,6 @@ func TestChangeReplicationModeServerReal(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
-	l1, err := net.Listen("tcp", addr1)
-	if err != nil {
-		t.Fatalf("failed to listen on %s: %v", addr1, err)
-	}
-	defer l1.Close()
-	go acceptReplication(l1)
-
-	l2, err := net.Listen("tcp", addr2)
-	if err != nil {
-		t.Fatalf("failed to listen on %s: %v", addr2, err)
-	}
-	defer l2.Close()
-	go acceptReplication(l2)
 
 	go ChangeReplicationModeServer(ctx, cfg, 0, time.Now().UnixNano())
 
