@@ -99,6 +99,30 @@ any surface protocol (issue #903), so no client protocol is a lock-in:
   the stored blob and verifies the expected checksums, enabling stale/bit-rot
   detection on demand without taxing the default `Get` hot path.
 
+### 4e. S3 Unsupported Subresource Handling (honest `501`)
+S3 requests carrying a subresource param for a feature momo does not implement
+are **not** silently misrouted. `S3Communicator.HandshakeServer`
+(`src/transport/s3_communicator.go`) intercepts a known-but-unsupported
+subresource set at the dispatch root — before any store/method routing — and
+returns a clean S3-compliant `501 NotImplemented` (bounded write,
+store-independent). Two sets are tracked separately, following the honest
+reject-and-document posture (same philosophy as §4c):
+
+- **Bucket-config (`key == ""`), issue #820 P3 / #912**: `?versioning`,
+  `?versions`, `?acl`, `?policy`, `?cors`, `?website`, `?lifecycle`,
+  `?tagging`, `?encryption`, `?publicAccessBlock`, `?accelerate`,
+  `?replication`, `?requestPayment`, `?logging`, `?object-lock`,
+  `?notification`.
+- **Object-level (`key != ""`), issue #820 P4 / #914**: `?tagging`, `?acl`,
+  `?versionId`, `?retention`, `?legal-hold`.
+
+Supported subresources are untouched: bucket `?location`, list
+(`list-type` + pagination), multipart (`uploads`, `uploadId`, `partNumber`),
+and batch `?delete` continue to route as before. Non-subresource gaps that do
+not arrive via a query param (e.g. `UploadPartCopy`, aws-chunked trailing
+checksum, `SelectObjectContent`) are handled by their own paths and not covered
+here.
+
 ### 5. Automated Governance & AI Reviewer
 To maintain high integrity in a single-contributor environment, Momo employs an automated governance layer:
 - **Gemini AI Reviewer**: A GitHub Action that uses the Gemini API to analyze PR diffs. It specifically enforces the **⚡ Bolt** (performance) and **🛡️ Sentinel** (security) patterns.
