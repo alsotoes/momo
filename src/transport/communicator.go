@@ -93,13 +93,14 @@ type OPRFService interface {
 	EvaluateOPRF(blinded []byte, timeout time.Duration) ([]OPRFEvalResult, error)
 }
 
-// ChecksumFinalizer lets an ingest surface finalize an additive integrity
-// checksum accumulated while its payload was streamed to the store. It is
-// protocol-agnostic: the shared ingest path (getFile) does not know which
-// surface supplied it, only that a mismatch must abort the write. Surfaces
-// without additive checksums, or un-armed transfers, may simply no-op.
-type ChecksumFinalizer interface {
-	FinalizeIntegrityChecksum() error
+// ChecksumProvider lets an ingest surface expose additive integrity checksum
+// expectations and encode a verification failure to its client. The shared
+// ingest path (getFile) verifies the expectations centrally, so the protocol
+// stays a pure adapter (issue #903). Surfaces without additive checksums may
+// simply return nil expectations and a no-op mismatch hook.
+type ChecksumProvider interface {
+	ChecksumExpectations() []common.ChecksumRef
+	OnIntegrityChecksumMismatch() error
 }
 
 // Communicator defines a transport-agnostic interface for Momo protocol operations.

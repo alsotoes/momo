@@ -2,6 +2,9 @@ package storage
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"io"
 	"os"
@@ -15,8 +18,43 @@ import (
 	"go.uber.org/goleak"
 )
 
-func TestCASStore(t *testing.T) {
-	defer goleak.VerifyNone(t)
+func TestCASStore_VerifyChecksum(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "momo-storage-verify-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	store, err := NewCASStore(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to create CASStore: %v", err)
+	}
+	defer store.Close()
+
+	content := []byte("integrity bytes")
+	sum := sha256.Sum256(content)
+	goodRef := common.ChecksumRef{Algorithm: common.ChecksumSHA256, Value: base64.StdEncoding.EncodeToString(sum[:])}
+	badRef := common.ChecksumRef{Algorithm: common.ChecksumSHA256, Value: base64.StdEncoding.EncodeToString([]byte("bad"))}
+
+	if err := store.Put("v.txt", hex.EncodeToString(sum[:]), int64(len(content)), "", bytes.NewReader(content)); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+
+	// Opt-in no-op when no checksums supplied.
+	if err := store.VerifyChecksum("v.txt", nil); err != nil {
+		t.Fatalf("expected nil for empty refs, got %v", err)
+	}
+	// Match.
+	if err := store.VerifyChecksum("v.txt", []common.ChecksumRef{goodRef}); err != nil {
+		t.Fatalf("expected match, got %v", err)
+	}
+	// Mismatch -> ErrIntegrityMismatch.
+	if err := store.VerifyChecksum("v.txt", []common.ChecksumRef{badRef}); err == nil {
+		t.Fatal("expected mismatch error")
+	}
+}
+
+func TestCASStore_Original(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "momo-storage-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)

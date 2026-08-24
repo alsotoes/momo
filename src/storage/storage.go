@@ -425,6 +425,22 @@ func (s *CASStore) PutS3Meta(name string, headers map[string]string) error {
 	})
 }
 
+// VerifyChecksum reads the stored blob and verifies the given additive
+// integrity checksums over it (opt-in bit-rot / stale-detection check, issue
+// #903). It is bounded-memory (streams) and is a no-op when refs is empty.
+// Returns an error wrapping common.ErrIntegrityMismatch on mismatch.
+func (s *CASStore) VerifyChecksum(name string, refs []common.ChecksumRef) error {
+	if len(refs) == 0 {
+		return nil
+	}
+	rc, _, err := s.Get(name)
+	if err != nil {
+		return err
+	}
+	defer rc.Close()
+	return common.VerifyStream(rc, refs)
+}
+
 // GetS3Meta returns the S3 object headers stored for name, or nil when none
 // were recorded. Malformed payloads degrade to nil rather than failing reads.
 func (s *CASStore) GetS3Meta(name string) map[string]string {

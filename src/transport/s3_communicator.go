@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/rand"
-	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
@@ -14,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"hash"
-	"hash/crc32"
 	"io"
 	"log"
 	"math"
@@ -135,15 +133,6 @@ type S3Communicator struct {
 	// sigV4 holds the per-chunk verification context derived during SigV4
 	// verification for signed streaming PUTs (issue #773).
 	sigV4 *streamingSigningCtx
-
-	// S3 checksum verification state (issue #820, Tier P2). Armed on PUT with
-	// an x-amz-checksum-* header; the payload digest is accumulated in Read and
-	// finalized by FinalizeIntegrityChecksum (invoked by getFile after store.Put).
-	checksumAlgo     string
-	checksumExpected string
-	checksumHasher   hash.Hash
-	checksumKey      string
-	checksumArmed    bool
 
 	// sigV4AccessKey and sigV4SecretKey are the dedicated S3 gateway SigV4
 	// credentials (issue #656). When both are non-empty, inbound SigV4 requests
@@ -343,6 +332,13 @@ func (m *S3Communicator) SendOPRFEval(authToken string, timestamp int64, blinded
 }
 
 func (m *S3Communicator) Read(p []byte) (n int, err error) {
+	return m.readUnderlying(p)
+}
+
+// readUnderlying is the wire source read without checksum accumulation (issue
+// #903): additive-checksum verification now lives centrally in the shared
+// ingest path (getFile) via ChecksumExpectations, not in the surface reader.
+func (m *S3Communicator) readUnderlying(p []byte) (n int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Panic recovered in S3 Read: %v", r)
@@ -356,34 +352,37 @@ func (m *S3Communicator) Read(p []byte) (n int, err error) {
 		r = m.streamingReader
 	}
 	n, err = r.Read(p)
-	if n > 0 && m.checksumHasher != nil {
-		m.checksumHasher.Write(p[:n])
-	}
 	return n, err
 }
 
-// FinalizeIntegrityChecksum completes the armed S3 checksum digest accumulated
-// over the streamed payload and compares it against the value the client
-// supplied. On mismatch it writes HTTP 400 BadDigest and returns a POSIX-mapped
-// error so getFile deletes the just-written object (nothing bad is persisted).
-// It is a no-op when no checksum was armed or no expected value was supplied
-// (compute-only: the value is captured/persisted via collectS3Headers instead).
-// It satisfies the protocol-agnostic checksumFinalizer interface so the shared
-// ingest path (getFile) does not know it is handling an S3 checksum.
-func (m *S3Communicator) FinalizeIntegrityChecksum() error {
-	if !m.checksumArmed || m.checksumHasher == nil || m.checksumExpected == "" {
-		m.checksumArmed = false
+// ChecksumExpectations returns the additive integrity checksum(s) a client
+// supplied for this object, derived from the captured S3 headers (issue #903).
+// It satisfies the protocol-agnostic transport.ChecksumProvider interface so
+// the shared ingest path (getFile) verifies them centrally. Values come from
+// x-amz-checksum-<algo> (present for both direct clients and replicated
+// X-Momo-S3-Meta forwarding); compute-only requests (algorithm marker with no
+// value) return nothing to verify.
+func (m *S3Communicator) ChecksumExpectations() []common.ChecksumRef {
+	algo := normalizeChecksumAlgorithm(m.meta.S3Headers["x-amz-checksum-algorithm"])
+	if algo == "" {
 		return nil
 	}
-	m.checksumArmed = false
-	computed := base64.StdEncoding.EncodeToString(m.checksumHasher.Sum(nil))
-	if computed == m.checksumExpected {
+	val := m.meta.S3Headers[checksumHeaderFor(algo)]
+	if val == "" {
 		return nil
 	}
+	return []common.ChecksumRef{{Algorithm: algo, Value: val}}
+}
+
+// OnIntegrityChecksumMismatch is invoked by getFile when a client-supplied
+// additive checksum fails verification. It writes the S3 400 BadDigest response
+// so the client is informed, and returns a POSIX-mapped error that getFile
+// propagates (which also deletes the just-stored object).
+func (m *S3Communicator) OnIntegrityChecksumMismatch() error {
 	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	writeS3Error(m.conn, http.StatusBadRequest, "BadDigest",
-		"The x-amz-checksum-* value you specified did not match the checksum we calculated.", m.checksumKey)
-	return fmt.Errorf("s3 checksum mismatch: expected %s got %s: %w", m.checksumExpected, computed, syscall.EBADMSG)
+		"The x-amz-checksum-* value you specified did not match the checksum we calculated.", m.meta.Name)
+	return fmt.Errorf("s3 checksum mismatch: %w", syscall.EBADMSG)
 }
 
 func (m *S3Communicator) Write(p []byte) (n int, err error) {
@@ -1332,20 +1331,16 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			}
 		}
 
-		// Issue #820 (Tier P2): arm S3 checksum verification. Validate the
-		// requested algorithm up front (deterministic 400 InvalidRequest) and
-		// accumulate the payload digest while it is streamed to the store.
-		if algo, expected, cerr := parseChecksum(req); cerr != nil {
+		// Issue #820 (Tier P2) / #903: validate the requested checksum algorithm
+		// up front (deterministic 400 InvalidRequest). The checksum itself is
+		// captured into S3Headers by collectS3Headers above and verified
+		// centrally by the shared ingest path via ChecksumExpectations, so no
+		// surface-side accumulation state is needed here.
+		if _, _, cerr := parseChecksum(req); cerr != nil {
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			writeS3Error(m.conn, http.StatusBadRequest, "InvalidRequest",
 				fmt.Sprintf("Unsupported checksum algorithm: %v", cerr), "")
 			return 0, 0, fmt.Errorf("s3 checksum parse: %w", cerr)
-		} else if algo != "" {
-			m.checksumAlgo = algo
-			m.checksumExpected = expected
-			m.checksumKey = m.meta.Name
-			m.checksumHasher = newChecksumHasher(algo)
-			m.checksumArmed = true
 		}
 
 		// 🛡️ Sentinel: Sanitize S3 hash to prevent directory traversal via malicious metadata.
@@ -2284,17 +2279,11 @@ func normalizeChecksumAlgorithm(algo string) string {
 }
 
 // newChecksumHasher returns a fresh digest for the given normalized algorithm.
+// newChecksumHasher delegates to the protocol-agnostic common.ChecksumHasher
+// (issue #903) so the digest factory is shared by the S3 adapter and the core
+// ingest verifier instead of being duplicated.
 func newChecksumHasher(algo string) hash.Hash {
-	switch algo {
-	case checksumAlgoCRC32c:
-		return crc32.New(crc32.MakeTable(crc32.Castagnoli))
-	case checksumAlgoCRC32:
-		return crc32.NewIEEE()
-	case checksumAlgoSHA1:
-		return sha1.New()
-	default:
-		return sha256.New()
-	}
+	return common.ChecksumHasher(algo)
 }
 
 // parseChecksum resolves the checksum algorithm and optional expected value from
@@ -2354,17 +2343,28 @@ func collectS3Headers(req *http.Request) map[string]string {
 			addHeader(strings.ToLower(h), v)
 		}
 	}
-	// Issue #820 (Tier P2): capture integrity checksum headers so a supplied
-	// checksum is persisted at rest and echoed on GET/HEAD.
+	// Issue #820 (Tier P2) / #903: capture integrity checksum headers so a
+	// supplied checksum is persisted at rest and echoed on GET/HEAD, and the
+	// algorithm marker is recorded so the centralized verifier
+	// (ChecksumExpectations) can derive value+algorithm. The marker is set from
+	// an explicit X-Amz-Checksum-Algorithm if present, else inferred from which
+	// x-amz-checksum-<algo> value header was supplied.
+	seenAlgo := ""
 	for _, a := range []string{checksumAlgoCRC32c, checksumAlgoCRC32, checksumAlgoSHA1, checksumAlgoSHA256} {
 		if v := req.Header.Get(http.CanonicalHeaderKey(checksumHeaderFor(a))); v != "" {
 			addHeader(checksumHeaderFor(a), v)
+			if seenAlgo == "" {
+				seenAlgo = a
+			}
 		}
 	}
 	if v := req.Header.Get("X-Amz-Checksum-Algorithm"); v != "" {
 		if norm := normalizeChecksumAlgorithm(v); norm != "" {
-			addHeader("x-amz-checksum-algorithm", norm)
+			seenAlgo = norm
 		}
+	}
+	if seenAlgo != "" {
+		addHeader("x-amz-checksum-algorithm", seenAlgo)
 	}
 	for name, values := range req.Header {
 		if !strings.HasPrefix(name, "X-Amz-Meta-") {
