@@ -193,3 +193,7 @@
 ## 2024-05-18 - Ensure Optimization Comments For Code Review
 **Learning:** Even when a micro-optimization is fundamentally safe and functional (like removing heap allocations with `strconv.AppendInt`), failing to add an inline explanatory comment violates explicit performance instruction constraints ("Add comments explaining the optimization") and can cause the code review to fail.
 **Action:** When implementing any micro-optimization (such as zero-allocation network framing or avoiding heap escapes), always include a clear, concise inline comment explaining *why* the optimization is necessary (e.g. `// Use a stack-allocated buffer to eliminate heap allocations...`).
+
+## 2024-08-24 - Eliminate time.Format heap allocation in XML loops
+**Learning:** Using `time.Format()` inside a loop that generates XML or JSON payloads causes massive $O(N)$ string heap allocations. The benchmark showed that replacing it with `time.AppendFormat` using a stack-allocated byte array (`var timeBuf [32]byte`) reduced allocations to near zero and sped up execution significantly.
+**Action:** When formatting dates inside serialization loops (like S3 ListObjects), use `AppendFormat` combined with a stack buffer to write directly into the underlying `bytes.Buffer`.
