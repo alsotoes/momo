@@ -22,6 +22,13 @@ type FileMetadata struct {
 	// between peers as an additive X-Momo-S3-Meta header (base64-encoded), so
 	// peers without support simply store/echo no headers.
 	S3Headers map[string]string
+	// Checksums holds optional additive integrity checksums (issue #903).
+	// Protocol-agnostic: any surface maps its client checksums onto these
+	// ChecksumRefs, verified centrally by the shared ingest path (getFile) and,
+	// opt-in, on retrieval. Like S3Headers, it is additive only: it is carried
+	// between peers as an additive extension so peers without support are
+	// unaffected, and it is NEVER the content-address (Hash remains that).
+	Checksums []ChecksumRef
 }
 
 // ReplicationData stores the information about a replication mode change.

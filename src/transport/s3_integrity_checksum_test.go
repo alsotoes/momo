@@ -1,7 +1,6 @@
 package transport
 
 import (
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
 	"fmt"
@@ -72,7 +71,36 @@ func TestParseChecksum(t *testing.T) {
 	}
 }
 
-func TestFinalizeS3Checksum_Mismatch(t *testing.T) {
+func TestS3ChecksumExpectations(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	defer clientConn.Close()
+	defer serverConn.Close()
+	comm := NewS3Communicator(serverConn)
+	t.Run("value present", func(t *testing.T) {
+		comm.meta.S3Headers = map[string]string{
+			"x-amz-checksum-algorithm": "sha256",
+			"x-amz-checksum-sha256":    "YWJj",
+		}
+		refs := comm.ChecksumExpectations()
+		if len(refs) != 1 || refs[0].Algorithm != "sha256" || refs[0].Value != "YWJj" {
+			t.Fatalf("expected one sha256 ref, got %#v", refs)
+		}
+	})
+	t.Run("compute-only no value", func(t *testing.T) {
+		comm.meta.S3Headers = map[string]string{"x-amz-checksum-algorithm": "crc32"}
+		if refs := comm.ChecksumExpectations(); refs != nil {
+			t.Fatalf("expected nil expectations for compute-only, got %#v", refs)
+		}
+	})
+	t.Run("none", func(t *testing.T) {
+		comm.meta.S3Headers = nil
+		if refs := comm.ChecksumExpectations(); refs != nil {
+			t.Fatalf("expected nil expectations, got %#v", refs)
+		}
+	})
+}
+
+func TestS3ChecksumMismatchHook_WritesBadDigest(t *testing.T) {
 	clientConn, serverConn := net.Pipe()
 	defer clientConn.Close()
 	defer serverConn.Close()
@@ -83,38 +111,14 @@ func TestFinalizeS3Checksum_Mismatch(t *testing.T) {
 	}()
 
 	comm := NewS3Communicator(serverConn)
-	comm.checksumArmed = true
-	comm.checksumExpected = base64.StdEncoding.EncodeToString([]byte("bad"))
-	comm.checksumHasher = newChecksumHasher("sha256")
-	comm.checksumKey = "k.txt"
-	comm.checksumHasher.Write([]byte("hello world"))
-
-	if err := comm.FinalizeIntegrityChecksum(); err == nil {
-		t.Fatal("expected checksum mismatch error, got nil")
+	comm.meta.Name = "k.txt"
+	if err := comm.OnIntegrityChecksumMismatch(); err == nil {
+		t.Fatal("expected mismatch error, got nil")
 	}
 
 	resp := <-respCh
-	if !strings.Contains(resp, "HTTP/1.1 400") {
-		t.Errorf("expected 400 response, got %q", resp)
-	}
-	if !strings.Contains(resp, "BadDigest") {
-		t.Errorf("expected BadDigest code, got %q", resp)
-	}
-}
-
-func TestFinalizeS3Checksum_Match(t *testing.T) {
-	body := "hello world"
-	_, serverConn := net.Pipe()
-	defer serverConn.Close()
-	sum := sha256.Sum256([]byte(body))
-	comm := NewS3Communicator(serverConn)
-	comm.checksumArmed = true
-	comm.checksumExpected = base64.StdEncoding.EncodeToString(sum[:])
-	comm.checksumHasher = newChecksumHasher("sha256")
-	comm.checksumKey = "k.txt"
-	comm.checksumHasher.Write([]byte(body))
-	if err := comm.FinalizeIntegrityChecksum(); err != nil {
-		t.Fatalf("expected no error on match, got %v", err)
+	if !strings.Contains(resp, "HTTP/1.1 400") || !strings.Contains(resp, "BadDigest") {
+		t.Errorf("expected 400 BadDigest, got %q", resp)
 	}
 }
 

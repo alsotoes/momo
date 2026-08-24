@@ -78,6 +78,27 @@ misrepresenting guarantees:
 This is a deliberate scope decision (see #820 tier P1): keep the honest
 reject-and-document posture, never fake a crypto guarantee.
 
+### 4d. Centralized Integrity Verification (protocol-agnostic)
+Additive integrity checksums are verified in the **storage/ingest core**, not in
+any surface protocol (issue #903), so no client protocol is a lock-in:
+
+- **Data model**: `FileMetadata.Checksums []ChecksumRef{Algorithm, Value}`
+  (`common/checksum.go`) carries additive checksums alongside the authoritative
+  SHA-256 `Hash` (which remains the content-address — checksums are never
+  independently addressable).
+- **Central verifier**: the shared ingest path `getFile` (`server/file.go`)
+  computes the requested checksums in the same bounded-memory pass as SHA-256
+  (via `common.ChecksumSet`) and rejects a mismatch by deleting the object.
+  Surfaces expose expectations through the protocol-agnostic
+  `transport.ChecksumProvider` interface — S3 maps `x-amz-checksum-*` onto it;
+  native transports have none and stay inert.
+- **Replication re-verify**: forwarded S3 objects carry their checksums via the
+  additive `X-Momo-S3-Meta` envelope; the receiving S3 peer re-derives
+  expectations and the same central verifier re-checks at every hop.
+- **Retrieval bit-rot (opt-in)**: `CASStore.VerifyChecksum(name, refs)` streams
+  the stored blob and verifies the expected checksums, enabling stale/bit-rot
+  detection on demand without taxing the default `Get` hot path.
+
 ### 5. Automated Governance & AI Reviewer
 To maintain high integrity in a single-contributor environment, Momo employs an automated governance layer:
 - **Gemini AI Reviewer**: A GitHub Action that uses the Gemini API to analyze PR diffs. It specifically enforces the **⚡ Bolt** (performance) and **🛡️ Sentinel** (security) patterns.
