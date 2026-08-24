@@ -144,6 +144,27 @@ def sync_pr_labels_and_assignee(pr_number, pr_title, pr_body):
     except Exception as e:
         print(f"Failed to assign alsotoes: {e}", file=sys.stderr)
 
+def pr_has_label(pr_number, label):
+    """Return True if the PR carries the given label (e.g. 'enhancement')."""
+    try:
+        cmd = ["gh", "pr", "view", pr_number, "--json", "labels"]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        data = json.loads(result.stdout)
+        return any(l.get("name") == label for l in data.get("labels", []))
+    except Exception:
+        return False
+
+
+def has_openspec_change():
+    """Rule 73: Return True if the PR branch adds any change under openspec/changes/."""
+    try:
+        cmd = ["git", "diff", "origin/master...HEAD", "--name-only", "--", "openspec/changes"]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        return any(line.strip() for line in result.stdout.splitlines())
+    except Exception:
+        return False
+
+
 def create_missing_issue(pr_number, pr_title, pr_body):
     try:
         print(f"Rule 11 Violation detected. Autonomously creating tracking issue for PR #{pr_number}...")
@@ -224,6 +245,14 @@ def main():
         else:
             traceability_instruction = "\n- 🚨 VIOLATION (Rule 11): This PR is missing a link to a GitHub Issue. Remind the author that ALL PRs must be mirrored as issues for traceability."
 
+    # Rule 73: Spec-First Implementation Mandate — feature/enhancement PRs MUST
+    # carry an OpenSpec change in the same PR (openspec/changes/<id>/{proposal.md,
+    # specs/<id>/spec.md linked to the GitHub issue, tasks.md}). Only enforced for
+    # enhancement PRs; bug fixes are exempt but still need a tracking issue.
+    spec_instruction = ""
+    if pr_number and pr_has_label(pr_number, "enhancement") and not has_openspec_change():
+        spec_instruction = "\n- 🚨 VIOLATION (Rule 73): This enhancement PR ships without an OpenSpec change under `openspec/changes/`. ALL features MUST include `proposal.md`, `specs/<id>/spec.md` (linked to the GitHub issue at the top), and `tasks.md` in the same PR, per Rule 73. Do not approve/merge until the change is added."
+
     # ⚡ Bolt: Automated PR Management
     if pr_number:
         # Labeling for Jules PRs (Rule 68)
@@ -275,7 +304,7 @@ TASK:
 - Identify violations of the Zero-Crash Pattern (missing recover, unbounded readers).
 - Ensure error mappings use syscall constants (POSIX Error Mapping).
 - Look for performance bottlenecks (unnecessary allocations in hot paths).
-- Check for security issues (path traversal, sanitization).{jules_instruction}{traceability_instruction}
+- Check for security issues (path traversal, sanitization).{jules_instruction}{traceability_instruction}{spec_instruction}
 
 INSTRUCTIONS:
 - Be concise.
