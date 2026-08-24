@@ -1258,10 +1258,25 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			return 0, 0, err
 		}
 
+		// UploadPartCopy (issue #820, P5 / #920): a PUT with multipart params
+		// AND an X-Amz-Copy-Source header. Not implemented; reject cleanly
+		// instead of the UploadPart handler misreading the copy source as a
+		// part body. Intercepted before UploadPart/CopyObject.
+		q := req.URL.Query()
+		if copySource := req.Header.Get("X-Amz-Copy-Source"); copySource != "" {
+			_, hasUploadID := q["uploadId"]
+			_, hasPartNum := q["partNumber"]
+			if hasUploadID && hasPartNum && key != "" {
+				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				writeS3Error(m.conn, http.StatusNotImplemented, "NotImplemented",
+					"UploadPartCopy is not supported by this server.", key)
+				return 0, 0, fmt.Errorf("unsupported UploadPartCopy: %w", syscall.ENOTSUP)
+			}
+		}
+
 		// UploadPart: PUT /{bucket}/{key}?uploadId=X&partNumber=N (issue #764).
 		// Intercepted before CopyObject/CreateBucket because the query params
 		// are distinct from those operations.
-		q := req.URL.Query()
 		if _, hasUploadID := q["uploadId"]; hasUploadID && key != "" {
 			if _, hasPartNum := q["partNumber"]; hasPartNum {
 				if !m.validBucket(bucket) {
@@ -1910,22 +1925,26 @@ func (m *S3Communicator) IsPeer() bool {
 // CreateBucket). Only bucket-root addresses (key == "") are intercepted;
 // object-level variants (GetObjectTagging, ?versionId, etc.) are Tier P4.
 var unsupportedBucketConfigSubresources = map[string]string{
-	"versioning":        "bucket versioning",
-	"versions":          "bucket version listing",
-	"acl":               "bucket access-control lists",
-	"policy":            "bucket policies",
-	"cors":              "CORS configuration",
-	"website":           "static website hosting",
-	"lifecycle":         "lifecycle configuration",
-	"tagging":           "bucket tagging",
-	"encryption":        "bucket encryption",
-	"publicAccessBlock": "public access block",
-	"accelerate":        "transfer acceleration",
-	"replication":       "replication configuration",
-	"requestPayment":    "request-payer configuration",
-	"logging":           "logging configuration",
-	"object-lock":       "object-lock configuration",
-	"notification":      "notification configuration",
+	"versioning":          "bucket versioning",
+	"versions":            "bucket version listing",
+	"acl":                 "bucket access-control lists",
+	"policy":              "bucket policies",
+	"cors":                "CORS configuration",
+	"website":             "static website hosting",
+	"lifecycle":           "lifecycle configuration",
+	"tagging":             "bucket tagging",
+	"encryption":          "bucket encryption",
+	"publicAccessBlock":   "public access block",
+	"accelerate":          "transfer acceleration",
+	"replication":         "replication configuration",
+	"requestPayment":      "request-payer configuration",
+	"logging":             "logging configuration",
+	"object-lock":         "object-lock configuration",
+	"notification":        "notification configuration",
+	"analytics":           "bucket analytics configuration",
+	"inventory":           "bucket inventory configuration",
+	"metrics":             "bucket metrics configuration",
+	"intelligent-tiering": "S3 Intelligent-Tiering configuration",
 }
 
 // unsupportedBucketConfigSubresource returns the human-readable descriptor of
@@ -1951,6 +1970,7 @@ var unsupportedObjectSubresources = map[string]string{
 	"versionId":  "object versioning",
 	"retention":  "object retention",
 	"legal-hold": "object legal hold",
+	"select":     "SelectObjectContent",
 }
 
 // unsupportedObjectSubresource returns the human-readable descriptor of the
