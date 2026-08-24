@@ -26,6 +26,7 @@ This document is governed by the steering rules in [`openspec/config.yaml`](../o
 - **Rule 69**: Jules PR reviewer protocol — comments to Jules MUST come from `alsotoes`, not `github-actions[bot]`
 - **Rule 70**: Steering rule → reviewer script sync — update `ai_reviewer.py` when adding rules that affect PR review/labeling/commenting/merge
 - **Rule 71**: Master CI gate before new work — wait for all master CI workflows to finish and pass before creating a new branch
+- **Rule 73**: Spec-First Implementation Mandate — every new feature / spec-driven change MUST author an OpenSpec change (`openspec/changes/<id>/`) linked to a GitHub issue BEFORE implementation; the PR MUST include the spec and `Resolves #ISSUE_ID`. Bug fixes are exempt from a formal spec but still need a tracking issue
 
 ## Pre-Flight Checklist
 
@@ -44,7 +45,7 @@ Before starting any autonomous work, verify:
    - Only proceed when all runs show `completed` with `success` conclusion.
    - **Rationale**: After merging a PR, GitHub Actions re-runs all workflows on `master`. Branching from mid-CI `master` risks branching from code that may fail or be reverted. This gate guarantees every new branch originates from a fully validated, stable `master`.
 
-## Per-Task Cycle (16 Steps)
+## Per-Task Cycle (17 Steps)
 
 For each task (bug fix or feature), execute these steps strictly sequentially. Do NOT start the next task until the current one is merged.
 
@@ -79,6 +80,25 @@ Record the issue number (`ISSUE_N`).
 **Issue type guidance:**
 - **Bug fix**: `--title "Bug: ..."`, `--label "bug"`
 - **New feature**: `--title "Feature: ..."`, `--label "enhancement"`
+
+### Step 1b: Author OpenSpec Change (features) — Rule 73
+
+For **ANY new feature / spec-driven change / architectural shift** (NOT routine bug fixes), author the OpenSpec change proposal on the branch BEFORE implementing:
+
+```bash
+mkdir -p openspec/changes/<change-id>/specs/<change-id>
+```
+
+Create three files (mirror the existing `openspec/changes/*/` layout):
+- `proposal.md` — title `# Change: <title>`, `**Related Issues:**` linking `https://github.com/alsotoes/momo/issues/<ISSUE_N>`, then `## Why`, `## What Changes`, `## Non-Goals`.
+- `specs/<change-id>/spec.md` — **first line preserves Rule 11 linkage**: `> GitHub Issue URL: https://github.com/alsotoes/momo/issues/<ISSUE_N>`, then `## Purpose` and Requirement/Scenario blocks (`### Requirement` + `#### Scenario` Gherkin).
+- `tasks.md` — phased implementation checklist.
+
+**Rules:**
+- The spec `spec.md` MUST link the GitHub issue at the top (Rule 11).
+- The feature PR (Step 7) MUST include the OpenSpec change files and its body MUST use `Resolves #ISSUE_N`.
+- Author the spec on the branch in this step; implement in Step 3; both ship in the same PR.
+- **Bug fixes / internal refactors with no behavioral surface are exempt** from a formal spec (Rule 73) but MUST still have a tracking issue from Step 1.
 
 ### Step 2: Create Branch
 ```bash
