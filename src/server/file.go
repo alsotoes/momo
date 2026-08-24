@@ -132,6 +132,20 @@ func getFile(comm transport.Communicator, store storage.Store, fileName string, 
 		return err
 	}
 
+	// Integrity-checksum finalization (issue #820, Tier P2): finalize the
+	// payload digest accumulated over the streamed bytes and reject a supplied
+	// additive checksum mismatch, deleting the just-stored object so no dishonest
+	// checksum is persisted. Protocol-agnostic optional interface — surfaces
+	// without additive checksums, or un-armed transfers, no-op. The verifier
+	// encodes surface-specific errors itself (e.g. S3 writes 400 BadDigest).
+	if v, ok := comm.(transport.ChecksumFinalizer); ok {
+		if cerr := v.FinalizeIntegrityChecksum(); cerr != nil {
+			store.Delete(fileName)
+			err = cerr
+			return err
+		}
+	}
+
 	log.Printf("=> Expected Hash: %s", common.SanitizeLog(expectedHash))
 	log.Printf("=> Actual Hash:   %s", common.SanitizeLog(hash))
 	log.Printf("Received file completely!")
