@@ -3381,3 +3381,78 @@ func TestS3Communicator_ObjectSubresource501(t *testing.T) {
 		assertNotImplemented(resp, err)
 	})
 }
+
+// TestS3Communicator_RemainingSubresource501 verifies the P5 honest posture
+// (issue #920): the remaining unsupported S3 operations return a clean 501
+// NotImplemented instead of silently misrouting. Covers the bucket
+// analytics/inventory/metrics/intelligent-tiering subresources, SelectObjectContent
+// (?select), and UploadPartCopy (PUT ?uploadId&partNumber + X-Amz-Copy-Source).
+func TestS3Communicator_RemainingSubresource501(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+	validTokenReq := func(method, target string) string {
+		return method + " " + target + " HTTP/1.1\r\n" +
+			"Host: 127.0.0.1:4440\r\n" +
+			"Authorization: Bearer " + authToken + "\r\n\r\n"
+	}
+	assertNotImplemented := func(resp string, underlyingErr error) {
+		t.Helper()
+		if underlyingErr == nil {
+			t.Fatal("expected non-nil error for unsupported operation")
+		}
+		if !strings.Contains(resp, "HTTP/1.1 501 Not Implemented") {
+			t.Errorf("expected 501 Not Implemented, got: %s", resp)
+		}
+		if !strings.Contains(resp, "<Code>NotImplemented</Code>") {
+			t.Errorf("expected NotImplemented code, got: %s", resp)
+		}
+	}
+
+	// Bucket-config additions (bucket root) + SelectObjectContent (object).
+	tests := []struct {
+		name   string
+		method string
+		target string
+	}{
+		{"analytics get", "GET", "/bucket?analytics"},
+		{"inventory put", "PUT", "/bucket?inventory"},
+		{"metrics get", "GET", "/bucket?metrics"},
+		{"intelligent-tiering get", "GET", "/bucket?intelligent-tiering"},
+		{"select post", "POST", "/bucket/file.txt?select&select-type=2"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, err := runS3RequestCaptureBucket(t, validTokenReq(tc.method, tc.target), &mockStore{}, "bucket")
+			assertNotImplemented(resp, err)
+		})
+	}
+
+	// UploadPartCopy: PUT with multipart params + X-Amz-Copy-Source header.
+	t.Run("upload-part-copy put", func(t *testing.T) {
+		req := "PUT /bucket/file.txt?uploadId=abcd&partNumber=1 HTTP/1.1\r\n" +
+			"Host: 127.0.0.1:4440\r\n" +
+			"Authorization: Bearer " + authToken + "\r\n" +
+			"X-Amz-Copy-Source: /bucket/src.txt\r\n\r\n"
+		resp, err := runS3RequestCaptureBucket(t, req, &mockStore{}, "bucket")
+		assertNotImplemented(resp, err)
+	})
+
+	// Plain UploadPart (no copy-source) must still route (404 NoSuchUpload for an
+	// unknown upload id — the point is it is NOT a 501).
+	t.Run("plain upload-part still served", func(t *testing.T) {
+		req := "PUT /bucket/file.txt?uploadId=abcd&partNumber=1 HTTP/1.1\r\n" +
+			"Host: 127.0.0.1:4440\r\n" +
+			"Authorization: Bearer " + authToken + "\r\n\r\n"
+		resp, err := runS3RequestCaptureBucket(t, req, &mockStore{}, "bucket")
+		if err == nil {
+			t.Fatalf("expected an error (UploadPart path), got nil")
+		}
+		if strings.Contains(resp, "<Code>NotImplemented</Code>") {
+			t.Fatalf("plain UploadPart must not be intercepted, got 501:\n%s", resp)
+		}
+		if !strings.Contains(resp, "HTTP/1.1 404 Not Found") {
+			t.Errorf("expected 404 NoSuchUpload for plain UploadPart, got: %s", resp)
+		}
+	})
+}
