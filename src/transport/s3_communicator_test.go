@@ -2688,6 +2688,10 @@ func TestS3Communicator_PUT_SSECRejected(t *testing.T) {
 			if !strings.Contains(respStr, "<Code>InvalidRequest</Code>") {
 				t.Errorf("Expected InvalidRequest code, got: %s", respStr)
 			}
+			// Honest posture: the rejection must explain momo's real guarantee.
+			if !strings.Contains(respStr, "AES-256-GCM") {
+				t.Errorf("Expected honest at-rest guarantee in SSE-C rejection, got: %s", respStr)
+			}
 		})
 	}
 }
@@ -2721,6 +2725,10 @@ func TestS3Communicator_PUT_SSEKMSRejected(t *testing.T) {
 			}
 			if !strings.Contains(respStr, "<Code>NotImplemented</Code>") {
 				t.Errorf("Expected NotImplemented code, got: %s", respStr)
+			}
+			// Honest posture: explain momo's real guarantee (no AWS KMS present).
+			if !strings.Contains(respStr, "no AWS KMS integration") {
+				t.Errorf("Expected honest SSE-KMS boundary message, got: %s", respStr)
 			}
 		})
 	}

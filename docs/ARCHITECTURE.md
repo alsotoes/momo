@@ -48,6 +48,36 @@ Momo includes a fully decentralized P2P subsystem (`src/p2p/`) for cluster membe
 - **Quality-Aware Quorum Selection** (issue #823): scatter-gather, lease, and threshold-OPRF quorums are built from alive peers ranked by per-peer EWMA RTT (`PeerMap.AliveByQuality`), preferring low-latency members and excluding suspect/offline peers; no wire-format changes.
 - **Transport**: P2P communication runs on a separate port (default `4450`, configurable via `gossip_port`). The P2P transport supports both TCP and QUIC underlying connections. P2P supports **optional TLS encryption** (mutual TLS via `[p2p] tls_cert_file`/`tls_key_file`/`tls_ca_file`) and always enforces **peer ID authentication** via an `AuthFunc` that validates connecting peer IDs against the configured daemon set, preventing spoofing and injection.
 
+### 4c. S3 Gateway Server-Side Encryption (SSE) Boundary
+The S3 gateway (`S3Communicator.validateSSEHeaders`, issues #776 / #820 P1)
+enforces an explicit, honest SSE boundary rather than silently downgrading or
+misrepresenting guarantees:
+
+- **At rest, momo AES-256-GCM for everything**: the `EncryptedBlobStore`
+  decorator wraps the chosen blob backend with AES-GCM-256 whenever
+  `encryption_enabled` is set (`storage/factory.go`). This encrypts **every**
+  object at rest, independent of any S3 SSE header — so all S3 objects are
+  already protected by a real at-rest cipher. It is **opt-in** (gated on the
+  at-rest key); when disabled, momo stores plaintext blobs.
+- **SSE-S3 (`x-amz-server-side-encryption: AES256`)**: accepted, persisted in
+  `S3Headers`, and echoed on GET/HEAD. This is an accurate claim — the object
+  is encrypted at rest (momo AES-256-GCM envelope).
+- **SSE-C (customer-provided key)**: rejected with `400 InvalidRequest`. Momo
+  never accepts, stores, or retrieves with a customer key; faking per-object
+  client-key encryption would collide with content-addressed dedup (CAS keys on
+  plaintext SHA-256) and is not modeled.
+- **SSE-KMS (`aws:kms` / `x-amz-server-side-encryption-aws-kms-key-id`)**:
+  rejected with `501 NotImplemented`. Momo has no AWS KMS integration; reporting
+  `aws:kms` while using a local envelope would break audit expectations, so it
+  is never faked.
+- **No fake guarantees**: every SSE-C/SSE-KMS rejection body states momo's real
+  at-rest guarantee and points to SSE-S3 or client-side encryption. Clients that
+  require SSE-C/SSE-KMS must use those enforcement points upstream; momo will
+  not silently accept what it cannot truthfully provide.
+
+This is a deliberate scope decision (see #820 tier P1): keep the honest
+reject-and-document posture, never fake a crypto guarantee.
+
 ### 5. Automated Governance & AI Reviewer
 To maintain high integrity in a single-contributor environment, Momo employs an automated governance layer:
 - **Gemini AI Reviewer**: A GitHub Action that uses the Gemini API to analyze PR diffs. It specifically enforces the **⚡ Bolt** (performance) and **🛡️ Sentinel** (security) patterns.
