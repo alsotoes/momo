@@ -108,20 +108,25 @@ returns a clean S3-compliant `501 NotImplemented` (bounded write,
 store-independent). Two sets are tracked separately, following the honest
 reject-and-document posture (same philosophy as §4c):
 
-- **Bucket-config (`key == ""`), issue #820 P3 / #912**: `?versioning`,
+- **Bucket-config (`key == ""`), issue #820 P3 / #912 (+ #920 P5)**: `?versioning`,
   `?versions`, `?acl`, `?policy`, `?cors`, `?website`, `?lifecycle`,
   `?tagging`, `?encryption`, `?publicAccessBlock`, `?accelerate`,
   `?replication`, `?requestPayment`, `?logging`, `?object-lock`,
-  `?notification`.
-- **Object-level (`key != ""`), issue #820 P4 / #914**: `?tagging`, `?acl`,
-  `?versionId`, `?retention`, `?legal-hold`.
+  `?notification`, `?analytics`, `?inventory`, `?metrics`,
+  `?intelligent-tiering`.
+- **Object-level (`key != ""`), issue #820 P4 / #914 (+ #920 P5)**:
+  `?tagging`, `?acl`, `?versionId`, `?retention`, `?legal-hold`, `?select`
+  (SelectObjectContent).
 
 Supported subresources are untouched: bucket `?location`, list
 (`list-type` + pagination), multipart (`uploads`, `uploadId`, `partNumber`),
-and batch `?delete` continue to route as before. Non-subresource gaps that do
-not arrive via a query param (e.g. `UploadPartCopy`, aws-chunked trailing
-checksum, `SelectObjectContent`) are handled by their own paths and not covered
-here.
+and batch `?delete` continue to route as before. **UploadPartCopy** (`PUT`
+with `?uploadId` + `?partNumber` and an `X-Amz-Copy-Source` header, issue #920)
+is intercepted separately in the PUT dispatch — before the UploadPart handler
+misreads the copy source as a part body — and also returns `501 NotImplemented`.
+Remaining non-subresource gaps that do not arrive via a query param (e.g.
+aws-chunked trailing-checksum form, `SelectObjectContent`'s non-S3 payload
+semantics) are handled by their own paths and not covered here.
 
 ### 5. Automated Governance & AI Reviewer
 To maintain high integrity in a single-contributor environment, Momo employs an automated governance layer:
