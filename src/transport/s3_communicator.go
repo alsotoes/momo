@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/rand"
+	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
@@ -12,6 +13,8 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"hash"
+	"hash/crc32"
 	"io"
 	"log"
 	"math"
@@ -132,6 +135,15 @@ type S3Communicator struct {
 	// sigV4 holds the per-chunk verification context derived during SigV4
 	// verification for signed streaming PUTs (issue #773).
 	sigV4 *streamingSigningCtx
+
+	// S3 checksum verification state (issue #820, Tier P2). Armed on PUT with
+	// an x-amz-checksum-* header; the payload digest is accumulated in Read and
+	// finalized by FinalizeIntegrityChecksum (invoked by getFile after store.Put).
+	checksumAlgo     string
+	checksumExpected string
+	checksumHasher   hash.Hash
+	checksumKey      string
+	checksumArmed    bool
 
 	// sigV4AccessKey and sigV4SecretKey are the dedicated S3 gateway SigV4
 	// credentials (issue #656). When both are non-empty, inbound SigV4 requests
@@ -339,10 +351,39 @@ func (m *S3Communicator) Read(p []byte) (n int, err error) {
 	}()
 	// A decoded aws-chunked payload is replayed from the spill file so the
 	// server pipeline (getFile/store.Put) consumes only de-framed content.
+	var r io.Reader = m.reader
 	if m.streamingPayload && m.streamingReader != nil {
-		return m.streamingReader.Read(p)
+		r = m.streamingReader
 	}
-	return m.reader.Read(p)
+	n, err = r.Read(p)
+	if n > 0 && m.checksumHasher != nil {
+		m.checksumHasher.Write(p[:n])
+	}
+	return n, err
+}
+
+// FinalizeIntegrityChecksum completes the armed S3 checksum digest accumulated
+// over the streamed payload and compares it against the value the client
+// supplied. On mismatch it writes HTTP 400 BadDigest and returns a POSIX-mapped
+// error so getFile deletes the just-written object (nothing bad is persisted).
+// It is a no-op when no checksum was armed or no expected value was supplied
+// (compute-only: the value is captured/persisted via collectS3Headers instead).
+// It satisfies the protocol-agnostic checksumFinalizer interface so the shared
+// ingest path (getFile) does not know it is handling an S3 checksum.
+func (m *S3Communicator) FinalizeIntegrityChecksum() error {
+	if !m.checksumArmed || m.checksumHasher == nil || m.checksumExpected == "" {
+		m.checksumArmed = false
+		return nil
+	}
+	m.checksumArmed = false
+	computed := base64.StdEncoding.EncodeToString(m.checksumHasher.Sum(nil))
+	if computed == m.checksumExpected {
+		return nil
+	}
+	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	writeS3Error(m.conn, http.StatusBadRequest, "BadDigest",
+		"The x-amz-checksum-* value you specified did not match the checksum we calculated.", m.checksumKey)
+	return fmt.Errorf("s3 checksum mismatch: expected %s got %s: %w", m.checksumExpected, computed, syscall.EBADMSG)
 }
 
 func (m *S3Communicator) Write(p []byte) (n int, err error) {
@@ -815,6 +856,40 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		contentType := s3Headers["content-type"]
 		rangeHeader := req.Header.Get("Range")
 
+		// Issue #820 (Tier P2): GET with x-amz-checksum-mode: ENABLED. Objects
+		// uploaded with a checksum already echo it from persisted metadata; for
+		// older/unchecksummed objects compute a checksum over the stored bytes via
+		// a bounded temp-file stream and return it alongside the body.
+		forceChecksumHeader := ""
+		if strings.EqualFold(req.Header.Get("X-Amz-Checksum-Mode"), "ENABLED") {
+			alg := normalizeChecksumAlgorithm(s3Headers["x-amz-checksum-algorithm"])
+			if alg == "" {
+				alg = checksumAlgoCRC32
+			}
+			hdr := checksumHeaderFor(alg)
+			if s3Headers[hdr] == "" {
+				tmp, terr := os.CreateTemp("", "momo-s3-checksum-*")
+				if terr != nil {
+					m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+					writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to buffer object for checksum.", key)
+					return 0, 0, ErrRequestHandled
+				}
+				defer os.Remove(tmp.Name())
+				algoHasher := newChecksumHasher(alg)
+				if _, cerr := io.Copy(io.MultiWriter(tmp, algoHasher), rc); cerr != nil {
+					tmp.Close()
+					return 0, 0, fmt.Errorf("failed to hash object for checksum: %w", cerr)
+				}
+				if _, serr := tmp.Seek(0, io.SeekStart); serr != nil {
+					tmp.Close()
+					return 0, 0, fmt.Errorf("failed to rewind checksum buffer: %w", serr)
+				}
+				forceChecksumHeader = hdr + ": " + base64.StdEncoding.EncodeToString(algoHasher.Sum(nil))
+				rc.Close()
+				rc = tmp
+			}
+		}
+
 		// If-Match: any listed entity-tag must match, otherwise 412.
 		if im := req.Header.Get("If-Match"); im != "" && !etagMatches(im, etag) {
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
@@ -915,6 +990,10 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		b = append(b, lastModifiedStr...)
 		b = append(b, "\r\n"...)
 		b = appendS3MetaHeaders(b, s3Headers, contentType)
+		if forceChecksumHeader != "" {
+			b = append(b, forceChecksumHeader...)
+			b = append(b, "\r\n"...)
+		}
 		b = append(b, "Connection: close\r\n\r\n"...)
 
 		// 🛡️ Zero-Crash: Defensive bounds check to verify the formatted content fits safely within the stack buffer
@@ -1251,6 +1330,22 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 					log.Printf("WARNING: ignoring malformed X-Momo-S3-Meta header: %v", jsonErr)
 				}
 			}
+		}
+
+		// Issue #820 (Tier P2): arm S3 checksum verification. Validate the
+		// requested algorithm up front (deterministic 400 InvalidRequest) and
+		// accumulate the payload digest while it is streamed to the store.
+		if algo, expected, cerr := parseChecksum(req); cerr != nil {
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			writeS3Error(m.conn, http.StatusBadRequest, "InvalidRequest",
+				fmt.Sprintf("Unsupported checksum algorithm: %v", cerr), "")
+			return 0, 0, fmt.Errorf("s3 checksum parse: %w", cerr)
+		} else if algo != "" {
+			m.checksumAlgo = algo
+			m.checksumExpected = expected
+			m.checksumKey = m.meta.Name
+			m.checksumHasher = newChecksumHasher(algo)
+			m.checksumArmed = true
 		}
 
 		// 🛡️ Sentinel: Sanitize S3 hash to prevent directory traversal via malicious metadata.
@@ -2153,6 +2248,82 @@ var s3standardHeaders = []string{
 	"X-Amz-Server-Side-Encryption",
 }
 
+// Supported S3 checksum algorithms (issue #820, Tier P2). Values are stored
+// lowercase; S3 header names are case-insensitive on the wire.
+const (
+	checksumAlgoCRC32c = "crc32c"
+	checksumAlgoCRC32  = "crc32"
+	checksumAlgoSHA1   = "sha1"
+	checksumAlgoSHA256 = "sha256"
+)
+
+// isSupportedChecksum reports whether algo (lowercase) is a supported checksum.
+func isSupportedChecksum(algo string) bool {
+	switch algo {
+	case checksumAlgoCRC32c, checksumAlgoCRC32, checksumAlgoSHA1, checksumAlgoSHA256:
+		return true
+	default:
+		return false
+	}
+}
+
+// checksumHeaderFor returns the lowercase S3 response header for algo, e.g.
+// "x-amz-checksum-sha256".
+func checksumHeaderFor(algo string) string {
+	return "x-amz-checksum-" + algo
+}
+
+// normalizeChecksumAlgorithm lowercases and validates a checksum algorithm from
+// a request header (e.g. "SHA256" -> "sha256"); returns "" when unsupported.
+func normalizeChecksumAlgorithm(algo string) string {
+	algo = strings.ToLower(strings.TrimSpace(algo))
+	if !isSupportedChecksum(algo) {
+		return ""
+	}
+	return algo
+}
+
+// newChecksumHasher returns a fresh digest for the given normalized algorithm.
+func newChecksumHasher(algo string) hash.Hash {
+	switch algo {
+	case checksumAlgoCRC32c:
+		return crc32.New(crc32.MakeTable(crc32.Castagnoli))
+	case checksumAlgoCRC32:
+		return crc32.NewIEEE()
+	case checksumAlgoSHA1:
+		return sha1.New()
+	default:
+		return sha256.New()
+	}
+}
+
+// parseChecksum resolves the checksum algorithm and optional expected value from
+// a request. It returns (algo, expected, err): algo is "" when no checksum was
+// requested; expected is the base64 value when the client supplied one, else ""
+// (compute-only). An unsupported or conflicting algorithm returns a descriptive
+// error so the caller sends a deterministic 400 InvalidRequest.
+func parseChecksum(req *http.Request) (algo, expected string, err error) {
+	matched := ""
+	for _, a := range []string{checksumAlgoCRC32c, checksumAlgoCRC32, checksumAlgoSHA1, checksumAlgoSHA256} {
+		if v := req.Header.Get(http.CanonicalHeaderKey(checksumHeaderFor(a))); v != "" {
+			matched = a
+			expected = v
+			break
+		}
+	}
+	if explicit := req.Header.Get("X-Amz-Checksum-Algorithm"); explicit != "" {
+		e := normalizeChecksumAlgorithm(explicit)
+		if e == "" {
+			return "", "", fmt.Errorf("unsupported checksum algorithm %q", explicit)
+		}
+		if matched != "" && matched != e {
+			return "", "", fmt.Errorf("conflicting checksum algorithm %q vs %q", explicit, matched)
+		}
+		return e, expected, nil
+	}
+	return matched, expected, nil
+}
+
 // sanitizeS3HeaderValue bounds and strips CR/LF from a header value to prevent
 // HTTP response splitting and oversized metadata (Rule 24).
 func sanitizeS3HeaderValue(v string) string {
@@ -2181,6 +2352,18 @@ func collectS3Headers(req *http.Request) map[string]string {
 	for _, h := range s3standardHeaders {
 		if v := req.Header.Get(h); v != "" {
 			addHeader(strings.ToLower(h), v)
+		}
+	}
+	// Issue #820 (Tier P2): capture integrity checksum headers so a supplied
+	// checksum is persisted at rest and echoed on GET/HEAD.
+	for _, a := range []string{checksumAlgoCRC32c, checksumAlgoCRC32, checksumAlgoSHA1, checksumAlgoSHA256} {
+		if v := req.Header.Get(http.CanonicalHeaderKey(checksumHeaderFor(a))); v != "" {
+			addHeader(checksumHeaderFor(a), v)
+		}
+	}
+	if v := req.Header.Get("X-Amz-Checksum-Algorithm"); v != "" {
+		if norm := normalizeChecksumAlgorithm(v); norm != "" {
+			addHeader("x-amz-checksum-algorithm", norm)
 		}
 	}
 	for name, values := range req.Header {
@@ -2283,6 +2466,30 @@ func (m *S3Communicator) storedS3Meta(key string) map[string]string {
 		return nil
 	}
 	return sm.GetS3Meta(key)
+}
+
+// persistS3Checksum merges a computed S3 checksum into the object's persisted
+// metadata at rest so GET/HEAD echo it (issue #820, Tier P2). It preserves any
+// existing S3 metadata and uses the optional store PutS3Meta interface; it is a
+// no-op when storage does not support S3 metadata.
+func (m *S3Communicator) persistS3Checksum(key, hdr, value, algo string) {
+	ps, ok := m.store.(interface {
+		PutS3Meta(string, map[string]string) error
+	})
+	if !ok {
+		return
+	}
+	headers := map[string]string{hdr: value, "x-amz-checksum-algorithm": algo}
+	if existing := m.storedS3Meta(key); existing != nil {
+		for k, v := range existing {
+			if _, dup := headers[k]; !dup {
+				headers[k] = v
+			}
+		}
+	}
+	if err := ps.PutS3Meta(key, headers); err != nil {
+		log.Printf("AUDIT: Error persisting S3 checksum for %s: %v", key, common.SanitizeLog(err.Error()))
+	}
 }
 
 // handleCopyObject implements S3 CopyObject (PUT with x-amz-copy-source):
@@ -2892,6 +3099,28 @@ func (m *S3Communicator) handleCompleteMultipartUpload(req *http.Request, bucket
 	hasher.Write(data)
 	finalHash := hex.EncodeToString(hasher.Sum(nil))
 	finalSize := int64(len(data))
+
+	// Issue #820 (Tier P2): verify the client-supplied checksum over the
+	// assembled bytes before persisting; on mismatch reject 400 BadDigest
+	// without calling store.Put. When the client asked for compute-only, the
+	// computed checksum is persisted for echo on GET/HEAD.
+	if algo, expected, perr := parseChecksum(req); perr != nil {
+		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		writeS3Error(m.conn, http.StatusBadRequest, "InvalidRequest",
+			fmt.Sprintf("Unsupported checksum algorithm: %v", perr), "")
+		return 0, 0, fmt.Errorf("s3 checksum parse: %w", perr)
+	} else if algo != "" {
+		algoHasher := newChecksumHasher(algo)
+		algoHasher.Write(data)
+		computed := base64.StdEncoding.EncodeToString(algoHasher.Sum(nil))
+		if expected != "" && computed != expected {
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			writeS3Error(m.conn, http.StatusBadRequest, "BadDigest",
+				"The x-amz-checksum-* value you specified did not match the checksum we calculated.", key)
+			return 0, 0, fmt.Errorf("s3 multipart checksum mismatch: expected %s got %s: %w", expected, computed, syscall.EBADMSG)
+		}
+		m.persistS3Checksum(key, checksumHeaderFor(algo), computed, algo)
+	}
 
 	if m.store == nil {
 		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
