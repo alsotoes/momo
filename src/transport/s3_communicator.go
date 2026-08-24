@@ -651,6 +651,19 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 
 	bucket, key := extractS3BucketAndKey(req)
 
+	// Issue #820 (P3) / #912: reject unsupported bucket-config subresources at
+	// the bucket root with a clean 501 NotImplemented (honest posture), before
+	// any object/list/multipart routing. Supported subresources (location,
+	// list-type, uploads, uploadId/partNumber, delete) are not in the reject set.
+	if key == "" {
+		if op, unsupported := unsupportedBucketConfigSubresource(req.URL.Query()); unsupported {
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			writeS3Error(m.conn, http.StatusNotImplemented, "NotImplemented",
+				fmt.Sprintf("The specified %s operation is not supported by this server.", op), bucket)
+			return 0, 0, fmt.Errorf("unsupported bucket-config subresource %q: %w", op, syscall.ENOTSUP)
+		}
+	}
+
 	// Intercept POST for multipart operations (issue #764)
 	if req.Method == "POST" {
 		q := req.URL.Query()
@@ -1878,6 +1891,43 @@ func (m *S3Communicator) IsPeer() bool {
 
 // extractS3BucketAndKey parses the bucket name and key path from an S3 HTTP request.
 // It supports both virtual-host style and path-style S3 URL schemas.
+// ─── Unsupported bucket-config subresources (P3, #912) ─────────────────────
+// S3 bucket-level configuration operations are not implemented. Issue #820 (P3)
+// / #912: return a clean S3-compliant 501 NotImplemented instead of letting these
+// fall through to the nearest method handler (which misroutes e.g.
+// GET /bucket?versioning into ListObjectsV2 or PUT /bucket?tagging into
+// CreateBucket). Only bucket-root addresses (key == "") are intercepted;
+// object-level variants (GetObjectTagging, ?versionId, etc.) are Tier P4.
+var unsupportedBucketConfigSubresources = map[string]string{
+	"versioning":        "bucket versioning",
+	"versions":          "bucket version listing",
+	"acl":               "bucket access-control lists",
+	"policy":            "bucket policies",
+	"cors":              "CORS configuration",
+	"website":           "static website hosting",
+	"lifecycle":         "lifecycle configuration",
+	"tagging":           "bucket tagging",
+	"encryption":        "bucket encryption",
+	"publicAccessBlock": "public access block",
+	"accelerate":        "transfer acceleration",
+	"replication":       "replication configuration",
+	"requestPayment":    "request-payer configuration",
+	"logging":           "logging configuration",
+	"object-lock":       "object-lock configuration",
+	"notification":      "notification configuration",
+}
+
+// unsupportedBucketConfigSubresource returns the human-readable descriptor of
+// the first unsupported bucket-config subresource present in q, if any.
+func unsupportedBucketConfigSubresource(q url.Values) (string, bool) {
+	for param, _ := range q {
+		if op, ok := unsupportedBucketConfigSubresources[param]; ok {
+			return op, true
+		}
+	}
+	return "", false
+}
+
 func extractS3BucketAndKey(req *http.Request) (bucket string, key string) {
 	// req.Host may include an explicit port (e.g. "mybucket.localhost:9000").
 	// Strip it before host parsing so virtual-host detection still matches.

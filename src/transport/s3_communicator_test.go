@@ -3209,3 +3209,99 @@ func TestS3Communicator_SendOPRFEval_NotEnabled(t *testing.T) {
 		t.Fatal("expected an error when OPRF is not enabled on the server, got nil")
 	}
 }
+
+// TestS3Communicator_BucketConfigSubresource501 verifies the P3 honest posture
+// (issue #912): unsupported S3 bucket-config subresources addressed at the
+// bucket root return a clean 501 NotImplemented instead of falling through to
+// the nearest method handler. Supported bucket-root subresources and
+// object-level subresources (P4) must remain unchanged.
+func TestS3Communicator_BucketConfigSubresource501(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+	validTokenReq := func(method, target string) string {
+		return method + " " + target + " HTTP/1.1\r\n" +
+			"Host: 127.0.0.1:4440\r\n" +
+			"Authorization: Bearer " + authToken + "\r\n\r\n"
+	}
+	assertNotImplemented := func(resp string, underlyingErr error) {
+		t.Helper()
+		if underlyingErr == nil {
+			t.Fatal("expected non-nil error for unsupported bucket-config subresource")
+		}
+		if !strings.Contains(resp, "HTTP/1.1 501 Not Implemented") {
+			t.Errorf("expected 501 Not Implemented, got: %s", resp)
+		}
+		if !strings.Contains(resp, "<Code>NotImplemented</Code>") {
+			t.Errorf("expected NotImplemented code, got: %s", resp)
+		}
+	}
+
+	// A bare mock (nil funcs) is safe because interception returns before any
+	// store/method dispatch.
+	tests := []struct {
+		name   string
+		method string
+		target string
+	}{
+		{"versioning get", "GET", "/bucket?versioning"},
+		{"versioning put", "PUT", "/bucket?versioning"},
+		{"tagging put", "PUT", "/bucket?tagging"},
+		{"cors get", "GET", "/bucket?cors"},
+		{"cors delete", "DELETE", "/bucket?cors"},
+		{"lifecycle get", "GET", "/bucket?lifecycle"},
+		{"website delete", "DELETE", "/bucket?website"},
+		{"acl get", "GET", "/bucket?acl"},
+		{"policy put", "PUT", "/bucket?policy"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, err := runS3RequestCaptureBucket(t, validTokenReq(tc.method, tc.target), &mockStore{}, "bucket")
+			assertNotImplemented(resp, err)
+		})
+	}
+
+	// Supported bucket-root subresources must still be served unchanged
+	// (e.g. GetBucketLocation).
+	t.Run("location still served", func(t *testing.T) {
+		resp, err := runS3RequestCaptureBucket(t, validTokenReq("GET", "/bucket?location"), &mockStore{}, "bucket")
+		if err != ErrRequestHandled {
+			t.Fatalf("expected ErrRequestHandled for GetBucketLocation, got: %v", err)
+		}
+		if !strings.Contains(resp, "HTTP/1.1 200 OK") {
+			t.Errorf("expected 200 OK for GetBucketLocation, got: %s", resp)
+		}
+	})
+
+	// ListObjectsV2 at the bucket root must still work.
+	t.Run("list still served", func(t *testing.T) {
+		mock := &mockStore{listFunc: func() ([]common.FileMetadata, error) { return nil, nil }}
+		resp, err := runS3RequestCaptureBucket(t, validTokenReq("GET", "/bucket?list-type=2"), mock, "bucket")
+		if err != ErrRequestHandled {
+			t.Fatalf("expected ErrRequestHandled for list, got: %v", err)
+		}
+		if !strings.Contains(resp, "HTTP/1.1 200 OK") {
+			t.Errorf("expected 200 OK for ListObjectsV2, got: %s", resp)
+		}
+	})
+
+	// Object-level subresources (Tier P4) must NOT be intercepted: they keep the
+	// pre-change routing (GetObject) -> 404 NoSuchKey on a missing object.
+	t.Run("object tagging not intercepted", func(t *testing.T) {
+		mock := &mockStore{
+			getFunc: func(name string) (io.ReadCloser, common.FileMetadata, error) {
+				return nil, common.FileMetadata{}, syscall.ENOENT
+			},
+		}
+		resp, err := runS3RequestCaptureBucket(t, validTokenReq("GET", "/bucket/file.txt?tagging"), mock, "bucket")
+		if err != ErrRequestHandled {
+			t.Fatalf("expected ErrRequestHandled (GetObject path), got: %v", err)
+		}
+		if strings.Contains(resp, "<Code>NotImplemented</Code>") {
+			t.Fatalf("object-level tagging must not be intercepted, got 501:\n%s", resp)
+		}
+		if !strings.Contains(resp, "HTTP/1.1 404 Not Found") {
+			t.Errorf("expected 404 NoSuchKey for object-level tagging (unchanged), got: %s", resp)
+		}
+	})
+}
