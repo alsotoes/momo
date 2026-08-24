@@ -664,6 +664,19 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		}
 	}
 
+	// Issue #820 (P4) / #914: reject unsupported object-level subresources at an
+	// object key with a clean 501 NotImplemented (honest posture), before any
+	// object/list/multipart routing. Supported object params (uploadId,
+	// partNumber) are not in the reject set.
+	if key != "" {
+		if op, unsupported := unsupportedObjectSubresource(req.URL.Query()); unsupported {
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			writeS3Error(m.conn, http.StatusNotImplemented, "NotImplemented",
+				fmt.Sprintf("The specified %s operation is not supported by this server.", op), key)
+			return 0, 0, fmt.Errorf("unsupported object subresource %q: %w", op, syscall.ENOTSUP)
+		}
+	}
+
 	// Intercept POST for multipart operations (issue #764)
 	if req.Method == "POST" {
 		q := req.URL.Query()
@@ -1889,8 +1902,6 @@ func (m *S3Communicator) IsPeer() bool {
 	return m.isPeer
 }
 
-// extractS3BucketAndKey parses the bucket name and key path from an S3 HTTP request.
-// It supports both virtual-host style and path-style S3 URL schemas.
 // ─── Unsupported bucket-config subresources (P3, #912) ─────────────────────
 // S3 bucket-level configuration operations are not implemented. Issue #820 (P3)
 // / #912: return a clean S3-compliant 501 NotImplemented instead of letting these
@@ -1928,6 +1939,33 @@ func unsupportedBucketConfigSubresource(q url.Values) (string, bool) {
 	return "", false
 }
 
+// ─── Unsupported object subresources (P4, #914) ────────────────────────────
+// S3 object-level subresource operations (ACLs, tagging, versioning, retention,
+// legal-hold) are not implemented. Issue #820 (P4) / #914: return a clean
+// S3-compliant 501 NotImplemented instead of silently misrouting these into
+// GetObject/PutObject/DeleteObject. Only object-key addresses (key != "") are
+// intercepted; bucket-root bucket-config handling is #912/#913.
+var unsupportedObjectSubresources = map[string]string{
+	"tagging":    "object tagging",
+	"acl":        "object access-control lists",
+	"versionId":  "object versioning",
+	"retention":  "object retention",
+	"legal-hold": "object legal hold",
+}
+
+// unsupportedObjectSubresource returns the human-readable descriptor of the
+// first unsupported object subresource present in q, if any.
+func unsupportedObjectSubresource(q url.Values) (string, bool) {
+	for param, _ := range q {
+		if op, ok := unsupportedObjectSubresources[param]; ok {
+			return op, true
+		}
+	}
+	return "", false
+}
+
+// extractS3BucketAndKey parses the bucket name and key path from an S3 HTTP request.
+// It supports both virtual-host style and path-style S3 URL schemas.
 func extractS3BucketAndKey(req *http.Request) (bucket string, key string) {
 	// req.Host may include an explicit port (e.g. "mybucket.localhost:9000").
 	// Strip it before host parsing so virtual-host detection still matches.

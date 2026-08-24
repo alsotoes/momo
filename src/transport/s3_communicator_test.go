@@ -3285,23 +3285,99 @@ func TestS3Communicator_BucketConfigSubresource501(t *testing.T) {
 		}
 	})
 
-	// Object-level subresources (Tier P4) must NOT be intercepted: they keep the
-	// pre-change routing (GetObject) -> 404 NoSuchKey on a missing object.
-	t.Run("object tagging not intercepted", func(t *testing.T) {
+	// Plain GetObject (no subresource) must still be served: 404 NoSuchKey on a
+	// missing object. (Object-level subresource interception is Tier P4, #914;
+	// covered by TestS3Communicator_ObjectSubresource501.)
+	t.Run("object get still served", func(t *testing.T) {
 		mock := &mockStore{
 			getFunc: func(name string) (io.ReadCloser, common.FileMetadata, error) {
 				return nil, common.FileMetadata{}, syscall.ENOENT
 			},
 		}
-		resp, err := runS3RequestCaptureBucket(t, validTokenReq("GET", "/bucket/file.txt?tagging"), mock, "bucket")
+		resp, err := runS3RequestCaptureBucket(t, validTokenReq("GET", "/bucket/file.txt"), mock, "bucket")
 		if err != ErrRequestHandled {
 			t.Fatalf("expected ErrRequestHandled (GetObject path), got: %v", err)
 		}
 		if strings.Contains(resp, "<Code>NotImplemented</Code>") {
-			t.Fatalf("object-level tagging must not be intercepted, got 501:\n%s", resp)
+			t.Fatalf("plain GetObject must not be intercepted, got 501:\n%s", resp)
 		}
 		if !strings.Contains(resp, "HTTP/1.1 404 Not Found") {
-			t.Errorf("expected 404 NoSuchKey for object-level tagging (unchanged), got: %s", resp)
+			t.Errorf("expected 404 NoSuchKey for plain GetObject, got: %s", resp)
 		}
+	})
+}
+
+// TestS3Communicator_ObjectSubresource501 verifies the P4 honest posture
+// (issue #914): unsupported S3 object-level subresources addressed at an object
+// key return a clean 501 NotImplemented instead of silently misrouting into
+// GetObject/PutObject/DeleteObject. Supported object params (uploadId,
+// partNumber) and bucket-root bucket-config rejection remain unchanged.
+func TestS3Communicator_ObjectSubresource501(t *testing.T) {
+	defer verifyNoLeaks(t)
+
+	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+	validTokenReq := func(method, target string) string {
+		return method + " " + target + " HTTP/1.1\r\n" +
+			"Host: 127.0.0.1:4440\r\n" +
+			"Authorization: Bearer " + authToken + "\r\n\r\n"
+	}
+	assertNotImplemented := func(resp string, underlyingErr error) {
+		t.Helper()
+		if underlyingErr == nil {
+			t.Fatal("expected non-nil error for unsupported object subresource")
+		}
+		if !strings.Contains(resp, "HTTP/1.1 501 Not Implemented") {
+			t.Errorf("expected 501 Not Implemented, got: %s", resp)
+		}
+		if !strings.Contains(resp, "<Code>NotImplemented</Code>") {
+			t.Errorf("expected NotImplemented code, got: %s", resp)
+		}
+	}
+
+	tests := []struct {
+		name   string
+		method string
+		target string
+	}{
+		{"tagging get", "GET", "/bucket/file.txt?tagging"},
+		{"tagging put", "PUT", "/bucket/file.txt?tagging"},
+		{"tagging delete", "DELETE", "/bucket/file.txt?tagging"},
+		{"acl get", "GET", "/bucket/file.txt?acl"},
+		{"acl put", "PUT", "/bucket/file.txt?acl"},
+		{"versionId get", "GET", "/bucket/file.txt?versionId=1"},
+		{"versionId delete", "DELETE", "/bucket/file.txt?versionId=1"},
+		{"retention get", "GET", "/bucket/file.txt?retention"},
+		{"retention put", "PUT", "/bucket/file.txt?retention"},
+		{"legal-hold get", "GET", "/bucket/file.txt?legal-hold"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, err := runS3RequestCaptureBucket(t, validTokenReq(tc.method, tc.target), &mockStore{}, "bucket")
+			assertNotImplemented(resp, err)
+		})
+	}
+
+	// Supported object params (multipart) must still route unchanged: UploadPart
+	// (PUT ?uploadId & partNumber) -> 200, and ListParts (GET ?uploadId).
+	t.Run("multipart still served", func(t *testing.T) {
+		mock := &mockStore{}
+		resp, err := runS3RequestCaptureBucket(t,
+			validTokenReq("PUT", "/bucket/file.txt?uploadId=bogus&partNumber=1"), mock, "bucket")
+		if strings.Contains(resp, "<Code>NotImplemented</Code>") {
+			t.Fatalf("UploadPart must not be intercepted, got 501:\n%s", resp)
+		}
+		if err == nil {
+			// UploadPart may return NoSuchUpload for an unknown id; the key point
+			// is it is NOT a 501 NotImplemented.
+			if !strings.Contains(resp, "HTTP/1.1 404 Not Found") && !strings.Contains(resp, "HTTP/1.1 200 OK") {
+				t.Errorf("expected upload-part routing (404/200), got: %s", resp)
+			}
+		}
+	})
+
+	// Bucket-root bucket-config rejection (#912/#913) must be retained.
+	t.Run("bucket root versioning still 501", func(t *testing.T) {
+		resp, err := runS3RequestCaptureBucket(t, validTokenReq("GET", "/bucket?versioning"), &mockStore{}, "bucket")
+		assertNotImplemented(resp, err)
 	})
 }
