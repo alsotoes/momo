@@ -26,7 +26,7 @@ This layer handles the physical movement of bytes. It includes the carrier trans
 The core logic defines the data distribution path (e.g., `Chain`, `Splay`). This logic is **completely agnostic** of the communication layer. It executes replication by requesting a connection (`Communicator`) from the factory and doesn't care whether bytes move via TCP or QUIC streams.
 
 #### 3. State Management (Polymorphic System)
-The metrics component runs on every node. It is responsible for monitoring local system metrics (CPU and memory usage). When a threshold is reached, the node broadcasts the new replication strategy to the entire cluster via the `ChangeReplication` endpoint, ensuring all potential "Primary" nodes remain in sync.
+The metrics controller (`metrics.GetMetrics`, `src/metrics/metrics.go`) runs on the **primary (controller) node — daemon 0**; it short-circuits on any node with `serverId != 0`. It is responsible for monitoring system metrics (CPU and memory usage). When a threshold is reached, the controller broadcasts the new replication strategy to the entire cluster via the `ChangeReplication` endpoint, ensuring all potential "Primary" nodes remain in sync. (Per-node Prometheus `/metrics`/`/health` export is independent and runs on every node; see Observability §7.)
 
 ### 4. Distributed Object Engine (CAS 2.0)
 Momo utilizes a **Shared-Nothing Partitioned Architecture** for its object storage layer, encapsulated in the `src/storage` package:
@@ -47,6 +47,108 @@ Momo includes a fully decentralized P2P subsystem (`src/p2p/`) for cluster membe
 - **Scatter-Gather Queries**: Decentralized query mechanism for list/get/has/delete operations across the cluster without a central coordinator.
 - **Quality-Aware Quorum Selection** (issue #823): scatter-gather, lease, and threshold-OPRF quorums are built from alive peers ranked by per-peer EWMA RTT (`PeerMap.AliveByQuality`), preferring low-latency members and excluding suspect/offline peers; no wire-format changes.
 - **Transport**: P2P communication runs on a separate port (default `4450`, configurable via `gossip_port`). The P2P transport supports both TCP and QUIC underlying connections. P2P supports **optional TLS encryption** (mutual TLS via `[p2p] tls_cert_file`/`tls_key_file`/`tls_ca_file`) and always enforces **peer ID authentication** via an `AuthFunc` that validates connecting peer IDs against the configured daemon set, preventing spoofing and injection.
+
+### 4c. S3 Gateway Server-Side Encryption (SSE) Boundary
+The S3 gateway (`S3Communicator.validateSSEHeaders`, issues #776 / #820 P1)
+enforces an explicit, honest SSE boundary rather than silently downgrading or
+misrepresenting guarantees:
+
+- **At rest, momo AES-256-GCM for everything**: the `EncryptedBlobStore`
+  decorator wraps the chosen blob backend with AES-GCM-256 whenever
+  `encryption_enabled` is set (`storage/factory.go`). This encrypts **every**
+  object at rest, independent of any S3 SSE header — so all S3 objects are
+  already protected by a real at-rest cipher. It is **opt-in** (gated on the
+  at-rest key); when disabled, momo stores plaintext blobs.
+- **SSE-S3 (`x-amz-server-side-encryption: AES256`)**: accepted, persisted in
+  `S3Headers`, and echoed on GET/HEAD. This is an accurate claim — the object
+  is encrypted at rest (momo AES-256-GCM envelope).
+- **SSE-C (customer-provided key)**: rejected with `400 InvalidRequest`. Momo
+  never accepts, stores, or retrieves with a customer key; faking per-object
+  client-key encryption would collide with content-addressed dedup (CAS keys on
+  plaintext SHA-256) and is not modeled.
+- **SSE-KMS (`aws:kms` / `x-amz-server-side-encryption-aws-kms-key-id`)**:
+  rejected with `501 NotImplemented`. Momo has no AWS KMS integration; reporting
+  `aws:kms` while using a local envelope would break audit expectations, so it
+  is never faked.
+- **No fake guarantees**: every SSE-C/SSE-KMS rejection body states momo's real
+  at-rest guarantee and points to SSE-S3 or client-side encryption. Clients that
+  require SSE-C/SSE-KMS must use those enforcement points upstream; momo will
+  not silently accept what it cannot truthfully provide.
+
+This is a deliberate scope decision (see #820 tier P1): keep the honest
+reject-and-document posture, never fake a crypto guarantee.
+
+### 4d. Centralized Integrity Verification (protocol-agnostic)
+Additive integrity checksums are verified in the **storage/ingest core**, not in
+any surface protocol (issue #903), so no client protocol is a lock-in:
+
+- **Data model**: `FileMetadata.Checksums []ChecksumRef{Algorithm, Value}`
+  (`common/checksum.go`) carries additive checksums alongside the authoritative
+  SHA-256 `Hash` (which remains the content-address — checksums are never
+  independently addressable).
+- **Central verifier**: the shared ingest path `getFile` (`server/file.go`)
+  computes the requested checksums in the same bounded-memory pass as SHA-256
+  (via `common.ChecksumSet`) and rejects a mismatch by deleting the object.
+  Surfaces expose expectations through the protocol-agnostic
+  `transport.ChecksumProvider` interface — S3 maps `x-amz-checksum-*` onto it;
+  native transports have none and stay inert.
+- **Replication re-verify**: forwarded S3 objects carry their checksums via the
+  additive `X-Momo-S3-Meta` envelope; the receiving S3 peer re-derives
+  expectations and the same central verifier re-checks at every hop.
+- **Retrieval bit-rot (opt-in)**: `CASStore.VerifyChecksum(name, refs)` streams
+  the stored blob and verifies the expected checksums, enabling stale/bit-rot
+  detection on demand without taxing the default `Get` hot path.
+
+### 4e. S3 Unsupported Subresource Handling (honest `501`)
+S3 requests carrying a subresource param for a feature momo does not implement
+are **not** silently misrouted. `S3Communicator.HandshakeServer`
+(`src/transport/s3_communicator.go`) intercepts a known-but-unsupported
+subresource set at the dispatch root — before any store/method routing — and
+returns a clean S3-compliant `501 NotImplemented` (bounded write,
+store-independent). Two sets are tracked separately, following the honest
+reject-and-document posture (same philosophy as §4c):
+
+- **Bucket-config (`key == ""`), issue #820 P3 / #912 (+ #920 P5)**: `?versioning`,
+  `?versions`, `?acl`, `?policy`, `?cors`, `?website`, `?lifecycle`,
+  `?tagging`, `?encryption`, `?publicAccessBlock`, `?accelerate`,
+  `?replication`, `?requestPayment`, `?logging`, `?object-lock`,
+  `?notification`, `?analytics`, `?inventory`, `?metrics`,
+  `?intelligent-tiering`.
+- **Object-level (`key != ""`), issue #820 P4 / #914 (+ #920 P5)**:
+  `?tagging`, `?acl`, `?versionId`, `?retention`, `?legal-hold`, `?select`
+  (SelectObjectContent).
+
+Supported subresources are untouched: bucket `?location`, list
+(`list-type` + pagination), multipart (`uploads`, `uploadId`, `partNumber`),
+and batch `?delete` continue to route as before. **UploadPartCopy** (`PUT`
+with `?uploadId` + `?partNumber` and an `X-Amz-Copy-Source` header, issue #920)
+is intercepted separately in the PUT dispatch — before the UploadPart handler
+misreads the copy source as a part body — and also returns `501 NotImplemented`.
+Remaining non-subresource gaps that do not arrive via a query param (e.g.
+aws-chunked trailing-checksum form, `SelectObjectContent`'s non-S3 payload
+semantics) are handled by their own paths and not covered here.
+
+### 4f. At-Rest Integrity (content-address re-verification, issue #924)
+Blobs are content-addressed by SHA-256, but the read path used to stream blob
+bytes out without ever re-deriving the hash — a corrupted blob at rest was
+silently served. `src/storage/integrity.go` closes this with two mechanisms
+(config section `[storage]`):
+
+- **Verify-on-read (`verify_on_read`, default `true`)**: `CASStore.Get` wraps the
+  blob stream in a reader that recomputes SHA-256 and, at EOF, asserts it equals
+  the content-hash key. On mismatch the read fails with
+  `common.ErrIntegrityMismatch` + `syscall.EBADMSG` — corrupt bytes are never
+  served. Bounded-memory and computed as the caller drains the stream, outside
+  the bbolt/`s.mu` critical section.
+- **Background scrub (`scrub_interval`, default `3600`s)**: `StartScrub` mirrors
+  the GC loop (`gcOnce`/`gcDone`/`gcWG`). Each pass lists referenced blobs from
+  the `objects` bucket, re-reads and re-hashes each via `BlobStore.GetBlob` (I/O
+  outside `s.mu`), and quarantines a blob whose recomputed hash no longer matches
+  its key — deleting content + metadata so later reads fail explicitly with
+  `ENOENT` rather than serving garbage. The helper `common.HashReader` streams a
+  fixed-buffer SHA-256 (mirrors `common.HashFile`).
+
+Re-replication/healing of quarantined blobs is out of scope here.
 
 ### 5. Automated Governance & AI Reviewer
 To maintain high integrity in a single-contributor environment, Momo employs an automated governance layer:
@@ -104,6 +206,8 @@ Momo includes a built-in Prometheus metrics exporter (`src/server/metrics_export
 | **Latency Histograms** | `momo_request_latency_seconds{operation}`, `momo_replication_latency_seconds` | 4 | Medium (opt-in) |
 
 **Configuration:** Add `prometheus_port = 9100` to the `[metrics]` section of `momo.conf`. Set to `0` or omit to disable. The metrics server runs on a separate port from the data plane — it does not share the accept loop, connection pool, or semaphore with the main daemon.
+
+**Per-node bind:** each server process starts its own `/metrics` endpoint (`server.Daemon` → `StartMetricsServer`). By default all nodes bind `:prometheus_port` (all interfaces); in same-host/co-located topologies this collides (`EADDRINUSE`). A daemon may opt into a distinct bind via `[daemon.N] metrics_host` / `metrics_port`, which override the global `[metrics] prometheus_bind_host` / `prometheus_port` for that node. This keeps `/metrics` available on every node and lets operators scope the endpoint to an admin/mgmt interface.
 
 **Overhead guarantees:** All counters use `sync/atomic` (~5ns per op). Heavy operations (`runtime.ReadMemStats`, disk stats) run only at scrape time (every 15-60s). No `prometheus/client_golang` dependency. Target: <1% throughput regression.
 
@@ -232,8 +336,8 @@ Replication forwarding (Chain/Splay) uses `store.Get()` → `connectToPeerStream
 The defining feature of Momo is its **Dual-Dimensional Polymorphic Architecture**, which enables the system to adapt dynamically to load conditions and traffic origins with **zero manual configuration changes and zero runtime impact**:
 
 ### 📈 Dimension 1: Dynamic Replication Polymorphism (Runtime Adaptation)
-Momo monitors local CPU and Memory metrics continuously on every node. 
-- **Under Surge Load:** If system metrics exceed specified thresholds (e.g., 80% usage), nodes coordinate to dynamically shift the cluster replication mode to a lower-overhead strategy (such as **No Replication** or **Primary-Splay**) to prevent bottleneck queues and protect cluster stability. An optional `minimum_durability_factor` (issue #822) caps this degradation: the controller refuses to auto-select a mode whose achievable replica count (≈ `min(replication_factor, daemons)`, `1` for `ReplicationNone`) is below the floor, holding the current higher-durability mode and logging the refusal rather than silently losing durability.
+The polymorphic controller (`metrics.GetMetrics`, `src/metrics/metrics.go`) runs on the primary (controller) node — **daemon 0** — and continuously samples that node's local CPU and Memory metrics. (This is distinct from the per-node Prometheus `/metrics` exporter, which runs on every server node; see Observability §7.)
+- **Under Surge Load:** If system metrics exceed specified thresholds (e.g., 80% usage), the controller shifts the cluster replication mode to a lower-overhead strategy (such as **No Replication** or **Primary-Splay**) to prevent bottleneck queues and protect cluster stability, then broadcasts the change cluster-wide via `ChangeReplication`. An optional `minimum_durability_factor` (issue #822) caps this degradation: the controller refuses to auto-select a mode whose achievable replica count (≈ `min(replication_factor, daemons)`, `1` for `ReplicationNone`) is below the floor, holding the current higher-durability mode and logging the refusal rather than silently losing durability.
 - **Under Low Load:** When resource usage settles below thresholds (e.g., 20% usage), the system automatically promotes the mode to highly consistent, durable strategies (like **Chain** or **Splay**), optimizing data safety.
 - **Decentralized Execution:** This state change is broadcast dynamically to all potential "Primary" nodes via the `ChangeReplication` endpoint, keeping the cluster seamlessly in sync without a single point of failure.
 

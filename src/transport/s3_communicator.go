@@ -12,6 +12,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"hash"
 	"io"
 	"log"
 	"math"
@@ -331,6 +332,13 @@ func (m *S3Communicator) SendOPRFEval(authToken string, timestamp int64, blinded
 }
 
 func (m *S3Communicator) Read(p []byte) (n int, err error) {
+	return m.readUnderlying(p)
+}
+
+// readUnderlying is the wire source read without checksum accumulation (issue
+// #903): additive-checksum verification now lives centrally in the shared
+// ingest path (getFile) via ChecksumExpectations, not in the surface reader.
+func (m *S3Communicator) readUnderlying(p []byte) (n int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Panic recovered in S3 Read: %v", r)
@@ -339,10 +347,42 @@ func (m *S3Communicator) Read(p []byte) (n int, err error) {
 	}()
 	// A decoded aws-chunked payload is replayed from the spill file so the
 	// server pipeline (getFile/store.Put) consumes only de-framed content.
+	var r io.Reader = m.reader
 	if m.streamingPayload && m.streamingReader != nil {
-		return m.streamingReader.Read(p)
+		r = m.streamingReader
 	}
-	return m.reader.Read(p)
+	n, err = r.Read(p)
+	return n, err
+}
+
+// ChecksumExpectations returns the additive integrity checksum(s) a client
+// supplied for this object, derived from the captured S3 headers (issue #903).
+// It satisfies the protocol-agnostic transport.ChecksumProvider interface so
+// the shared ingest path (getFile) verifies them centrally. Values come from
+// x-amz-checksum-<algo> (present for both direct clients and replicated
+// X-Momo-S3-Meta forwarding); compute-only requests (algorithm marker with no
+// value) return nothing to verify.
+func (m *S3Communicator) ChecksumExpectations() []common.ChecksumRef {
+	algo := normalizeChecksumAlgorithm(m.meta.S3Headers["x-amz-checksum-algorithm"])
+	if algo == "" {
+		return nil
+	}
+	val := m.meta.S3Headers[checksumHeaderFor(algo)]
+	if val == "" {
+		return nil
+	}
+	return []common.ChecksumRef{{Algorithm: algo, Value: val}}
+}
+
+// OnIntegrityChecksumMismatch is invoked by getFile when a client-supplied
+// additive checksum fails verification. It writes the S3 400 BadDigest response
+// so the client is informed, and returns a POSIX-mapped error that getFile
+// propagates (which also deletes the just-stored object).
+func (m *S3Communicator) OnIntegrityChecksumMismatch() error {
+	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	writeS3Error(m.conn, http.StatusBadRequest, "BadDigest",
+		"The x-amz-checksum-* value you specified did not match the checksum we calculated.", m.meta.Name)
+	return fmt.Errorf("s3 checksum mismatch: %w", syscall.EBADMSG)
 }
 
 func (m *S3Communicator) Write(p []byte) (n int, err error) {
@@ -611,6 +651,32 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 
 	bucket, key := extractS3BucketAndKey(req)
 
+	// Issue #820 (P3) / #912: reject unsupported bucket-config subresources at
+	// the bucket root with a clean 501 NotImplemented (honest posture), before
+	// any object/list/multipart routing. Supported subresources (location,
+	// list-type, uploads, uploadId/partNumber, delete) are not in the reject set.
+	if key == "" {
+		if op, unsupported := unsupportedBucketConfigSubresource(req.URL.Query()); unsupported {
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			writeS3Error(m.conn, http.StatusNotImplemented, "NotImplemented",
+				fmt.Sprintf("The specified %s operation is not supported by this server.", op), bucket)
+			return 0, 0, fmt.Errorf("unsupported bucket-config subresource %q: %w", op, syscall.ENOTSUP)
+		}
+	}
+
+	// Issue #820 (P4) / #914: reject unsupported object-level subresources at an
+	// object key with a clean 501 NotImplemented (honest posture), before any
+	// object/list/multipart routing. Supported object params (uploadId,
+	// partNumber) are not in the reject set.
+	if key != "" {
+		if op, unsupported := unsupportedObjectSubresource(req.URL.Query()); unsupported {
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			writeS3Error(m.conn, http.StatusNotImplemented, "NotImplemented",
+				fmt.Sprintf("The specified %s operation is not supported by this server.", op), key)
+			return 0, 0, fmt.Errorf("unsupported object subresource %q: %w", op, syscall.ENOTSUP)
+		}
+	}
+
 	// Intercept POST for multipart operations (issue #764)
 	if req.Method == "POST" {
 		q := req.URL.Query()
@@ -815,6 +881,40 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		contentType := s3Headers["content-type"]
 		rangeHeader := req.Header.Get("Range")
 
+		// Issue #820 (Tier P2): GET with x-amz-checksum-mode: ENABLED. Objects
+		// uploaded with a checksum already echo it from persisted metadata; for
+		// older/unchecksummed objects compute a checksum over the stored bytes via
+		// a bounded temp-file stream and return it alongside the body.
+		forceChecksumHeader := ""
+		if strings.EqualFold(req.Header.Get("X-Amz-Checksum-Mode"), "ENABLED") {
+			alg := normalizeChecksumAlgorithm(s3Headers["x-amz-checksum-algorithm"])
+			if alg == "" {
+				alg = checksumAlgoCRC32
+			}
+			hdr := checksumHeaderFor(alg)
+			if s3Headers[hdr] == "" {
+				tmp, terr := os.CreateTemp("", "momo-s3-checksum-*")
+				if terr != nil {
+					m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+					writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to buffer object for checksum.", key)
+					return 0, 0, ErrRequestHandled
+				}
+				defer os.Remove(tmp.Name())
+				algoHasher := newChecksumHasher(alg)
+				if _, cerr := io.Copy(io.MultiWriter(tmp, algoHasher), rc); cerr != nil {
+					tmp.Close()
+					return 0, 0, fmt.Errorf("failed to hash object for checksum: %w", cerr)
+				}
+				if _, serr := tmp.Seek(0, io.SeekStart); serr != nil {
+					tmp.Close()
+					return 0, 0, fmt.Errorf("failed to rewind checksum buffer: %w", serr)
+				}
+				forceChecksumHeader = hdr + ": " + base64.StdEncoding.EncodeToString(algoHasher.Sum(nil))
+				rc.Close()
+				rc = tmp
+			}
+		}
+
 		// If-Match: any listed entity-tag must match, otherwise 412.
 		if im := req.Header.Get("If-Match"); im != "" && !etagMatches(im, etag) {
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
@@ -915,6 +1015,10 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		b = append(b, lastModifiedStr...)
 		b = append(b, "\r\n"...)
 		b = appendS3MetaHeaders(b, s3Headers, contentType)
+		if forceChecksumHeader != "" {
+			b = append(b, forceChecksumHeader...)
+			b = append(b, "\r\n"...)
+		}
 		b = append(b, "Connection: close\r\n\r\n"...)
 
 		// 🛡️ Zero-Crash: Defensive bounds check to verify the formatted content fits safely within the stack buffer
@@ -1154,10 +1258,25 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			return 0, 0, err
 		}
 
+		// UploadPartCopy (issue #820, P5 / #920): a PUT with multipart params
+		// AND an X-Amz-Copy-Source header. Not implemented; reject cleanly
+		// instead of the UploadPart handler misreading the copy source as a
+		// part body. Intercepted before UploadPart/CopyObject.
+		q := req.URL.Query()
+		if copySource := req.Header.Get("X-Amz-Copy-Source"); copySource != "" {
+			_, hasUploadID := q["uploadId"]
+			_, hasPartNum := q["partNumber"]
+			if hasUploadID && hasPartNum && key != "" {
+				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				writeS3Error(m.conn, http.StatusNotImplemented, "NotImplemented",
+					"UploadPartCopy is not supported by this server.", key)
+				return 0, 0, fmt.Errorf("unsupported UploadPartCopy: %w", syscall.ENOTSUP)
+			}
+		}
+
 		// UploadPart: PUT /{bucket}/{key}?uploadId=X&partNumber=N (issue #764).
 		// Intercepted before CopyObject/CreateBucket because the query params
 		// are distinct from those operations.
-		q := req.URL.Query()
 		if _, hasUploadID := q["uploadId"]; hasUploadID && key != "" {
 			if _, hasPartNum := q["partNumber"]; hasPartNum {
 				if !m.validBucket(bucket) {
@@ -1251,6 +1370,18 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 					log.Printf("WARNING: ignoring malformed X-Momo-S3-Meta header: %v", jsonErr)
 				}
 			}
+		}
+
+		// Issue #820 (Tier P2) / #903: validate the requested checksum algorithm
+		// up front (deterministic 400 InvalidRequest). The checksum itself is
+		// captured into S3Headers by collectS3Headers above and verified
+		// centrally by the shared ingest path via ChecksumExpectations, so no
+		// surface-side accumulation state is needed here.
+		if _, _, cerr := parseChecksum(req); cerr != nil {
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			writeS3Error(m.conn, http.StatusBadRequest, "InvalidRequest",
+				fmt.Sprintf("Unsupported checksum algorithm: %v", cerr), "")
+			return 0, 0, fmt.Errorf("s3 checksum parse: %w", cerr)
 		}
 
 		// 🛡️ Sentinel: Sanitize S3 hash to prevent directory traversal via malicious metadata.
@@ -1786,6 +1917,73 @@ func (m *S3Communicator) IsPeer() bool {
 	return m.isPeer
 }
 
+// ─── Unsupported bucket-config subresources (P3, #912) ─────────────────────
+// S3 bucket-level configuration operations are not implemented. Issue #820 (P3)
+// / #912: return a clean S3-compliant 501 NotImplemented instead of letting these
+// fall through to the nearest method handler (which misroutes e.g.
+// GET /bucket?versioning into ListObjectsV2 or PUT /bucket?tagging into
+// CreateBucket). Only bucket-root addresses (key == "") are intercepted;
+// object-level variants (GetObjectTagging, ?versionId, etc.) are Tier P4.
+var unsupportedBucketConfigSubresources = map[string]string{
+	"versioning":          "bucket versioning",
+	"versions":            "bucket version listing",
+	"acl":                 "bucket access-control lists",
+	"policy":              "bucket policies",
+	"cors":                "CORS configuration",
+	"website":             "static website hosting",
+	"lifecycle":           "lifecycle configuration",
+	"tagging":             "bucket tagging",
+	"encryption":          "bucket encryption",
+	"publicAccessBlock":   "public access block",
+	"accelerate":          "transfer acceleration",
+	"replication":         "replication configuration",
+	"requestPayment":      "request-payer configuration",
+	"logging":             "logging configuration",
+	"object-lock":         "object-lock configuration",
+	"notification":        "notification configuration",
+	"analytics":           "bucket analytics configuration",
+	"inventory":           "bucket inventory configuration",
+	"metrics":             "bucket metrics configuration",
+	"intelligent-tiering": "S3 Intelligent-Tiering configuration",
+}
+
+// unsupportedBucketConfigSubresource returns the human-readable descriptor of
+// the first unsupported bucket-config subresource present in q, if any.
+func unsupportedBucketConfigSubresource(q url.Values) (string, bool) {
+	for param, _ := range q {
+		if op, ok := unsupportedBucketConfigSubresources[param]; ok {
+			return op, true
+		}
+	}
+	return "", false
+}
+
+// ─── Unsupported object subresources (P4, #914) ────────────────────────────
+// S3 object-level subresource operations (ACLs, tagging, versioning, retention,
+// legal-hold) are not implemented. Issue #820 (P4) / #914: return a clean
+// S3-compliant 501 NotImplemented instead of silently misrouting these into
+// GetObject/PutObject/DeleteObject. Only object-key addresses (key != "") are
+// intercepted; bucket-root bucket-config handling is #912/#913.
+var unsupportedObjectSubresources = map[string]string{
+	"tagging":    "object tagging",
+	"acl":        "object access-control lists",
+	"versionId":  "object versioning",
+	"retention":  "object retention",
+	"legal-hold": "object legal hold",
+	"select":     "SelectObjectContent",
+}
+
+// unsupportedObjectSubresource returns the human-readable descriptor of the
+// first unsupported object subresource present in q, if any.
+func unsupportedObjectSubresource(q url.Values) (string, bool) {
+	for param, _ := range q {
+		if op, ok := unsupportedObjectSubresources[param]; ok {
+			return op, true
+		}
+	}
+	return "", false
+}
+
 // extractS3BucketAndKey parses the bucket name and key path from an S3 HTTP request.
 // It supports both virtual-host style and path-style S3 URL schemas.
 func extractS3BucketAndKey(req *http.Request) (bucket string, key string) {
@@ -2156,6 +2354,76 @@ var s3standardHeaders = []string{
 	"X-Amz-Server-Side-Encryption",
 }
 
+// Supported S3 checksum algorithms (issue #820, Tier P2). Values are stored
+// lowercase; S3 header names are case-insensitive on the wire.
+const (
+	checksumAlgoCRC32c = "crc32c"
+	checksumAlgoCRC32  = "crc32"
+	checksumAlgoSHA1   = "sha1"
+	checksumAlgoSHA256 = "sha256"
+)
+
+// isSupportedChecksum reports whether algo (lowercase) is a supported checksum.
+func isSupportedChecksum(algo string) bool {
+	switch algo {
+	case checksumAlgoCRC32c, checksumAlgoCRC32, checksumAlgoSHA1, checksumAlgoSHA256:
+		return true
+	default:
+		return false
+	}
+}
+
+// checksumHeaderFor returns the lowercase S3 response header for algo, e.g.
+// "x-amz-checksum-sha256".
+func checksumHeaderFor(algo string) string {
+	return "x-amz-checksum-" + algo
+}
+
+// normalizeChecksumAlgorithm lowercases and validates a checksum algorithm from
+// a request header (e.g. "SHA256" -> "sha256"); returns "" when unsupported.
+func normalizeChecksumAlgorithm(algo string) string {
+	algo = strings.ToLower(strings.TrimSpace(algo))
+	if !isSupportedChecksum(algo) {
+		return ""
+	}
+	return algo
+}
+
+// newChecksumHasher returns a fresh digest for the given normalized algorithm.
+// newChecksumHasher delegates to the protocol-agnostic common.ChecksumHasher
+// (issue #903) so the digest factory is shared by the S3 adapter and the core
+// ingest verifier instead of being duplicated.
+func newChecksumHasher(algo string) hash.Hash {
+	return common.ChecksumHasher(algo)
+}
+
+// parseChecksum resolves the checksum algorithm and optional expected value from
+// a request. It returns (algo, expected, err): algo is "" when no checksum was
+// requested; expected is the base64 value when the client supplied one, else ""
+// (compute-only). An unsupported or conflicting algorithm returns a descriptive
+// error so the caller sends a deterministic 400 InvalidRequest.
+func parseChecksum(req *http.Request) (algo, expected string, err error) {
+	matched := ""
+	for _, a := range []string{checksumAlgoCRC32c, checksumAlgoCRC32, checksumAlgoSHA1, checksumAlgoSHA256} {
+		if v := req.Header.Get(http.CanonicalHeaderKey(checksumHeaderFor(a))); v != "" {
+			matched = a
+			expected = v
+			break
+		}
+	}
+	if explicit := req.Header.Get("X-Amz-Checksum-Algorithm"); explicit != "" {
+		e := normalizeChecksumAlgorithm(explicit)
+		if e == "" {
+			return "", "", fmt.Errorf("unsupported checksum algorithm %q", explicit)
+		}
+		if matched != "" && matched != e {
+			return "", "", fmt.Errorf("conflicting checksum algorithm %q vs %q", explicit, matched)
+		}
+		return e, expected, nil
+	}
+	return matched, expected, nil
+}
+
 // sanitizeS3HeaderValue bounds and strips CR/LF from a header value to prevent
 // HTTP response splitting and oversized metadata (Rule 24).
 func sanitizeS3HeaderValue(v string) string {
@@ -2186,6 +2454,29 @@ func collectS3Headers(req *http.Request) map[string]string {
 			addHeader(strings.ToLower(h), v)
 		}
 	}
+	// Issue #820 (Tier P2) / #903: capture integrity checksum headers so a
+	// supplied checksum is persisted at rest and echoed on GET/HEAD, and the
+	// algorithm marker is recorded so the centralized verifier
+	// (ChecksumExpectations) can derive value+algorithm. The marker is set from
+	// an explicit X-Amz-Checksum-Algorithm if present, else inferred from which
+	// x-amz-checksum-<algo> value header was supplied.
+	seenAlgo := ""
+	for _, a := range []string{checksumAlgoCRC32c, checksumAlgoCRC32, checksumAlgoSHA1, checksumAlgoSHA256} {
+		if v := req.Header.Get(http.CanonicalHeaderKey(checksumHeaderFor(a))); v != "" {
+			addHeader(checksumHeaderFor(a), v)
+			if seenAlgo == "" {
+				seenAlgo = a
+			}
+		}
+	}
+	if v := req.Header.Get("X-Amz-Checksum-Algorithm"); v != "" {
+		if norm := normalizeChecksumAlgorithm(v); norm != "" {
+			seenAlgo = norm
+		}
+	}
+	if seenAlgo != "" {
+		addHeader("x-amz-checksum-algorithm", seenAlgo)
+	}
 	for name, values := range req.Header {
 		if !strings.HasPrefix(name, "X-Amz-Meta-") {
 			continue
@@ -2198,13 +2489,22 @@ func collectS3Headers(req *http.Request) map[string]string {
 	return headers
 }
 
-// validateSSEHeaders enforces momo's honest SSE boundary (issue #776). The
-// gateway honors the AWS S3 SSE contract at the surface: AES256 is accepted
+// sseHonestBoundary guides clients on momo's real security model so the emit
+// responses below are helpful rather than terse. momo guarantees AES-256-GCM at
+// rest for every object when encryption_enabled (EncryptedBlobStore); it has NO
+// AWS KMS integration and never stores a customer-provided key. Rejecting
+// SSE-C/SSE-KMS is the honest posture (issue #776/#820 P1): fakely accepting
+// them would claim a guarantee momo cannot provide, which is what enterprises
+// must never silently get.
+const sseHonestBoundary = " Objects ARE encrypted at rest with momo AES-256-GCM when encryption_enabled; use SSE-S3 (x-amz-server-side-encryption: AES256) or client-side encryption."
+
+// validateSSEHeaders enforces momo's honest SSE boundary (issue #776, #820 P1).
+// The gateway honors the AWS S3 SSE contract at the surface: AES256 is accepted
 // (momo encrypts objects at rest with its own AES-256-GCM envelope) and echoed
 // on GET/HEAD; SSE-C customer keys and SSE-KMS are rejected with clear errors
-// rather than silently ignored -- accepting them would claim a guarantee momo
-// cannot provide. No customer-provided key is ever stored. On rejection the
-// S3 error is written to the connection and a POSIX-mapped error returned.
+// that state momo's real guarantee rather than silently accepting them. No
+// customer-provided key is ever stored. On rejection the S3 error is written to
+// the connection and a POSIX-mapped error returned.
 func (m *S3Communicator) validateSSEHeaders(req *http.Request) error {
 	// SSE-C: customer-provided keys are never accepted nor stored.
 	for _, h := range []string{
@@ -2215,7 +2515,7 @@ func (m *S3Communicator) validateSSEHeaders(req *http.Request) error {
 		if v := req.Header.Get(h); v != "" {
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			writeS3Error(m.conn, http.StatusBadRequest, "InvalidRequest",
-				"Server-side encryption with customer-provided keys (SSE-C) is not supported.", "")
+				"Server-side encryption with customer-provided keys (SSE-C) is not supported."+sseHonestBoundary, "")
 			return fmt.Errorf("SSE-C request rejected: %w", syscall.EINVAL)
 		}
 	}
@@ -2228,7 +2528,7 @@ func (m *S3Communicator) validateSSEHeaders(req *http.Request) error {
 	case strings.EqualFold(sse, "aws:kms") || req.Header.Get("X-Amz-Server-Side-Encryption-Aws-Kms-Key-Id") != "":
 		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		writeS3Error(m.conn, http.StatusNotImplemented, "NotImplemented",
-			"Server-side encryption with AWS KMS (aws:kms) is not supported.", "")
+			"Server-side encryption with AWS KMS (aws:kms) is not supported — momo has no AWS KMS integration."+sseHonestBoundary, "")
 		return fmt.Errorf("SSE-KMS request rejected: %w", syscall.ENOTSUP)
 	case strings.EqualFold(sse, "AES256"):
 		// Accepted: captured by collectS3Headers and echoed on GET/HEAD.
@@ -2236,7 +2536,7 @@ func (m *S3Communicator) validateSSEHeaders(req *http.Request) error {
 	default:
 		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		writeS3Error(m.conn, http.StatusBadRequest, "InvalidArgument",
-			fmt.Sprintf("Unsupported server-side encryption algorithm %q.", sse), "")
+			fmt.Sprintf("Unsupported server-side encryption algorithm %q.%s", sse, sseHonestBoundary), "")
 		return fmt.Errorf("unsupported SSE algorithm %q: %w", sse, syscall.EINVAL)
 	}
 }
@@ -2286,6 +2586,30 @@ func (m *S3Communicator) storedS3Meta(key string) map[string]string {
 		return nil
 	}
 	return sm.GetS3Meta(key)
+}
+
+// persistS3Checksum merges a computed S3 checksum into the object's persisted
+// metadata at rest so GET/HEAD echo it (issue #820, Tier P2). It preserves any
+// existing S3 metadata and uses the optional store PutS3Meta interface; it is a
+// no-op when storage does not support S3 metadata.
+func (m *S3Communicator) persistS3Checksum(key, hdr, value, algo string) {
+	ps, ok := m.store.(interface {
+		PutS3Meta(string, map[string]string) error
+	})
+	if !ok {
+		return
+	}
+	headers := map[string]string{hdr: value, "x-amz-checksum-algorithm": algo}
+	if existing := m.storedS3Meta(key); existing != nil {
+		for k, v := range existing {
+			if _, dup := headers[k]; !dup {
+				headers[k] = v
+			}
+		}
+	}
+	if err := ps.PutS3Meta(key, headers); err != nil {
+		log.Printf("AUDIT: Error persisting S3 checksum for %s: %v", key, common.SanitizeLog(err.Error()))
+	}
 }
 
 // handleCopyObject implements S3 CopyObject (PUT with x-amz-copy-source):
@@ -2895,6 +3219,28 @@ func (m *S3Communicator) handleCompleteMultipartUpload(req *http.Request, bucket
 	hasher.Write(data)
 	finalHash := hex.EncodeToString(hasher.Sum(nil))
 	finalSize := int64(len(data))
+
+	// Issue #820 (Tier P2): verify the client-supplied checksum over the
+	// assembled bytes before persisting; on mismatch reject 400 BadDigest
+	// without calling store.Put. When the client asked for compute-only, the
+	// computed checksum is persisted for echo on GET/HEAD.
+	if algo, expected, perr := parseChecksum(req); perr != nil {
+		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		writeS3Error(m.conn, http.StatusBadRequest, "InvalidRequest",
+			fmt.Sprintf("Unsupported checksum algorithm: %v", perr), "")
+		return 0, 0, fmt.Errorf("s3 checksum parse: %w", perr)
+	} else if algo != "" {
+		algoHasher := newChecksumHasher(algo)
+		algoHasher.Write(data)
+		computed := base64.StdEncoding.EncodeToString(algoHasher.Sum(nil))
+		if expected != "" && computed != expected {
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			writeS3Error(m.conn, http.StatusBadRequest, "BadDigest",
+				"The x-amz-checksum-* value you specified did not match the checksum we calculated.", key)
+			return 0, 0, fmt.Errorf("s3 multipart checksum mismatch: expected %s got %s: %w", expected, computed, syscall.EBADMSG)
+		}
+		m.persistS3Checksum(key, checksumHeaderFor(algo), computed, algo)
+	}
 
 	if m.store == nil {
 		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))

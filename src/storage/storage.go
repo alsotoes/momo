@@ -93,6 +93,15 @@ type CASStore struct {
 	closeOnce sync.Once
 	gcOnce    sync.Once
 	gcStarted atomic.Int32
+
+	// VerifyOnRead re-derives the blob SHA-256 at read EOF and fails reads when
+	// it no longer matches the content-address key (at-rest integrity, #924).
+	VerifyOnRead bool
+
+	scrubDone    chan struct{}
+	scrubWG      sync.WaitGroup
+	scrubOnce    sync.Once
+	scrubStarted atomic.Int32
 }
 
 // NewCASStore initializes a CAS store with a LocalBlobStore backend.
@@ -145,10 +154,12 @@ func newCASStore(dataDir string, blobs BlobStore) (*CASStore, error) {
 	}
 
 	return &CASStore{
-		db:     db,
-		base:   dataDir,
-		blobs:  blobs,
-		gcDone: make(chan struct{}),
+		db:           db,
+		base:         dataDir,
+		blobs:        blobs,
+		gcDone:       make(chan struct{}),
+		scrubDone:    make(chan struct{}),
+		VerifyOnRead: true,
 	}, nil
 }
 
@@ -157,6 +168,10 @@ func (s *CASStore) Close() error {
 		if s.gcDone != nil {
 			close(s.gcDone)
 			s.gcWG.Wait()
+		}
+		if s.scrubDone != nil {
+			close(s.scrubDone)
+			s.scrubWG.Wait()
 		}
 		s.mu.Lock()
 		if s.blobs != nil {
@@ -295,6 +310,17 @@ func (s *CASStore) Get(name string) (rc io.ReadCloser, meta common.FileMetadata,
 		return nil, common.FileMetadata{}, openErr
 	}
 
+	// 🛡️ At-rest integrity (#924): when enabled, re-derive the blob's SHA-256 as
+	// it streams and fail at EOF if it no longer matches the content-address key
+	// instead of serving corrupt bytes. The verification cost runs as the caller
+	// drains the stream — after Get returns, outside s.mu.
+	if s.VerifyOnRead {
+		f = &verifyingReadCloser{
+			verifyingReader: newVerifyingReader(f, hash),
+			underlying:      f,
+		}
+	}
+
 	// 🛡️ Zero-Crash: Ensure file is closed if subsequent metadata lookups fail.
 	defer func() {
 		if err != nil {
@@ -423,6 +449,22 @@ func (s *CASStore) PutS3Meta(name string, headers map[string]string) error {
 	return s.db.Update(func(tx *bbolt.Tx) error {
 		return tx.Bucket(bucketS3Meta).Put([]byte(name), data)
 	})
+}
+
+// VerifyChecksum reads the stored blob and verifies the given additive
+// integrity checksums over it (opt-in bit-rot / stale-detection check, issue
+// #903). It is bounded-memory (streams) and is a no-op when refs is empty.
+// Returns an error wrapping common.ErrIntegrityMismatch on mismatch.
+func (s *CASStore) VerifyChecksum(name string, refs []common.ChecksumRef) error {
+	if len(refs) == 0 {
+		return nil
+	}
+	rc, _, err := s.Get(name)
+	if err != nil {
+		return err
+	}
+	defer rc.Close()
+	return common.VerifyStream(rc, refs)
 }
 
 // GetS3Meta returns the S3 object headers stored for name, or nil when none

@@ -30,7 +30,7 @@ This section contains cluster-wide settings that affect all daemons.
 -   **`debug`**
     -   **Description:** When set to `true`, enables verbose debug logging for all daemons in the cluster.
     -   **Type:** Boolean (`true` or `false`)
-    -   **Default:** None (required)
+    -   **Default:** `false`
 
 - **`replication_order`**
     -   **Description:** A comma-separated list of integers that defines the sequence of replication strategies the polymorphic system can cycle through. The order determines the path of escalation and de-escalation based on system load.
@@ -63,7 +63,7 @@ This section contains cluster-wide settings that affect all daemons.
 -   **`polymorphic_system`**
     -   **Description:** When set to `true`, enables the polymorphic engine on the primary server (daemon 0), allowing the cluster to change replication strategies dynamically based on system load.
     -   **Type:** Boolean (`true` or `false`)
-    -   **Default:** None (required)
+    -   **Default:** `false`
 
 -   **`protocol`**
     -   **Description:** Defines the transport layer used for all intra-cluster and client-server communication.
@@ -110,11 +110,21 @@ This section contains cluster-wide settings that affect all daemons.
     -   **Type:** String
     -   **Default:** `default`
 
+-   **`e2ee_key`**
+    -   **Description:** Envelope E2EE (Phase 4): a client-held 256-bit key (64 hex characters) used to derive per-object content keys. The key is loaded by momo clients (`-e2ee-key` flag/`[global] e2ee_key`) and drives the native and `s3enc`/`s3dec` envelope paths. Must be 64 valid hex characters or startup fails with `EINVAL`. Mutually exclusive with `oprf_enabled` (they share the wire format's key-management slot, issue #780).
+    -   **Type:** String (64 hex characters)
+    -   **Default:** (none)
+
+-   **`e2ee_key_id`**
+    -   **Description:** Identifier for the envelope-E2EE key (issue #780). Defaults to `"default"` when empty. Ignored when `e2ee_key` is not set.
+    -   **Type:** String
+    -   **Default:** `default`
+
 -   **`oprf_enabled`**
     -   **Description:** Enables **confidential dedup via a threshold Oblivious PRF (OPRF)**. When enabled, the client derives each file's content key from the plaintext dedup tag (`SHA-256(plaintext)`) through a threshold OPRF evaluated over a quorum of daemons. Identical plaintexts deduplicate to a single blob under `H(plaintext)` across tenants, while no single daemon can derive the content key offline because the OPRF secret is Shamir-split across the cluster. Content is still encrypted with AES-GCM-256 end-to-end. Requires `encryption_enabled = true`, an `oprf_share` (and optionally `oprf_share_index`) on **every** `[daemon.N]` section, and `[p2p]` enabled when `oprf_threshold > 1`. The operation fails closed (no convergent fallback) when fewer than `oprf_threshold` daemons respond.
     -   **Protocol availability:** OPRF confidential dedup is primarily a **native** capability: the native protocols (`momo-tcp`, `momo-quic`) perform the binary `ModeOPRFEval` (`'O'`) handshake, and a momo client with `oprf_enabled = true` dials a native transport for evaluation. The S3 gateway (`s3-tcp`, `s3-quic`) additionally exposes an RPC mirror of the evaluation at `POST /?momo-oprf-eval` (same wire layout, driven by `S3Communicator.SendOPRFEval`) so a config that sets `protocol` to an S3 value still functions; this mirror is **not a designed parity surface** — standard S3-ecosystem clients cannot perform OPRF. Requires `[p2p]` enabled when `oprf_threshold > 1` (peers evaluate their Shamir shares via P2P). A client that cannot perform OPRF evaluation (e.g. a stock `aws-cli` upload with `oprf_enabled`) still fails closed rather than silently falling back to a determinable content key.
     -   **Type:** Boolean (`true` or `false`)
-    -   **Default:** = `encryption_enabled`
+    -   **Default:** `false` (must be set explicitly; not inferred from `encryption_enabled`)
 
 -   **`oprf_threshold`**
     -   **Description:** The minimum number of distinct daemon OPRF share evaluations required to derive a content key. Must satisfy `1 <= oprf_threshold <= len(daemons)`. Values greater than `1` require the P2P transport to gather peer evaluations.
@@ -150,6 +160,12 @@ This section controls the behavior of the decentralized polymorphic system and t
     -   **Type:** Integer
     -   **Default:** `0` (disabled)
     -   **Example:** `9100`
+
+-   **`prometheus_bind_host`**
+    -   **Description:** The default bind address (host/IP) for the `/metrics` and `/health` endpoints when an individual daemon does not set `[daemon.N] metrics_host`. Empty binds all interfaces (`:port`). Use this to scope the metrics endpoint to an admin/mgmt network or loopback instead of exposing it on the public data-plane interface.
+    -   **Type:** String (host/IP)
+    -   **Default:** (empty — all interfaces)
+    -   **Example:** `127.0.0.1`
 
     **Exported metrics:**
 
@@ -220,6 +236,17 @@ The configuration must contain a section for each daemon in the cluster, numbere
     -   **Description:** The Shamir evaluation point of `oprf_share` (a daemon's index within the secret split). Must be unique across the cluster and within `[1, len(daemons)]`. Defaults to the daemon's 1-based position in the config when unset.
     -   **Type:** Integer
     -   **Default:** daemon position (1-based)
+
+-   **`metrics_host`**
+    -   **Description:** Optional per-daemon bind address for this node's `/metrics`/`/health` endpoint. Overrides `[metrics] prometheus_bind_host` for this node. Empty falls back to the global default (which itself defaults to all interfaces).
+    -   **Type:** String (host/IP)
+    -   **Default:** (empty — fall back to `[metrics] prometheus_bind_host`)
+    -   **Example:** `127.0.0.1`
+
+-   **`metrics_port`**
+    -   **Description:** Optional per-daemon bind port for this node's `/metrics`/`/health` endpoint. Overrides `[metrics] prometheus_port` for this node. Must be in `[1, 65535]` when set. Use distinct ports per node in same-host/co-located topologies to avoid `EADDRINUSE`; empty falls back to the global `[metrics] prometheus_port`.
+    -   **Type:** Integer (1-65535)
+    -   **Default:** (empty — fall back to `[metrics] prometheus_port`, which defaults to disabled)
 
 ### [p2p]
 
@@ -312,6 +339,16 @@ This section controls the Content-Addressable Storage (CAS) engine, including ba
     -   **Description:** The duration in seconds to retain tombstones after deletion. Tombstones prevent resurrection of deleted objects and are cleaned up after this period.
     -   **Type:** Integer
     -   **Default:** `86400` (24 hours)
+
+-   **`scrub_interval`**
+    -   **Description:** The interval in seconds between background integrity scrub passes (issue #924). Each pass re-reads every referenced blob, re-derives its SHA-256, and quarantines any blob whose content no longer matches its content-address key so later reads fail explicitly with `ENOENT` instead of serving corrupt bytes.
+    -   **Type:** Integer
+    -   **Default:** `3600` (1 hour)
+
+-   **`verify_on_read`**
+    -   **Description:** When enabled, `CASStore.Get` re-derives the blob SHA-256 as the read stream ends and fails the read (integrity mismatch) if the bytes no longer match the content-address key, instead of serving corrupt data. Adds a full-hash cost per read; disable only when read throughput trumps integrity (not recommended) (issue #924).
+    -   **Type:** Boolean
+    -   **Default:** `true`
 
 -   **`s3_endpoint`**
     -   **Description:** S3-compatible API endpoint URL (e.g., `https://s3.amazonaws.com`). Only used when `backend = s3`.
@@ -407,6 +444,8 @@ lease_timeout = 10
 [storage]
 gc_interval = 300
 tombstone_retention = 86400
+scrub_interval = 3600
+verify_on_read = true
 ```
 
 ### NFS Storage Backend

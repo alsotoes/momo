@@ -49,6 +49,7 @@ This document explains the architecture, configuration, wire protocol, replicati
   - `ai_reviewer.py`: Python-based Gemini AI code review engine.
   - `test-e2e.sh`: End-to-end integration test runner.
   - `test-e2e-p2p.sh`: P2P gossip convergence and failure detection E2E test.
+  - `test-e2e-encryption.sh`: Envelope E2EE round-trip smoke test (native + S3 `s3enc`/`s3dec`).
   - `test-scale-cas.sh`: CAS storage scale test with CRUSH placement.
   - `test-external-client.sh`: External S3 client replication mode downgrade test.
   - `test-metrics.sh`: Prometheus metrics E2E test (start, upload, scrape, verify).
@@ -56,8 +57,9 @@ This document explains the architecture, configuration, wire protocol, replicati
   - `Dockerfile.dotdotpwn`: DotDotPwn container image for pentest pipeline.
   - `check-notsecret.sh`: Rule 29 scanner-safe secrets enforcement.
   - `update_readme_with_benchmarks.sh`: Automated documentation updater.
-- `.github/workflows/`: CI/CD pipeline definitions (14 workflows).
+- `.github/workflows/`: CI/CD pipeline definitions (15 workflows).
   - `go.yml`: Build, test, benchmark, coverage, secrets check.
+  - `encryption_smoke_test.yml`: Envelope E2EE smoke tests (TCP, QUIC, S3-TCP, S3-QUIC).
   - `smoke_test.yml`: Multi-protocol replication smoke tests (TCP, QUIC, S3-TCP, S3-QUIC).
   - `scale_cas_test.yml`: CAS storage scale E2E test.
   - `p2p_test.yml`: P2P gossip convergence + failure detection E2E.

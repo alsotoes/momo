@@ -111,9 +111,23 @@ func getFile(comm transport.Communicator, store storage.Store, fileName string, 
 	if store == nil {
 		return fmt.Errorf("storage error: store is not initialized: %w", syscall.EIO)
 	}
-	// Create a TeeReader to compute SHA-256 while streaming to store.
+	// Create a TeeReader to compute SHA-256 while streaming to store. Additive
+	// integrity checksums (issue #903), if a surface supplies any, are computed
+	// in the same bounded-memory pass via the protocol-agnostic ChecksumSet.
+	var checksumSet *common.ChecksumSet
+	var mismatchHook transport.ChecksumProvider
+	if p, ok := comm.(transport.ChecksumProvider); ok {
+		mismatchHook = p
+		if refs := p.ChecksumExpectations(); len(refs) > 0 {
+			checksumSet = common.NewChecksumSetFromRefs(refs)
+		}
+	}
 	hashCalc := sha256.New()
-	reader := io.TeeReader(comm, hashCalc)
+	var sink io.Writer = hashCalc
+	if checksumSet != nil {
+		sink = io.MultiWriter(hashCalc, checksumSet)
+	}
+	reader := io.TeeReader(comm, sink)
 
 	// Use store.Put which handles deduplication and atomicity.
 	if err := store.Put(fileName, expectedHash, fileSize, remotePath, io.LimitReader(reader, fileSize)); err != nil {
@@ -130,6 +144,25 @@ func getFile(comm transport.Communicator, store storage.Store, fileName string, 
 		store.Delete(fileName)
 		err = fmt.Errorf("file hash mismatch: expected %s, got %s: %w", expectedHash, hash, syscall.EBADMSG)
 		return err
+	}
+
+	// Additive integrity-checksum verification (issue #820 P2 / #903): the
+	// payload digest(s) accumulated centrally by ChecksumSet are compared to the
+	// client-supplied values. On mismatch, delete the just-stored object so no
+	// dishonest checksum is persisted and notify the surface (e.g. S3 writes
+	// 400 BadDigest). This is protocol-agnostic — surfaces without additive
+	// checksums, or transfers with none, are inert.
+	if checksumSet != nil && mismatchHook != nil {
+		refs := mismatchHook.ChecksumExpectations()
+		if !checksumSet.Verified(refs) {
+			store.Delete(fileName)
+			if hookErr := mismatchHook.OnIntegrityChecksumMismatch(); hookErr != nil {
+				err = hookErr
+			} else {
+				err = fmt.Errorf("%w: %s", common.ErrIntegrityMismatch, fileName)
+			}
+			return err
+		}
 	}
 
 	log.Printf("=> Expected Hash: %s", common.SanitizeLog(expectedHash))

@@ -143,9 +143,18 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 	log.Printf("Server primary Daemon started... at %s using %s", daemons[serverId].Host, cfg.Global.Protocol)
 	log.Printf("...Waiting for connections...")
 
-	// Start Prometheus metrics endpoint if configured
+	// Start Prometheus metrics endpoint if configured. Per-daemon override
+	// (metrics_host / metrics_port) falls back to the global [metrics] bind.
 	metricsCollector := NewMetricsCollector()
-	StartMetricsServer(ctx, cfg.Metrics.PrometheusPort, metricsCollector)
+	metricsHost := daemons[serverId].MetricsBindHost
+	if metricsHost == "" {
+		metricsHost = cfg.Metrics.PrometheusBindHost
+	}
+	metricsPort := daemons[serverId].MetricsBindPort
+	if metricsPort == 0 {
+		metricsPort = cfg.Metrics.PrometheusPort
+	}
+	StartMetricsServer(ctx, metricsHost, metricsPort, metricsCollector)
 
 	// 🛡️ Sentinel: Adaptive failed-auth backoff & temporary lockout (issue #821).
 	// Disabled (Allow always true) when auth_backoff_delay is 0.

@@ -38,3 +38,28 @@ func HashBytes(data []byte) string {
 	hex.Encode(hexBuf[:], hash[:])
 	return string(hexBuf[:])
 }
+
+// HashReader calculates the SHA-256 hash of a stream and returns it as a
+// hex-encoded string. It streams through a fixed-size buffer (bounded memory),
+// mirroring HashFile. The reader is fully consumed.
+func HashReader(r io.Reader) (string, error) {
+	h := sha256.New()
+	buf := make([]byte, 32*1024)
+	for {
+		n, err := r.Read(buf)
+		if n > 0 {
+			h.Write(buf[:n])
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", err
+		}
+	}
+	var sumBuf [sha256.Size]byte
+	sum := h.Sum(sumBuf[:0])
+	var hexBuf [sha256.Size * 2]byte
+	hex.Encode(hexBuf[:], sum)
+	return string(hexBuf[:]), nil
+}

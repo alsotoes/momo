@@ -438,6 +438,8 @@ func loadMetricsConfig(section *ini.Section) (ConfigurationMetrics, error) {
 		metricsCfg.PrometheusPort = 0
 	}
 
+	metricsCfg.PrometheusBindHost = section.Key("prometheus_bind_host").String()
+
 	return metricsCfg, nil
 }
 
@@ -513,6 +515,8 @@ func defaultStorageConfig() ConfigurationStorage {
 		Backend:            BackendLocal,
 		GCInterval:         300,
 		TombstoneRetention: 86400,
+		ScrubInterval:      3600,
+		VerifyOnRead:       true,
 	}
 }
 
@@ -541,6 +545,16 @@ func loadStorageConfig(section *ini.Section) (ConfigurationStorage, error) {
 	cfg.TombstoneRetention, err = section.Key("tombstone_retention").Int()
 	if err != nil || cfg.TombstoneRetention <= 0 {
 		cfg.TombstoneRetention = 86400
+	}
+
+	cfg.ScrubInterval, err = section.Key("scrub_interval").Int()
+	if err != nil || cfg.ScrubInterval <= 0 {
+		cfg.ScrubInterval = 3600
+	}
+
+	cfg.VerifyOnRead, err = section.Key("verify_on_read").Bool()
+	if err != nil {
+		cfg.VerifyOnRead = true
 	}
 
 	cfg.S3Endpoint = section.Key("s3_endpoint").String()
@@ -625,6 +639,19 @@ func loadDaemons(cfg *ini.File) ([]*Daemon, error) {
 			if v, e := key.Int(); e == nil {
 				d.OPRFShareIndex = v
 			}
+		}
+
+		d.MetricsBindHost = section.Key("metrics_host").String()
+
+		if key, err := section.GetKey("metrics_port"); err == nil {
+			v, e := key.Int()
+			if e != nil {
+				return nil, fmt.Errorf("invalid 'metrics_port' in section [%s]: %v: %w", sectionName, e, syscall.EINVAL)
+			}
+			if v < 1 || v > 65535 {
+				return nil, fmt.Errorf("invalid 'metrics_port' %d in section [%s]: must be in [1, 65535]: %w", v, sectionName, syscall.EINVAL)
+			}
+			d.MetricsBindPort = v
 		}
 
 		daemons = append(daemons, d)

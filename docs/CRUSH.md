@@ -45,8 +45,9 @@ Momo's `CRUSH-lite` simplifies the topology to a flat, region-aware ring and use
 1. **Deterministic Hashing:**
    For each candidate node, a SHA-256 digest is computed over the concatenation of the object hash and the node ID:
    $$H = \text{SHA-256}(\text{objectHash} \parallel \text{nodeID})$$
-   The first 8 bytes of the digest are interpreted as a uint64 and normalized to a float64 in $[0, 1)$:
-   $$\text{score} = \frac{H_{\text{uint64}}}{\text{MaxUint64}}$$
+   The score is derived by folding a 52-bit mantissa from the digest (top 32 bits at offset 0 plus the bottom 20 bits at offset 28) and dividing by $2^{52}$, yielding a float64 in $[0, 1)$:
+   $$\text{score} = \frac{\text{top32}\; \ll 20 \mid \text{low20}}{2^{52}}$$
+   (fix #647: a full-uint64 → `/MaxUint64` conversion discards the digest's low ~11 bits and biases placement; the 52-bit mantissa fold keeps every mantissa bit meaningful with no precision loss.)
 2. **Weighted Rendezvous Hashing (WRH):**
    Each node's final placement score incorporates its weight using the WRH formula:
    $$\text{finalScore} = -\frac{\text{weight}}{\ln(\text{score})}$$
@@ -61,7 +62,7 @@ Momo's `CRUSH-lite` simplifies the topology to a flat, region-aware ring and use
 ## 4. Performance Proof & Implementation
 
 Our optimized `CRUSH-lite` implementation reduces heap allocations by:
-- Using stack-allocated 4-byte buffer for node ID encoding (`var idBuf [4]byte`).
+- Using stack-allocated 8-byte buffer for node ID encoding (`var idBuf [8]byte`, `binary.LittleEndian.PutUint64`).
 - Using stack-allocated 32-byte buffer for SHA-256 digest (`var sumBuf [sha256.Size]byte`), avoiding `h.Sum(nil)` heap allocation.
 - Avoiding reflection-heavy `binary.Write` in favor of direct `binary.LittleEndian` calls.
 
@@ -70,5 +71,7 @@ The micro-benchmarks demonstrate the performance of the WRH + SHA-256 design:
 
 *   **`BenchmarkCrushOriginal` (~400 ns/op, 164 B/op, 3 allocs/op):** Uses standard reflection, `binary.Write`, and `h.Sum(nil)` heap allocation.
 *   **`BenchmarkCrushOptimized` (~300 ns/op, 0 B/op, 0 allocs/op):** Uses stack-allocated buffers for node ID and SHA-256 digest, eliminating heap escapes in the hot path.
+
+> **Note:** The micro-benchmarks above (`BenchmarkCrushOriginal`/`BenchmarkCrushOptimized` in `bench_crush_test.go`) measure the pre-#647 scoring path (full-uint64 `/MaxUint64` normalization); the shipping `Placement` uses the 52-bit mantissa fold in `hashToScoreValue` (`crush.go`), so benchmark figures are indicative of the allocation profile rather than an exact measurement of the shipping placement path.
 
 By stripping out Ceph's heavy hierarchical backtrack recursion, Momo's `CRUSH-lite` executes in sub-microsecond time with minimal GC pressure, guaranteeing predictable latencies during intensive S3 gateway streams.

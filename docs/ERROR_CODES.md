@@ -19,8 +19,9 @@ Below is a list of common `errno` values that might be encountered and their spe
 | `ETIMEDOUT`| Connection timed out | A connection attempt timed out, or a connected partner has not responded. | Could occur during the initial handshake if the server is unresponsive, or during the file transfer if there is a network partition or a server becomes overloaded and cannot respond. |
 | `ECONNREFUSED`| Connection refused | The target machine actively refused the connection. | This is a straightforward network error. It means a Momo server is not running or is not reachable at the specified IP address and port, or a firewall is blocking the connection. |
 | `EPIPE` | Broken pipe | An attempt was made to write to a pipe or socket that is not open for reading on the other end. | This commonly occurs if the client or a downstream server closes the connection while an upstream server is still trying to send data. |
-| `ENOSPC` | No space left on device | An attempt to write a file to a device has failed because the device is full. | A server in the cluster has run out of disk space. The replication for the current file will fail on that specific server. |
 | `EIO` | I/O error | A physical I/O error has occurred. | This indicates a problem with the underlying storage hardware on one of the servers, or a serious data integrity issue. |
+
+> **Note:** `ENOSPC` (no space left on device) is deliberately **not** mapped to a Momo error. `local_blobstore.go` explicitly does not mask write-side failures such as `ENOSPC` as a Momo-specific error — raw disk-full failures propagate to the caller as the underlying syscall error.
 | `ENOENT` | No such file or directory | The specified file or directory does not exist. | In the Momo Object Store, this signifies that a requested human-readable name or content hash was not found in the local Bbolt metadata index. |
 | `E2BIG` | Argument list too long | The number of peers in a heartbeat exceeds the maximum. | P2P gossip truncates heartbeats to `MaxPeersInHeartbeat=256` peers. If a heartbeat exceeds this, the excess peers are dropped and `E2BIG` is logged. |
 | `EFBIG` | File too large | A P2P payload exceeds the maximum allowed size. | P2P RPC payloads are capped at `maxPayloadSize=1 MiB`. Payloads exceeding this limit are rejected with `EFBIG` to prevent memory exhaustion from malicious peers. |
@@ -30,10 +31,10 @@ Below is a list of common `errno` values that might be encountered and their spe
 | `EINVAL` | Invalid argument | An invalid argument was provided. | Returned by the config parser (e.g., empty `ReplicationOrder`), P2P payload decoder (invalid count), query handler (empty data), and CRUSH placement (invalid node count). |
 | `ENOBUFS` | No buffer space available | A bounded read limit was exceeded. | The S3 communicator returns `ENOBUFS` when an HTTP request body exceeds the bounded read limit (65536 bytes), preventing memory exhaustion from oversized requests. |
 | `ECONNABORTED` | Connection aborted | Software caused connection abort. | Returned by `net.go` when a connection is aborted by the host system. |
-| `ECONNRESET` | Connection reset by peer | Connection reset by peer. | Returned by `net.go` when the remote end resets the connection. |
-| `ENOTCONN` | Transport endpoint is not connected | Socket not connected. | Returned by `net.go` when operating on an unconnected socket. |
-| `ENETDOWN` | Network is down | Network interface not available. | Returned by `net.go` when the local network interface is down. |
-| `EADDRINUSE` | Address already in use | Port binding conflict. | Returned when the daemon's configured port is already in use by another process. |
+| `ECONNRESET` | Connection reset by peer | Connection reset by peer. | Returned by `p2p/tcp_transport.go` when a P2P peer disconnects or its reads error out (logged with `errno`). |
+| `ENOTCONN` | Transport endpoint is not connected | Socket not connected. | Returned by `p2p/tcp_transport.go` when an RPC targets a peer that has no active connection. |
+| `ENETDOWN` | Network is down | Network interface not available. | Returned when the replication server goroutine panics (`src/momo.go`). |
+| `EADDRINUSE` | Address already in use | Port binding conflict. | Logged by `p2p/tcp_transport.go` when the P2P gossip listener fails to bind (port already in use). Not currently surfaced for the daemon's main server bind port. |
 
 ## Application-Specific Exit Codes
 
@@ -41,8 +42,8 @@ Momo may also use specific exit codes to signify particular failure modes.
 
 | Exit Code | Meaning |
 | :--- | :--- |
-| `1` | **General Fatal Error:** This is the most common exit code for unrecoverable errors, such as the system call failures listed above. Check `stderr` for a more specific message. |
-| `2` | **Configuration Error:** The `momo.conf` file is missing, malformed, or contains invalid values. The application cannot start without valid configuration. |
-| `3` | **Permissions Error:** The application does not have the necessary permissions to read its configuration, write to the specified storage directory, or bind to the required network port. |
+| `1` | **General Fatal Error:** This is the most common exit code for unrecoverable errors, such as the system call failures listed above. This includes configuration errors (missing/malformed `momo.conf`), which are reported through `log.Fatalf`. Check `stderr` for a more specific message. |
+
+Momo does not currently define distinct exit codes for configuration or permissions errors — all fatal failures (including invalid configuration) exit with status `1` via `log.Fatalf`.
 
 By cross-referencing the exit code with the error messages printed to standard error, operators can quickly diagnose and resolve issues within the Momo cluster.

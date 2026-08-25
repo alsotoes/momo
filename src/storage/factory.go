@@ -66,5 +66,12 @@ func NewStore(cfg common.ConfigurationStorage, daemon *common.Daemon, encKeyHex 
 		TombstoneRetention: tombstoneRetention,
 	})
 
+	scrubInterval := time.Duration(cfg.ScrubInterval) * time.Second
+	if scrubInterval <= 0 {
+		scrubInterval = time.Hour
+	}
+	s.VerifyOnRead = cfg.VerifyOnRead
+	s.StartScrub(ScrubConfig{Interval: scrubInterval})
+
 	return s, nil
 }

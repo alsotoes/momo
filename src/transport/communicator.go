@@ -93,6 +93,16 @@ type OPRFService interface {
 	EvaluateOPRF(blinded []byte, timeout time.Duration) ([]OPRFEvalResult, error)
 }
 
+// ChecksumProvider lets an ingest surface expose additive integrity checksum
+// expectations and encode a verification failure to its client. The shared
+// ingest path (getFile) verifies the expectations centrally, so the protocol
+// stays a pure adapter (issue #903). Surfaces without additive checksums may
+// simply return nil expectations and a no-op mismatch hook.
+type ChecksumProvider interface {
+	ChecksumExpectations() []common.ChecksumRef
+	OnIntegrityChecksumMismatch() error
+}
+
 // Communicator defines a transport-agnostic interface for Momo protocol operations.
 // It encapsulates the handshake, metadata exchange, and file transfer logic.
 type Communicator interface {

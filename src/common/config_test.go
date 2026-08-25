@@ -195,6 +195,56 @@ func TestGetConfig_StorageBackends_Valid(t *testing.T) {
 	})
 }
 
+// TestGetConfig_StorageIntegrity covers the #924 scrub_interval and
+// verify_on_read keys, including their defaults.
+func TestGetConfig_StorageIntegrity(t *testing.T) {
+	mk := func(t *testing.T, storage string) string {
+		t.Helper()
+		tmpDir := t.TempDir()
+		tmpfile := filepath.Join(tmpDir, "momo.conf")
+		if err := os.WriteFile(tmpfile, []byte(validConfig+"\n[storage]\n"+storage), 0666); err != nil {
+			t.Fatalf("Failed to write config: %v", err)
+		}
+		return tmpfile
+	}
+
+	t.Run("defaults", func(t *testing.T) {
+		cfg, err := GetConfig(mk(t, "backend = local\n"))
+		if err != nil {
+			t.Fatalf("GetConfig failed: %v", err)
+		}
+		if cfg.Storage.ScrubInterval != 3600 {
+			t.Errorf("default ScrubInterval = %d, want 3600", cfg.Storage.ScrubInterval)
+		}
+		if !cfg.Storage.VerifyOnRead {
+			t.Error("default VerifyOnRead should be true")
+		}
+	})
+
+	t.Run("overrides", func(t *testing.T) {
+		cfg, err := GetConfig(mk(t, "backend = local\nscrub_interval = 60\nverify_on_read = false\n"))
+		if err != nil {
+			t.Fatalf("GetConfig failed: %v", err)
+		}
+		if cfg.Storage.ScrubInterval != 60 {
+			t.Errorf("ScrubInterval = %d, want 60", cfg.Storage.ScrubInterval)
+		}
+		if cfg.Storage.VerifyOnRead {
+			t.Error("VerifyOnRead should be false")
+		}
+	})
+
+	t.Run("invalid scrub_interval falls back to default", func(t *testing.T) {
+		cfg, err := GetConfig(mk(t, "backend = local\nscrub_interval = 0\n"))
+		if err != nil {
+			t.Fatalf("GetConfig failed: %v", err)
+		}
+		if cfg.Storage.ScrubInterval != 3600 {
+			t.Errorf("invalid ScrubInterval should fall back to 3600, got %d", cfg.Storage.ScrubInterval)
+		}
+	})
+}
+
 // TestGetConfig_S3GatewayCredentials covers the issue #656 dedicated S3 gateway
 // SigV4 credential pair validation and parsing.
 func TestGetConfig_S3GatewayCredentials(t *testing.T) {
@@ -780,5 +830,77 @@ func TestGetConfig_GossipFanout(t *testing.T) {
 	}
 	if _, err := GetConfig(tmp3); err == nil {
 		t.Fatal("expected negative fanout to be rejected")
+	}
+}
+
+func writeConf(t *testing.T, body string) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "momo.conf")
+	if err := os.WriteFile(p, []byte(body), 0666); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+	return p
+}
+
+// TestGetConfig_MetricsPerNodeBind verifies per-daemon metrics_host/metrics_port
+// overrides fall back to the global [metrics] bind, and ports are validated.
+func TestGetConfig_MetricsPerNodeBind(t *testing.T) {
+	base := `
+[global]
+debug = true
+auth_token = a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6 # notsecret
+replication_order = 1
+polymorphic_system = true
+
+[metrics]
+interval = 10
+min_threshold = 0.1
+max_threshold = 0.9
+fallback_interval = 30
+`
+
+	// Global default bind only: node falls back to it.
+	globalOnly := base + "prometheus_port = 9100\nprometheus_bind_host = 10.0.0.5\n\n" +
+		"[daemon.0]\nhost = h0\ndrive = d0\nchange_replication = c0\ndata = d0\n"
+	cfg, err := GetConfig(writeConf(t, globalOnly))
+	if err != nil {
+		t.Fatalf("global-only config failed: %v", err)
+	}
+	if cfg.Metrics.PrometheusPort != 9100 {
+		t.Fatalf("expected global prometheus_port 9100, got %d", cfg.Metrics.PrometheusPort)
+	}
+	if cfg.Metrics.PrometheusBindHost != "10.0.0.5" {
+		t.Fatalf("expected global prometheus_bind_host 10.0.0.5, got %q", cfg.Metrics.PrometheusBindHost)
+	}
+	if cfg.Daemons[0].MetricsBindPort != 0 {
+		t.Fatalf("expected default MetricsBindPort 0, got %d", cfg.Daemons[0].MetricsBindPort)
+	}
+	if cfg.Daemons[0].MetricsBindHost != "" {
+		t.Fatalf("expected default MetricsBindHost empty, got %q", cfg.Daemons[0].MetricsBindHost)
+	}
+
+	// Per-daemon overrides win over the global default.
+	override := base + "prometheus_port = 9100\n\n" +
+		"[daemon.0]\nhost = h0\ndrive = d0\nchange_replication = c0\ndata = d0\n" +
+		"metrics_host = 127.0.0.1\nmetrics_port = 9123\n"
+	cfg2, err := GetConfig(writeConf(t, override))
+	if err != nil {
+		t.Fatalf("override config failed: %v", err)
+	}
+	if cfg2.Daemons[0].MetricsBindHost != "127.0.0.1" {
+		t.Fatalf("expected per-daemon MetricsBindHost 127.0.0.1, got %q", cfg2.Daemons[0].MetricsBindHost)
+	}
+	if cfg2.Daemons[0].MetricsBindPort != 9123 {
+		t.Fatalf("expected per-daemon MetricsBindPort 9123, got %d", cfg2.Daemons[0].MetricsBindPort)
+	}
+
+	// Invalid ports rejected.
+	for _, bad := range []string{"0", "65536", "abc"} {
+		badCfg := base + "prometheus_port = 9100\n\n" +
+			"[daemon.0]\nhost = h0\ndrive = d0\nchange_replication = c0\ndata = d0\n" +
+			"metrics_port = " + bad + "\n"
+		if _, err := GetConfig(writeConf(t, badCfg)); err == nil {
+			t.Fatalf("expected metrics_port=%q to be rejected", bad)
+		}
 	}
 }

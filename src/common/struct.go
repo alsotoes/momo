@@ -22,6 +22,13 @@ type FileMetadata struct {
 	// between peers as an additive X-Momo-S3-Meta header (base64-encoded), so
 	// peers without support simply store/echo no headers.
 	S3Headers map[string]string
+	// Checksums holds optional additive integrity checksums (issue #903).
+	// Protocol-agnostic: any surface maps its client checksums onto these
+	// ChecksumRefs, verified centrally by the shared ingest path (getFile) and,
+	// opt-in, on retrieval. Like S3Headers, it is additive only: it is carried
+	// between peers as an additive extension so peers without support are
+	// unaffected, and it is NEVER the content-address (Hash remains that).
+	Checksums []ChecksumRef
 }
 
 // ReplicationData stores the information about a replication mode change.
@@ -44,6 +51,12 @@ type Daemon struct {
 	Data string
 	// Drive is the drive used by the daemon.
 	Drive string
+	// MetricsBindHost is an optional per-daemon bind address (host) for the
+	// /metrics endpoint. Empty falls back to the global [metrics] bind host.
+	MetricsBindHost string
+	// MetricsBindPort is an optional per-daemon bind port for the /metrics
+	// endpoint. 0 (unset) falls back to the global [metrics] prometheus_port.
+	MetricsBindPort int
 	// OPRFShare is the hex-encoded 256-bit Shamir share of the threshold OPRF
 	// secret assigned to this daemon. Required when oprf_enabled is true.
 	// Each daemon holds a distinct share; no daemon holds the full secret.
@@ -140,6 +153,9 @@ type ConfigurationMetrics struct {
 	FallbackInterval int
 	// PrometheusPort is the port for the Prometheus /metrics endpoint (0 = disabled).
 	PrometheusPort int
+	// PrometheusBindHost is the default bind address for the /metrics endpoint.
+	// Empty binds all interfaces.
+	PrometheusBindHost string
 }
 
 // ConfigurationP2P holds the P2P transport and gossip configuration.
@@ -180,6 +196,11 @@ type ConfigurationStorage struct {
 	GCInterval int
 	// TombstoneRetention is how long tombstones are kept, in seconds.
 	TombstoneRetention int
+	// ScrubInterval is how often the background integrity scrub runs, in seconds.
+	ScrubInterval int
+	// VerifyOnRead re-derives the blob SHA-256 at read EOF and fails reads when
+	// the content no longer matches its address key. Defaults to true (issue #924).
+	VerifyOnRead bool
 	// S3Endpoint is the S3-compatible API endpoint URL.
 	S3Endpoint string
 	// S3Region is the S3 region name.
