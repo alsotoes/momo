@@ -187,6 +187,11 @@ type ConfigurationStorage struct {
 	GCInterval int
 	// TombstoneRetention is how long tombstones are kept, in seconds.
 	TombstoneRetention int
+	// ScrubInterval is how often the background integrity scrub runs, in seconds.
+	ScrubInterval int
+	// VerifyOnRead re-derives the blob SHA-256 at read EOF and fails reads when
+	// the content no longer matches its address key. Defaults to true (issue #924).
+	VerifyOnRead bool
 	// S3Endpoint is the S3-compatible API endpoint URL.
 	S3Endpoint string
 	// S3Region is the S3 region name.
