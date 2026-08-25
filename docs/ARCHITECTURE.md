@@ -128,6 +128,28 @@ Remaining non-subresource gaps that do not arrive via a query param (e.g.
 aws-chunked trailing-checksum form, `SelectObjectContent`'s non-S3 payload
 semantics) are handled by their own paths and not covered here.
 
+### 4f. At-Rest Integrity (content-address re-verification, issue #924)
+Blobs are content-addressed by SHA-256, but the read path used to stream blob
+bytes out without ever re-deriving the hash — a corrupted blob at rest was
+silently served. `src/storage/integrity.go` closes this with two mechanisms
+(config section `[storage]`):
+
+- **Verify-on-read (`verify_on_read`, default `true`)**: `CASStore.Get` wraps the
+  blob stream in a reader that recomputes SHA-256 and, at EOF, asserts it equals
+  the content-hash key. On mismatch the read fails with
+  `common.ErrIntegrityMismatch` + `syscall.EBADMSG` — corrupt bytes are never
+  served. Bounded-memory and computed as the caller drains the stream, outside
+  the bbolt/`s.mu` critical section.
+- **Background scrub (`scrub_interval`, default `3600`s)**: `StartScrub` mirrors
+  the GC loop (`gcOnce`/`gcDone`/`gcWG`). Each pass lists referenced blobs from
+  the `objects` bucket, re-reads and re-hashes each via `BlobStore.GetBlob` (I/O
+  outside `s.mu`), and quarantines a blob whose recomputed hash no longer matches
+  its key — deleting content + metadata so later reads fail explicitly with
+  `ENOENT` rather than serving garbage. The helper `common.HashReader` streams a
+  fixed-buffer SHA-256 (mirrors `common.HashFile`).
+
+Re-replication/healing of quarantined blobs is out of scope here.
+
 ### 5. Automated Governance & AI Reviewer
 To maintain high integrity in a single-contributor environment, Momo employs an automated governance layer:
 - **Gemini AI Reviewer**: A GitHub Action that uses the Gemini API to analyze PR diffs. It specifically enforces the **⚡ Bolt** (performance) and **🛡️ Sentinel** (security) patterns.

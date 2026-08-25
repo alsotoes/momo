@@ -313,6 +313,16 @@ This section controls the Content-Addressable Storage (CAS) engine, including ba
     -   **Type:** Integer
     -   **Default:** `86400` (24 hours)
 
+-   **`scrub_interval`**
+    -   **Description:** The interval in seconds between background integrity scrub passes (issue #924). Each pass re-reads every referenced blob, re-derives its SHA-256, and quarantines any blob whose content no longer matches its content-address key so later reads fail explicitly with `ENOENT` instead of serving corrupt bytes.
+    -   **Type:** Integer
+    -   **Default:** `3600` (1 hour)
+
+-   **`verify_on_read`**
+    -   **Description:** When enabled, `CASStore.Get` re-derives the blob SHA-256 as the read stream ends and fails the read (integrity mismatch) if the bytes no longer match the content-address key, instead of serving corrupt data. Adds a full-hash cost per read; disable only when read throughput trumps integrity (not recommended) (issue #924).
+    -   **Type:** Boolean
+    -   **Default:** `true`
+
 -   **`s3_endpoint`**
     -   **Description:** S3-compatible API endpoint URL (e.g., `https://s3.amazonaws.com`). Only used when `backend = s3`.
     -   **Type:** String
@@ -407,6 +417,8 @@ lease_timeout = 10
 [storage]
 gc_interval = 300
 tombstone_retention = 86400
+scrub_interval = 3600
+verify_on_read = true
 ```
 
 ### NFS Storage Backend

@@ -195,6 +195,56 @@ func TestGetConfig_StorageBackends_Valid(t *testing.T) {
 	})
 }
 
+// TestGetConfig_StorageIntegrity covers the #924 scrub_interval and
+// verify_on_read keys, including their defaults.
+func TestGetConfig_StorageIntegrity(t *testing.T) {
+	mk := func(t *testing.T, storage string) string {
+		t.Helper()
+		tmpDir := t.TempDir()
+		tmpfile := filepath.Join(tmpDir, "momo.conf")
+		if err := os.WriteFile(tmpfile, []byte(validConfig+"\n[storage]\n"+storage), 0666); err != nil {
+			t.Fatalf("Failed to write config: %v", err)
+		}
+		return tmpfile
+	}
+
+	t.Run("defaults", func(t *testing.T) {
+		cfg, err := GetConfig(mk(t, "backend = local\n"))
+		if err != nil {
+			t.Fatalf("GetConfig failed: %v", err)
+		}
+		if cfg.Storage.ScrubInterval != 3600 {
+			t.Errorf("default ScrubInterval = %d, want 3600", cfg.Storage.ScrubInterval)
+		}
+		if !cfg.Storage.VerifyOnRead {
+			t.Error("default VerifyOnRead should be true")
+		}
+	})
+
+	t.Run("overrides", func(t *testing.T) {
+		cfg, err := GetConfig(mk(t, "backend = local\nscrub_interval = 60\nverify_on_read = false\n"))
+		if err != nil {
+			t.Fatalf("GetConfig failed: %v", err)
+		}
+		if cfg.Storage.ScrubInterval != 60 {
+			t.Errorf("ScrubInterval = %d, want 60", cfg.Storage.ScrubInterval)
+		}
+		if cfg.Storage.VerifyOnRead {
+			t.Error("VerifyOnRead should be false")
+		}
+	})
+
+	t.Run("invalid scrub_interval falls back to default", func(t *testing.T) {
+		cfg, err := GetConfig(mk(t, "backend = local\nscrub_interval = 0\n"))
+		if err != nil {
+			t.Fatalf("GetConfig failed: %v", err)
+		}
+		if cfg.Storage.ScrubInterval != 3600 {
+			t.Errorf("invalid ScrubInterval should fall back to 3600, got %d", cfg.Storage.ScrubInterval)
+		}
+	})
+}
+
 // TestGetConfig_S3GatewayCredentials covers the issue #656 dedicated S3 gateway
 // SigV4 credential pair validation and parsing.
 func TestGetConfig_S3GatewayCredentials(t *testing.T) {

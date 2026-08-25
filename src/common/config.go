@@ -513,6 +513,8 @@ func defaultStorageConfig() ConfigurationStorage {
 		Backend:            BackendLocal,
 		GCInterval:         300,
 		TombstoneRetention: 86400,
+		ScrubInterval:      3600,
+		VerifyOnRead:       true,
 	}
 }
 
@@ -541,6 +543,16 @@ func loadStorageConfig(section *ini.Section) (ConfigurationStorage, error) {
 	cfg.TombstoneRetention, err = section.Key("tombstone_retention").Int()
 	if err != nil || cfg.TombstoneRetention <= 0 {
 		cfg.TombstoneRetention = 86400
+	}
+
+	cfg.ScrubInterval, err = section.Key("scrub_interval").Int()
+	if err != nil || cfg.ScrubInterval <= 0 {
+		cfg.ScrubInterval = 3600
+	}
+
+	cfg.VerifyOnRead, err = section.Key("verify_on_read").Bool()
+	if err != nil {
+		cfg.VerifyOnRead = true
 	}
 
 	cfg.S3Endpoint = section.Key("s3_endpoint").String()
