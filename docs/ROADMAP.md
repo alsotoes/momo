@@ -39,12 +39,12 @@ This document outlines the high-level roadmap for the Momo project, tracking maj
 | **CVE-006: Blob Pollution** | [#545](https://github.com/alsotoes/momo/issues/545) | ✅ Merged | Immediate blob cleanup on Delete when refcount reaches 0 — prevents disk waste. |
 | **CVE-004: Path Traversal Upload** | [#547](https://github.com/alsotoes/momo/issues/547) | ✅ Merged | Virtual path traversal via upload blocked by sanitization and normalization. |
 | **Namespace Collision Fix** | [#548](https://github.com/alsotoes/momo/issues/548) | ✅ Merged | Namespace bucket keyed by full virtual path instead of base filename — prevents silent overwrite. |
+| **E2E Encryption** | [#152](https://github.com/alsotoes/momo/issues/152) | ✅ Merged | Client-side zero-knowledge AES-GCM-256 encryption for all stored files (envelope E2EE, Phase 4). Native transports plus S3 `s3enc`/`s3dec`; covered by `.github/scripts/test-e2e-encryption.sh` and reworked for envelope (`e2ee_key`) in issue #780. |
 
 ## 🟡 In Progress / Upcoming
 
 | Feature | Issue | Spec | Priority | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| **E2E Encryption** | [#152](https://github.com/alsotoes/momo/issues/152) | [E2EE Spec](../openspec/changes/add-e2e-encryption/specs/security/spec.md) | High | Client-side zero-knowledge AES-GCM-256 encryption for all stored files. Options analysis posted in issue — S3 compatibility vs. zero-knowledge tradeoff under review. |
 | **Metrics Exporter Phase 2-4** | [#364](https://github.com/alsotoes/momo/issues/364) | [Metrics Spec](../openspec/changes/add-metrics-exporter/specs/observability/spec.md) | Medium | Storage metrics (disk/CAS), P2P/cluster gauges, opt-in latency histograms. Phase 1 (wiring) complete. |
 
 ## 🔴 Future Explorations
