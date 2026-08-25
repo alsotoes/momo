@@ -2160,13 +2160,16 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, s
 	lastKind := byte(continuationKindKey)
 	lastToken := ""
 
+	var timeBuf [32]byte
 	emitContents := func(file common.FileMetadata, key string) {
 		buf.WriteString(`<Contents>`)
 		buf.WriteString(`<Key>`)
 		xmlEscape(&buf, key)
 		buf.WriteString(`</Key>`)
 		buf.WriteString(`<LastModified>`)
-		buf.WriteString(formatLastModified(file.ModTime))
+		// ⚡ Bolt: Eliminate string allocation in formatLastModified by using AppendFormat with a stack-allocated buffer to write directly into the XML builder.
+		t := time.Unix(0, file.ModTime).UTC()
+		buf.Write(t.AppendFormat(timeBuf[:0], "2006-01-02T15:04:05.000Z"))
 		buf.WriteString(`</LastModified>`)
 		buf.WriteString(`<ETag>"`)
 		xmlEscape(&buf, file.Hash)
