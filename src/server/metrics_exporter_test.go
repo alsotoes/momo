@@ -27,18 +27,27 @@ func freePort(t *testing.T) int {
 	return port
 }
 
+// httpGetPort retries GET until the async server is listening (or a deadline is
+// hit), so tests are deterministic regardless of scheduler timing.
 func httpGetPort(t *testing.T, port int, path string) (int, string) {
 	t.Helper()
-	req, err := http.Get("http://127.0.0.1:" + strconv.Itoa(port) + path)
-	if err != nil {
-		t.Fatalf("GET %s on port %d failed: %v", path, port, err)
+	url := "http://127.0.0.1:" + strconv.Itoa(port) + path
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		req, err := http.Get(url)
+		if err == nil {
+			body, rerr := io.ReadAll(req.Body)
+			req.Body.Close()
+			if rerr != nil {
+				t.Fatalf("read body failed: %v", rerr)
+			}
+			return req.StatusCode, string(body)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("GET %s on port %d failed after retries: %v", path, port, err)
+		}
+		time.Sleep(25 * time.Millisecond)
 	}
-	defer req.Body.Close()
-	body, err := io.ReadAll(req.Body)
-	if err != nil {
-		t.Fatalf("read body failed: %v", err)
-	}
-	return req.StatusCode, string(body)
 }
 
 // TestStartMetricsServer_HostPort verifies an explicit host:port bind serves
