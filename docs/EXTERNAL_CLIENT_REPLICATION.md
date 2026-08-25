@@ -23,7 +23,7 @@ When an external S3 client like aws-cli connects, it sends standard S3 headers (
 
 ### Bug 1: Peer Misidentification
 
-The S3 communicator falls back to `X-Amz-Date` for the timestamp, which parses to a valid UnixNano value — **not** `DummyEpoch`. The server's mode negotiation logic (`server.go:208-221`) treats this as a forwarded peer connection and trusts `requestedMode = 0` (`ReplicationNone`). The file is stored with **no replication**, regardless of the server's configured mode.
+Historically, peer detection was timestamp-based: the S3 communicator fell back to `X-Amz-Date` for the timestamp, which parses to a valid UnixNano value — **not** `DummyEpoch`. The server then treated the connection as a forwarded peer and trusted `requestedMode = 0` (`ReplicationNone`), storing the file with **no replication** regardless of the configured mode. This was superseded by **cryptographic peer identification (CVE-007)**: the server now decides via `comm.IsPeer()` (`server.go:338`), which uses a derived peer token (`common.DerivePeerToken`, `s3_communicator.go:574`) rather than the timestamp. A signature-verified external S3 client authenticating with gateway SigV4 credentials is explicitly never a peer (`s3_communicator.go:569`); external clients also have their timestamp forced to `DummyEpoch` (`s3_communicator.go:1245-1249`). External classification therefore no longer depends on a misread timestamp.
 
 ### Bug 2: Client-Side Mode Incompatibility
 

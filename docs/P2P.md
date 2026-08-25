@@ -55,6 +55,8 @@ All RPCs use a binary, length-prefixed frame format for zero-allocation encoding
 | `MsgPing` | 9 | Direct ping for failure detection |
 | `MsgAck` | 10 | Ack response to a ping |
 | `MsgIndirectPing` | 11 | Indirect ping request via intermediary |
+| `MsgOPRFEvalRequest` | 12 | Threshold-OPRF share evaluation request (RPC) |
+| `MsgOPRFEvalResponse` | 13 | Threshold-OPRF share evaluation response (RPC) |
 
 ### Heartbeat Payload
 
@@ -300,6 +302,25 @@ The `LeaseManager` provides time-bound, self-expiring leases for destructive ope
 [p2p]
 lease_timeout = 10  # seconds
 ```
+
+## OPRF Evaluation RPC
+
+### Overview
+
+Confidential dedup uses a threshold Oblivious PRF (OPRF): the client submits a blinded plaintext tag to a quorum of daemons, and each daemon applies its Shamir share of the OPRF secret before the client recombines the responses into a content key. When `oprf_threshold > 1`, a daemon cannot evaluate the OPRF alone and must gather the other shares via the P2P transport (`src/p2p/oprf_rpc.go`, `OPRFProvider`).
+
+### Message Types
+
+| Type | Value | Description |
+|------|-------|-------------|
+| `MsgOPRFEvalRequest` | 12 | Request a peer's Shamir share evaluation of a blinded tag |
+| `MsgOPRFEvalResponse` | 13 | Response carrying a peer's share evaluation |
+
+### Server Integration
+
+- `OPRFProvider` registers handlers for `MsgOPRFEvalRequest`/`MsgOPRFEvalResponse` on the gossip transport alongside the SWIM and lease RPCs.
+- Requires each daemon to have an `oprf_share` (and optionally `oprf_share_index`) configured in its `[daemon.N]` section.
+- When fewer than `oprf_threshold` distinct daemons respond, the evaluation fails closed (no convergent fallback) and the operation is aborted.
 
 ## CAS Garbage Collection
 
