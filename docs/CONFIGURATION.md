@@ -161,6 +161,12 @@ This section controls the behavior of the decentralized polymorphic system and t
     -   **Default:** `0` (disabled)
     -   **Example:** `9100`
 
+-   **`prometheus_bind_host`**
+    -   **Description:** The default bind address (host/IP) for the `/metrics` and `/health` endpoints when an individual daemon does not set `[daemon.N] metrics_host`. Empty binds all interfaces (`:port`). Use this to scope the metrics endpoint to an admin/mgmt network or loopback instead of exposing it on the public data-plane interface.
+    -   **Type:** String (host/IP)
+    -   **Default:** (empty — all interfaces)
+    -   **Example:** `127.0.0.1`
+
     **Exported metrics:**
 
     | Metric | Type | Description |
@@ -230,6 +236,17 @@ The configuration must contain a section for each daemon in the cluster, numbere
     -   **Description:** The Shamir evaluation point of `oprf_share` (a daemon's index within the secret split). Must be unique across the cluster and within `[1, len(daemons)]`. Defaults to the daemon's 1-based position in the config when unset.
     -   **Type:** Integer
     -   **Default:** daemon position (1-based)
+
+-   **`metrics_host`**
+    -   **Description:** Optional per-daemon bind address for this node's `/metrics`/`/health` endpoint. Overrides `[metrics] prometheus_bind_host` for this node. Empty falls back to the global default (which itself defaults to all interfaces).
+    -   **Type:** String (host/IP)
+    -   **Default:** (empty — fall back to `[metrics] prometheus_bind_host`)
+    -   **Example:** `127.0.0.1`
+
+-   **`metrics_port`**
+    -   **Description:** Optional per-daemon bind port for this node's `/metrics`/`/health` endpoint. Overrides `[metrics] prometheus_port` for this node. Must be in `[1, 65535]` when set. Use distinct ports per node in same-host/co-located topologies to avoid `EADDRINUSE`; empty falls back to the global `[metrics] prometheus_port`.
+    -   **Type:** Integer (1-65535)
+    -   **Default:** (empty — fall back to `[metrics] prometheus_port`, which defaults to disabled)
 
 ### [p2p]
 

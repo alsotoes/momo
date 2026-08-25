@@ -207,6 +207,8 @@ Momo includes a built-in Prometheus metrics exporter (`src/server/metrics_export
 
 **Configuration:** Add `prometheus_port = 9100` to the `[metrics]` section of `momo.conf`. Set to `0` or omit to disable. The metrics server runs on a separate port from the data plane — it does not share the accept loop, connection pool, or semaphore with the main daemon.
 
+**Per-node bind:** each server process starts its own `/metrics` endpoint (`server.Daemon` → `StartMetricsServer`). By default all nodes bind `:prometheus_port` (all interfaces); in same-host/co-located topologies this collides (`EADDRINUSE`). A daemon may opt into a distinct bind via `[daemon.N] metrics_host` / `metrics_port`, which override the global `[metrics] prometheus_bind_host` / `prometheus_port` for that node. This keeps `/metrics` available on every node and lets operators scope the endpoint to an admin/mgmt interface.
+
 **Overhead guarantees:** All counters use `sync/atomic` (~5ns per op). Heavy operations (`runtime.ReadMemStats`, disk stats) run only at scrape time (every 15-60s). No `prometheus/client_golang` dependency. Target: <1% throughput regression.
 
 ## High-Level Architecture

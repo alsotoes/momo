@@ -438,6 +438,8 @@ func loadMetricsConfig(section *ini.Section) (ConfigurationMetrics, error) {
 		metricsCfg.PrometheusPort = 0
 	}
 
+	metricsCfg.PrometheusBindHost = section.Key("prometheus_bind_host").String()
+
 	return metricsCfg, nil
 }
 
@@ -637,6 +639,19 @@ func loadDaemons(cfg *ini.File) ([]*Daemon, error) {
 			if v, e := key.Int(); e == nil {
 				d.OPRFShareIndex = v
 			}
+		}
+
+		d.MetricsBindHost = section.Key("metrics_host").String()
+
+		if key, err := section.GetKey("metrics_port"); err == nil {
+			v, e := key.Int()
+			if e != nil {
+				return nil, fmt.Errorf("invalid 'metrics_port' in section [%s]: %v: %w", sectionName, e, syscall.EINVAL)
+			}
+			if v < 1 || v > 65535 {
+				return nil, fmt.Errorf("invalid 'metrics_port' %d in section [%s]: must be in [1, 65535]: %w", v, sectionName, syscall.EINVAL)
+			}
+			d.MetricsBindPort = v
 		}
 
 		daemons = append(daemons, d)

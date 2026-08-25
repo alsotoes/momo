@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"strconv"
 	"sync/atomic"
 	"time"
 )
@@ -125,10 +126,10 @@ func (m *MetricsCollector) handler(w http.ResponseWriter, r *http.Request) {
 	m.writeMetrics(w)
 }
 
-// StartMetricsServer starts an HTTP server exposing Prometheus metrics on the given port.
-// It runs in a background goroutine and returns immediately.
-// The server is shut down when the provided context is canceled.
-func StartMetricsServer(ctx context.Context, port int, collector *MetricsCollector) {
+// StartMetricsServer starts an HTTP server exposing Prometheus metrics on the given
+// host and port (empty host binds all interfaces). It runs in a background goroutine
+// and returns immediately. The server is shut down when the provided context is canceled.
+func StartMetricsServer(ctx context.Context, host string, port int, collector *MetricsCollector) {
 	if port <= 0 {
 		return
 	}
@@ -140,7 +141,7 @@ func StartMetricsServer(ctx context.Context, port int, collector *MetricsCollect
 		w.Write([]byte("OK"))
 	})
 
-	addr := fmt.Sprintf(":%d", port)
+	addr := net.JoinHostPort(host, strconv.Itoa(port))
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Printf("Failed to start metrics server on port %d: %v", port, err)

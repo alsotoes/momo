@@ -51,6 +51,12 @@ type Daemon struct {
 	Data string
 	// Drive is the drive used by the daemon.
 	Drive string
+	// MetricsBindHost is an optional per-daemon bind address (host) for the
+	// /metrics endpoint. Empty falls back to the global [metrics] bind host.
+	MetricsBindHost string
+	// MetricsBindPort is an optional per-daemon bind port for the /metrics
+	// endpoint. 0 (unset) falls back to the global [metrics] prometheus_port.
+	MetricsBindPort int
 	// OPRFShare is the hex-encoded 256-bit Shamir share of the threshold OPRF
 	// secret assigned to this daemon. Required when oprf_enabled is true.
 	// Each daemon holds a distinct share; no daemon holds the full secret.
@@ -147,6 +153,9 @@ type ConfigurationMetrics struct {
 	FallbackInterval int
 	// PrometheusPort is the port for the Prometheus /metrics endpoint (0 = disabled).
 	PrometheusPort int
+	// PrometheusBindHost is the default bind address for the /metrics endpoint.
+	// Empty binds all interfaces.
+	PrometheusBindHost string
 }
 
 // ConfigurationP2P holds the P2P transport and gossip configuration.

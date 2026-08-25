@@ -1,9 +1,137 @@
 package server
 
 import (
+	"context"
+	"io"
+	"net"
+	"net/http"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
+	"time"
+
+	"go.uber.org/goleak"
 )
+
+func freePort(t *testing.T) int {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to reserve a free port: %v", err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	if err := ln.Close(); err != nil {
+		t.Fatalf("failed to release reserved port: %v", err)
+	}
+	return port
+}
+
+func httpGetPort(t *testing.T, port int, path string) (int, string) {
+	t.Helper()
+	req, err := http.Get("http://127.0.0.1:" + strconv.Itoa(port) + path)
+	if err != nil {
+		t.Fatalf("GET %s on port %d failed: %v", path, port, err)
+	}
+	defer req.Body.Close()
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		t.Fatalf("read body failed: %v", err)
+	}
+	return req.StatusCode, string(body)
+}
+
+// TestStartMetricsServer_HostPort verifies an explicit host:port bind serves
+// /metrics and /health.
+func TestStartMetricsServer_HostPort(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	port := freePort(t)
+	mc := NewMetricsCollector()
+
+	done := make(chan struct{})
+	go func() { StartMetricsServer(ctx, "127.0.0.1", port, mc); close(done) }()
+
+	// /health 200 + "OK".
+	code, body := httpGetPort(t, port, "/health")
+	if code != http.StatusOK {
+		t.Fatalf("expected /health 200, got %d", code)
+	}
+	if !strings.Contains(body, "OK") {
+		t.Fatalf("expected /health body to contain OK, got %q", body)
+	}
+
+	// /metrics 200 + a metric line.
+	code, body = httpGetPort(t, port, "/metrics")
+	if code != http.StatusOK {
+		t.Fatalf("expected /metrics 200, got %d", code)
+	}
+	if !strings.Contains(body, "momo_connections_total ") {
+		t.Fatalf("expected /metrics to contain momo_connections_total, got head %q", body[:min(120, len(body))])
+	}
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("StartMetricsServer did not return after cancel")
+	}
+	time.Sleep(50 * time.Millisecond)
+	goleak.VerifyNone(t)
+}
+
+// TestStartMetricsServer_DistinctSameHostPorts verifies two nodes on the same
+// host with distinct ports both serve /metrics (no EADDRINUSE).
+func TestStartMetricsServer_DistinctSameHostPorts(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	p1 := freePort(t)
+	p2 := freePort(t)
+	for p2 == p1 {
+		p2 = freePort(t)
+	}
+
+	var wg sync.WaitGroup
+	for _, p := range []int{p1, p2} {
+		wg.Add(1)
+		go func(pp int) { defer wg.Done(); StartMetricsServer(ctx, "127.0.0.1", pp, NewMetricsCollector()) }(p)
+	}
+
+	// Both must respond.
+	httpGetPort(t, p1, "/metrics")
+	httpGetPort(t, p2, "/metrics")
+
+	cancel()
+	wg.Wait()
+	time.Sleep(50 * time.Millisecond)
+	goleak.VerifyNone(t)
+}
+
+// TestStartMetricsServer_PortCollisionNoPanic verifies binding an in-use port
+// logs an error and returns without panicking.
+func TestStartMetricsServer_PortCollisionNoPanic(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	port := ln.Addr().(*net.TCPAddr).Port
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan struct{})
+	go func() { StartMetricsServer(ctx, "127.0.0.1", port, NewMetricsCollector()); close(done) }()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("StartMetricsServer should return quickly on collision")
+	}
+	goleak.VerifyNone(t)
+}
 
 func TestMetricsCollector_Counters(t *testing.T) {
 	mc := NewMetricsCollector()
