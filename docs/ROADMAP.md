@@ -54,4 +54,36 @@ This document outlines the high-level roadmap for the Momo project, tracking maj
 - **Client SDKs**: Native SDKs for Python and Rust.
 
 ---
-*Last Updated: 2026-08-02*
+
+## Production-Readiness Roadmap
+
+Ratified in [prod-ready-roadmap](../openspec/changes/prod-ready-roadmap/specs/prod-ready-roadmap/spec.md) (#928). Momo is currently a replicated content-addressed blob store + S3 gateway; the FUSE/POSIX filesystem layer (`docs/momofs/`) is design-only. Phases gate production readiness.
+
+### P0 — Correctness & Durability (blockers)
+
+| ID | Item | Deliverable |
+|----|------|-------------|
+| R1 | Failure-domain-aware CRUSH placement | Rack/zone/DC groups constrain replica placement |
+| R2 | Degraded-read + self-heal rebuild | Re-replicate after corruption/quarantine/underrreplication |
+| R3 | Write durability + ack quorum + consistency | fsync-before-ack, survivor quorum, read-your-writes |
+| R4 | momofs FUSE/POSIX layer | Mountable POSIX filesystem with correct metadata semantics |
+
+### P1 — Operability, Multi-Tenancy, Security
+
+| ID | Item | Deliverable |
+|----|------|-------------|
+| R5 | Metrics phases 2–4 + dashboards/alerts | Storage/CAS + P2P/cluster gauges, latency histograms |
+| R6 | Metadata catalog HA + backup/recovery | Distributed metadata; snapshot/restore |
+| R7 | Error model & ops | ENOSPC surfacing, distinct exit codes, cluster health |
+| R8 | Multi-tenancy + authorization + audit | Identity/ACL/policy, audit logging |
+| R9 | Secrets management + key rotation | Env/KMS secrets, rotation for master/tenant/OPRF/auth keys |
+
+### P2 — S3 Breadth & Scale
+
+| ID | Item | Deliverable |
+|----|------|-------------|
+| R10 | S3 lifecycle/versioning/notification/lock breadth | Extends #820; real-tooling compatibility |
+| R11 | Auto-rebalance on membership change | Dynamic data movement on node join/leave |
+
+---
+*Last Updated: 2026-08-24*
