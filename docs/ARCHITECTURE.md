@@ -26,7 +26,7 @@ This layer handles the physical movement of bytes. It includes the carrier trans
 The core logic defines the data distribution path (e.g., `Chain`, `Splay`). This logic is **completely agnostic** of the communication layer. It executes replication by requesting a connection (`Communicator`) from the factory and doesn't care whether bytes move via TCP or QUIC streams.
 
 #### 3. State Management (Polymorphic System)
-The metrics component runs on every node. It is responsible for monitoring local system metrics (CPU and memory usage). When a threshold is reached, the node broadcasts the new replication strategy to the entire cluster via the `ChangeReplication` endpoint, ensuring all potential "Primary" nodes remain in sync.
+The metrics controller (`metrics.GetMetrics`, `src/metrics/metrics.go`) runs on the **primary (controller) node — daemon 0**; it short-circuits on any node with `serverId != 0`. It is responsible for monitoring system metrics (CPU and memory usage). When a threshold is reached, the controller broadcasts the new replication strategy to the entire cluster via the `ChangeReplication` endpoint, ensuring all potential "Primary" nodes remain in sync. (Per-node Prometheus `/metrics`/`/health` export is independent and runs on every node; see Observability §7.)
 
 ### 4. Distributed Object Engine (CAS 2.0)
 Momo utilizes a **Shared-Nothing Partitioned Architecture** for its object storage layer, encapsulated in the `src/storage` package:
