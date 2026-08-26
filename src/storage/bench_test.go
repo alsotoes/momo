@@ -77,6 +77,49 @@ func BenchmarkReadVerify(b *testing.B) {
 	}
 }
 
+// BenchmarkTrustedRead measures the cost of reading an ALREADY-TRUSTED blob
+// through the verifiedCache policy: the first read (outside the timer)
+// establishes trust with a full SHA-256, then every timed iteration is a plain
+// io.Copy with no re-hashing. It should move toward raw copy/disk-read cost
+// versus the cold BenchmarkReadVerify path (Win1, #950 / RV-T12).
+func BenchmarkTrustedRead(b *testing.B) {
+	for _, sz := range perfSizes {
+		b.Run(sz.name, func(b *testing.B) {
+			payload := newBenchPayload(sz.size)
+			blobs, err := NewLocalBlobStore(b.TempDir())
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer blobs.Close()
+			hash := benchPayloadHash(payload)
+			if err := blobs.PutBlob(hash, bytes.NewReader(payload)); err != nil {
+				b.Fatal(err)
+			}
+			vc := newVerifiedCache()
+			// Establish trust once (full verify, outside the timed region).
+			vr := vc.Verify(io.NopCloser(bytes.NewReader(payload)), hash)
+			if _, err := io.Copy(io.Discard, vr); err != nil {
+				b.Fatal(err)
+			}
+			b.SetBytes(int64(sz.size))
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				f, err := blobs.GetBlob(hash)
+				if err != nil {
+					b.Fatal(err)
+				}
+				r := vc.Verify(f, hash)
+				if _, err := io.Copy(io.Discard, r); err != nil {
+					b.Fatal(err)
+				}
+				if err := r.Close(); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
 // BenchmarkS3PutSpool measures the S3 spool+hash single pass
 // (os.CreateTemp + io.MultiWriter(spill, hasher) over a size-bounded
 // reader), excluding the HTTP round trip.

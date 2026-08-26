@@ -25,11 +25,12 @@ func contentHashVerifiedError(key string) error {
 // successful read. It is bounded-memory: it streams through the caller's
 // buffer and only holds a SHA-256 state.
 type verifyingReader struct {
-	src      io.Reader
-	h        sha256Alg
-	expected string
-	checked  bool
-	corrupt  error
+	src        io.Reader
+	h          sha256Alg
+	expected   string
+	checked    bool
+	corrupt    error
+	onVerified func() // optional callback fired once a full match is confirmed
 }
 
 // sha256Alg avoids dragging the concrete hash.Hash name into the struct.
@@ -58,6 +59,9 @@ func (v *verifyingReader) Read(p []byte) (int, error) {
 		if key != v.expected {
 			v.corrupt = contentHashVerifiedError(v.expected)
 			return n, v.corrupt
+		}
+		if v.onVerified != nil {
+			v.onVerified()
 		}
 	}
 	return n, err
@@ -223,6 +227,10 @@ func (s *CASStore) scrubBlob(hash string) (canceled, quarantined bool, err error
 		}
 		return false, true, nil
 	}
+	// A full re-read re-hashed the blob to match its content-address key: mark
+	// it trusted so verifiedCache skips redundant hashing on later reads (Win1,
+	// #950). CAS immutability makes this trust permanent; next scrub re-catches rot.
+	s.verifier.MarkTrusted(hash)
 	return false, false, nil
 }
 
