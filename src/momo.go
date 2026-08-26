@@ -80,7 +80,7 @@ func Run() {
 			// Build ClusterMap
 			nodes := make([]*common.Node, len(cfg.Daemons))
 			for i, d := range cfg.Daemons {
-				nodes[i] = &common.Node{ID: i, Weight: 1, Addr: d.Host}
+				nodes[i] = &common.Node{ID: i, Weight: 1, Addr: d.Host, Domain: d.FailureDomain}
 			}
 			cmap := &common.ClusterMap{Nodes: nodes}
 

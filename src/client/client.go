@@ -227,7 +227,7 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 		// ⚡ Bolt: Use CRUSH to find the specific replicas for PrimarySplay.
 		nodes := make([]*common.Node, len(daemons))
 		for i, d := range daemons {
-			nodes[i] = &common.Node{ID: i, Weight: 1, Addr: d.Host}
+			nodes[i] = &common.Node{ID: i, Weight: 1, Addr: d.Host, Domain: d.FailureDomain}
 		}
 		cmap := &common.ClusterMap{Nodes: nodes}
 		placement, err := cmap.Placement(fileHash, replicationFactor)

@@ -18,6 +18,10 @@ type Node struct {
 	ID     int
 	Weight int
 	Addr   string
+	// Domain is the failure-domain label (rack/zone/DC) used by Placement to
+	// spread replicas across independent failure units (R1, #929). Empty means
+	// unclassified; all unclassified nodes share one default domain.
+	Domain string
 }
 
 // ClusterMap defines the topology of the storage cluster.
@@ -65,9 +69,13 @@ func (m *ClusterMap) Placement(objectHash string, replicationFactor int) (nodes 
 	// (Weight <= 0) must never receive data, even when replicationFactor is
 	// large enough that last-sorted zero-score nodes would otherwise be selected.
 	eligible := make([]*Node, 0, len(m.Nodes))
+	domainsConfigured := false
 	for _, node := range m.Nodes {
 		if node != nil && node.Weight > 0 {
 			eligible = append(eligible, node)
+			if node.Domain != "" {
+				domainsConfigured = true
+			}
 		}
 	}
 
@@ -126,9 +134,52 @@ func (m *ClusterMap) Placement(objectHash string, replicationFactor int) (nodes 
 		return scores[i].value > scores[j].value
 	})
 
-	result := make([]*Node, replicationFactor)
-	for i := 0; i < replicationFactor; i++ {
-		result[i] = scores[i].node
+	// Failure-domain spread (R1, #929): when at least one node declares a
+	// Domain, select the replica set that maximizes the number of distinct
+	// failure domains, tie-broken by descending finalScore. The greedy pass
+	// below is equivalent to brute-force over replica sets: scores are sorted
+	// descending, so the first visit of each domain picks that domain's
+	// highest-scoring node and domains enter in order of their best score.
+	// When no node declares a Domain, keep the legacy top-R selection so the
+	// hot path and benchmark numbers are unchanged for existing clusters.
+	result := make([]*Node, 0, replicationFactor)
+	if !domainsConfigured {
+		for i := 0; i < replicationFactor; i++ {
+			result = append(result, scores[i].node)
+		}
+		return result, nil
+	}
+
+	used := make(map[string]struct{}, replicationFactor)
+	selected := make(map[*Node]struct{}, replicationFactor)
+	for _, s := range scores {
+		if len(result) == replicationFactor {
+			break
+		}
+		if _, dup := used[s.node.Domain]; dup {
+			continue
+		}
+		used[s.node.Domain] = struct{}{}
+		selected[s.node] = struct{}{}
+		result = append(result, s.node)
+	}
+
+	// Degraded fallback (R1-C4): fewer distinct domains than replicas — fill
+	// the remaining slots by score, sharing domains, and warn (consistent with
+	// the existing degraded-mode replication-factor logging above).
+	if len(result) < replicationFactor {
+		log.Printf("WARNING: replication factor %d exceeds %d distinct failure domains; placing replicas in shared failure domains (DEGRADED)",
+			replicationFactor, len(used))
+		for _, s := range scores {
+			if len(result) == replicationFactor {
+				break
+			}
+			if _, ok := selected[s.node]; ok {
+				continue
+			}
+			selected[s.node] = struct{}{}
+			result = append(result, s.node)
+		}
 	}
 
 	return result, nil

@@ -51,6 +51,10 @@ type Daemon struct {
 	Data string
 	// Drive is the drive used by the daemon.
 	Drive string
+	// FailureDomain is the optional failure-domain label (rack/zone/DC) of the
+	// daemon (R1, #929). Empty means unclassified: the node shares the default
+	// failure domain with every other unclassified node.
+	FailureDomain string
 	// MetricsBindHost is an optional per-daemon bind address (host) for the
 	// /metrics endpoint. Empty falls back to the global [metrics] bind host.
 	MetricsBindHost string

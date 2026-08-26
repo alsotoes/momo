@@ -748,6 +748,39 @@ func TestGetConfig_MinimumDurabilityFactor(t *testing.T) {
 	}
 }
 
+func TestGetConfig_FailureDomain(t *testing.T) {
+	write := func(daemonKey string) string {
+		return strings.Replace(validConfig, "drive = /dev/sda1",
+			"drive = /dev/sda1\n"+daemonKey, 1)
+	}
+
+	// Explicit value parses into the struct (R1, #929).
+	tmp := filepath.Join(t.TempDir(), "momo.conf")
+	if err := os.WriteFile(tmp, []byte(write("failure_domain = rack-a")), 0666); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := GetConfig(tmp)
+	if err != nil {
+		t.Fatalf("GetConfig failed: %v", err)
+	}
+	if cfg.Daemons[0].FailureDomain != "rack-a" {
+		t.Fatalf("expected FailureDomain=rack-a, got %q", cfg.Daemons[0].FailureDomain)
+	}
+
+	// Absent defaults to empty (unclassified).
+	tmp2 := filepath.Join(t.TempDir(), "momo.conf")
+	if err := os.WriteFile(tmp2, []byte(validConfig), 0666); err != nil {
+		t.Fatal(err)
+	}
+	cfg2, err := GetConfig(tmp2)
+	if err != nil {
+		t.Fatalf("GetConfig failed: %v", err)
+	}
+	if cfg2.Daemons[0].FailureDomain != "" {
+		t.Fatalf("expected default FailureDomain empty, got %q", cfg2.Daemons[0].FailureDomain)
+	}
+}
+
 func TestGetConfig_AuthBackoffDelay(t *testing.T) {
 	write := func(globalKey string) string {
 		return strings.Replace(validConfig, "polymorphic_system = true",

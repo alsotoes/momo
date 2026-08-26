@@ -2,9 +2,13 @@ package common
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"log"
+	"math"
+	"sort"
 	"strings"
 	"syscall"
 	"testing"
@@ -274,6 +278,217 @@ func TestClusterMap_Placement_TiedScoresStableOrder(t *testing.T) {
 		}
 		if ia > ib {
 			t.Fatalf("run %d: stable sort violated: tie-a at %d, tie-b at %d", run, ia, ib)
+		}
+	}
+}
+
+// testFinalScore recomputes the WRH score of a node for an object hash,
+// mirroring Placement's scoring, so tests can verify the selected set against
+// a brute-force reference without exporting internals.
+func testFinalScore(objectHash string, node *Node) float64 {
+	h := sha256.New()
+	h.Write([]byte(objectHash))
+	var idBuf [8]byte
+	binary.LittleEndian.PutUint64(idBuf[:], uint64(node.ID))
+	h.Write(idBuf[:])
+	v := hashToScoreValue(h.Sum(nil))
+	if v > 0 && v < 1.0 && node.Weight > 0 {
+		return -float64(node.Weight) / math.Log(v)
+	}
+	return 0
+}
+
+// bruteForceBestPlacement enumerates all replica sets of size r and returns the
+// R1-C2 reference optimum: maximal distinct-domain count, then maximal
+// finalScore sum.
+func bruteForceBestPlacement(nodes []*Node, r int, objectHash string) (bestDomains int, bestSum float64) {
+	bestDomains = -1
+	var rec func(start int, combo []*Node)
+	rec = func(start int, combo []*Node) {
+		if len(combo) == r {
+			domains := make(map[string]struct{}, r)
+			sum := 0.0
+			for _, n := range combo {
+				domains[n.Domain] = struct{}{}
+				sum += testFinalScore(objectHash, n)
+			}
+			if len(domains) > bestDomains || (len(domains) == bestDomains && sum > bestSum) {
+				bestDomains, bestSum = len(domains), sum
+			}
+			return
+		}
+		for i := start; i < len(nodes); i++ {
+			rec(i+1, append(combo, nodes[i]))
+		}
+	}
+	rec(0, nil)
+	return bestDomains, bestSum
+}
+
+// TestClusterMap_Placement_FailureDomainSpread (R1-T1) verifies placement
+// maximizes distinct failure domains and matches the brute-force optimum
+// across same-domain, multi-domain, and partial-domain topologies (#929).
+func TestClusterMap_Placement_FailureDomainSpread(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	topologies := []struct {
+		name   string
+		domain []string // per-node domain; "" = unclassified
+		rf     int
+	}{
+		{"all same domain", []string{"rack-a", "rack-a", "rack-a"}, 2},
+		{"all distinct domains", []string{"rack-a", "rack-b", "rack-c"}, 3},
+		{"spread over duplicate domain", []string{"rack-a", "rack-a", "rack-b", "rack-c"}, 3},
+		{"partial domains with unclassified", []string{"rack-a", "", "rack-b", ""}, 3},
+		{"degraded: fewer domains than replicas", []string{"rack-a", "rack-a", "rack-b", "rack-b"}, 3},
+		{"full unclassified is one default domain", []string{"", "", ""}, 2},
+	}
+
+	const objectHash = "eb0e30ff02be45f64a19881497f0f4233a9cfb674243e652d6299bf176551897"
+
+	for _, tc := range topologies {
+		t.Run(tc.name, func(t *testing.T) {
+			nodes := make([]*Node, len(tc.domain))
+			for i, dom := range tc.domain {
+				nodes[i] = &Node{ID: i, Weight: 1, Addr: fmt.Sprintf("node-%d", i), Domain: dom}
+			}
+			m := &ClusterMap{Nodes: nodes}
+
+			p, err := m.Placement(objectHash, tc.rf)
+			if err != nil {
+				t.Fatalf("Placement failed: %v", err)
+			}
+			if len(p) != tc.rf {
+				t.Fatalf("expected %d replicas, got %d", tc.rf, len(p))
+			}
+
+			wantDomains, wantSum := bruteForceBestPlacement(nodes, tc.rf, objectHash)
+			gotDomains := make(map[string]struct{}, tc.rf)
+			gotSum := 0.0
+			seen := make(map[int]struct{}, tc.rf)
+			for _, n := range p {
+				if _, dup := seen[n.ID]; dup {
+					t.Fatalf("node %d selected twice", n.ID)
+				}
+				seen[n.ID] = struct{}{}
+				gotDomains[n.Domain] = struct{}{}
+				gotSum += testFinalScore(objectHash, n)
+			}
+			if len(gotDomains) != wantDomains {
+				t.Errorf("distinct domains = %d, want optimum %d", len(gotDomains), wantDomains)
+			}
+			if math.Abs(gotSum-wantSum) > 1e-9*math.Max(1, math.Abs(wantSum)) {
+				t.Errorf("finalScore sum = %v, want optimum %v", gotSum, wantSum)
+			}
+		})
+	}
+}
+
+// TestClusterMap_Placement_FailureDomainDeterminism (R1-T2) verifies identical
+// topology + hash yields identical placement across calls with domains set.
+func TestClusterMap_Placement_FailureDomainDeterminism(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	m := &ClusterMap{Nodes: []*Node{
+		{ID: 0, Weight: 1, Addr: "n0", Domain: "rack-a"},
+		{ID: 1, Weight: 2, Addr: "n1", Domain: "rack-a"},
+		{ID: 2, Weight: 1, Addr: "n2", Domain: "rack-b"},
+		{ID: 3, Weight: 3, Addr: "n3", Domain: ""},
+	}}
+
+	want, err := m.Placement("some-hash", 3)
+	if err != nil {
+		t.Fatalf("Placement failed: %v", err)
+	}
+	for run := 0; run < 50; run++ {
+		got, err := m.Placement("some-hash", 3)
+		if err != nil {
+			t.Fatalf("run %d: Placement failed: %v", run, err)
+		}
+		for i := range want {
+			if got[i].ID != want[i].ID {
+				t.Fatalf("run %d: non-deterministic at index %d: got %d, want %d", run, i, got[i].ID, want[i].ID)
+			}
+		}
+	}
+}
+
+// TestClusterMap_Placement_FailureDomainDegradedWarning (R1-T3) verifies a
+// warning is logged when R exceeds the distinct-domain count but R replicas
+// are still returned, and that no warning fires when the constraint holds.
+func TestClusterMap_Placement_FailureDomainDegradedWarning(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	m := &ClusterMap{Nodes: []*Node{
+		{ID: 0, Weight: 1, Addr: "n0", Domain: "rack-a"},
+		{ID: 1, Weight: 1, Addr: "n1", Domain: "rack-a"},
+		{ID: 2, Weight: 1, Addr: "n2", Domain: "rack-b"},
+	}}
+
+	check := func(label, wantSub, forbiddenSub string, rf int) {
+		t.Helper()
+		var buf bytes.Buffer
+		prev := log.Writer()
+		log.SetOutput(&buf)
+		defer log.SetOutput(prev)
+
+		out, err := m.Placement("some-hash", rf)
+		if err != nil {
+			t.Fatalf("%s: Placement failed: %v", label, err)
+		}
+		if len(out) != rf {
+			t.Fatalf("%s: expected %d replicas, got %d", label, rf, len(out))
+		}
+		if wantSub != "" && !strings.Contains(buf.String(), wantSub) {
+			t.Errorf("%s: expected log to contain %q, got %q", label, wantSub, buf.String())
+		}
+		if forbiddenSub != "" && strings.Contains(buf.String(), forbiddenSub) {
+			t.Errorf("%s: expected log to NOT contain %q, got %q", label, forbiddenSub, buf.String())
+		}
+	}
+
+	// 2 distinct domains, R=3: degraded, warning, still 3 replicas.
+	check("degraded", "exceeds 2 distinct failure domains", "", 3)
+	// 2 distinct domains, R=2: constraint satisfied, no warning.
+	check("satisfiable", "", "failure domains", 2)
+}
+
+// TestClusterMap_Placement_NoDomainsLegacyPath verifies that when no node
+// declares a Domain the legacy top-R selection runs unchanged and no
+// failure-domain warning is logged (backward compatibility, R1-T4).
+func TestClusterMap_Placement_NoDomainsLegacyPath(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	nodes := []*Node{
+		{ID: 0, Weight: 1, Addr: "n0"},
+		{ID: 1, Weight: 2, Addr: "n1"},
+		{ID: 2, Weight: 1, Addr: "n2"},
+		{ID: 3, Weight: 3, Addr: "n3"},
+	}
+	m := &ClusterMap{Nodes: nodes}
+
+	var buf bytes.Buffer
+	prev := log.Writer()
+	log.SetOutput(&buf)
+	defer log.SetOutput(prev)
+
+	const hash = "some-hash"
+	p, err := m.Placement(hash, 2)
+	if err != nil {
+		t.Fatalf("Placement failed: %v", err)
+	}
+	if strings.Contains(buf.String(), "failure domains") {
+		t.Errorf("legacy path logged failure-domain warning: %q", buf.String())
+	}
+
+	// Result must equal the legacy top-R ordering (score desc, stable ties).
+	want := append([]*Node(nil), nodes...)
+	sort.SliceStable(want, func(i, j int) bool {
+		return testFinalScore(hash, want[i]) > testFinalScore(hash, want[j])
+	})
+	for i := range p {
+		if p[i].ID != want[i].ID {
+			t.Errorf("index %d: got node %d, want legacy top-R node %d", i, p[i].ID, want[i].ID)
 		}
 	}
 }

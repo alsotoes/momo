@@ -227,6 +227,12 @@ The configuration must contain a section for each daemon in the cluster, numbere
     -   **Type:** String (host:port)
     -   **Example:** `localhost:9090`
 
+-   **`failure_domain`**
+    -   **Description:** Optional failure-domain label (rack/zone/DC) for failure-domain-aware CRUSH placement (R1, #929). When at least one daemon declares a domain, replica placement maximizes the number of distinct failure domains per object; if `replication_factor` exceeds the number of distinct domains, placement still returns the full replica set and logs a degraded-mode warning. Empty means unclassified — all unclassified daemons share one default domain. When no daemon declares a domain, placement behaves exactly as before (flat WRH top-R).
+    -   **Type:** String
+    -   **Default:** (empty — unclassified)
+    -   **Example:** `rack-a`, `dc=us-east1/rack=a`
+
 -   **`oprf_share`**
     -   **Description:** The hex-encoded 256-bit Shamir share of the threshold OPRF secret assigned to this daemon (required when `oprf_enabled = true`). Each daemon holds a **distinct** share; no daemon holds the full secret, so no single server can evaluate the OPRF on a dedup tag alone. Shares are produced by a one-time dealer (see `crypto.GenerateOPRFShares`) and distributed out-of-band.
     -   **Type:** String (64 hex characters)
