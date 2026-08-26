@@ -643,6 +643,11 @@ func loadDaemons(cfg *ini.File) ([]*Daemon, error) {
 
 		d.MetricsBindHost = section.Key("metrics_host").String()
 
+		// failure_domain is optional (R1, #929); empty means the daemon is
+		// unclassified and shares the default failure domain with every other
+		// unclassified node.
+		d.FailureDomain = section.Key("failure_domain").String()
+
 		if key, err := section.GetKey("metrics_port"); err == nil {
 			v, e := key.Int()
 			if e != nil {

@@ -171,7 +171,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 	// ⚡ Bolt: Pre-build the ClusterMap during boot to avoid per-request allocations.
 	nodes := make([]*common.Node, len(cfg.Daemons))
 	for i, d := range cfg.Daemons {
-		nodes[i] = &common.Node{ID: i, Weight: 1, Addr: d.Host}
+		nodes[i] = &common.Node{ID: i, Weight: 1, Addr: d.Host, Domain: d.FailureDomain}
 	}
 	cmap := &common.ClusterMap{Nodes: nodes}
 

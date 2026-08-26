@@ -39,6 +39,8 @@ RADOS CRUSH is designed to model massive, heterogeneous physical failure domains
 
 In a high-throughput playground, these operations cause severe **CPU cache misses** and trigger **heap escapes** (memory allocations), which in turn invoke Go's Garbage Collector (GC), introducing unpredictable tail-latency spikes (stop-the-world pauses).
 
+R1 (#929) adds a middle ground: an optional **flat** `failure_domain` label per node — no hierarchy, no buckets, no backtracking — that constrains replica spread across independent failure units while preserving the single-pass, cache-friendly design (see §3, step 4).
+
 ### How CRUSH-lite Solves This (⚡ Bolt Standard)
 Momo's `CRUSH-lite` simplifies the topology to a flat, region-aware ring and uses Weighted Rendezvous Hashing (WRH) with SHA-256 for deterministic, load-balanced placement.
 
@@ -56,6 +58,8 @@ Momo's `CRUSH-lite` simplifies the topology to a flat, region-aware ring and use
    All nodes are sorted by `finalScore` descending. The top $R$ nodes are selected as the placement targets:
    $$\text{placement} = \text{sort}_{\text{desc}}(\text{nodes}, \text{finalScore})[:R]$$
    This ensures deterministic, load-balanced replication with minimal data movement when nodes are added or removed.
+4. **Failure-Domain Spread (R1, #929):**
+   When at least one node declares a `failure_domain` (per `[daemon.N]`), selection maximizes the number of **distinct failure domains** in the replica set, tie-broken by descending `finalScore`. Because scores are already sorted descending, a single greedy pass — taking the highest-scoring node of each unused domain first, then filling any remaining slots by score — is equivalent to brute-force optimization over replica sets (cluster sizes are small; no hierarchy or buckets). If $R$ exceeds the number of distinct domains, placement still returns $R$ replicas (sharing domains) and logs a degraded-mode warning, consistent with the replication-factor cap warning. Nodes without a `failure_domain` share one default ("unclassified") domain; when no node declares a domain, the legacy top-$R$ path runs unchanged with zero added cost.
 
 ---
 

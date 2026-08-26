@@ -31,6 +31,42 @@ func BenchmarkCrushOriginal(b *testing.B) {
 	}
 }
 
+// BenchmarkPlacement measures the legacy (no failure domains) placement path
+// (R1, #929): it must stay unchanged versus pre-R1 numbers.
+func BenchmarkPlacement(b *testing.B) {
+	nodes := make([]*Node, 10)
+	for i := range nodes {
+		nodes[i] = &Node{ID: i, Weight: i + 1, Addr: "node"}
+	}
+	m := &ClusterMap{Nodes: nodes}
+	objectHash := "some-object-hash"
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := m.Placement(objectHash, 3); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// BenchmarkPlacementDomainSpread measures the failure-domain spread path (R1).
+func BenchmarkPlacementDomainSpread(b *testing.B) {
+	domains := []string{"rack-a", "rack-b", "rack-c"}
+	nodes := make([]*Node, 10)
+	for i := range nodes {
+		nodes[i] = &Node{ID: i, Weight: i + 1, Addr: "node", Domain: domains[i%len(domains)]}
+	}
+	m := &ClusterMap{Nodes: nodes}
+	objectHash := "some-object-hash"
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := m.Placement(objectHash, 3); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func BenchmarkCrushOptimized(b *testing.B) {
 	node := &Node{ID: 1, Weight: 100}
 	objectHash := "some-object-hash"
