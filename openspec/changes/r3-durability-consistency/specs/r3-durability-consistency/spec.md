@@ -16,12 +16,17 @@ reads observe acknowledged writes.
 
 ## Durability ack
 
-### R3-C1: fsync-before-ack
-- A write MUST NOT be acknowledged until at least `W` replica blobs are durably persisted
-  (fsync) on distinct nodes.
-- `fsync_before_ack bool` (default true) gates enforcing the fsync barrier; when false,
-  acks return after target replicas have the blob buffered (best-effort, clearly documented
-  as non-durable).
+### R3-C1: durability profile (fsync-before-ack)
+- `[storage] durability = "fsync" | "group-commit" | "none"` selects the ack barrier.
+  Invalid values are a configuration error (`syscall.EINVAL`).
+- **`fsync` (default)**: a write MUST NOT be acknowledged until at least `W` replica blobs
+  are durably persisted (fsync) on distinct nodes.
+- **`group-commit`**: amortized batch fsync — writes are queued and a single fsync barrier
+  covers a batch before any of them ack (PERFORMANCE_SECURITY B5). Still durable (each acked
+  write sits on stable storage), but amortizes the per-write syscall cost for write-heavy
+  deployments.
+- **`none`**: acks return after target replicas have the blob buffered — best-effort,
+  explicitly NON-durable (a crash may lose acknowledged writes). Must be documented as such.
 
 ### R3-C2: Write quorum
 - `[global] write_quorum int` (default `1`). Valid range `1 <= write_quorum <=
@@ -49,13 +54,15 @@ reads observe acknowledged writes.
 ## Config
 
 ### R3-G1
-- Add `fsync_before_ack` (default true) and `write_quorum` (default 1) to `[global]`.
+- Add `durability string` (default `"fsync"`, enum-validated) and `write_quorum int`
+  (default 1) to `[storage]` / `[global]` respectively.
 
 ## Tests
 
 ### R3-T1
-- fsync-before-ack: without a durable replica the write errors; with W durable replicas it
-  acks. `fsync_before_ack=false` bypasses barrier (unit, mocked store).
+- Durability profile (mock store): `fsync` acks only after a durable (fsync'd) replica;
+  `group-commit` acks after a batch fsync (durable, amortized); `none` acks buffered and is
+  documented non-durable. Each mode exercised in isolation.
 ### R3-T2
 - Write quorum: with W=2 and only 1 reachable/durable node, write fails (no silent ack);
   with 2 → succeeds. Never ack below minimum_durability_factor.

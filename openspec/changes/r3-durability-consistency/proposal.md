@@ -17,7 +17,10 @@ semantics, survivor-set quorum, or linearizable/read-your-writes behavior.
 ## What
 
 1. **Durability ack**: a write is acknowledged only after the required number of replicas
-   have durably persisted (fsync) the object. `fsync_before_ack` gates this.
+   have durably persisted (fsync) the object. A configurable 3-mode profile selects the ack
+   barrier: `durability = "fsync" | "group-commit" | "none"` (default `fsync`). `group-commit`
+   amortizes per-write fsync into a batch barrier (still durable); `none` is explicitly
+   non-durable best-effort.
 2. **Survivor-set write quorum**: define the minimum replica ack count for a successful
    write (`write_quorum`), with a defined degraded path when it cannot be met.
 3. **Consistency model**: document and enforce a single-object consistency model —
