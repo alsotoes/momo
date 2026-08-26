@@ -98,6 +98,10 @@ type CASStore struct {
 	// it no longer matches the content-address key (at-rest integrity, #924).
 	VerifyOnRead bool
 
+	// verifier is the rule-74 read-verification policy selected at construction
+	// (everyReadVerifier by default; verifiedCache via WithReadVerifier).
+	verifier ReadVerifier
+
 	scrubDone    chan struct{}
 	scrubWG      sync.WaitGroup
 	scrubOnce    sync.Once
@@ -115,8 +119,10 @@ func NewCASStore(dataDir string) (*CASStore, error) {
 }
 
 // newCASStore creates a CAS store with the given BlobStore backend and
-// a bbolt metadata database in dataDir.
-func newCASStore(dataDir string, blobs BlobStore) (*CASStore, error) {
+// a bbolt metadata database in dataDir. Optional func(opts) configure
+// behavior; the default read policy is everyReadVerifier (historical
+// VerifyOnRead=true behavior).
+func newCASStore(dataDir string, blobs BlobStore, opts ...func(*CASStore)) (*CASStore, error) {
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create data dir: %v: %w", err, syscall.EIO)
 	}
@@ -153,14 +159,19 @@ func newCASStore(dataDir string, blobs BlobStore) (*CASStore, error) {
 		return nil, err
 	}
 
-	return &CASStore{
+	s := &CASStore{
 		db:           db,
 		base:         dataDir,
 		blobs:        blobs,
 		gcDone:       make(chan struct{}),
 		scrubDone:    make(chan struct{}),
 		VerifyOnRead: true,
-	}, nil
+		verifier:     everyReadVerifier{},
+	}
+	for _, o := range opts {
+		o(s)
+	}
+	return s, nil
 }
 
 func (s *CASStore) Close() error {
@@ -310,15 +321,13 @@ func (s *CASStore) Get(name string) (rc io.ReadCloser, meta common.FileMetadata,
 		return nil, common.FileMetadata{}, openErr
 	}
 
-	// 🛡️ At-rest integrity (#924): when enabled, re-derive the blob's SHA-256 as
-	// it streams and fail at EOF if it no longer matches the content-address key
-	// instead of serving corrupt bytes. The verification cost runs as the caller
-	// drains the stream — after Get returns, outside s.mu.
+	// 🛡️ At-rest integrity (#924): the selected ReadVerifier policy re-derives
+	// the blob's SHA-256 as it streams and fails at EOF if it no longer matches
+	// the content-address key instead of serving corrupt bytes. The coordination
+	// cost runs as the caller drains the stream — after Get returns, outside
+	// s.mu. VerifyOnRead=false (disabled) and verify-once policies skip re-hash.
 	if s.VerifyOnRead {
-		f = &verifyingReadCloser{
-			verifyingReader: newVerifyingReader(f, hash),
-			underlying:      f,
-		}
+		f = s.verifier.Verify(f, hash)
 	}
 
 	// 🛡️ Zero-Crash: Ensure file is closed if subsequent metadata lookups fail.
