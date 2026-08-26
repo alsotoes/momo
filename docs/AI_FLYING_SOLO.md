@@ -444,9 +444,21 @@ If no script change is needed, add a PR comment explaining why.
 **Pitfall**: The pre-commit hook regenerates `docs/PERFORMANCE.md` and `.github/data/benchmark_history.csv`, adding unexpected files to the commit.
 **Solution**: This is expected behavior. Include these files in the commit. Do NOT revert them. Per Rule 61, when rebasing, resolve these by taking the master version (`--theirs`) since they are regenerated.
 
-### Benchstat Check Timing
-**Pitfall**: The `benchstat` CI check can take **7+ minutes** to complete, causing premature merge attempts.
-**Solution**: Budget at least 8 minutes for the final CI wait. Poll with `gh pr checks PR_N` until NO checks show `pending`.
+### Benchstat Check Timing & Frozen Check Status
+**Pitfall**: The `benchstat` CI check can take **7+ minutes** to complete, and `gh pr checks` may report a check (e.g., `benchstat`) as `pending` for 15+ minutes with a frozen `updatedAt` while the underlying job is actually `completed/success`.
+**Solution**: Budget at least 8 minutes for the final CI wait. Poll with `gh pr checks PR_N` until NO checks show `pending`. If a long-pending check has a frozen `updatedAt`, do NOT deadlock waiting — cross-check the actual job state via the API and read its steps' conclusions:
+```bash
+gh api repos/<owner>/<repo>/actions/runs/<run-id>/jobs \
+  --jq '.jobs[0] | {status, conclusion, steps:[.steps[]|{name,status,conclusion}]}'
+```
+
+### Merge-Inflation: Three-Dot vs Two-Dot Diff (Rule 62/55/73)
+**Pitfall**: After Rule 50 merges `master` into an external PR branch, two-dot diff (`gh pr view --json files`, `gh pr diff --name-only`) inflates to include ALL of master's merged files as if they were PR-authored. The reviewer can then flag master files (e.g., `checksum.go`, `metrics_exporter.go`, `openspec/*`) as Rule 47 deletions or Rule 73 violations that were never introduced by the PR.
+**Solution**: To enumerate a PR's *own* changes, always use the three-dot diff (compares against the shared merge-base, showing only the PR's commits):
+```bash
+git diff master...HEAD --name-only
+```
+Base every decision on what this PR *actually* changed — merge qualification (Rule 55), stale-review detection (Rule 62), and spec scope (Rule 73) — on this three-dot output, not on `gh pr diff`.
 
 ### Stale Branch Missing Master Files
 **Pitfall**: A PR branch created from an older master may be missing files that exist on current master. CI runs on the **merge commit** (PR branch + master), so failures from missing files appear even though the PR branch doesn't have them.
