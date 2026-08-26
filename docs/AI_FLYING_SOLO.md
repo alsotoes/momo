@@ -27,6 +27,7 @@ This document is governed by the steering rules in [`openspec/config.yaml`](../o
 - **Rule 70**: Steering rule → reviewer script sync — update `ai_reviewer.py` when adding rules that affect PR review/labeling/commenting/merge
 - **Rule 71**: Master CI gate before new work — wait for all master CI workflows to finish and pass before creating a new branch
 - **Rule 73**: Spec-First Implementation Mandate — every new feature / spec-driven change MUST author an OpenSpec change (`openspec/changes/<id>/`) linked to a GitHub issue BEFORE implementation; the PR MUST include the spec and `Resolves #ISSUE_ID`. Bug fixes are exempt from a formal spec but still need a tracking issue
+- **Rule 74**: Seam-Over-Plugins — adaptive/mutating behavior (degraded-read, self-heal/rebuild, R4 momofs FS semantics) MUST be a compile-time Go interface seam (constructor/functional-option injection + compiled-in registry, selected by declarative policy); external dynamic plugins forbidden in the data path (read-only policy feeds only); fast paths concrete/zero-indirect; core trust invariants stay in the auditable core. See `docs/momofs/PLUGIN_ARCHITECTURE.md`
 
 ## Pre-Flight Checklist
 
@@ -116,6 +117,15 @@ go build ./...
 go test ./...
 gofmt -w <modified files>
 ```
+
+**Rule 74 (adaptive/mutating behavior):** if the change is an adaptive or
+mutating behavior (e.g., degraded-read, self-heal/rebuild, R4 momofs FS
+semantics), implement it as a **compile-time Go interface seam** — interface +
+constructor/functional-option injection + compiled-in registry, selected by a
+declarative policy — NOT an external dynamic plugin (go-plugin/.so/RPC). Keep
+the happy path concrete/zero-indirect; dispatch the seam only at decision
+points; never bypass the CAS validate→write chokepoint. See
+`docs/momofs/PLUGIN_ARCHITECTURE.md`.
 
 ### Step 4: Commit
 ```bash
