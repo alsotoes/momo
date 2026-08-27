@@ -176,6 +176,39 @@ free:
   `storage.NewStoreWithRebuild`. Without a wired source, R2 behavior is inert and
   single-node semantics are unchanged.
 
+### 4h. Write Durability + Consistency Model (R3, issue #931)
+R3 defines the durability-and-ack contract for writes and the single-object
+consistency model, both enforced in the storage core and documented here.
+
+- **Durability barrier (`durability = "fsync" | "group-commit" | "none"`,
+  default `fsync`)**: every write crosses a Rule 74 barrier before it is
+  acknowledged. `fsync` fsyncs each blob's bytes (`SyncBlob`); `group-commit`
+  covers a batch of atomic renames with one winner-driven directory-fsync
+  barrier (`SyncDir`) and skips per-blob data fsync — amortized cost, while
+  content addressing and the R2 verified-read/self-heal loop keep the
+  durability + verification failure model sound (a torn block between the
+  barrier and OS writeback is detected and repaired); `none` acknowledges
+  buffered writes with no fsync and is explicitly non-durable. Modes are
+  declaratively selected (`WithDurability`) from the compiled-in
+  `durabilityRegistry`; invalid values fail at config load with `EINVAL`
+  (fail-closed, never silently under-durable).
+- **Write quorum (`write_quorum`, default `1`, `[1, replication_factor]`)**:
+  a write is acknowledged only after `write_quorum` replicas are durably
+  persisted. A write that cannot reach the quorum fails (no silent ack). The
+  metrics controller's `minimum_durability_factor` floor (#822) never selects a
+  mode whose achievable durable replicas fall below the quorum.
+- **Consistency model (`R3-C3/R3-C4`)**: single-object operations are
+  **sequential**: `CASStore` serializes writes per object (global lock + single
+  transactional metadata update, so a value is never torn), the last
+  acknowledged writer wins (LWW), and an acknowledged write is observed by
+  subsequent reads on the same object (read-your-writes). Multi-object /
+  namespace operations have **no cross-object atomicity** — each object obeys
+  the model independently (no distributed transaction at this milestone).
+- The multi-replica ack-counting (client waits for `write_quorum` durable acks
+  across daemons) is the daemon transport layer's wiring over the storage
+  barrier, delivered as a follow-up; the storage core enforces the per-node
+  durable-persist half of the contract.
+
 ### 5. Automated Governance & AI Reviewer
 To maintain high integrity in a single-contributor environment, Momo employs an automated governance layer:
 - **Gemini AI Reviewer**: A GitHub Action that uses the Gemini API to analyze PR diffs. It specifically enforces the **⚡ Bolt** (performance) and **🛡️ Sentinel** (security) patterns.

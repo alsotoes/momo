@@ -93,6 +93,11 @@ type ConfigurationGlobal struct {
 	// replica count is below this floor, holding the current higher-durability
 	// mode and logging the refusal instead of silently losing durability.
 	MinimumDurabilityFactor int
+	// WriteQuorum is the minimum number of durable replicas required before a
+	// write is acknowledged (R3-C2, #931). Default 1; valid range
+	// [1, ReplicationFactor]; validated at config load. A write that cannot
+	// reach `write_quorum` durable replicas fails instead of silently acking.
+	WriteQuorum int
 	// PolymorphicSystem enables or disables the polymorphic system.
 	PolymorphicSystem bool
 	// CACertPath is the path to a PEM-encoded CA certificate file used to verify
@@ -215,6 +220,10 @@ type ConfigurationStorage struct {
 	// RebuildWorkers bounds the number of concurrent blob repairs in a single
 	// rebuild pass (R2-C6, #930). 0 or negative falls back to the default (4).
 	RebuildWorkers int
+	// Durability is the R3 write-durability profile (R3-C1, #931):
+	// "fsync" (default), "group-commit", or "none". Empty defaults to fsync.
+	// Invalid values are rejected at config load.
+	Durability string
 	// S3Endpoint is the S3-compatible API endpoint URL.
 	S3Endpoint string
 	// S3Region is the S3 region name.

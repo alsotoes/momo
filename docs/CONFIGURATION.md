@@ -371,6 +371,17 @@ This section controls the Content-Addressable Storage (CAS) engine, including ba
     -   **Type:** Integer
     -   **Default:** `4`
 
+-   **`durability`**
+    -   **Description:** The R3 write-durability barrier selected before a write is acknowledged (issue #931). `fsync` (default) fsyncs each blob's bytes before ack — the historical fully-durable behavior. `group-commit` covers a batch of renames with one winner-driven directory-fsync barrier and skips the per-blob data fsync (amortized cost; content addressing plus the R2 verified-read/self-heal loop covers any torn block between the barrier and OS writeback). `none` acknowledges buffered writes without any fsync — best-effort and explicitly **non-durable** (a crash may lose acknowledged writes). Applies to the local (and encrypted-local) backend; backends without fsync primitives rely on their own persistence guarantee.
+    -   **Type:** String (`fsync` | `group-commit` | `none`)
+    -   **Default:** `fsync` (empty config value also means `fsync`)
+    -   **Invalid values:** rejected at config load (`EINVAL`)
+
+-   **`write_quorum`**
+    -   **Description:** The minimum number of **durable** replicas required before a write is acknowledged (R3-C2, #931). Default `1`; must be within `[1, replication_factor]` (validated at load). A write that cannot reach `write_quorum` durable replicas fails instead of silently acknowledging. The metrics controller's `minimum_durability_factor` floor (issue #822) is honored beneath it: the controller never selects a mode whose achievable durable replicas fall below the quorum.
+    -   **Type:** Integer
+    -   **Default:** `1`
+
 -   **`s3_endpoint`**
     -   **Description:** S3-compatible API endpoint URL (e.g., `https://s3.amazonaws.com`). Only used when `backend = s3`.
     -   **Type:** String
