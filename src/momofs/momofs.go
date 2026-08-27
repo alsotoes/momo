@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"path"
 	"sort"
 	"strings"
@@ -95,6 +96,13 @@ type FS struct {
 	cached   map[string]cachedEntry
 	ttl      time.Duration
 	maxEntry int
+
+	// idxList caches the backing-store object index so mount ops do not scan
+	// the whole store on every request; refreshed at most every idxTTL
+	// (default 1s) so natively-written objects appear within the TTL.
+	idxTTL  time.Duration
+	idxList []common.FileMetadata
+	idxAt   time.Time
 }
 
 type cachedEntry struct {
@@ -112,6 +120,7 @@ func New(store storage.Store, opts ...Option) *FS {
 		rootMode: DefaultDirMode,
 		cached:   make(map[string]cachedEntry),
 		ttl:      0, // 0 disables caching: freshest reads within a FS
+		idxTTL:   time.Second,
 		maxEntry: 1 << 20,
 	}
 	for _, o := range opts {
@@ -125,6 +134,13 @@ func New(store storage.Store, opts ...Option) *FS {
 // without invalidation logic.
 func WithCacheTTL(ttl time.Duration) Option {
 	return func(f *FS) { f.ttl = ttl }
+}
+
+// WithIndexTTL bounds how often the backing-store object index is refreshed
+// (default 1s). It controls how quickly natively-written objects appear in the
+// mount (R4-C3); 0 forces a fresh scan on every op.
+func WithIndexTTL(ttl time.Duration) Option {
+	return func(f *FS) { f.idxTTL = ttl }
 }
 
 // ---- path helpers ---------------------------------------------------------
@@ -502,14 +518,15 @@ func (f *FS) Create(p string, mode uint32, content io.Reader) (size int64, hash 
 }
 
 // Open returns a reader for the file at p. Missing files return ENOENT.
-func (f *FS) Open(p string) (io.ReadCloser, *Entry, error) {
+func (f *FS) Open(p string) (rc io.ReadCloser, e *Entry, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			_ = r
+			log.Printf("CRITICAL: Panic recovered in momofs.Open for %s: %v", p, r)
+			err = fmt.Errorf("internal momofs panic: %w", syscall.EIO)
 		}
 	}()
 	f.mu.Lock()
-	e, err := f.lookupLocked(p)
+	e, err = f.lookupLocked(p)
 	f.mu.Unlock()
 	if err != nil {
 		return nil, nil, err
@@ -530,7 +547,13 @@ func (f *FS) Open(p string) (io.ReadCloser, *Entry, error) {
 }
 
 // ReadAt reads len(b) bytes from the file at p starting at off.
-func (f *FS) ReadAt(p string, off int64, b []byte) (int, error) {
+func (f *FS) ReadAt(p string, off int64, b []byte) (n int, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in momofs.ReadAt for %s: %v", p, r)
+			err = fmt.Errorf("internal momofs panic: %w", syscall.EIO)
+		}
+	}()
 	if off < 0 {
 		return 0, fmt.Errorf("momofs: negative offset: %w", syscall.EINVAL)
 	}
@@ -545,7 +568,7 @@ func (f *FS) ReadAt(p string, off int64, b []byte) (int, error) {
 	if _, err := io.CopyN(io.Discard, rc, off); err != nil && err != io.EOF {
 		return 0, err
 	}
-	n, err := io.ReadFull(rc, b)
+	n, err = io.ReadFull(rc, b)
 	if err == io.ErrUnexpectedEOF || err == io.EOF {
 		return n, nil
 	}
@@ -826,9 +849,13 @@ func removeEntry(entries []*Entry, base string) []*Entry {
 
 // ---- backing-store index (R4-C3: S3/momo-native visibility) ----------------
 
-// storeObjects returns the store index, rebuilt on demand so natively-written
-// objects appear in the mount without a manifest entry.
+// storeObjects returns the store index, refreshed at most every idxTTL so
+// natively-written objects appear in the mount within the TTL (R4-C3) without
+// a full-store scan per op. Callers hold f.mu.
 func (f *FS) storeObjects() ([]common.FileMetadata, error) {
+	if f.idxTTL > 0 && !f.idxAt.IsZero() && time.Since(f.idxAt) < f.idxTTL {
+		return f.idxList, nil
+	}
 	ms, err := f.store.List()
 	if err != nil {
 		return nil, err
@@ -844,6 +871,8 @@ func (f *FS) storeObjects() ([]common.FileMetadata, error) {
 		}
 		out = append(out, m)
 	}
+	f.idxList = out
+	f.idxAt = time.Now()
 	return out, nil
 }
 
