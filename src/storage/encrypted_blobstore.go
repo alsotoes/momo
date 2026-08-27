@@ -27,6 +27,34 @@ type EncryptedBlobStore struct {
 
 // Compile-time interface assertion.
 var _ BlobStore = (*EncryptedBlobStore)(nil)
+var _ DurabilityOps = (*EncryptedBlobStore)(nil)
+
+// SetSyncEnabled forwards the R3 per-blob fsync toggle to an inner local
+// backend (no-op for backends without one), so durability is owned by the ack
+// barrier when configured (#931).
+func (e *EncryptedBlobStore) SetSyncEnabled(on bool) {
+	if t, ok := e.inner.(interface{ SetSyncEnabled(bool) }); ok {
+		t.SetSyncEnabled(on)
+	}
+}
+
+// SyncBlob forwards the R3 fsync barrier to the inner backend (R3-C1).
+func (e *EncryptedBlobStore) SyncBlob(hash string) error {
+	ops, ok := e.inner.(DurabilityOps)
+	if !ok {
+		return nil // backend persistence is the bar
+	}
+	return ops.SyncBlob(hash)
+}
+
+// SyncDir forwards the R3 group-commit directory barrier to the inner backend.
+func (e *EncryptedBlobStore) SyncDir(hash string) error {
+	ops, ok := e.inner.(DurabilityOps)
+	if !ok {
+		return nil
+	}
+	return ops.SyncDir(hash)
+}
 
 // NewEncryptedBlobStore wraps an existing BlobStore with AES-GCM-256
 // encryption. The encKeyHex must be a 64-character hex string (32 bytes).

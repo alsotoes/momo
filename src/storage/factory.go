@@ -80,7 +80,19 @@ func buildCAS(cfg common.ConfigurationStorage, daemon *common.Daemon, encKeyHex 
 		blobs = encBlobs
 	}
 
-	s, err := newCASStore(daemon.Data, blobs)
+	// R3 durability profile (#931): once a durability barrier is installed,
+	// per-blob fsync in the local backend is disabled so the barrier owns
+	// durability at the ack boundary (fsync / group-commit / none) instead of
+	// double-fsyncing. An empty config value defaults to fsync.
+	durabilityName := cfg.Durability
+	if durabilityName == "" {
+		durabilityName = DurabilityNameFSync
+	}
+	if t, ok := blobs.(interface{ SetSyncEnabled(bool) }); ok {
+		t.SetSyncEnabled(false)
+	}
+
+	s, err := newCASStore(daemon.Data, blobs, WithDurability(durabilityName))
 	if err != nil {
 		return nil, blobs, err
 	}

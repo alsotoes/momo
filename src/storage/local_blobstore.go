@@ -17,6 +17,12 @@ import (
 // Blob path layout: <base>/blobs/ab/cd/ef/<full-hash>
 type LocalBlobStore struct {
 	base string
+	// syncEnabled controls the per-blob fsync inside PutBlob (R3, #931).
+	// Default true (historical fully-durable behavior). When the store is
+	// configured with an R3 durability barrier the factory disables it so the
+	// barrier owns durability at the ack boundary (fsync / group-commit /
+	// none) instead of double-fsyncing.
+	syncEnabled bool
 }
 
 // NewLocalBlobStore creates a new LocalBlobStore rooted at dataDir.
@@ -24,8 +30,42 @@ func NewLocalBlobStore(dataDir string) (*LocalBlobStore, error) {
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create data dir: %w", syscall.EIO)
 	}
-	return &LocalBlobStore{base: dataDir}, nil
+	return &LocalBlobStore{base: dataDir, syncEnabled: true}, nil
 }
+
+// SetSyncEnabled toggles the per-blob fsync inside PutBlob (R3, #931). Used by
+// the factory when an R3 durability barrier is installed.
+func (b *LocalBlobStore) SetSyncEnabled(on bool) { b.syncEnabled = on }
+
+// SyncBlob fsyncs the file backing hash (R3 fsync barrier, #931).
+func (b *LocalBlobStore) SyncBlob(hash string) error {
+	f, err := os.Open(b.blobPath(hash))
+	if err != nil {
+		return fmt.Errorf("durability: open blob to sync %s: %w", hash, err)
+	}
+	defer f.Close()
+	if err := f.Sync(); err != nil {
+		return fmt.Errorf("durability: fsync blob %s: %w", hash, err)
+	}
+	return nil
+}
+
+// SyncDir fsyncs the parent directory of hash (R3 group-commit barrier): makes
+// the blob's atomic rename durable without a per-blob data-file fsync.
+func (b *LocalBlobStore) SyncDir(hash string) error {
+	d, err := os.Open(filepath.Dir(b.blobPath(hash)))
+	if err != nil {
+		return fmt.Errorf("durability: open blob dir for %s: %w", hash, err)
+	}
+	defer d.Close()
+	if err := d.Sync(); err != nil {
+		return fmt.Errorf("durability: fsync blob dir for %s: %w", hash, err)
+	}
+	return nil
+}
+
+// Compile-time assertion that LocalBlobStore exposes the R3 durability ops.
+var _ DurabilityOps = (*LocalBlobStore)(nil)
 
 // PutBlob writes a blob atomically using temp file + rename.
 func (b *LocalBlobStore) PutBlob(hash string, content io.Reader) (err error) {
@@ -82,10 +122,15 @@ func (b *LocalBlobStore) PutBlob(hash string, content io.Reader) (err error) {
 		return fmt.Errorf("storage error: failed to flush blob: %w", syscall.EIO)
 	}
 
-	if err := tmpFile.Sync(); err != nil {
-		tmpFile.Close()
-		os.Remove(tmpPath)
-		return fmt.Errorf("storage error: failed to fsync blob: %w", syscall.EIO)
+	// Per-blob fsync is the durable default (R3 fsync mode). The factory
+	// disables it when an R3 durability barrier owns durability at the ack
+	// boundary (group-commit / none), to avoid double-fsyncing.
+	if b.syncEnabled {
+		if err := tmpFile.Sync(); err != nil {
+			tmpFile.Close()
+			os.Remove(tmpPath)
+			return fmt.Errorf("storage error: failed to fsync blob: %w", syscall.EIO)
+		}
 	}
 
 	if err := tmpFile.Close(); err != nil {

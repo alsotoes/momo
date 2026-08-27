@@ -781,6 +781,81 @@ func TestGetConfig_FailureDomain(t *testing.T) {
 	}
 }
 
+func TestGetConfig_R3DurabilityAndWriteQuorum(t *testing.T) {
+	writeStorage := func(storageExtra string) string {
+		return strings.Replace(validConfig, "[metrics]",
+			"[storage]\n"+storageExtra+"\n\n[metrics]", 1)
+	}
+	writeGlobal := func(globalExtra string) string {
+		return strings.Replace(validConfig, "polymorphic_system = true",
+			"polymorphic_system = true\n"+globalExtra, 1)
+	}
+
+	// Valid R3 profile + write quorum parse.
+	tmp := filepath.Join(t.TempDir(), "momo.conf")
+	if err := os.WriteFile(tmp, []byte(writeStorage("durability = group-commit")), 0666); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := GetConfig(tmp)
+	if err != nil {
+		t.Fatalf("GetConfig failed: %v", err)
+	}
+	if cfg.Storage.Durability != "group-commit" {
+		t.Errorf("Durability = %q, want group-commit", cfg.Storage.Durability)
+	}
+
+	tmpW := filepath.Join(t.TempDir(), "momo.conf")
+	if err := os.WriteFile(tmpW, []byte(writeGlobal("write_quorum = 2")), 0666); err != nil {
+		t.Fatal(err)
+	}
+	cfgW, err := GetConfig(tmpW)
+	if err != nil {
+		t.Fatalf("GetConfig failed: %v", err)
+	}
+	if cfgW.Global.WriteQuorum != 2 {
+		t.Errorf("WriteQuorum = %d, want 2", cfgW.Global.WriteQuorum)
+	}
+
+	// Defaults: durability empty (-> fsync at use), write_quorum 1.
+	cfgD, err := GetConfig(tmpW) // same config as cfgW but override? reuse validConfig path
+	if err != nil {
+		t.Fatalf("GetConfig failed: %v", err)
+	}
+	_ = cfgD
+	tmpDef := filepath.Join(t.TempDir(), "momo.conf")
+	if err := os.WriteFile(tmpDef, []byte(validConfig), 0666); err != nil {
+		t.Fatal(err)
+	}
+	cfgDef, err := GetConfig(tmpDef)
+	if err != nil {
+		t.Fatalf("GetConfig failed: %v", err)
+	}
+	if cfgDef.Storage.Durability != "" {
+		t.Errorf("default Durability = %q, want empty (fsync)", cfgDef.Storage.Durability)
+	}
+	if cfgDef.Global.WriteQuorum != 1 {
+		t.Errorf("default WriteQuorum = %d, want 1", cfgDef.Global.WriteQuorum)
+	}
+
+	// Invalid durability rejected (EINVAL).
+	tmpBad := filepath.Join(t.TempDir(), "momo.conf")
+	if err := os.WriteFile(tmpBad, []byte(writeStorage("durability = durable")), 0666); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := GetConfig(tmpBad); err == nil {
+		t.Fatal("expected invalid durability to be rejected")
+	}
+
+	// write_quorum > replication_factor rejected.
+	tmpBig := filepath.Join(t.TempDir(), "momo.conf")
+	if err := os.WriteFile(tmpBig, []byte(writeGlobal("write_quorum = 4")), 0666); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := GetConfig(tmpBig); err == nil {
+		t.Fatal("expected write_quorum > replication_factor to be rejected")
+	}
+}
+
 func TestGetConfig_RebuildKeys(t *testing.T) {
 	// Explicit [storage] R2 keys (R2-G1, #930) parse into the struct.
 	content := strings.Replace(validConfig, "[metrics]",

@@ -283,6 +283,20 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 		}
 	}
 
+	// write_quorum: minimum durable replicas required before a write is
+	// acknowledged (R3-C2, #931). Default 1; must be within [1,
+	// replication_factor] so an ack is never demanded above the configured
+	// replication count.
+	globalCfg.WriteQuorum = 1
+	if key, err := section.GetKey("write_quorum"); err == nil {
+		if v, e := key.Int(); e == nil {
+			if v < 1 || v > globalCfg.ReplicationFactor {
+				return ConfigurationGlobal{}, fmt.Errorf("'write_quorum' %d out of range [1, replication_factor=%d]: %w", v, globalCfg.ReplicationFactor, syscall.EINVAL)
+			}
+			globalCfg.WriteQuorum = v
+		}
+	}
+
 	protocolKey, err := section.GetKey("protocol")
 	if err != nil {
 		log.Printf("WARNING: No protocol definition found, falling back to default (momo-tcp)")
@@ -520,7 +534,17 @@ func defaultStorageConfig() ConfigurationStorage {
 		RebuildInterval:    300,
 		DegradedRead:       true,
 		RebuildWorkers:     4,
+		Durability:         "",
 	}
+}
+
+// storageDurabilityNames are the R3 storage durability mode names (mirrors
+// src/storage's enum; kept here so config can validate the enum without
+// importing storage, which imports common).
+var storageDurabilityNames = map[string]struct{}{
+	"fsync":        {},
+	"group-commit": {},
+	"none":         {},
 }
 
 // loadStorageConfig loads the [storage] section from the configuration.
@@ -558,6 +582,19 @@ func loadStorageConfig(section *ini.Section) (ConfigurationStorage, error) {
 	cfg.VerifyOnRead, err = section.Key("verify_on_read").Bool()
 	if err != nil {
 		cfg.VerifyOnRead = true
+	}
+
+	// durability: R3 write-durability profile (R3-C1/R3-G1, #931). Empty
+	// defaults to fsync; invalid values are rejected eagerly so writes are
+	// never silently configured below the expected durability contract.
+	durabilityName := section.Key("durability").String()
+	if durabilityName != "" {
+		if _, ok := storageDurabilityNames[durabilityName]; !ok {
+			return ConfigurationStorage{}, fmt.Errorf("invalid storage durability %q (valid: fsync, group-commit, none): %w", durabilityName, syscall.EINVAL)
+		}
+		cfg.Durability = durabilityName
+	} else {
+		cfg.Durability = ""
 	}
 
 	cfg.RebuildInterval, err = section.Key("rebuild_interval").Int()

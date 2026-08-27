@@ -103,6 +103,11 @@ type CASStore struct {
 	// (everyReadVerifier by default; verifiedCache via WithReadVerifier).
 	verifier ReadVerifier
 
+	// durability is the R3 write-durability barrier (fsync default; group-
+	// commit / none via WithDurability). nil preserves legacy per-blob fsync
+	// inside the blob backend.
+	durability DurabilityBarrier
+
 	scrubDone    chan struct{}
 	scrubWG      sync.WaitGroup
 	scrubOnce    sync.Once
@@ -242,6 +247,14 @@ func (s *CASStore) Put(name string, hash string, size int64, remotePath string, 
 	if !exists && content != nil {
 		if err := s.blobs.PutBlob(hash, content); err != nil {
 			return err
+		}
+		// R3 durability barrier (fsync-before-ack): cross the configured
+		// barrier before the write is acknowledged. A barrier failure fails
+		// the write — no silent ack below the durability contract (#931).
+		if s.durability != nil {
+			if err := s.durability.Commit(hash); err != nil {
+				return err
+			}
 		}
 	} else if exists && content != nil {
 		// Blob already exists, but we must still drain the content reader.
