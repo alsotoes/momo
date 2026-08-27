@@ -20,6 +20,39 @@ import (
 // Garbage collection is started automatically with the configured intervals.
 // The bbolt metadata database is always stored locally in daemon.Data.
 func NewStore(cfg common.ConfigurationStorage, daemon *common.Daemon, encKeyHex string) (Store, error) {
+	s, _, err := buildCAS(cfg, daemon, encKeyHex)
+	if err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+// NewStoreWithRebuild is like NewStore but additionally arms the R2 self-heal
+// rebuild loop and survivor-set degraded-read fallback (Rule 74, #930) against
+// the given cluster seam. A nil src leaves degraded read and the rebuild loop
+// inert (single-node / legacy behavior); target is the replica count the loop
+// restores (the daemon's configured replication factor). Interval, worker count
+// and degraded-read toggle come from cfg (R2-G1).
+func NewStoreWithRebuild(cfg common.ConfigurationStorage, daemon *common.Daemon, encKeyHex string, src RebuildSource, target int) (Store, error) {
+	s, _, err := buildCAS(cfg, daemon, encKeyHex)
+	if err != nil {
+		return nil, err
+	}
+	if src != nil && target > 0 {
+		s.StartRebuild(RebuildConfig{
+			Interval:     time.Duration(cfg.RebuildInterval) * time.Second,
+			Workers:      cfg.RebuildWorkers,
+			Target:       target,
+			Source:       src,
+			DegradedRead: cfg.DegradedRead,
+		})
+	}
+	return s, nil
+}
+
+// buildCAS constructs the CAS store, starts GC/scrub, and returns ownership of
+// the underlying blobs so the caller can close them on downstream failure.
+func buildCAS(cfg common.ConfigurationStorage, daemon *common.Daemon, encKeyHex string) (*CASStore, BlobStore, error) {
 	var blobs BlobStore
 	var err error
 
@@ -31,10 +64,10 @@ func NewStore(cfg common.ConfigurationStorage, daemon *common.Daemon, encKeyHex 
 	case common.BackendRaw:
 		blobs, err = NewRawBlobStore(cfg, daemon)
 	default:
-		return nil, fmt.Errorf("unsupported storage backend %q: %w", cfg.Backend, syscall.EINVAL)
+		return nil, nil, fmt.Errorf("unsupported storage backend %q: %w", cfg.Backend, syscall.EINVAL)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize %s blob store: %w", cfg.Backend, err)
+		return nil, nil, fmt.Errorf("failed to initialize %s blob store: %w", cfg.Backend, err)
 	}
 
 	// Wrap with server-side encryption at rest when enabled.
@@ -42,15 +75,14 @@ func NewStore(cfg common.ConfigurationStorage, daemon *common.Daemon, encKeyHex 
 		encBlobs, encErr := NewEncryptedBlobStore(blobs, encKeyHex)
 		if encErr != nil {
 			blobs.Close()
-			return nil, fmt.Errorf("failed to initialize encrypted blob store: %w", encErr)
+			return nil, nil, fmt.Errorf("failed to initialize encrypted blob store: %w", encErr)
 		}
 		blobs = encBlobs
 	}
 
 	s, err := newCASStore(daemon.Data, blobs)
 	if err != nil {
-		blobs.Close()
-		return nil, err
+		return nil, blobs, err
 	}
 
 	gcInterval := time.Duration(cfg.GCInterval) * time.Second
@@ -73,5 +105,5 @@ func NewStore(cfg common.ConfigurationStorage, daemon *common.Daemon, encKeyHex 
 	s.VerifyOnRead = cfg.VerifyOnRead
 	s.StartScrub(ScrubConfig{Interval: scrubInterval})
 
-	return s, nil
+	return s, blobs, nil
 }

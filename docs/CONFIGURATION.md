@@ -356,6 +356,21 @@ This section controls the Content-Addressable Storage (CAS) engine, including ba
     -   **Type:** Boolean
     -   **Default:** `true`
 
+-   **`rebuild_interval`**
+    -   **Description:** The interval in seconds between background self-heal rebuild passes (R2, #930). Each pass detects blobs below their target replica count and re-replicates them from a verified survivor (respecting R1 failure-domain placement), replacing any mark-and-hold quarantined copy. Active only when the daemon transport seam is wired (see `NewStoreWithRebuild`); single-node deployments are unaffected.
+    -   **Type:** Integer
+    -   **Default:** `300` (5 minutes)
+
+-   **`degraded_read`**
+    -   **Description:** Enables survivor-set read fallback (R2, #930): when a blob's local copy is missing or quarantine-marked, `Get` serves the first verified survivor replica (repair-on-read) instead of failing, and returns `ENOENT` only when no verified survivor exists. Active only when the daemon transport seam is wired.
+    -   **Type:** Boolean
+    -   **Default:** `true`
+
+-   **`rebuild_workers`**
+    -   **Description:** Bounds the number of concurrent blob repairs per rebuild pass (R2-C6, #930) to prevent a thundering herd on large clusters.
+    -   **Type:** Integer
+    -   **Default:** `4`
+
 -   **`s3_endpoint`**
     -   **Description:** S3-compatible API endpoint URL (e.g., `https://s3.amazonaws.com`). Only used when `backend = s3`.
     -   **Type:** String

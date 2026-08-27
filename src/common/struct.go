@@ -205,6 +205,16 @@ type ConfigurationStorage struct {
 	// VerifyOnRead re-derives the blob SHA-256 at read EOF and fails reads when
 	// the content no longer matches its address key. Defaults to true (issue #924).
 	VerifyOnRead bool
+	// RebuildInterval is how often the background self-heal rebuild loop runs,
+	// in seconds (R2, #930). 0 or negative falls back to the default (300).
+	RebuildInterval int
+	// DegradedRead enables survivor-set read fallback when a blob's local copy
+	// is missing but a verified survivor replica holds it (R2-C1, #930).
+	// Defaults to true.
+	DegradedRead bool
+	// RebuildWorkers bounds the number of concurrent blob repairs in a single
+	// rebuild pass (R2-C6, #930). 0 or negative falls back to the default (4).
+	RebuildWorkers int
 	// S3Endpoint is the S3-compatible API endpoint URL.
 	S3Endpoint string
 	// S3Region is the S3 region name.
