@@ -517,6 +517,9 @@ func defaultStorageConfig() ConfigurationStorage {
 		TombstoneRetention: 86400,
 		ScrubInterval:      3600,
 		VerifyOnRead:       true,
+		RebuildInterval:    300,
+		DegradedRead:       true,
+		RebuildWorkers:     4,
 	}
 }
 
@@ -555,6 +558,21 @@ func loadStorageConfig(section *ini.Section) (ConfigurationStorage, error) {
 	cfg.VerifyOnRead, err = section.Key("verify_on_read").Bool()
 	if err != nil {
 		cfg.VerifyOnRead = true
+	}
+
+	cfg.RebuildInterval, err = section.Key("rebuild_interval").Int()
+	if err != nil || cfg.RebuildInterval <= 0 {
+		cfg.RebuildInterval = 300
+	}
+
+	cfg.DegradedRead, err = section.Key("degraded_read").Bool()
+	if err != nil {
+		cfg.DegradedRead = true
+	}
+
+	cfg.RebuildWorkers, err = section.Key("rebuild_workers").Int()
+	if err != nil || cfg.RebuildWorkers <= 0 {
+		cfg.RebuildWorkers = 4
 	}
 
 	cfg.S3Endpoint = section.Key("s3_endpoint").String()

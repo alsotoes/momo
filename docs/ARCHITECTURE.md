@@ -148,7 +148,33 @@ silently served. `src/storage/integrity.go` closes this with two mechanisms
   `ENOENT` rather than serving garbage. The helper `common.HashReader` streams a
   fixed-buffer SHA-256 (mirrors `common.HashFile`).
 
-Re-replication/healing of quarantined blobs is out of scope here.
+Re-replication/healing of quarantined blobs is out of scope here (R2, #930,
+below).
+
+### 4g. Degraded Read + Self-Heal Rebuild (R2, issue #930)
+R2 adds two mechanisms over the integrity core, both behind a single Rule 74
+compile-time seam (`storage.RebuildSource`) so the storage core stays network-
+free:
+
+- **Survivor-set degraded read (`degraded_read`, default `true`)**: when
+  `CASStore.Get` finds a blob missing or quarantine-marked locally, it serves the
+  first verified survivor replica from the placement (verify-before-store) and
+  materializes the local copy (repair-on-read); it returns `ENOENT` only when no
+  verified survivor exists. A verified read whose bytes fail integrity at EOF is
+  mark-and-held so the next read degrades and the loop re-repairs.
+- **Self-heal rebuild (`rebuild_interval` default `300`s,
+  `rebuild_workers` default `4`)**: `StartRebuild`/`rebuildLoop` mirrors the
+  scrub/GC loop (`rebuildOnce`/`rebuildDone`/`rebuildWG`, panic-recovered,
+  goleak-safe, cancel-on-Close). Each pass iterates referenced + quarantine-
+  marked blobs with a bounded worker pool and re-replicates to the target replica
+  count from a verified survivor, preferring R1 failure-domain spread. Verify-
+  before-use guarantees corrupt bytes are never stored or propagated (R2-C4);
+  a mark-and-hold copy is replaced once verified bytes land (R2-C2). Repairs are
+  counted by `RepairCount()` for the metrics tier.
+- The transport conversation (CRUSH placement, peer fetch, replication push) is
+  the daemon layer's implementation of `RebuildSource`, wired via
+  `storage.NewStoreWithRebuild`. Without a wired source, R2 behavior is inert and
+  single-node semantics are unchanged.
 
 ### 5. Automated Governance & AI Reviewer
 To maintain high integrity in a single-contributor environment, Momo employs an automated governance layer:

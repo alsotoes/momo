@@ -31,6 +31,7 @@ type verifyingReader struct {
 	checked    bool
 	corrupt    error
 	onVerified func() // optional callback fired once a full match is confirmed
+	onCorrupt  func() // optional callback fired when a mismatch is confirmed
 }
 
 // sha256Alg avoids dragging the concrete hash.Hash name into the struct.
@@ -58,6 +59,9 @@ func (v *verifyingReader) Read(p []byte) (int, error) {
 		key := hex.EncodeToString(digest)
 		if key != v.expected {
 			v.corrupt = contentHashVerifiedError(v.expected)
+			if v.onCorrupt != nil {
+				v.onCorrupt()
+			}
 			return n, v.corrupt
 		}
 		if v.onVerified != nil {

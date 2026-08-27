@@ -781,6 +781,48 @@ func TestGetConfig_FailureDomain(t *testing.T) {
 	}
 }
 
+func TestGetConfig_RebuildKeys(t *testing.T) {
+	// Explicit [storage] R2 keys (R2-G1, #930) parse into the struct.
+	content := strings.Replace(validConfig, "[metrics]",
+		"[storage]\nrebuild_interval = 120\ndegraded_read = false\nrebuild_workers = 8\n\n[metrics]", 1)
+	tmp := filepath.Join(t.TempDir(), "momo.conf")
+	if err := os.WriteFile(tmp, []byte(content), 0666); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := GetConfig(tmp)
+	if err != nil {
+		t.Fatalf("GetConfig failed: %v", err)
+	}
+	if cfg.Storage.RebuildInterval != 120 {
+		t.Errorf("RebuildInterval = %d, want 120", cfg.Storage.RebuildInterval)
+	}
+	if cfg.Storage.DegradedRead {
+		t.Error("DegradedRead = true, want false")
+	}
+	if cfg.Storage.RebuildWorkers != 8 {
+		t.Errorf("RebuildWorkers = %d, want 8", cfg.Storage.RebuildWorkers)
+	}
+
+	// Absent [storage] keys default (R2-G1 defaults).
+	tmp2 := filepath.Join(t.TempDir(), "momo.conf")
+	if err := os.WriteFile(tmp2, []byte(validConfig), 0666); err != nil {
+		t.Fatal(err)
+	}
+	cfg2, err := GetConfig(tmp2)
+	if err != nil {
+		t.Fatalf("GetConfig failed: %v", err)
+	}
+	if cfg2.Storage.RebuildInterval != 300 {
+		t.Errorf("default RebuildInterval = %d, want 300", cfg2.Storage.RebuildInterval)
+	}
+	if !cfg2.Storage.DegradedRead {
+		t.Error("default DegradedRead = false, want true")
+	}
+	if cfg2.Storage.RebuildWorkers != 4 {
+		t.Errorf("default RebuildWorkers = %d, want 4", cfg2.Storage.RebuildWorkers)
+	}
+}
+
 func TestGetConfig_AuthBackoffDelay(t *testing.T) {
 	write := func(globalKey string) string {
 		return strings.Replace(validConfig, "polymorphic_system = true",

@@ -25,6 +25,7 @@ var (
 	bucketTombstones = []byte("tombstones") // Maps FileName -> deletion timestamp (unix nano)
 	bucketModTimes   = []byte("modtimes")   // Maps FileName -> modification timestamp (unix nano)
 	bucketS3Meta     = []byte("s3meta")     // Maps FileName -> JSON S3 object metadata (content-type, x-amz-meta-*)
+	bucketQuarantine = []byte("quarantine") // Maps ContentHash -> mark-and-hold flag (R2, #930)
 )
 
 // ObjectMeta is the binary metadata stored in the objects bucket.
@@ -106,6 +107,18 @@ type CASStore struct {
 	scrubWG      sync.WaitGroup
 	scrubOnce    sync.Once
 	scrubStarted atomic.Int32
+
+	// Self-heal rebuild (R2, #930). Armed by StartRebuild; degradedRead enables
+	// survivor-set read fallback in Get. rebuildSource is the Rule 74 cluster
+	// seam; nil leaves degraded read and the rebuild loop inert.
+	rebuildDone    chan struct{}
+	rebuildWG      sync.WaitGroup
+	rebuildOnce    sync.Once
+	rebuildStarted atomic.Int32
+	rebuildSource  RebuildSource
+	rebuildTarget  int
+	degradedRead   bool
+	repairs        atomic.Uint64
 }
 
 // NewCASStore initializes a CAS store with a LocalBlobStore backend.
@@ -152,6 +165,10 @@ func newCASStore(dataDir string, blobs BlobStore, opts ...func(*CASStore)) (*CAS
 			return err
 		}
 		_, err = tx.CreateBucketIfNotExists(bucketS3Meta)
+		if err != nil {
+			return err
+		}
+		_, err = tx.CreateBucketIfNotExists(bucketQuarantine)
 		return err
 	})
 	if err != nil {
@@ -165,6 +182,7 @@ func newCASStore(dataDir string, blobs BlobStore, opts ...func(*CASStore)) (*CAS
 		blobs:        blobs,
 		gcDone:       make(chan struct{}),
 		scrubDone:    make(chan struct{}),
+		rebuildDone:  make(chan struct{}),
 		VerifyOnRead: true,
 		verifier:     everyReadVerifier{},
 	}
@@ -183,6 +201,10 @@ func (s *CASStore) Close() error {
 		if s.scrubDone != nil {
 			close(s.scrubDone)
 			s.scrubWG.Wait()
+		}
+		if s.rebuildDone != nil {
+			close(s.rebuildDone)
+			s.rebuildWG.Wait()
 		}
 		s.mu.Lock()
 		if s.blobs != nil {
@@ -296,38 +318,32 @@ func (s *CASStore) Get(name string) (rc io.ReadCloser, meta common.FileMetadata,
 		}
 	}()
 
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	var hash string
-	err = s.db.View(func(tx *bbolt.Tx) error {
-		// Check tombstone first — deleted names should appear as not found.
-		if ts := tx.Bucket(bucketTombstones).Get([]byte(name)); ts != nil {
-			return syscall.ENOENT
-		}
-		h := tx.Bucket(bucketNamespace).Get([]byte(name))
-		if h == nil {
-			return syscall.ENOENT
-		}
-		hash = string(h)
-		return nil
-	})
+	err = func() error {
+		s.mu.RLock()
+		defer s.mu.RUnlock()
+		return s.db.View(func(tx *bbolt.Tx) error {
+			// Check tombstone first — deleted names should appear as not found.
+			if ts := tx.Bucket(bucketTombstones).Get([]byte(name)); ts != nil {
+				return syscall.ENOENT
+			}
+			h := tx.Bucket(bucketNamespace).Get([]byte(name))
+			if h == nil {
+				return syscall.ENOENT
+			}
+			hash = string(h)
+			return nil
+		})
+	}()
 	if err != nil {
 		return nil, common.FileMetadata{}, err
 	}
 
-	f, openErr := s.blobs.GetBlob(hash)
-	if openErr != nil {
-		return nil, common.FileMetadata{}, openErr
-	}
-
-	// 🛡️ At-rest integrity (#924): the selected ReadVerifier policy re-derives
-	// the blob's SHA-256 as it streams and fails at EOF if it no longer matches
-	// the content-address key instead of serving corrupt bytes. The coordination
-	// cost runs as the caller drains the stream — after Get returns, outside
-	// s.mu. VerifyOnRead=false (disabled) and verify-once policies skip re-hash.
-	if s.VerifyOnRead {
-		f = s.verifier.Verify(f, hash)
+	// Blob open (possibly a survivor-set degraded fetch, R2) happens with NO
+	// lock held so a slow network repair does not block concurrent writers.
+	f, blobErr := s.openVerifiedBlob(hash)
+	if blobErr != nil {
+		return nil, common.FileMetadata{}, blobErr
 	}
 
 	// 🛡️ Zero-Crash: Ensure file is closed if subsequent metadata lookups fail.
@@ -344,32 +360,36 @@ func (s *CASStore) Get(name string) (rc io.ReadCloser, meta common.FileMetadata,
 	var size int64
 	var remotePath string
 	var modTime int64
-	err = s.db.View(func(tx *bbolt.Tx) error {
-		val := tx.Bucket(bucketObjects).Get([]byte(hash))
-		if val == nil {
-			return fmt.Errorf("metadata missing for hash %s: %w", hash, syscall.ENOENT)
-		}
+	err = func() error {
+		s.mu.RLock()
+		defer s.mu.RUnlock()
+		return s.db.View(func(tx *bbolt.Tx) error {
+			val := tx.Bucket(bucketObjects).Get([]byte(hash))
+			if val == nil {
+				return fmt.Errorf("metadata missing for hash %s: %w", hash, syscall.ENOENT)
+			}
 
-		decoded, err := decodeObjectMeta(val)
-		if err != nil {
-			return err
-		}
-		meta := decoded
-		size = meta.Size
+			decoded, err := decodeObjectMeta(val)
+			if err != nil {
+				return err
+			}
+			meta := decoded
+			size = meta.Size
 
-		if size < 0 {
-			return fmt.Errorf("invalid size %d for hash %s: %w", size, hash, syscall.EBADMSG)
-		}
+			if size < 0 {
+				return fmt.Errorf("invalid size %d for hash %s: %w", size, hash, syscall.EBADMSG)
+			}
 
-		if p := tx.Bucket(bucketPaths).Get([]byte(name)); p != nil {
-			remotePath = string(p)
-		}
+			if p := tx.Bucket(bucketPaths).Get([]byte(name)); p != nil {
+				remotePath = string(p)
+			}
 
-		if mt := tx.Bucket(bucketModTimes).Get([]byte(name)); len(mt) >= 8 {
-			modTime = int64(binary.BigEndian.Uint64(mt[:8]))
-		}
-		return nil
-	})
+			if mt := tx.Bucket(bucketModTimes).Get([]byte(name)); len(mt) >= 8 {
+				modTime = int64(binary.BigEndian.Uint64(mt[:8]))
+			}
+			return nil
+		})
+	}()
 	if err != nil {
 		return nil, common.FileMetadata{}, err
 	}
