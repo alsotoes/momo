@@ -1,5 +1,7 @@
 # Implementation Roadmap, BoltDB Evolution & SPOF Checklist
 
+> **Status**: The momofs core (CAS inode/metadata layer, atomic rename, hardlink refcounts) and the FUSE transport (`momo -imp fs`, bazil.org/fuse) are implemented (openspec/changes/r4-momofs/, #932 → #963). Phases below are the remaining future roadmap.
+
 ## 12. Implementation Roadmap
 
 ### Phase 1: Foundation (Current → Distributed Metadata)

@@ -770,6 +770,8 @@ The customer uses standard tools (aws-cli, boto3, rclone, curl) against any node
 
 #### 2.3 FUSE Mount (Optional POSIX Interface)
 
+> **Status**: implemented. The FUSE transport (`momo -imp fs`, bazil.org/fuse binding) ships in `src/momofs` and mounts the daemon's CAS store as a POSIX tree (R4, #962/#963). Operation mapping per section below; follow-ups tracked in openspec/changes/r4-momofs/tasks.md (mmap/byte-range + posix-locks, scrub/GC coexistence). User guide: [MOUNT_USER_GUIDE.md](MOUNT_USER_GUIDE.md).
+
 For HPC and legacy applications that need a POSIX filesystem interface:
 
 ```

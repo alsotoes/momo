@@ -34,4 +34,4 @@ Items below are implementation phases._
 ## 6. Validation
 - [x] `make build` + full `make test` green
 - [x] CI workflow for mount e2e (smoke) added (`momofs_fuse_test.yml`, self-skipping)
-- [ ] Docs: `docs/momofs/` marked implemented; ROADMAP R4 done; user guide for mount
+- [x] Docs: `docs/momofs/` marked implemented; ROADMAP R4 done; user guide for mount

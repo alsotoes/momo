@@ -57,7 +57,7 @@ This document outlines the high-level roadmap for the Momo project, tracking maj
 
 ## Production-Readiness Roadmap
 
-Ratified in [prod-ready-roadmap](../openspec/changes/prod-ready-roadmap/specs/prod-ready-roadmap/spec.md) (#928). Momo is currently a replicated content-addressed blob store + S3 gateway; the FUSE/POSIX filesystem layer (`docs/momofs/`) is design-only. Phases gate production readiness.
+Ratified in [prod-ready-roadmap](../openspec/changes/prod-ready-roadmap/specs/prod-ready-roadmap/spec.md) (#928). Momo is currently a replicated content-addressed blob store + S3 gateway with an operational FUSE/POSIX filesystem layer over the CAS store (`docs/momofs/`, R4 implemented in #963). Phases gate production readiness.
 
 ### P0 — Correctness & Durability (blockers)
 
@@ -66,7 +66,7 @@ Ratified in [prod-ready-roadmap](../openspec/changes/prod-ready-roadmap/specs/pr
 | R1 | Failure-domain-aware CRUSH placement | Rack/zone/DC groups constrain replica placement |
 | R2 | Degraded-read + self-heal rebuild | Re-replicate after corruption/quarantine/underrreplication |
 | R3 | Write durability + ack quorum + consistency | fsync-before-ack, survivor quorum, read-your-writes |
-| R4 | momofs FUSE/POSIX layer | Mountable POSIX filesystem with correct metadata semantics |
+| R4 | momofs FUSE/POSIX layer | ✅ Mountable POSIX filesystem with correct metadata semantics (implemented #963) |
 
 ### P1 — Operability, Multi-Tenancy, Security
 

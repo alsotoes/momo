@@ -2,7 +2,7 @@
 
 MomoFS is a **distributed masterless ring architecture** supporting multi-region replication and fault tolerance. No external database cluster is required — the Momo nodes themselves form the ring.
 
-This directory contains the complete MomoFS design documentation, split into focused files.
+The momofs core (CAS inode/metadata layer) and FUSE transport (`momo -imp fs`) are **implemented** (openspec/changes/r4-momofs/, #932 → #963); see [MOUNT_USER_GUIDE.md](MOUNT_USER_GUIDE.md). The remaining design docs below cover the full roadmap and future phases.
 
 ## Document Index
 
@@ -36,7 +36,9 @@ This directory contains the complete MomoFS design documentation, split into foc
 
 **Comparison with Ceph**: [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md) section "Comparison with Ceph".
 
-**What needs to be built**: [ROADMAP.md](ROADMAP.md) — 8-phase implementation roadmap.
+**How to mount**: [MOUNT_USER_GUIDE.md](MOUNT_USER_GUIDE.md) — `momo -imp fs` operation, flags, consistency, limitations.
+
+**What happens next**: [ROADMAP.md](ROADMAP.md) — remaining 8-phase implementation roadmap.
 
 ## Related Documents
 
