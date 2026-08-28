@@ -9,6 +9,7 @@ require (
 )
 
 require (
+	bazil.org/fuse v0.0.0-20230120002735-62a210ff1fd5 // indirect
 	filippo.io/edwards25519 v1.1.1 // indirect
 	filippo.io/nistec v0.0.2 // indirect
 	github.com/alsotoes/momo/src/crypto v0.0.0-00010101000000-000000000000 // indirect

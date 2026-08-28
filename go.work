@@ -6,6 +6,7 @@ use (
 	./src/common
 	./src/crypto
 	./src/metrics
+	./src/momofs
 	./src/p2p
 	./src/server
 	./src/storage

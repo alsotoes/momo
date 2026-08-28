@@ -1,0 +1,41 @@
+name: Momofs FUSE Mount E2E
+
+on:
+  push:
+    branches: [ "master" ]
+    paths:
+      - 'src/momofs/**/*.go'
+      - 'src/momo.go'
+      - 'go.work'
+      - 'Makefile'
+  pull_request:
+    branches: [ "master" ]
+    paths:
+      - 'src/momofs/**/*.go'
+      - 'src/momo.go'
+      - 'go.work'
+      - 'Makefile'
+
+jobs:
+  fuse-mount-e2e:
+    name: Momofs FUSE Mount E2E
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version: '1.25.x'
+    - name: Install FUSE
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y fuse3
+    - name: Build
+      run: make build
+    - name: FUSE Mount E2E
+      # The e2e test self-skips when /dev/fuse is unavailable or unusable on
+      # the runner, so this step never hard-fails on hosts without FUSE
+      # support while still exercising the mount on FUSE-capable runners.
+      run: go test -run 'TestFuseE2E_MountRoundTrip$' -count=1 ./src/momofs/
+    - name: Vet
+      run: go vet ./src/momofs/

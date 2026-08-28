@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/signal"
 	"sync"
 	"syscall"
 	"time"
@@ -17,7 +18,9 @@ import (
 	"github.com/alsotoes/momo/src/common"
 	momocrypto "github.com/alsotoes/momo/src/crypto"
 	"github.com/alsotoes/momo/src/metrics"
+	"github.com/alsotoes/momo/src/momofs"
 	"github.com/alsotoes/momo/src/server"
+	"github.com/alsotoes/momo/src/storage"
 	"github.com/alsotoes/momo/src/transport"
 )
 
@@ -49,6 +52,8 @@ func Run() {
 	e2eeKeyPtr := flag.String("e2ee-key", "", "64-hex 256-bit E2EE master key for envelope encrypt/decrypt (client-held, never shared with the server); applies to native client mode and the S3 s3enc/s3dec impersonations")
 	e2eeKeyIDPtr := flag.String("e2ee-key-id", "", "Key identifier stored in the envelope (default: \"default\")")
 	outPathPtr := flag.String("out", "", "Output path for -imp s3enc / s3dec")
+	mountPointPtr := flag.String("fs-mount", "", "Mount point for -imp fs (momofs FUSE)")
+	fsDataPtr := flag.String("fs-data", "", "Optional data directory override for -imp fs (default: daemon data dir from config)")
 	flag.Parse()
 
 	cfg, err := common.GetConfig(*configPathPtr)
@@ -151,9 +156,60 @@ func Run() {
 		if err := runS3Envelope(*impersonationPtr, *filePathPtr, *outPathPtr, *e2eeKeyPtr, *e2eeKeyIDPtr); err != nil {
 			log.Fatalf("S3 envelope error: %v", common.SanitizeLog(err.Error()))
 		}
+	case "fs":
+		if err := runFuseMount(cfg, *serverIdPtr, *mountPointPtr, *fsDataPtr); err != nil {
+			log.Fatalf("momofs mount error: %v", common.SanitizeLog(err.Error()))
+		}
 	default:
 		log.Fatalf("*** ERROR: Option unknown: %s", common.SanitizeLog(*impersonationPtr))
 	}
+}
+
+// runFuseMount mounts the momofs FUSE filesystem (R4, #932) at mountpoint,
+// backed by the configured storage for the given daemon. It serves until the
+// process receives SIGINT/SIGTERM, then unmounts and exits.
+func runFuseMount(cfg common.Configuration, serverId int, mountPoint, dataDirOverride string) error {
+	if mountPoint == "" {
+		return fmt.Errorf("-fs-mount (mount point) is required for -imp fs: %w", syscall.EINVAL)
+	}
+	if serverId == -1 {
+		serverId = 0
+	}
+	if serverId >= len(cfg.Daemons) || serverId < 0 {
+		return fmt.Errorf("index out of range: serverId %d (have %d daemons): %w", serverId, len(cfg.Daemons), syscall.EINVAL)
+	}
+
+	daemon := *cfg.Daemons[serverId]
+	if dataDirOverride != "" {
+		daemon.Data = dataDirOverride
+	}
+
+	encKeyHex := ""
+	if cfg.Global.EncryptionEnabled {
+		masterKey, decErr := hex.DecodeString(cfg.Global.EncryptionKey)
+		if decErr != nil {
+			return fmt.Errorf("failed to decode encryption key: %v: %w", decErr, syscall.EINVAL)
+		}
+		atRestKey, kErr := momocrypto.DeriveKey(masterKey, cfg.Global.EncryptionTenant, momocrypto.DomainAtRest)
+		if kErr != nil {
+			return fmt.Errorf("failed to derive at-rest key: %w", kErr)
+		}
+		encKeyHex = hex.EncodeToString(atRestKey)
+	}
+	store, err := storage.NewStore(cfg.Storage, &daemon, encKeyHex)
+	if err != nil {
+		return fmt.Errorf("failed to initialize storage: %w", err)
+	}
+	defer store.Close()
+
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	log.Printf("momofs: mounting FUSE at %s (id %d)", mountPoint, serverId)
+	if err := momofs.ServeFUSE(ctx, mountPoint, store); err != nil {
+		return err
+	}
+	return nil
 }
 
 // runS3Envelope implements the -imp s3enc and -imp s3dec modes: a client-side

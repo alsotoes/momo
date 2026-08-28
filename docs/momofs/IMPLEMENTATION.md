@@ -773,7 +773,7 @@ The customer uses standard tools (aws-cli, boto3, rclone, curl) against any node
 For HPC and legacy applications that need a POSIX filesystem interface:
 
 ```
-Mount: momo-fuse /mnt/momo --endpoint=nodeA:4440
+Mount: momo -imp fs -id 0 -fs-mount /mnt/momo
 
 /mnt/momo/
 ├── photos/
