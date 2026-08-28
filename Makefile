@@ -9,7 +9,7 @@ BIN := $(BIN_DIR)/momo
 MAIN := src/momo.go
 MODULES := ./src/common ./src/crypto ./src/transport ./src/client ./src/metrics ./src/p2p ./src/server ./src/storage ./src/momofs
 
-.PHONY: all build clean tidy vendor test vet coverage doc doc-live benchmark test-e2e smoke-tcp smoke-quic smoke-encryption-tcp smoke-encryption-quic smoke-encryption-s3-tcp smoke-encryption-s3-quic smoke-scale-cas test-contract test-load test-stress test-chaos test-metrics test-external-client monitoring-up monitoring-down pentest
+.PHONY: all build clean tidy vendor test vet coverage doc doc-live benchmark test-e2e smoke-tcp smoke-quic smoke-encryption-tcp smoke-encryption-quic smoke-encryption-s3-tcp smoke-encryption-s3-quic smoke-scale-cas test-contract test-load test-stress test-chaos test-metrics test-external-client blog-check monitoring-up monitoring-down pentest
 
 all: build
 
@@ -127,3 +127,7 @@ monitoring-down:
 pentest:
 	@echo "Running DotDotPwn pentest (requires Perl + DotDotPwn cloned at /tmp/dotdotpwn)..."
 	./.github/scripts/run-pentest.sh
+
+blog-check:
+	@echo "Validating docs/blog posts (Rule 76)..."
+	python3 .github/scripts/blog_check.py
