@@ -6,10 +6,10 @@ Items below are implementation phases._
 
 ## 1. Ratify design + foundation
 - [x] Ratify docs/momofs DESIGN as the spec baseline; design-vs-implementation gaps recorded in PR (R4-C0)
-- [ ] Select + pin Go FUSE binding (e.g. `bazil.org/fuse`); `go work sync` + vendor (Rule 25)
+- [x] Select + pin Go FUSE binding (bazil.org/fuse v0.0.0-20230120002735-62a210ff1fd5); `go work sync` + vendor (Rule 25)
 
 ## 2. Core mount + metadata (`momofs` package)
-- [ ] `momo fs mount` entrypoint + FUSE connection lifecycle
+- [x] `momo fs mount` entrypoint (`-imp fs` + `-fs-mount`/`-fs-data`) + FUSE connection lifecycle (ctx-cancellable serve, clean unmount)
 - [x] Inode/metadata layer over CAS (dirs as content-addressed manifests, files as blobs) (R4-C1)
 - [x] lookup/getattr/setattr/readdir/open/create/read/write ops (R4-C1)
 - [x] Permission/ownership enforcement (mode/uid/gid) — R4-C2
@@ -17,7 +17,7 @@ Items below are implementation phases._
 ## 3. Metadata semantics + consistency
 - [x] Atomic rename + hardlink (refcount-aligned with CAS GC) — R4-C2
 - [x] S3/native ↔ mount visibility (single store, fresh manifest reads) — R4-C3
-- [ ] mmap/byte-range correctness; posix-locks — R4-C2
+- [ ] mmap/byte-range correctness; posix-locks — R4-C2 (follow-up; file writes buffer per-handle and materialize whole-blob on flush)
 
 ## 4. Robustness
 - [x] Panic-free op handling (Rule 37), bounded memory
@@ -29,8 +29,9 @@ Items below are implementation phases._
 - [x] R4-T2 S3↔mount consistency
 - [x] R4-T3 atomic rename + hardlink refcount under GC
 - [x] R4-T4 crash/remount; goleak + `-race`
+- [x] FUSE node/handle unit tests + mount e2e (kernel round-trip, /dev/fuse-gated; R4-T1/T2 via FUSE)
 
 ## 6. Validation
-- [ ] `make build` + full `make test` green
-- [ ] CI workflow for mount e2e (smoke) added
+- [x] `make build` + full `make test` green
+- [x] CI workflow for mount e2e (smoke) added (`momofs_fuse_test.yml`, self-skipping)
 - [ ] Docs: `docs/momofs/` marked implemented; ROADMAP R4 done; user guide for mount

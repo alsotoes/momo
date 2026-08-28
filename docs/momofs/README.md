@@ -24,6 +24,7 @@ This directory contains the complete MomoFS design documentation, split into foc
 | [COMPARISON.md](COMPARISON.md) | Feature comparison: MomoFS vs Ceph, Lustre, ScyllaDB, IPFS | ~250 |
 | [LESSONS_LEARNED.md](LESSONS_LEARNED.md) | Actionable features to adopt from Ceph, Lustre, ScyllaDB, IPFS | ~280 |
 | [ROADMAP.md](ROADMAP.md) | 8-phase roadmap, BoltDB evolution summary, SPOF checklist | ~120 |
+| [MOUNT_USER_GUIDE.md](MOUNT_USER_GUIDE.md) | FUSE mount (`-imp fs`) operation, flags, consistency, limitations | ~90 |
 
 ## Quick Links
 
