@@ -165,6 +165,16 @@ def has_openspec_change():
         return False
 
 
+def has_blog_post():
+    """Rule 76: Return True if the PR branch adds/updates a post under docs/blog/posts/."""
+    try:
+        cmd = ["git", "diff", "origin/master...HEAD", "--name-only", "--", "docs/blog/posts"]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        return any(line.strip() for line in result.stdout.splitlines())
+    except Exception:
+        return False
+
+
 def create_missing_issue(pr_number, pr_title, pr_body):
     try:
         print(f"Rule 11 Violation detected. Autonomously creating tracking issue for PR #{pr_number}...")
@@ -253,6 +263,21 @@ def main():
     if pr_number and pr_has_label(pr_number, "enhancement") and not has_openspec_change():
         spec_instruction = "\n- 🚨 VIOLATION (Rule 73): This enhancement PR ships without an OpenSpec change under `openspec/changes/`. ALL features MUST include `proposal.md`, `specs/<id>/spec.md` (linked to the GitHub issue at the top), and `tasks.md` in the same PR, per Rule 73. Do not approve/merge until the change is added."
 
+    # Rule 76: Blog Post Per Ratified Change — feature/enhancement PRs that ship a
+    # ratifiable spec surface MUST also add a post under docs/blog/posts/ (or carry
+    # an explicit no-blog justification in the PR description). Enforced for
+    # enhancement PRs with an OpenSpec change; internal-only changes with a
+    # no-blog justification in the PR body are exempt.
+    blog_instruction = ""
+    if (
+        pr_number
+        and pr_has_label(pr_number, "enhancement")
+        and has_openspec_change()
+        and not has_blog_post()
+        and "no-blog" not in (pr_body or "").lower()
+    ):
+        blog_instruction = "\n- 🚨 VIOLATION (Rule 76): This enhancement PR ships an OpenSpec change without a matching blog post under `docs/blog/posts/`. Every ratified feature change MUST carry a Hugo-format post (same PR or immediately-following) with date=anchor issue/PR createdAt, implemented-state grounding, Bolt/Sentinel tags where relevant, plus artifacts/related front matter, per Rule 76. If the change is internal-only with no narrative value, add an explicit `no-blog` justification to the PR description to be exempt. Do not approve/merge until a post (or justification) is added."
+
     # ⚡ Bolt: Automated PR Management
     if pr_number:
         # Labeling for Jules PRs (Rule 68)
@@ -304,7 +329,7 @@ TASK:
 - Identify violations of the Zero-Crash Pattern (missing recover, unbounded readers).
 - Ensure error mappings use syscall constants (POSIX Error Mapping).
 - Look for performance bottlenecks (unnecessary allocations in hot paths).
-- Check for security issues (path traversal, sanitization).{jules_instruction}{traceability_instruction}{spec_instruction}
+- Check for security issues (path traversal, sanitization).{jules_instruction}{traceability_instruction}{spec_instruction}{blog_instruction}
 
 INSTRUCTIONS:
 - Be concise.

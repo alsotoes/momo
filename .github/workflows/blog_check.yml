@@ -1,0 +1,28 @@
+name: Blog Check
+
+on:
+  pull_request:
+    paths:
+      - "docs/blog/**"
+      - ".github/scripts/blog_check.py"
+      - "openspec/changes/**"
+  push:
+    branches: ["master"]
+    paths:
+      - "docs/blog/**"
+
+jobs:
+  blog-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install PyYAML
+        run: pip install pyyaml
+      - name: Validate blog posts (Rule 76)
+        run: python .github/scripts/blog_check.py

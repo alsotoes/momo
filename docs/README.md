@@ -27,6 +27,7 @@ This document explains the architecture, configuration, wire protocol, replicati
 | [EXTERNAL_CLIENT_REPLICATION.md](EXTERNAL_CLIENT_REPLICATION.md) | External S3 client replication mode downgrade handling |
 | [PENTESTING.md](PENTESTING.md) | Pentesting Momo with DotDotPwn — traversal fuzzing overview |
 | [../pentest/README.md](../pentest/README.md) | Security pentest toolkit — DotDotPwn fuzzing + Python exploit scripts (9 CVEs found) |
+| [blog/README.md](blog/README.md) | Engineering journal (Hugo-format posts) — journey, research, architecture decisions, changes |
 
 ## Key Performance & Security Features (⚡ Bolt & 🛡️ Sentinel)
 

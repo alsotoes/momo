@@ -28,6 +28,7 @@ This document is governed by the steering rules in [`openspec/config.yaml`](../o
 - **Rule 71**: Master CI gate before new work — wait for all master CI workflows to finish and pass before creating a new branch
 - **Rule 73**: Spec-First Implementation Mandate — every new feature / spec-driven change MUST author an OpenSpec change (`openspec/changes/<id>/`) linked to a GitHub issue BEFORE implementation; the PR MUST include the spec and `Resolves #ISSUE_ID`. Bug fixes are exempt from a formal spec but still need a tracking issue
 - **Rule 74**: Seam-Over-Plugins — adaptive/mutating behavior (degraded-read, self-heal/rebuild, R4 momofs FS semantics) MUST be a compile-time Go interface seam (constructor/functional-option injection + compiled-in registry, selected by declarative policy); external dynamic plugins forbidden in the data path (read-only policy feeds only); fast paths concrete/zero-indirect; core trust invariants stay in the auditable core. See `docs/momofs/PLUGIN_ARCHITECTURE.md`
+- **Rule 76**: Blog Post Per Ratified Change — every ratified feature/enhancement OpenSpec change MUST ship a Hugo-format post in `docs/blog/posts/` (same PR or immediately-following) with date=anchor issue/PR `createdAt` (or earliest code/plan commit), implemented-state grounding (no `docs/momofs/` design presented as shipped), ⚡ Bolt/🛡 Sentinel tags where relevant, plus `artifacts`/`related` front matter. `no-blog` justification exempts internal-only changes. Reviewer enforces (Rule 70)
 
 ## Pre-Flight Checklist
 
