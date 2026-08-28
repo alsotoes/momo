@@ -209,6 +209,35 @@ consistency model, both enforced in the storage core and documented here.
   barrier, delivered as a follow-up; the storage core enforces the per-node
   durable-persist half of the contract.
 
+### 4i. momofs — POSIX layer over CAS (R4, issue #932)
+`src/momofs` is the storage-backed virtual filesystem core ratifying the
+`docs/momofs/` design baseline. It exposes a POSIX tree over a single
+`storage.Store`:
+
+- **Directories are content-addressed manifest blobs** — a JSON directory
+  manifest (direct children with mode/uid/gid/size/mtime) stored as a store
+  object, versioned by content hash. Every directory mutation rewrites the
+  manifest, so directory updates are atomic.
+- **Files are store objects keyed by path identity** (`f-<sha256(path)>`);
+  content is deduplicated across paths via the content hash. POSIX metadata
+  lives in the parent manifest.
+- **Rename (R4-C2)**: file renames move the store reference between path keys
+  (net refcount unchanged); directory renames relocate the subtree's
+  path-keyed manifests and file references (`rewriteSubtree`), O(subtree)
+  matching POSIX `mv` cost.
+- **Hardlinks (R4-C2)**: a link takes a second store reference to the same
+  content under the destination path key, so refcounts stay aligned with link
+  counts and CAS GC never reclaims a blob with a live link.
+- **S3/native ↔ mount consistency (R4-C3)**: the read path unions the
+  manifests with a backing-store index, so objects written natively (S3/momo)
+  appear in the mount under synthetic directories, and mount-created files are
+  visible store objects. Zero TTL means manifests are re-read fresh on every
+  op (read-your-writes; remounts see committed state, R4-C4).
+- The **FUSE/syscall transport** (`bazil.org/fuse` binding, `momo fs mount`,
+  mmap/posix-locks surface, CI mount-e2e) is the separable adapter — the
+  documented follow-up to this core, matching the R2 `RebuildSource` /
+  R3 barrier transport pattern.
+
 ### 5. Automated Governance & AI Reviewer
 To maintain high integrity in a single-contributor environment, Momo employs an automated governance layer:
 - **Gemini AI Reviewer**: A GitHub Action that uses the Gemini API to analyze PR diffs. It specifically enforces the **⚡ Bolt** (performance) and **🛡️ Sentinel** (security) patterns.
