@@ -36,3 +36,57 @@ groups:
         annotations:
           summary: "High memory usage"
           description: "{{ $labels.instance }} is using {{ $value }} bytes of memory"
+
+      - alert: MomoDiskPressure
+        expr: momo_disk_free_bytes / (momo_disk_used_bytes + momo_disk_free_bytes) < 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low disk space"
+          description: "{{ $labels.instance }} has less than 10% free disk in the data directory"
+
+      - alert: MomoSwimAlivePeersDropped
+        expr: momo_swim_alive_count < 2 and on(instance) momo_cluster_peers > 2
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Quorum peers lost"
+          description: "Only {{ $value }} alive peers on {{ $labels.instance }} while the cluster has more than 2 known peers"
+
+      - alert: MomoLeaseStarvation
+        expr: momo_leases_active > momo_cluster_peers * 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Lease count unusually high"
+          description: "{{ $labels.instance }} holds {{ $value }} leases — possible lease leak"
+
+      - alert: MomoScatterTimeouts
+        expr: rate(momo_scatter_timeout_total[5m]) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Scatter-gather timeouts"
+          description: "{{ $labels.instance }} is experiencing {{ $value }}/s scatter-gather timeouts"
+
+      - alert: MomoReplicationFailures
+        expr: rate(momo_replication_failures_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Replication failures"
+          description: "{{ $labels.instance }} is failing {{ $value }}/s replication forwards — durability risk"
+
+      - alert: MomoBlobCountSpike
+        expr: rate(momo_blob_count[5m]) * 60 > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Rapid blob growth"
+          description: "{{ $labels.instance }} is adding {{ $value }}/min blobs — possible dedup regression or ingest burst"

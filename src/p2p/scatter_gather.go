@@ -24,6 +24,12 @@ type ScatterGather struct {
 	nextRequestID atomic.Uint64
 	pendingMu     sync.Mutex
 	pending       map[uint64]*pendingQuery
+
+	// R5 metrics: scatter-gather phase 2/3 counters (#933). Queries are counted
+	// per fan-out (queriesTotal) and per timeout expiry (timeoutsTotal), read
+	// by the metrics exporter at scrape time.
+	queriesTotal  atomic.Uint64
+	timeoutsTotal atomic.Uint64
 }
 
 type pendingQuery struct {
@@ -161,6 +167,7 @@ func (sg *ScatterGather) Query(qt QueryType, data []byte, timeout time.Duration)
 	}()
 
 	sg.transport.Broadcast(rpc)
+	sg.queriesTotal.Add(1)
 
 	var results []QueryResponsePayload
 	timer := time.NewTimer(timeout)
@@ -171,9 +178,20 @@ func (sg *ScatterGather) Query(qt QueryType, data []byte, timeout time.Duration)
 		case resp := <-pq.responses:
 			results = append(results, resp)
 		case <-timer.C:
+			sg.timeoutsTotal.Add(1)
 			return results, len(results)
 		}
 	}
 
 	return results, len(results)
 }
+
+// ScatterCounters returns (queriesTotal, timeoutsTotal) since process start.
+// Scrape-time read for /metrics (R5, #933).
+func (sg *ScatterGather) ScatterCounters() (uint64, uint64) {
+	return sg.queriesTotal.Load(), sg.timeoutsTotal.Load()
+}
+
+// Peers returns the underlying transport peer map (scrape-time cluster gauges,
+// R5 phase 3, #933).
+func (sg *ScatterGather) Peers() *PeerMap { return sg.transport.Peers() }

@@ -173,6 +173,37 @@ func (m *PeerMap) Count() int {
 	return n
 }
 
+// StateCount returns the number of peers in the given SWIM state.
+// R5 scrape-time cluster gauge source (#933).
+func (m *PeerMap) StateCount(state PeerState) int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	n := 0
+	for _, p := range m.peers {
+		if p.State() == state {
+			n++
+		}
+	}
+	return n
+}
+
+// AvgPingLatencySeconds returns the mean EWMA RTT across alive peers, in
+// seconds (0 when no alive peers or no known RTT). Scrape-time gauge (#933).
+func (m *PeerMap) AvgPingLatencySeconds() float64 {
+	var total time.Duration
+	n := 0
+	for _, p := range m.AliveByQuality() {
+		if p.RTT() > 0 {
+			total += p.RTT()
+			n++
+		}
+	}
+	if n == 0 {
+		return 0
+	}
+	return total.Seconds() / float64(n)
+}
+
 // PeerInfos returns a snapshot of all peers as PeerInfo structs (for gossip payloads).
 func (m *PeerMap) PeerInfos() []PeerInfo {
 	m.mu.RLock()

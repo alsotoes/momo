@@ -790,6 +790,11 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 
 			prefix := q.Get("prefix")
 			delimiter := q.Get("delimiter")
+			// R5 phase 4: time the list only when histograms are armed.
+			var listStart time.Time
+			if lr, ok := m.metricsHook.(LatencyRecorder); ok && lr.LatencyEnabled() {
+				listStart = time.Now()
+			}
 			// Pagination: continuation-token resumes after the last key of the
 			// previous page; start-after is an informational starting hint.
 			startAfter := q.Get("continuation-token")
@@ -827,6 +832,11 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			if _, err := m.conn.Write(xmlBytes); err != nil {
 				return 0, 0, fmt.Errorf("failed to write XML list response: %v: %w", err, syscall.EPIPE)
 			}
+			if !listStart.IsZero() {
+				if lr, ok := m.metricsHook.(LatencyRecorder); ok {
+					lr.RecordRequestLatency("list", time.Since(listStart))
+				}
+			}
 
 			return 0, 0, ErrRequestHandled
 		}
@@ -858,6 +868,11 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			writeS3Error(m.conn, http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", bucket)
 			return 0, 0, fmt.Errorf("unknown bucket %q: %w", bucket, syscall.ENOENT)
+		}
+		// R5 phase 4: time the download only when histograms are armed.
+		var downloadStart time.Time
+		if lr, ok := m.metricsHook.(LatencyRecorder); ok && lr.LatencyEnabled() {
+			downloadStart = time.Now()
 		}
 		rc, meta, err := m.store.Get(key)
 		if err != nil {
@@ -1048,6 +1063,9 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		if m.metricsHook != nil {
 			m.metricsHook.IncDownloads()
 			m.metricsHook.AddBytesDownloaded(uint64(bodyLen))
+			if !downloadStart.IsZero() {
+				m.metricsHook.(LatencyRecorder).RecordRequestLatency("download", time.Since(downloadStart))
+			}
 		}
 
 		return 0, 0, ErrRequestHandled
@@ -1189,6 +1207,11 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			}
 			defer m.leaseAcquirer.ReleaseLease(key)
 		}
+		// R5 phase 4: time the delete only when histograms are armed.
+		var deleteStart time.Time
+		if lr, ok := m.metricsHook.(LatencyRecorder); ok && lr.LatencyEnabled() {
+			deleteStart = time.Now()
+		}
 
 		err := m.store.Delete(key)
 		if err != nil {
@@ -1206,6 +1229,9 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 
 		if m.metricsHook != nil {
 			m.metricsHook.IncDeletes()
+			if !deleteStart.IsZero() {
+				m.metricsHook.(LatencyRecorder).RecordRequestLatency("delete", time.Since(deleteStart))
+			}
 		}
 
 		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
@@ -2790,6 +2816,11 @@ func (m *S3Communicator) handleBatchDelete(bucket string, req *http.Request) (in
 			errs = append(errs, s3DeleteError{Key: k, Code: "InvalidArgument", Message: "Invalid key."})
 			continue
 		}
+		// R5 phase 4: time per-key delete only when histograms are armed.
+		var delStart time.Time
+		if lr, ok := m.metricsHook.(LatencyRecorder); ok && lr.LatencyEnabled() {
+			delStart = time.Now()
+		}
 		var leaseErr error
 		if m.leaseAcquirer != nil {
 			leaseErr = m.leaseAcquirer.AcquireLease(k, 10*time.Second)
@@ -2812,6 +2843,11 @@ func (m *S3Communicator) handleBatchDelete(bucket string, req *http.Request) (in
 			}
 		}
 		deleted = append(deleted, k)
+		if !delStart.IsZero() {
+			if lr, ok := m.metricsHook.(LatencyRecorder); ok {
+				lr.RecordRequestLatency("delete", time.Since(delStart))
+			}
+		}
 	}
 	if m.metricsHook != nil {
 		m.metricsHook.IncDeletes()

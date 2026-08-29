@@ -154,6 +154,13 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 	if metricsPort == 0 {
 		metricsPort = cfg.Metrics.PrometheusPort
 	}
+	// R5 phase 2: install scrape-time storage/CAS gauge source (blob count,
+	// stored bytes, disk, GC) when the store implements it.
+	if ssp, ok := store.(storageStatsProvider); ok {
+		metricsCollector.SetStorageStats(ssp)
+	}
+	// R5 phase 4: opt-in latency histograms (zero overhead when disabled).
+	metricsCollector.SetLatencyHistogramsEnabled(cfg.Metrics.EnableLatencyHistograms)
 	StartMetricsServer(ctx, metricsHost, metricsPort, metricsCollector)
 
 	// 🛡️ Sentinel: Adaptive failed-auth backoff & temporary lockout (issue #821).
@@ -181,6 +188,11 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 	var oprfProvider *p2p.OPRFProvider
 	if cfg.P2P.Enabled {
 		scatterGather, leaseManager, oprfProvider = bootstrapP2P(ctx, cfg, serverId, daemons, store)
+	}
+	// R5 phase 3: install scrape-time P2P cluster gauge source (nil-safe when
+	// P2P is disabled — exporter degrades to zero gauges per spec GIVEN p2p).
+	if scatterGather != nil {
+		metricsCollector.SetClusterStats(newP2PClusterStats(scatterGather, leaseManager))
 	}
 
 	// Client-facing threshold-OPRF service for confidential dedup.
@@ -239,6 +251,13 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 
 			var replicationMode int
 			var success bool
+
+			// R5 phase 4: capture upload-start time only when latency histograms
+			// are armed (zero cost otherwise).
+			var uploadStart time.Time
+			if metricsCollector.HistogramsEnabled() {
+				uploadStart = time.Now()
+			}
 
 			// 🛡️ Sentinel: Capture remote address for audit logging and traceability
 			remoteAddr := common.SanitizeLog(comm.RemoteAddr().String())
@@ -473,9 +492,11 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 				}
 			}
 
-			if canDedup {
-				log.Printf("AUDIT: Deduplication hit for %s (hash: %s)", remoteAddr, metadata.Hash)
-				if err := comm.SendMetadataStatus(transport.MetadataStatusSkipPayload); err != nil {
+if canDedup {
+			// ⚡ Bolt: Deduplication hit. Just update metadata mapping without reading payload.
+			log.Printf("AUDIT: Deduplication hit for %s (hash: %s)", remoteAddr, metadata.Hash)
+			metricsCollector.IncDedupHits()
+			if err := comm.SendMetadataStatus(transport.MetadataStatusSkipPayload); err != nil {
 					log.Printf("AUDIT: Error sending metadata status to %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
 					metricsCollector.IncErrors()
 					return
@@ -614,14 +635,23 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 							return
 						}
 						defer reader.Close()
+						// R5 phase 4: time replication only when histograms are armed.
+						var replStart time.Time
+						if metricsCollector.HistogramsEnabled() {
+							replStart = time.Now()
+						}
 						fwdErr := forwardStream()(cfg, reader, storageKey, metadata.Hash, metadata.Size, "", getS3Meta(store, storageKey), id, finalTs, replicationMode, factor)
 						if fwdErr != nil {
 							log.Printf("AUDIT: Chain forwarding to node %d failed: %v", id, common.SanitizeLog(fwdErr.Error()))
 							metricsCollector.IncErrors()
+							metricsCollector.IncReplicationFailures()
 							markForwardFail()
 							return
 						}
-						metricsCollector.IncReplication()
+						metricsCollector.AddBytesReplicated(uint64(metadata.Size))
+						if !replStart.IsZero() {
+							metricsCollector.RecordReplicationLatency(time.Since(replStart))
+						}
 					}(nextHop.ID)
 				} else {
 					wg.Done()
@@ -686,14 +716,23 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 								return
 							}
 							defer reader.Close()
+							// R5 phase 4: time replication only when histograms are armed.
+							var replStart time.Time
+							if metricsCollector.HistogramsEnabled() {
+								replStart = time.Now()
+							}
 							fwdErr := forwardStream()(cfg, reader, storageKey, metadata.Hash, metadata.Size, "", getS3Meta(store, storageKey), id, finalTs, replicationMode, factor)
 							if fwdErr != nil {
 								log.Printf("AUDIT: Splay forwarding to node %d failed: %v", id, common.SanitizeLog(fwdErr.Error()))
 								metricsCollector.IncErrors()
+								metricsCollector.IncReplicationFailures()
 								markForwardFail()
 								return
 							}
-							metricsCollector.IncReplication()
+							metricsCollector.AddBytesReplicated(uint64(metadata.Size))
+							if !replStart.IsZero() {
+								metricsCollector.RecordReplicationLatency(time.Since(replStart))
+							}
 						}(targetId)
 					}
 					waitForForwarders()
@@ -732,6 +771,9 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 			metricsCollector.IncUploads()
 			if !canDedup {
 				metricsCollector.AddBytesUploaded(uint64(metadata.Size))
+			}
+			if !uploadStart.IsZero() {
+				metricsCollector.RecordRequestLatency("upload", time.Since(uploadStart))
 			}
 		}(connection)
 	}

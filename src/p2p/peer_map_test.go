@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"math"
 	"sync"
 	"testing"
 	"time"
@@ -216,5 +217,47 @@ func TestPeerMap_ConcurrentAccess(t *testing.T) {
 
 	if m.Count() != 100 {
 		t.Errorf("expected 100 peers, got %d", m.Count())
+	}
+}
+
+// TestR5_StateCountAndPingLatency verifies R5 phase 3 scrape-time cluster
+// gauges: per-state peer counts and the mean EWMA ping latency (#933).
+func TestR5_StateCountAndPingLatency(t *testing.T) {
+	m := NewPeerMap()
+	p1 := NewPeer(1, "a")
+	p1.SetState(PeerStateAlive)
+	p1.SetRTT(2 * time.Millisecond)
+	p2 := NewPeer(2, "b")
+	p2.SetState(PeerStateAlive)
+	p2.SetRTT(4 * time.Millisecond)
+	p3 := NewPeer(3, "c")
+	p3.SetState(PeerStateSuspect)
+	p3.SetRTT(10 * time.Millisecond)
+	p4 := NewPeer(4, "d")
+	p4.SetState(PeerStateOffline)
+
+	m.Add(p1)
+	m.Add(p2)
+	m.Add(p3)
+	m.Add(p4)
+
+	if got := m.Count(); got != 4 {
+		t.Fatalf("expected 4 peers, got %d", got)
+	}
+	if got := m.StateCount(PeerStateAlive); got != 2 {
+		t.Fatalf("expected 2 alive, got %d", got)
+	}
+	if got := m.StateCount(PeerStateSuspect); got != 1 {
+		t.Fatalf("expected 1 suspect, got %d", got)
+	}
+	if got := m.StateCount(PeerStateOffline); got != 1 {
+		t.Fatalf("expected 1 offline, got %d", got)
+	}
+
+	// Only alive peers with known RTT contribute to the mean: (2+4)/2 = 3ms.
+	got := m.AvgPingLatencySeconds()
+	want := 0.003
+	if math.Abs(got-want) > 1e-9 {
+		t.Fatalf("expected avg ping latency %fs, got %f", want, got)
 	}
 }

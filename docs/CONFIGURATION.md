@@ -167,6 +167,12 @@ This section controls the behavior of the decentralized polymorphic system and t
     -   **Default:** (empty — all interfaces)
     -   **Example:** `127.0.0.1`
 
+-   **`enable_latency_histograms`**
+    -   **Description:** When `true`, arms the R5 phase 4 opt-in latency histograms — `momo_request_latency_seconds{operation="upload|download|delete|list"}` and `momo_replication_latency_seconds` — using atomic fixed-bucket counters. When `false` (default) there is **zero overhead** on the request path: no `time.Now()` captures and no bucket increments. The histograms are read at `/metrics` scrape time.
+    -   **Type:** Boolean
+    -   **Default:** `false`
+    -   **Example:** `true`
+
     **Exported metrics:**
 
     | Metric | Type | Description |
@@ -184,8 +190,27 @@ This section controls the behavior of the decentralized polymorphic system and t
     | `momo_goroutines` | gauge | Current goroutine count |
     | `momo_memory_alloc_bytes` | gauge | Allocated memory in bytes |
     | `momo_memory_sys_bytes` | gauge | System memory in bytes |
-    | `momo_gc_runs_total` | counter | Total GC runs |
+    | `momo_gc_runs_total` | counter | Total GC runs (Go runtime) |
     | `momo_build_info` | gauge | Build info (hostname label) |
+    | `momo_replication_bytes_total` | counter | Total bytes replicated (R5) |
+    | `momo_replication_failures_total` | counter | Total replication forwarding failures (R5) |
+    | `momo_dedup_hits_total` | counter | Total content-addressable dedup hits (R5) |
+    | `momo_blob_count` | gauge | Unique blobs in the CAS store, scrape-time (R5) |
+    | `momo_stored_bytes_total` | gauge | Total logical bytes stored, scrape-time (R5) |
+    | `momo_disk_used_bytes` | gauge | Disk bytes used in the data dir, scrape-time (R5) |
+    | `momo_disk_free_bytes` | gauge | Disk bytes free in the data dir, scrape-time (R5) |
+    | `momo_cas_gc_runs_total` | counter | CAS GC sweeps completed (R5) |
+    | `momo_cas_gc_evicted_bytes` | counter | Bytes evicted by CAS GC (R5) |
+    | `momo_cluster_peers` | gauge | Known P2P peers, scrape-time (R5) |
+    | `momo_swim_alive_count` | gauge | ALIVE peers, scrape-time (R5) |
+    | `momo_swim_suspect_count` | gauge | SUSPECT peers, scrape-time (R5) |
+    | `momo_swim_offline_count` | gauge | OFFLINE peers, scrape-time (R5) |
+    | `momo_swim_ping_latency_seconds` | gauge | Mean SWIM ping latency (EWMA), scrape-time (R5) |
+    | `momo_leases_active` | gauge | Active leases held, scrape-time (R5) |
+    | `momo_scatter_queries_total` | counter | Scatter-gather queries fanned out (R5) |
+    | `momo_scatter_timeout_total` | counter | Scatter-gather timeout expiries (R5) |
+    | `momo_request_latency_seconds` | histogram | Request latency by operation (opt-in, R5) |
+    | `momo_replication_latency_seconds` | histogram | Replication latency (opt-in, R5) |
 
     **Prometheus scrape config:**
     ```yaml

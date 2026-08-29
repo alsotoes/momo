@@ -340,3 +340,11 @@ func (lm *LeaseManager) ReleaseByKey(key string) error {
 	lm.heldMu.Unlock()
 	return nil
 }
+
+// ActiveLeases returns the number of leases currently held by this node.
+// R5 scrape-time cluster gauge (momo_leases_active) (#933).
+func (lm *LeaseManager) ActiveLeases() int {
+	lm.heldMu.Lock()
+	defer lm.heldMu.Unlock()
+	return len(lm.held)
+}
