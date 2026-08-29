@@ -165,6 +165,10 @@ type ConfigurationMetrics struct {
 	// PrometheusBindHost is the default bind address for the /metrics endpoint.
 	// Empty binds all interfaces.
 	PrometheusBindHost string
+	// EnableLatencyHistograms opts-in the momo_request_latency_seconds and
+	// momo_replication_latency_seconds histograms (R5 phase 4, #933). When
+	// false (default) there is zero overhead on the request path.
+	EnableLatencyHistograms bool
 }
 
 // ConfigurationP2P holds the P2P transport and gossip configuration.

@@ -442,6 +442,11 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 		}
 		// Read 64-byte file name + 64-byte content hash (proof of knowledge)
 		m.Stream.SetReadDeadline(time.Now().Add(5 * time.Second))
+		// R5 phase 4: time the delete only when histograms are armed.
+		var deleteStart time.Time
+		if lr, ok := m.metricsHook.(LatencyRecorder); ok && lr.LatencyEnabled() {
+			deleteStart = time.Now()
+		}
 		var requestBuf [128]byte
 		if _, err := io.ReadFull(m, requestBuf[:]); err != nil {
 			return 0, 0, fmt.Errorf("failed to read delete target: %w", err)
@@ -499,6 +504,9 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 
 		if m.metricsHook != nil {
 			m.metricsHook.IncDeletes()
+			if lr, ok := m.metricsHook.(LatencyRecorder); ok && lr.LatencyEnabled() {
+				lr.RecordRequestLatency("delete", time.Since(deleteStart))
+			}
 		}
 
 		if err := writeStatusByte(m, '0'); err != nil {
@@ -513,6 +521,11 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 		}
 		// Read 64-byte file name + 64-byte content hash (proof of knowledge)
 		m.Stream.SetReadDeadline(time.Now().Add(5 * time.Second))
+		// R5 phase 4: time the download only when histograms are armed.
+		var downloadStart time.Time
+		if lr, ok := m.metricsHook.(LatencyRecorder); ok && lr.LatencyEnabled() {
+			downloadStart = time.Now()
+		}
 		var requestBuf [128]byte
 		if _, err := io.ReadFull(m, requestBuf[:]); err != nil {
 			return 0, 0, fmt.Errorf("failed to read get target: %w", err)
@@ -584,6 +597,9 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 		if m.metricsHook != nil {
 			m.metricsHook.IncDownloads()
 			m.metricsHook.AddBytesDownloaded(uint64(meta.Size))
+			if !downloadStart.IsZero() {
+				m.metricsHook.(LatencyRecorder).RecordRequestLatency("download", time.Since(downloadStart))
+			}
 		}
 
 		return 0, 0, ErrRequestHandled

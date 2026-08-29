@@ -75,6 +75,14 @@ type MetricsHook interface {
 	IncErrors()
 }
 
+// LatencyRecorder is the optional R5 phase 4 histogram hook implemented by the
+// MetricsCollector. Communicators must type-assert before capturing time.Now()
+// so disabled histograms carry zero timing overhead (#933).
+type LatencyRecorder interface {
+	LatencyEnabled() bool
+	RecordRequestLatency(op string, d time.Duration)
+}
+
 // OPRFEvalResult is one daemon's share evaluation returned to a client that
 // requested a threshold-OPRF evaluation. The client combines evaluations from
 // `threshold` distinct shares and unblinds them to derive the content key.

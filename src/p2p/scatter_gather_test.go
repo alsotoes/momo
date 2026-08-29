@@ -5,6 +5,8 @@ import (
 	"net"
 	"testing"
 	"time"
+
+	"go.uber.org/goleak"
 )
 
 func TestQueryPayload_EncodeDecode(t *testing.T) {
@@ -291,5 +293,35 @@ func TestQueryResponseBinaryFormat(t *testing.T) {
 	reqID := binary.BigEndian.Uint64(encoded[0:8])
 	if reqID != 0xABCDEF {
 		t.Errorf("requestID mismatch: got %x, want %x", reqID, 0xABCDEF)
+	}
+}
+
+// TestR5_ScatterCounters verifies phase 3 counters: no-peer fan-out adds no
+// queries (peerCount==0 short-circuit before broadcast) (#933).
+func TestR5_ScatterCounters(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	tr := NewTCPTransport(TCPTransportConfig{LocalID: 1})
+	defer tr.Close()
+	sg := NewScatterGather(1, tr, &mockQueryHandler{data: []byte("x")})
+
+	if q, t0 := sg.ScatterCounters(); q != 0 || t0 != 0 {
+		t.Fatalf("expected zero counters at start, got (%d,%d)", q, t0)
+	}
+
+	sg.Query(QueryList, nil, time.Millisecond)
+	if q, _ := sg.ScatterCounters(); q != 0 {
+		t.Fatalf("expected 0 queries from empty fan-out, got %d", q)
+	}
+}
+
+// TestLeaseManager_ActiveLeases verifies the Phase 3 momo_leases_active gauge
+// source when no leases are held.
+func TestLeaseManager_ActiveLeases(t *testing.T) {
+	tr := NewTCPTransport(TCPTransportConfig{LocalID: 2})
+	defer tr.Close()
+	lm := NewLeaseManager(2, tr)
+	defer lm.Stop()
+	if got := lm.ActiveLeases(); got != 0 {
+		t.Fatalf("expected 0 active leases with empty manager, got %d", got)
 	}
 }

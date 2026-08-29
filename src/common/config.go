@@ -454,6 +454,11 @@ func loadMetricsConfig(section *ini.Section) (ConfigurationMetrics, error) {
 
 	metricsCfg.PrometheusBindHost = section.Key("prometheus_bind_host").String()
 
+	metricsCfg.EnableLatencyHistograms, err = section.Key("enable_latency_histograms").Bool()
+	if err != nil {
+		metricsCfg.EnableLatencyHistograms = false
+	}
+
 	return metricsCfg, nil
 }
 

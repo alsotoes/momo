@@ -72,7 +72,11 @@ func (s *CASStore) runGC(cfg GCConfig) (err error) {
 	if err := s.sweepOrphanedBlobs(); err != nil {
 		return err
 	}
-	return s.sweepExpiredTombstones(cfg.TombstoneRetention)
+	err = s.sweepExpiredTombstones(cfg.TombstoneRetention)
+	if err == nil {
+		s.gcRuns.Add(1)
+	}
+	return err
 }
 
 // sweepOrphanedBlobs removes blob files and objects entries with RefCount=0.
@@ -83,6 +87,7 @@ func (s *CASStore) sweepOrphanedBlobs() error {
 	defer s.mu.Unlock()
 
 	var orphanedHashes []string
+	var evictedBytes uint64
 
 	err := s.db.Update(func(tx *bbolt.Tx) error {
 		obj := tx.Bucket(bucketObjects)
@@ -98,6 +103,7 @@ func (s *CASStore) sweepOrphanedBlobs() error {
 			if meta.RefCount <= 0 {
 				hash := string(k)
 				orphanedHashes = append(orphanedHashes, hash)
+				evictedBytes += uint64(max64(meta.Size, 0))
 				if err := obj.Delete([]byte(hash)); err != nil {
 					log.Printf("CAS GC: failed to delete metadata for blob %s: %v", hash, err)
 				}
@@ -116,7 +122,8 @@ func (s *CASStore) sweepOrphanedBlobs() error {
 	}
 
 	if len(orphanedHashes) > 0 {
-		log.Printf("CAS GC: removed %d orphaned blob(s)", len(orphanedHashes))
+		s.gcEvicted.Add(evictedBytes)
+		log.Printf("CAS GC: removed %d orphaned blob(s) (%d bytes)", len(orphanedHashes), evictedBytes)
 	}
 	return nil
 }
@@ -269,4 +276,13 @@ func (s *CASStore) ApplyTombstone(name string, deletedAt int64) (err error) {
 		}
 	}
 	return nil
+}
+
+// max64 returns the larger of two int64 values. Avoids importing math or
+// relying on Go 1.21+ builtin max for this package's Go compatibility floor.
+func max64(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
 }

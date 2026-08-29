@@ -1053,4 +1053,18 @@ fallback_interval = 30
 			t.Fatalf("expected metrics_port=%q to be rejected", bad)
 		}
 	}
+
+	// R5 phase 4: enable_latency_histograms parses; default is false.
+	histOn := base + "prometheus_port = 9100\nenable_latency_histograms = true\n\n" +
+		"[daemon.0]\nhost = h0\ndrive = d0\nchange_replication = c0\ndata = d0\n"
+	cfgH, err := GetConfig(writeConf(t, histOn))
+	if err != nil {
+		t.Fatalf("histogram-enabled config failed: %v", err)
+	}
+	if !cfgH.Metrics.EnableLatencyHistograms {
+		t.Fatalf("expected enable_latency_histograms=true to parse")
+	}
+	if cfg.Metrics.EnableLatencyHistograms {
+		t.Fatalf("expected enable_latency_histograms default false, got true")
+	}
 }

@@ -3,7 +3,10 @@
     "id": null,
     "uid": "momo-overview",
     "title": "Momo Cluster Overview",
-    "tags": ["momo", "distributed-storage"],
+    "tags": [
+      "momo",
+      "distributed-storage"
+    ],
     "timezone": "browser",
     "schemaVersion": 38,
     "version": 1,
@@ -17,8 +20,16 @@
         "id": 1,
         "title": "Upload Rate",
         "type": "graph",
-        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
-        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 0
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
         "targets": [
           {
             "expr": "rate(momo_uploads_total[1m])",
@@ -30,8 +41,16 @@
         "id": 2,
         "title": "Download Rate",
         "type": "graph",
-        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
-        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 0
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
         "targets": [
           {
             "expr": "rate(momo_downloads_total[1m])",
@@ -43,8 +62,16 @@
         "id": 3,
         "title": "Active Connections",
         "type": "stat",
-        "gridPos": {"h": 4, "w": 6, "x": 0, "y": 8},
-        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 0,
+          "y": 8
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
         "targets": [
           {
             "expr": "sum(momo_active_connections)",
@@ -56,8 +83,16 @@
         "id": 4,
         "title": "Error Rate",
         "type": "graph",
-        "gridPos": {"h": 8, "w": 12, "x": 6, "y": 8},
-        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 6,
+          "y": 8
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
         "targets": [
           {
             "expr": "rate(momo_errors_total[1m])",
@@ -69,8 +104,16 @@
         "id": 5,
         "title": "Goroutines",
         "type": "graph",
-        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
-        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 16
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
         "targets": [
           {
             "expr": "momo_goroutines",
@@ -82,8 +125,16 @@
         "id": 6,
         "title": "Memory Usage",
         "type": "graph",
-        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
-        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 16
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
         "targets": [
           {
             "expr": "momo_memory_alloc_bytes / 1024 / 1024",
@@ -95,14 +146,414 @@
         "id": 7,
         "title": "Bytes Uploaded (rate)",
         "type": "graph",
-        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24},
-        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "gridPos": {
+          "h": 8,
+          "w": 24,
+          "x": 0,
+          "y": 24
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
         "targets": [
           {
             "expr": "rate(momo_bytes_uploaded_total[1m]) / 1024 / 1024",
             "legendFormat": "{{instance}} (MB/s)"
           }
         ]
+      },
+      {
+        "id": 8,
+        "title": "Blob Count",
+        "type": "stat",
+        "span": 6,
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "momo_blob_count",
+            "legendFormat": "{{instance}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "custom": {
+              "fillOpacity": 20,
+              "lineWidth": 1
+            }
+          }
+        }
+      },
+      {
+        "id": 9,
+        "title": "Stored Bytes",
+        "type": "stat",
+        "span": 6,
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "momo_stored_bytes_total",
+            "legendFormat": "{{instance}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "decbytes",
+            "custom": {
+              "fillOpacity": 20,
+              "lineWidth": 1
+            }
+          }
+        }
+      },
+      {
+        "id": 10,
+        "title": "Dedup Hits",
+        "type": "timeseries",
+        "span": 6,
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "rate(momo_dedup_hits_total[1m])",
+            "legendFormat": "{{instance}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "custom": {
+              "fillOpacity": 20,
+              "lineWidth": 1
+            }
+          }
+        }
+      },
+      {
+        "id": 11,
+        "title": "Disk Free",
+        "type": "stat",
+        "span": 6,
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "momo_disk_free_bytes",
+            "legendFormat": "{{instance}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "decbytes",
+            "custom": {
+              "fillOpacity": 20,
+              "lineWidth": 1
+            }
+          }
+        }
+      },
+      {
+        "id": 12,
+        "title": "Replication Bytes",
+        "type": "timeseries",
+        "span": 6,
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "rate(momo_replication_bytes_total[1m])",
+            "legendFormat": "{{instance}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "decbytes",
+            "custom": {
+              "fillOpacity": 20,
+              "lineWidth": 1
+            }
+          }
+        }
+      },
+      {
+        "id": 13,
+        "title": "Replication Failures",
+        "type": "timeseries",
+        "span": 6,
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "rate(momo_replication_failures_total[1m])",
+            "legendFormat": "{{instance}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "custom": {
+              "fillOpacity": 20,
+              "lineWidth": 1
+            }
+          }
+        }
+      },
+      {
+        "id": 14,
+        "title": "CAS GC Evicted Bytes",
+        "type": "timeseries",
+        "span": 6,
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "rate(momo_cas_gc_evicted_bytes[1m])",
+            "legendFormat": "{{instance}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "decbytes",
+            "custom": {
+              "fillOpacity": 20,
+              "lineWidth": 1
+            }
+          }
+        }
+      },
+      {
+        "id": 15,
+        "title": "Cluster Peers",
+        "type": "stat",
+        "span": 6,
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "momo_cluster_peers",
+            "legendFormat": "{{instance}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "custom": {
+              "fillOpacity": 20,
+              "lineWidth": 1
+            }
+          }
+        }
+      },
+      {
+        "id": 16,
+        "title": "SWIM Alive",
+        "type": "stat",
+        "span": 6,
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "momo_swim_alive_count",
+            "legendFormat": "{{instance}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "custom": {
+              "fillOpacity": 20,
+              "lineWidth": 1
+            }
+          }
+        }
+      },
+      {
+        "id": 17,
+        "title": "SWIM Suspect",
+        "type": "stat",
+        "span": 6,
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "momo_swim_suspect_count",
+            "legendFormat": "{{instance}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "custom": {
+              "fillOpacity": 20,
+              "lineWidth": 1
+            }
+          }
+        }
+      },
+      {
+        "id": 18,
+        "title": "SWIM Ping Latency",
+        "type": "stat",
+        "span": 6,
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "momo_swim_ping_latency_seconds * 1000",
+            "legendFormat": "{{instance}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ms",
+            "custom": {
+              "fillOpacity": 20,
+              "lineWidth": 1
+            }
+          }
+        }
+      },
+      {
+        "id": 19,
+        "title": "Active Leases",
+        "type": "stat",
+        "span": 6,
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "momo_leases_active",
+            "legendFormat": "{{instance}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "custom": {
+              "fillOpacity": 20,
+              "lineWidth": 1
+            }
+          }
+        }
+      },
+      {
+        "id": 20,
+        "title": "Scatter Queries",
+        "type": "timeseries",
+        "span": 6,
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "rate(momo_scatter_queries_total[1m])",
+            "legendFormat": "{{instance}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "custom": {
+              "fillOpacity": 20,
+              "lineWidth": 1
+            }
+          }
+        }
+      },
+      {
+        "id": 21,
+        "title": "Scatter Timeouts",
+        "type": "timeseries",
+        "span": 6,
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "rate(momo_scatter_timeout_total[1m])",
+            "legendFormat": "{{instance}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "custom": {
+              "fillOpacity": 20,
+              "lineWidth": 1
+            }
+          }
+        }
       }
     ]
   }

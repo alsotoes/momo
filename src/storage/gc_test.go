@@ -559,3 +559,83 @@ func TestLegacyObjectMetaCompatibility(t *testing.T) {
 		t.Fatalf("Expected EBADMSG for corrupt legacy metadata, got %v", err)
 	}
 }
+
+// TestR5_GCMetricsCounters verifies R5 phase 2 GC counters: runGC increments
+// gcRuns and sweepOrphanedBlobs accumulates gcEvicted bytes (#933).
+func TestR5_GCMetricsCounters(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	tmpDir, err := os.MkdirTemp("", "momo-gc-metrics-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	store, err := NewCASStore(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to create CASStore: %v", err)
+	}
+	defer store.Close()
+
+	content := []byte("gc metrics bytes")
+	hash := "aabbbcccddd"
+	store.Put("m.txt", hash, int64(len(content)), "", bytes.NewReader(content))
+	store.Delete("m.txt")
+
+	if err := store.runGC(DefaultGCConfig()); err != nil {
+		t.Fatalf("runGC failed: %v", err)
+	}
+
+	runs, evicted := store.GCMetrics()
+	if runs == 0 {
+		t.Fatalf("expected gcRuns >= 1 after runGC, got %d", runs)
+	}
+	if evicted != uint64(len(content)) {
+		t.Fatalf("expected gcEvicted=%d (blob size), got %d", len(content), evicted)
+	}
+
+	// Stats must now report zero blobs/bytes (everything evicted).
+	count, stored, err := store.Stats()
+	if err != nil {
+		t.Fatalf("Stats failed: %v", err)
+	}
+	if count != 0 || stored != 0 {
+		t.Fatalf("expected empty store stats (0,0), got (%d,%d)", count, stored)
+	}
+}
+
+// TestR5_StatsReportsBlobsAndBytes verifies the scrape-time Stats() provider
+// counts live blobs and their logical bytes (#933).
+func TestR5_StatsReportsBlobsAndBytes(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	tmpDir, err := os.MkdirTemp("", "momo-stats-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	store, err := NewCASStore(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to create CASStore: %v", err)
+	}
+	defer store.Close()
+
+	h1 := "111222333444"
+	h2 := "555666777888"
+	store.Put("a.txt", h1, 5, "", bytes.NewReader([]byte("aaaaa")))
+	store.Put("b.txt", h2, 7, "", bytes.NewReader([]byte("bbbbbbb")))
+
+	count, stored, err := store.Stats()
+	if err != nil {
+		t.Fatalf("Stats failed: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("expected 2 blobs, got %d", count)
+	}
+	if stored != 12 {
+		t.Fatalf("expected 12 stored bytes, got %d", stored)
+	}
+
+	if store.DataDir() != tmpDir {
+		t.Fatalf("expected DataDir=%s, got %s", tmpDir, store.DataDir())
+	}
+}

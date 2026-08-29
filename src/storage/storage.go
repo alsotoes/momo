@@ -124,6 +124,11 @@ type CASStore struct {
 	rebuildTarget  int
 	degradedRead   bool
 	repairs        atomic.Uint64
+
+	// R5 metrics: CAS GC counters read at /metrics scrape time
+	// (phase 2, #933). Incremented inside the GC path only; scrape-only reads.
+	gcRuns    atomic.Uint64
+	gcEvicted atomic.Uint64
 }
 
 // NewCASStore initializes a CAS store with a LocalBlobStore backend.
@@ -268,7 +273,7 @@ func (s *CASStore) Put(name string, hash string, size int64, remotePath string, 
 	}
 
 	// 2. Update Metadata
-	return s.db.Update(func(tx *bbolt.Tx) error {
+	err = s.db.Update(func(tx *bbolt.Tx) error {
 		ns := tx.Bucket(bucketNamespace)
 		if err := ns.Put([]byte(name), []byte(hash)); err != nil {
 			return fmt.Errorf("metadata error: %w", syscall.EIO)
@@ -319,6 +324,10 @@ func (s *CASStore) Put(name string, hash string, size int64, remotePath string, 
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // Get retrieves an object by its human-readable name.
@@ -658,7 +667,15 @@ func (s *CASStore) Delete(name string) (err error) {
 		if delErr := s.blobs.DeleteBlob(orphanedHash); delErr != nil {
 			log.Printf("AUDIT: Failed to delete orphaned blob %s: %v", orphanedHash, delErr)
 		} else {
+			// R5 metrics (#933): account for the immediately-evicted blob bytes
+			// (CAS did not wait for the periodic GC sweep).
 			if metaErr := s.db.Update(func(tx *bbolt.Tx) error {
+				val := tx.Bucket(bucketObjects).Get([]byte(orphanedHash))
+				if len(val) > 0 {
+					if m, derr := decodeObjectMeta(val); derr == nil && m.Size > 0 {
+						s.gcEvicted.Add(uint64(m.Size))
+					}
+				}
 				return tx.Bucket(bucketObjects).Delete([]byte(orphanedHash))
 			}); metaErr != nil {
 				log.Printf("AUDIT: Failed to remove metadata for orphaned blob %s: %v", orphanedHash, metaErr)
@@ -804,3 +821,42 @@ func (s *CASStore) getBlobPath(hash string) string {
 	}
 	return filepath.Join(s.base, "blobs", hash[0:2], hash[2:4], hash[4:6], hash)
 }
+
+// Stats returns R5 storage gauges computed at /metrics scrape time: the number
+// of unique blobs in the objects bucket (non-tombstoned, refcounts>0) and the
+// total logical bytes stored. This is a scrape-only read — never called on the
+// request hot path (#933). Returns (blobCount, storedBytes, err).
+func (s *CASStore) Stats() (blobCount int64, storedBytes int64, err error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	err = s.db.View(func(tx *bbolt.Tx) error {
+		obj := tx.Bucket(bucketObjects)
+		if obj == nil {
+			return nil
+		}
+		return obj.ForEach(func(k, v []byte) error {
+			meta, err := decodeObjectMeta(v)
+			if err != nil {
+				return err
+			}
+			if meta.DeletedAt == 0 && meta.RefCount > 0 {
+				blobCount++
+				storedBytes += meta.Size
+			}
+			return nil
+		})
+	})
+	return blobCount, storedBytes, err
+}
+
+// DataDir returns the store's data directory (used for Statfs disk gauges).
+func (s *CASStore) DataDir() string { return s.base }
+
+// GCMetrics returns (gcRuns, gcEvictedBytes) collected by the CAS GC sweep.
+func (s *CASStore) GCMetrics() (uint64, uint64) { return s.gcRuns.Load(), s.gcEvicted.Load() }
+
+// IncGC records one completed GC run (call inside runGC at sweep end).
+func (s *CASStore) IncGC() { s.gcRuns.Add(1) }
+
+// AddGCEvicted records bytes physically removed by GC in this sweep.
+func (s *CASStore) AddGCEvicted(n uint64) { s.gcEvicted.Add(n) }
