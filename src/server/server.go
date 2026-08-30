@@ -228,9 +228,8 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 		}
 
 		// Acquire semaphore slot before spinning up a new goroutine
-		select {
-		case sem <- struct{}{}:
-		case <-ctx.Done():
+		if !acquireConnectionSlot(ctx, sem) {
+			connection.Close()
 			return nil
 		}
 		handlersWG.Add(1)
