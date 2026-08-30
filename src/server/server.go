@@ -230,7 +230,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 		// Acquire semaphore slot before spinning up a new goroutine
 		if !acquireConnectionSlot(ctx, sem) {
 			connection.Close()
-			return nil
+			return syscall.ECANCELED
 		}
 		handlersWG.Add(1)
 		go func(comm transport.Communicator) {
@@ -241,6 +241,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 			defer func() {
 				if r := recover(); r != nil {
 					log.Printf("CRITICAL: Panic recovered in Daemon for %s: %v", comm.RemoteAddr(), r)
+					comm.Close()
 					metricsCollector.IncErrors()
 				}
 			}()
