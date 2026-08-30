@@ -227,7 +227,9 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 			}
 		}
 
-		// Acquire semaphore slot before spinning up a new goroutine
+		// Acquire semaphore slot before spinning up a new goroutine; if the slot
+		// cannot be acquired because the server is shutting down, close the
+		// accepted connection before returning (resource-leak prevention).
 		if !acquireConnectionSlot(ctx, sem) {
 			connection.Close()
 			return syscall.ECANCELED
