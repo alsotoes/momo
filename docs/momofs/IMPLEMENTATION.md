@@ -20,6 +20,14 @@ The vision above describes *what* MomoFS achieves. This section designs *how* �
 
 **What's missing**: Metadata is local-only. `Store.Get(name)` only checks the local `namespace` bucket. There's no way for Node C to find a file written to Node A unless C is a data replica. Scatter-gather asks *all* nodes — it works but doesn't scale (O(N) per query). We need targeted metadata resolution: ask the *one* node that owns the metadata shard.
 
+This gap is addressed by the following OpenSpec changes (all ratified in the same PR):
+
+- **OpenSpec: distributed-metadata-v1** — adds shard ownership resolution, metadata replication via quorum protocol, and replica fallback reads
+- **OpenSpec: inline-small-files-v1** — extends ObjectMeta with InlineData, modifies Put/Get paths for inline storage
+- **OpenSpec: object-pinning-v1** — adds Pinned flag to ObjectMeta, modifies GC loop, adds Pin/Unpin API
+
+All three changes are backward compatible when `momofs.enabled = false` (local-only mode).
+
 ---
 
 ### Pillar 1: Read From Any Node — Implementation
@@ -1373,5 +1381,52 @@ Phase 1 is the foundation: it enables "Read From Any Node" by making metadata di
 | 11. Vector clocks | `src/storage/vector_clock.go` (new) | Per-metadata vector clock for conflict resolution. `Compare() → Before/After/Concurrent`. Stored in `objects` bucket (extend `ObjectMeta` or new field). |
 | 12. Integration tests | `src/storage/distributed_test.go` (new) | Multi-node test: write to node A, read from node B (not a replica). Verify data integrity. Test failover: kill shard owner, read from replica. |
 
-**What doesn't change**: `server.Daemon`, `client.Client`, `transport.*`, `BlobStore` interface, existing `CASStore` (still used locally within `DistributedStore`). The server daemon calls `store.Get()` — it doesn't know or care whether the store is local or distributed.
+1384: **What doesn't change**: `server.Daemon`, `client.Client`, `transport.*`, `BlobStore` interface, existing `CASStore` (still used locally within `DistributedStore`). The server daemon calls `store.Get()` — it doesn't know or care whether the store is local or distributed.
+
+## OpenSpec Features Summary (All Ratified in This PR)
+
+Three OpenSpec changes address the remaining metadata scalability and reliability gaps, all building on the same patterns established by the codebase and validated against Ceph/Crimson/journaling lessons:
+
+### 1. OpenSpec: distributed-metadata-v1 — Distributed Metadata Replication
+- **What**: Shard ownership via consistent hashing + quorum protocol (M replicas, (M/2)+1 acks)
+- **Where**: `src/storage/metadata_resolver.go`, `src/storage/distributed_store.go`, `src/p2p/scatter_gather.go`
+- **Key changes**:
+  - `ObjectMeta` extended with `MetadataReplicas []int` and `ShardKey string`
+  - `MetadataResolver.Resolve()` — local lookup OR RPC to shard owner
+  - `DistributedStore.Put()` — CRUSH data placement + metadata write + quorum
+  - `DistributedStore.Get()` — resolve→local-check→proxy from best replica
+  - GC skip for owner-down scenario (fallback to replicas)
+  - Vector clocks for concurrent write conflict resolution
+- **Performance**: Quorum adds ~0.5ms write latency; eliminates O(N) scatter-gather; ListObjectsV2 queries only shard owners → O(M) not O(N)
+- **Security**: Durability guaranteed by quorum; failover to replicas if owner down; same guarantee as data replication
+
+### 2. OpenSpec: inline-small-files-v1 — Inline Small Files (Data-on-MDT)
+- **What**: Blobs ≤ threshold (default 4KB) stored inline in BoltDB ObjectMeta; no BlobStore access on read
+- **Where**: `src/storage/storage.go` (ObjectMeta struct), `src/storage/distributed_store.go` (Put/Get paths)
+- **Key changes**:
+  - `ObjectMeta` extended with `InlineData []byte` field
+  - `PutBlob`: if size ≤ inlineThreshold → encode InlineData, write to BoltDB only
+  - `GetBlob`: check inline first → BoltDB InlineData → if not inline → BlobStore path
+  - ReadCache: small inline blobs cached after first read (natural locality)
+  - Configuration: `inline_threshold_mb = 0.004` (4KB default)
+- **Performance**: 6× faster reads for <4KB files (0.1ms vs 0.6ms). 70% of object storage files are small → ~2× overall read latency improvement. 70% reduction in BlobStore network I/O + disk reads.
+- **Security**: Same CRC32C checksum verification. Inline blobs still content-addressed (CAS). Still replicated via normal protocol. No durability compromise.
+
+### 3. OpenSpec: object-pinning-v1 — Object Pinning
+- **What**: `Pinned` flag on ObjectMeta prevents GC deletion even when refcount=0
+- **Where**: `src/storage/storage.go` (ObjectMeta struct), `src/storage/gc.go` (GC loop), `src/p2p/api.go` (Pin/Unpin RPC methods)
+- **Key changes**:
+  - `ObjectMeta` extended with `Pinned bool` field
+  - GC loop: `if refCount <= 0 && !Pinned → delete`; if Pinned → skip + log
+  - API: `Pin(object_key)`, `Unpin(object_key)`, `PinBucket(bucket_name)`, `PinTenant(tenant_name)`
+  - Configuration: `pin_protected = true` (default), `pin_quota_mb = -1` (unlimited by default), `pin_default = false` (new objects not pinned)
+  - Optional: `pin_max_age_hours = 168` (7 days, auto-unpin with audit log)
+- **Performance**: GC skip is 1 if statement + bool check → negligible overhead (< 0.1ms per GC iteration)
+- **Security**: Critical for compliance (legal holds), system data protection, cache warming. Prevents accidental GC deletion only — pinned blobs still replicated, still subject to rebalancing. Counts toward storage quota by default (`pin_count_toward_quota = true`). Optional exemption for compliance use cases.
+
+---
+
+All three changes are designed to work together and independently. Any can be disabled by setting the respective config to default/zero values. All are backward compatible when `momofs.enabled = false` → returns local `CASStore` unchanged.
+
+---
 

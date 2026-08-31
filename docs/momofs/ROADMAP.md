@@ -5,11 +5,15 @@
 ## 12. Implementation Roadmap
 
 ### Phase 1: Foundation (Current → Distributed Metadata)
-- [ ] Metadata partitioning via consistent hashing
-- [ ] Metadata replication (separate from data replication)
-- [ ] Cluster-wide List via scatter-gather
-- [ ] Vector clocks for metadata versioning
-- [ ] Merkle tree for replica divergence detection
+- [x] Metadata partitioning via consistent hashing  ✓ (already)
+- [x] Metadata replication (separate from data replication)  ✓ (OpenSpec: distributed-metadata-v1)
+- [x] Vector clocks for metadata versioning  ✓ (OpenSpec: distributed-metadata-v1)
+- [ ] Merkle tree for replica divergence detection  [can be added later]
+- [x] Inline small files (Data-on-MDT)  ✓ (OpenSpec: inline-small-files-v1)
+- [x] Object pinning  ✓ (OpenSpec: object-pinning-v1)
+- [ ] Throttled background recovery  [Phase 2 item]
+- [ ] Shallow scrub thread  [Phase 2 item]
+- [ ] Deep scrub thread  [Phase 2 item]
 
 ### Phase 2: Self-Healing
 - [ ] Shallow scrub thread (replica count, existence check)

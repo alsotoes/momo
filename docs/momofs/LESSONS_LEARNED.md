@@ -61,6 +61,94 @@ Ceph RGW supports object versioning — each PUT creates a new version, old vers
 ```
 PUT /report.doc (v1, hash=aaa) → namespace["report.doc"] = "aaa"
 PUT /report.doc (v2, hash=bbb) → namespace["report.doc"] = "bbb"
+                             versions["report.doc:1"] = "aaa" (timestamp)
+DELETE /report.doc              → tombstone (versions retained)
+Restore v1                      → namespace["report.doc"] = "aaa"
+```
+
+### 5. Inline Small Files (Data-on-MDT) — HIGH priority
+
+Lustre stores small files (few MB) inline in the metadata server (on fast flash). This eliminates a separate data lookup for small files — massive latency win.
+
+**What MomoFS should do**: Store blobs smaller than a threshold (e.g., 4KB) inline in BoltDB. The `objects` bucket value includes the blob bytes directly. `Get` for small files returns data from BoltDB — no BlobStore access needed.
+
+```go
+type ObjectMeta struct {
+    Size      int64
+    RefCount  int64
+    DeletedAt int64
+    Checksum  uint32
+    InlineData []byte  // present if Size <= inlineThreshold (e.g., 4KB)
+```
+
+```
+Read path for small file (1KB):
+  Current:  BoltDB lookup (0.1ms) → BlobStore read (0.5ms) = 0.6ms
+  With DoM: BoltDB lookup (0.1ms) → done. Data is in the metadata. = 0.1ms
+
+  6× faster for small files. Most files in object storage are small.
+```
+
+Effort: Low. Extend ObjectMeta encoding, modify Put/Get paths. ~150 lines.
+
+### 6. Object Pinning — HIGH priority
+
+IPFS uses pinning to protect content from garbage collection. Pinned content is never evicted, even if refcount drops to zero. This is critical for compliance, legal holds, and "important" data.
+
+**What MomoFS should do**: Add a `pinned` flag to `ObjectMeta`. Pinned objects are never GC'd regardless of refcount. Pinning can be per-object, per-bucket, or per-tenant.
+
+```go
+type ObjectMeta struct {
+    // ...
+    Pinned bool  // if true, GC never deletes this blob
+```
+
+```
+Use cases:
+  - Legal hold: pin object → survives Delete, survives GC
+  - System data: pin bucket metadata, cluster config
+  - Compliance: pin all objects in a regulated tenant
+  - Cache warming: pin hot objects on edge nodes
+```
+
+Effort: Low. Add flag, check in GC. ~50 lines.
+
+Ceph throttles PG backfill (`osd_max_backfills`) to limit client impact during recovery. Recovery runs in the background without degrading foreground I/O.
+
+**What MomoFS should do**: Scrub and repair threads (Phase 2) should use a rate limiter — configurable bytes/sec and ops/sec. Foreground requests always take priority.
+
+```toml
+[scrub]
+repair_rate_limit_mb = 50    # max 50MB/s repair traffic
+repair_max_parallel = 4      # max 4 concurrent repair ops
+repair_priority = "low"      # never starve foreground
+```
+
+### 3. Snapshots (Per-Bucket) — MEDIUM priority
+
+Ceph supports per-pool, per-RBD-image, and per-directory snapshots with copy-on-write. MomoFS has no snapshots.
+
+**What MomoFS should do**: Per-bucket snapshots using content-addressing. A snapshot is just a saved namespace mapping (name→hash at time T). Since blobs are immutable (CAS), no data copy is needed — just save the namespace pointers.
+
+```
+Snapshot "backup-2026-01" of bucket "photos":
+  → Copy all namespace entries to snapshot bucket
+  → Key: "snapshot:backup-2026-01:photos:sunset.jpg"
+  → Val: same hash (blob not copied, just referenced)
+  → Restore: swap namespace entries back from snapshot
+```
+
+Effort: Medium. Namespace copy + restore logic. BoltDB transaction.
+
+### 4. Object Versioning — MEDIUM priority
+
+Ceph RGW supports object versioning — each PUT creates a new version, old versions retained in a version bucket.
+
+**What MomoFS should do**: Since blobs are content-addressed (immutable), versioning is natural. Each PUT to a versioned bucket keeps the old hash in a version chain.
+
+```
+PUT /report.doc (v1, hash=aaa) → namespace["report.doc"] = "aaa"
+PUT /report.doc (v2, hash=bbb) → namespace["report.doc"] = "bbb"
                                  versions["report.doc:1"] = "aaa" (timestamp)
 DELETE /report.doc              → tombstone (versions retained)
 Restore v1                      → namespace["report.doc"] = "aaa"
