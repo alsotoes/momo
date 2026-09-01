@@ -494,11 +494,11 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 				}
 			}
 
-if canDedup {
-			// ⚡ Bolt: Deduplication hit. Just update metadata mapping without reading payload.
-			log.Printf("AUDIT: Deduplication hit for %s (hash: %s)", remoteAddr, metadata.Hash)
-			metricsCollector.IncDedupHits()
-			if err := comm.SendMetadataStatus(transport.MetadataStatusSkipPayload); err != nil {
+			if canDedup {
+				// ⚡ Bolt: Deduplication hit. Just update metadata mapping without reading payload.
+				log.Printf("AUDIT: Deduplication hit for %s (hash: %s)", remoteAddr, metadata.Hash)
+				metricsCollector.IncDedupHits()
+				if err := comm.SendMetadataStatus(transport.MetadataStatusSkipPayload); err != nil {
 					log.Printf("AUDIT: Error sending metadata status to %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
 					metricsCollector.IncErrors()
 					return

@@ -351,7 +351,7 @@ func TestFuseE2E_MountRoundTrip(t *testing.T) {
 		t.Fatalf("native read = %q, want %q", got2[:n2], "from-mount")
 	}
 
-// Shut down: cancel ctx (ServeFUSE unmounts + closes conn so the serve
+	// Shut down: cancel ctx (ServeFUSE unmounts + closes conn so the serve
 	// goroutine exits), then wait.
 	serveCancel()
 	select {

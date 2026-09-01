@@ -31,11 +31,13 @@ type fakeClusterStats struct {
 	timeouts uint64
 }
 
-func (f *fakeClusterStats) PeerCount() int                              { return f.peers }
-func (f *fakeClusterStats) PeerStateCount(state int) int                { return map[int]int{peerStateAlive: f.alive, peerStateSuspect: f.suspect, peerStateOffline: f.offline}[state] }
-func (f *fakeClusterStats) AvgPingLatencySeconds() float64              { return f.latency }
-func (f *fakeClusterStats) ActiveLeases() int                           { return f.leases }
-func (f *fakeClusterStats) ScatterCounters() (uint64, uint64)           { return f.queries, f.timeouts }
+func (f *fakeClusterStats) PeerCount() int { return f.peers }
+func (f *fakeClusterStats) PeerStateCount(state int) int {
+	return map[int]int{peerStateAlive: f.alive, peerStateSuspect: f.suspect, peerStateOffline: f.offline}[state]
+}
+func (f *fakeClusterStats) AvgPingLatencySeconds() float64    { return f.latency }
+func (f *fakeClusterStats) ActiveLeases() int                 { return f.leases }
+func (f *fakeClusterStats) ScatterCounters() (uint64, uint64) { return f.queries, f.timeouts }
 
 // TestR5_ReplicationAndDedupCounters verifies replication bytes/failures and
 // the dedup-hit counter surface in the scrape output.
@@ -50,9 +52,9 @@ func TestR5_ReplicationAndDedupCounters(t *testing.T) {
 
 	out := captureMetricsOutput(mc)
 	for want, name := range map[string]string{
-		"momo_dedup_hits_total 3":             "dedup hits",
-		"momo_replication_bytes_total 6144":   "replication bytes",
-		"momo_replication_failures_total 1":   "replication failures",
+		"momo_dedup_hits_total 3":           "dedup hits",
+		"momo_replication_bytes_total 6144": "replication bytes",
+		"momo_replication_failures_total 1": "replication failures",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Expected %q (%s), got:\n%s", want, name, out)
@@ -68,9 +70,9 @@ func TestR5_StorageGaugesFromProvider(t *testing.T) {
 
 	out := captureMetricsOutput(mc)
 	for want, name := range map[string]string{
-		"momo_blob_count 42":           "blob count",
+		"momo_blob_count 42":              "blob count",
 		"momo_stored_bytes_total 1048576": "stored bytes",
-		"momo_cas_gc_runs_total 7":     "gc runs",
+		"momo_cas_gc_runs_total 7":        "gc runs",
 		"momo_cas_gc_evicted_bytes 65536": "gc evicted bytes",
 	} {
 		if !strings.Contains(out, want) {
@@ -89,10 +91,10 @@ func TestR5_StorageGaugesZeroWithoutProvider(t *testing.T) {
 	mc := NewMetricsCollector()
 	out := captureMetricsOutput(mc)
 	for want := range map[string]string{
-		"momo_blob_count 0":            "",
-		"momo_stored_bytes_total 0":    "",
-		"momo_disk_used_bytes 0":       "",
-		"momo_disk_free_bytes 0":       "",
+		"momo_blob_count 0":         "",
+		"momo_stored_bytes_total 0": "",
+		"momo_disk_used_bytes 0":    "",
+		"momo_disk_free_bytes 0":    "",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Expected %q in no-provider output, got:\n%s", want, out)
@@ -109,14 +111,14 @@ func TestR5_ClusterGauges(t *testing.T) {
 
 	out := captureMetricsOutput(mc)
 	for want, name := range map[string]string{
-		"momo_cluster_peers 5":                 "cluster peers",
-		"momo_swim_alive_count 3":              "swim alive",
-		"momo_swim_suspect_count 1":            "swim suspect",
-		"momo_swim_offline_count 1":            "swim offline",
+		"momo_cluster_peers 5":                     "cluster peers",
+		"momo_swim_alive_count 3":                  "swim alive",
+		"momo_swim_suspect_count 1":                "swim suspect",
+		"momo_swim_offline_count 1":                "swim offline",
 		"momo_swim_ping_latency_seconds 0.0012500": "swim latency",
-		"momo_leases_active 2":                 "leases active",
-		"momo_scatter_queries_total 100":       "scatter queries",
-		"momo_scatter_timeout_total 4":         "scatter timeouts",
+		"momo_leases_active 2":                     "leases active",
+		"momo_scatter_queries_total 100":           "scatter queries",
+		"momo_scatter_timeout_total 4":             "scatter timeouts",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Expected %q (%s), got:\n%s", want, name, out)
@@ -130,12 +132,12 @@ func TestR5_ClusterGaugesZeroWithoutProvider(t *testing.T) {
 	mc := NewMetricsCollector()
 	out := captureMetricsOutput(mc)
 	for want, name := range map[string]string{
-		"momo_cluster_peers 0":              "cluster peers",
-		"momo_swim_alive_count 0":           "swim alive",
-		"momo_swim_suspect_count 0":         "swim suspect",
-		"momo_leases_active 0":              "leases active",
-		"momo_scatter_queries_total 0":      "scatter queries",
-		"momo_scatter_timeout_total 0":      "scatter timeouts",
+		"momo_cluster_peers 0":         "cluster peers",
+		"momo_swim_alive_count 0":      "swim alive",
+		"momo_swim_suspect_count 0":    "swim suspect",
+		"momo_leases_active 0":         "leases active",
+		"momo_scatter_queries_total 0": "scatter queries",
+		"momo_scatter_timeout_total 0": "scatter timeouts",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Expected %q (%s) with no provider, got:\n%s", want, name, out)
@@ -161,14 +163,14 @@ func TestR5_LatencyHistogramsOptIn(t *testing.T) {
 	mc.SetLatencyHistogramsEnabled(true)
 	mc.RecordRequestLatency("upload", 2*time.Millisecond)
 	mc.RecordRequestLatency("upload", 50*time.Millisecond)
-	mc.RecordReplicationLatency(10*time.Millisecond)
+	mc.RecordReplicationLatency(10 * time.Millisecond)
 
 	out = captureMetricsOutput(mc)
 	for want, name := range map[string]string{
 		"momo_request_latency_seconds_bucket{operation=\"upload\",le=\"0.005\"} 1": "upload <=5ms",
 		"momo_request_latency_seconds_bucket{operation=\"upload\",le=\"0.05\"} 2":  "upload 50ms folded into <=50ms",
 		"momo_request_latency_seconds_count{operation=\"upload\"} 2":               "upload count",
-		"momo_replication_latency_seconds_count 1":                                "replication count",
+		"momo_replication_latency_seconds_count 1":                                 "replication count",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("Expected %q (%s), got:\n%s", want, name, out)

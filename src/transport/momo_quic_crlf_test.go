@@ -2,9 +2,9 @@ package transport
 
 import (
 	"errors"
+	"go.uber.org/goleak"
 	"syscall"
 	"testing"
-	"go.uber.org/goleak"
 
 	"github.com/alsotoes/momo/src/common"
 )
