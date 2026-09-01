@@ -2872,10 +2872,13 @@ func (m *S3Communicator) handleBatchDelete(bucket string, req *http.Request) (in
 // FormatCopyObjectResultXML constructs the S3 CopyObject Success result body.
 func FormatCopyObjectResultXML(etag string, modTime int64) []byte {
 	var buf bytes.Buffer
+	var timeBuf [32]byte
 	buf.WriteString(`<?xml version="1.0" encoding="UTF-8"?><CopyObjectResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><ETag>"`)
 	xmlEscape(&buf, etag)
 	buf.WriteString(`"</ETag><LastModified>`)
-	buf.WriteString(formatLastModified(modTime))
+	// ⚡ Bolt: Eliminate string allocation in formatLastModified by using AppendFormat with a stack-allocated buffer to write directly into the XML builder.
+	t := time.Unix(0, modTime).UTC()
+	buf.Write(t.AppendFormat(timeBuf[:0], "2006-01-02T15:04:05.000Z"))
 	buf.WriteString(`</LastModified></CopyObjectResult>`)
 	return buf.Bytes()
 }

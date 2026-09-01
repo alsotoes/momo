@@ -197,3 +197,7 @@
 ## 2024-08-24 - Eliminate time.Format heap allocation in XML loops
 **Learning:** Using `time.Format()` inside a loop that generates XML or JSON payloads causes massive $O(N)$ string heap allocations. The benchmark showed that replacing it with `time.AppendFormat` using a stack-allocated byte array (`var timeBuf [32]byte`) reduced allocations to near zero and sped up execution significantly.
 **Action:** When formatting dates inside serialization loops (like S3 ListObjects), use `AppendFormat` combined with a stack buffer to write directly into the underlying `bytes.Buffer`.
+
+## 2024-08-30 - Eliminate time formatting allocations in S3 HTTP responses
+**Learning:** Calling `time.Format()` inside frequently executed code paths (such as `FormatCopyObjectResultXML` during S3 operations) introduces implicit heap allocations because it returns a dynamically allocated string.
+**Action:** For performance-critical XML construction, prefer using `time.AppendFormat()` alongside a stack-allocated byte array (e.g., `var timeBuf [32]byte`) directly written to a `bytes.Buffer`.
