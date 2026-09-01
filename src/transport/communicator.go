@@ -47,19 +47,23 @@ func encodeRequestedModeByte(requestedMode int) (byte, error) {
 // GlobalLister enables scatter-gather list queries across the cluster.
 // When set on a Communicator, list operations aggregate results from all peers.
 type GlobalLister interface {
+	// GlobalList aggregates file metadata from all cluster peers within the timeout.
 	GlobalList(timeout time.Duration) ([]common.FileMetadata, error)
 }
 
 // LeaseAcquirer enables lease-based consensus for destructive operations.
 // When set on a Communicator, delete operations acquire a lease before proceeding.
 type LeaseAcquirer interface {
+	// AcquireLease requests an exclusive lease for the key within the timeout.
 	AcquireLease(key string, timeout time.Duration) error
+	// ReleaseLease releases a previously acquired lease for the key.
 	ReleaseLease(key string) error
 }
 
 // DeletePropagator enables P2P propagation of delete operations across the cluster.
 // When set on a Communicator, delete operations fan out to all peers.
 type DeletePropagator interface {
+	// PropagateDelete fans out a delete operation for the key to all cluster peers.
 	PropagateDelete(key string, timeout time.Duration) error
 }
 
@@ -68,10 +72,15 @@ type DeletePropagator interface {
 // directly at the point of operation, without requiring the server daemon
 // to plumb the collector through every code path.
 type MetricsHook interface {
+	// IncDownloads increments the download counter.
 	IncDownloads()
+	// IncDeletes increments the delete counter.
 	IncDeletes()
+	// AddBytesDownloaded adds n bytes to the downloaded-byte counter.
 	AddBytesDownloaded(n uint64)
+	// IncReplication increments the replication counter.
 	IncReplication()
+	// IncErrors increments the error counter.
 	IncErrors()
 }
 
@@ -79,7 +88,9 @@ type MetricsHook interface {
 // MetricsCollector. Communicators must type-assert before capturing time.Now()
 // so disabled histograms carry zero timing overhead (#933).
 type LatencyRecorder interface {
+	// LatencyEnabled reports whether latency histograms are enabled.
 	LatencyEnabled() bool
+	// RecordRequestLatency records a request latency observation for the operation.
 	RecordRequestLatency(op string, d time.Duration)
 }
 
@@ -98,6 +109,8 @@ type OPRFEvalResult struct {
 // requests by delegating to this service. It fails closed by returning an
 // error when fewer than the configured threshold evaluations are available.
 type OPRFService interface {
+	// EvaluateOPRF evaluates a blinded dedup tag across the daemon quorum and
+	// returns the collected share evaluations within the timeout.
 	EvaluateOPRF(blinded []byte, timeout time.Duration) ([]OPRFEvalResult, error)
 }
 
@@ -107,7 +120,10 @@ type OPRFService interface {
 // stays a pure adapter (issue #903). Surfaces without additive checksums may
 // simply return nil expectations and a no-op mismatch hook.
 type ChecksumProvider interface {
+	// ChecksumExpectations returns the additive integrity checksum expectations
+	// for the current ingest, or nil when none are present.
 	ChecksumExpectations() []common.ChecksumRef
+	// OnIntegrityChecksumMismatch encodes a verification failure to the client.
 	OnIntegrityChecksumMismatch() error
 }
 
@@ -171,17 +187,23 @@ type Communicator interface {
 
 // MomoListener defines a transport-agnostic interface for accepting new Momo connections.
 type MomoListener interface {
+	// Accept waits for and returns the next Momo connection.
 	Accept() (Communicator, error)
+	// Close closes the listener.
 	Close() error
+	// Addr returns the listener's network address.
 	Addr() net.Addr
 }
 
 // TCPListener wraps a standard net.Listener to implement the MomoListener interface.
+// It adapts accepted net.Conn values into Communicators via the ProtocolFactory.
 type TCPListener struct {
 	net.Listener
 	factory *ProtocolFactory
 }
 
+// Accept waits for and returns the next Momo connection, adapting the
+// underlying net.Conn into a Communicator.
 func (l *TCPListener) Accept() (Communicator, error) {
 	conn, err := l.Listener.Accept()
 	if err != nil {
@@ -196,6 +218,7 @@ func (l *TCPListener) Accept() (Communicator, error) {
 }
 
 // QUICListener wraps a quic.Listener to implement the MomoListener interface.
+// It accepts a stream on each connection and adapts it into a Communicator.
 type QUICListener struct {
 	*quic.Listener
 	factory *ProtocolFactory
@@ -209,6 +232,8 @@ const (
 	quicCloseGracePeriod = 100 * time.Millisecond
 )
 
+// Accept waits for and returns the next Momo connection, adapting the
+// accepted QUIC stream into a Communicator.
 func (l *QUICListener) Accept() (Communicator, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), quicAcceptTimeout)
 	defer cancel()

@@ -22,6 +22,7 @@ type ChecksumRef struct {
 	Value     string `json:"value"`
 }
 
+// Supported additive checksum algorithms, lowercase as carried in ChecksumRef.
 const (
 	ChecksumCRC32c = "crc32c"
 	ChecksumCRC32  = "crc32"

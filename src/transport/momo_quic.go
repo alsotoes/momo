@@ -36,7 +36,10 @@ type quicStreamConn struct {
 	conn *quic.Conn
 }
 
-func (q *quicStreamConn) LocalAddr() net.Addr  { return q.conn.LocalAddr() }
+// LocalAddr returns the local address of the underlying QUIC connection.
+func (q *quicStreamConn) LocalAddr() net.Addr { return q.conn.LocalAddr() }
+
+// RemoteAddr returns the remote address of the underlying QUIC connection.
 func (q *quicStreamConn) RemoteAddr() net.Addr { return q.conn.RemoteAddr() }
 
 // MomoQUICCommunicator implements the Communicator interface for the Momo protocol over QUIC.
@@ -64,6 +67,7 @@ func NewMomoQUICCommunicator(stream *quic.Stream, conn *quic.Conn) *MomoQUICComm
 	}
 }
 
+// Read reads from the underlying QUIC stream.
 func (m *MomoQUICCommunicator) Read(b []byte) (n int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -74,6 +78,7 @@ func (m *MomoQUICCommunicator) Read(b []byte) (n int, err error) {
 	return m.timeoutConn.Read(b)
 }
 
+// Write writes to the underlying QUIC stream.
 func (m *MomoQUICCommunicator) Write(b []byte) (n int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -89,6 +94,8 @@ func (m *MomoQUICCommunicator) SetChallengeResponse(enabled bool) {
 	m.useChallengeResp = enabled
 }
 
+// SetStore attaches the storage backend used for server-side operations
+// (OPRF evaluation, metadata lookups).
 func (m *MomoQUICCommunicator) SetStore(store storage.Store) {
 	m.store = store
 }
@@ -211,6 +218,8 @@ func (m *MomoQUICCommunicator) SendOPRFEval(authToken string, timestamp int64, b
 	return results, nil
 }
 
+// SetAbsoluteDeadline sets a hard deadline for all subsequent operations
+// on the connection.
 func (m *MomoQUICCommunicator) SetAbsoluteDeadline(t interface{}) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -227,6 +236,8 @@ func (m *MomoQUICCommunicator) SetAbsoluteDeadline(t interface{}) (err error) {
 	return nil
 }
 
+// HandshakeClient performs the client-side handshake: sends AuthToken +
+// Timestamp + RequestedMode and receives the confirmed replication mode.
 func (m *MomoQUICCommunicator) HandshakeClient(authToken string, timestamp int64, requestedMode int) (mode int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -288,6 +299,8 @@ func (m *MomoQUICCommunicator) HandshakeClient(authToken string, timestamp int64
 	return int(replicationModeInt64), nil
 }
 
+// HandshakeServer performs the server-side handshake: receives and validates
+// the client credentials, returning the requested mode and timestamp.
 func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (requestedMode int, timestamp int64, err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -656,6 +669,7 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 	return requestedMode, timestamp, nil
 }
 
+// SendReplicationMode sends the chosen replication mode back to the client.
 func (m *MomoQUICCommunicator) SendReplicationMode(mode int) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -675,6 +689,8 @@ func (m *MomoQUICCommunicator) SendReplicationMode(mode int) (err error) {
 	return nil
 }
 
+// SendMetadata writes file metadata (hash, name, size) and returns the
+// server's status (send payload or skip).
 func (m *MomoQUICCommunicator) SendMetadata(meta *common.FileMetadata) (status int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -726,6 +742,7 @@ func (m *MomoQUICCommunicator) SendMetadata(meta *common.FileMetadata) (status i
 	return int(statusBuf[0]), nil
 }
 
+// ReceiveMetadata reads file metadata sent by the peer.
 func (m *MomoQUICCommunicator) ReceiveMetadata() (meta common.FileMetadata, err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -788,6 +805,7 @@ func (m *MomoQUICCommunicator) SendMetadataStatus(status int) (err error) {
 	return nil
 }
 
+// SendACK sends a server acknowledgment to the client.
 func (m *MomoQUICCommunicator) SendACK(serverId int) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -815,6 +833,7 @@ func (m *MomoQUICCommunicator) SendACK(serverId int) (err error) {
 	return nil
 }
 
+// ReceiveACK waits for the server's acknowledgment.
 func (m *MomoQUICCommunicator) ReceiveACK() (err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -835,18 +854,24 @@ func (m *MomoQUICCommunicator) ReceiveACK() (err error) {
 	return nil
 }
 
+// RemoteAddr returns the remote address of the peer.
 func (m *MomoQUICCommunicator) RemoteAddr() net.Addr {
 	return m.conn.RemoteAddr()
 }
 
+// IsExternalClient reports whether the connection is from an external S3
+// client rather than a momo-aware peer.
 func (m *MomoQUICCommunicator) IsExternalClient() bool {
 	return false
 }
 
+// IsPeer reports whether the connection was authenticated with the derived
+// peer token (Secondary role) rather than the client auth token.
 func (m *MomoQUICCommunicator) IsPeer() bool {
 	return m.isPeer
 }
 
+// Close closes the underlying QUIC stream and connection.
 func (m *MomoQUICCommunicator) Close() (err error) {
 	defer func() {
 		if r := recover(); r != nil {

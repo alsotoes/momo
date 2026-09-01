@@ -65,6 +65,8 @@ const (
 // regular ciphertext chunk.
 var streamFooterAAD = []byte("momo:stream-footer:v1")
 
+// Sentinel stream errors. They unwrap to a POSIX constant (EBADMSG for a
+// malformed stream, EIO for a truncated one) and match errors.Is on both.
 var (
 	ErrStreamFormat    = &streamError{posix: unix.EBADMSG, domain: errors.New("crypto: invalid stream format")}
 	ErrStreamTruncated = &streamError{posix: unix.EIO, domain: errors.New("crypto: stream truncated (integrity footer missing)")}
@@ -78,14 +80,17 @@ type streamError struct {
 	domain error
 }
 
+// Error returns the domain error message.
 func (e *streamError) Error() string {
 	return e.domain.Error()
 }
 
+// Unwrap exposes both the POSIX constant and the domain error for errors.Is.
 func (e *streamError) Unwrap() []error {
 	return []error{e.posix, e.domain}
 }
 
+// Is reports whether the target matches the POSIX constant or the domain sentinel.
 func (e *streamError) Is(target error) bool {
 	return target == e.posix || target == e.domain
 }
@@ -114,6 +119,9 @@ func recoverStreamErr(err *error, op string) {
 // or reorder a footer as a regular chunk, and vice versa.
 const footerNonceIndex = 0xFFFFFFFF
 
+// EncryptStream encrypts the plaintext reader into the destination writer
+// using the chunked streaming format (versioned header, chunked AEAD, and a
+// domain-separated integrity footer). Panics are recovered as EIO.
 func (c *Cipher) EncryptStream(plaintext io.Reader, dst io.Writer) (err error) {
 	defer recoverStreamErr(&err, "EncryptStream")
 
@@ -209,6 +217,10 @@ func writeStreamFooter(c *Cipher, dst io.Writer, seed, nonce, lenBuf, sealedBuf,
 	return nil
 }
 
+// DecryptStream decrypts a chunked streaming ciphertext reader, writing the
+// plaintext to dst. It validates the version header and the integrity footer,
+// returning ErrStreamFormat or ErrStreamTruncated on corruption. Panics are
+// recovered as EIO.
 func (c *Cipher) DecryptStream(ciphertext io.Reader, dst io.Writer) (err error) {
 	defer recoverStreamErr(&err, "DecryptStream")
 

@@ -131,14 +131,23 @@ func NewMetricsCollector() *MetricsCollector {
 	}
 }
 
+// IncConnections records a new accepted connection (total and active).
 func (m *MetricsCollector) IncConnections()             { m.connectionsTotal.Add(1); m.activeConnections.Add(1) }
+// DecConnections records a closed connection (active count).
 func (m *MetricsCollector) DecConnections()             { m.activeConnections.Add(-1) }
+// IncUploads records a completed upload.
 func (m *MetricsCollector) IncUploads()                 { m.uploadsTotal.Add(1) }
+// IncDownloads records a completed download.
 func (m *MetricsCollector) IncDownloads()               { m.downloadsTotal.Add(1) }
+// IncDeletes records a completed delete.
 func (m *MetricsCollector) IncDeletes()                 { m.deletesTotal.Add(1) }
+// IncReplication records a replication forward.
 func (m *MetricsCollector) IncReplication()             { m.replicationTotal.Add(1) }
+// IncErrors records an operation error.
 func (m *MetricsCollector) IncErrors()                  { m.errorsTotal.Add(1) }
+// AddBytesUploaded adds n bytes to the uploaded-byte counter.
 func (m *MetricsCollector) AddBytesUploaded(n uint64)   { m.bytesUploaded.Add(n) }
+// AddBytesDownloaded adds n bytes to the downloaded-byte counter.
 func (m *MetricsCollector) AddBytesDownloaded(n uint64) { m.bytesDownloaded.Add(n) }
 
 // IncDedupHits records a content-addressable dedup hit (R5 phase 2).

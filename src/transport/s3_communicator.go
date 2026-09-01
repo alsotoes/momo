@@ -48,6 +48,10 @@ type LimitedConnReader struct {
 	read  int64
 }
 
+// Read reads up to len(p) bytes from the underlying connection while the
+// configured byte limit allows, returning ENOBUFS once the limit is exceeded.
+// The blocking read happens outside the lock so a stalled peer cannot starve
+// concurrent SetLimit/ClearLimit calls (issue #652).
 func (l *LimitedConnReader) Read(p []byte) (n int, err error) {
 	l.mu.Lock()
 	if l.limit > 0 && l.read >= l.limit {
@@ -67,6 +71,7 @@ func (l *LimitedConnReader) Read(p []byte) (n int, err error) {
 	return n, err
 }
 
+// SetLimit imposes a byte limit on subsequent reads, resetting the count.
 func (l *LimitedConnReader) SetLimit(limit int64) {
 	l.mu.Lock()
 	l.limit = limit
@@ -74,6 +79,7 @@ func (l *LimitedConnReader) SetLimit(limit int64) {
 	l.mu.Unlock()
 }
 
+// ClearLimit removes the byte limit, allowing unlimited reads.
 func (l *LimitedConnReader) ClearLimit() {
 	l.mu.Lock()
 	l.limit = 0
@@ -81,6 +87,9 @@ func (l *LimitedConnReader) ClearLimit() {
 	l.mu.Unlock()
 }
 
+// S3Communicator adapts an S3-over-HTTP connection to the momo Communicator
+// surface. It parses HTTP requests, verifies SigV4 signatures, and maps S3
+// operations onto the storage layer.
 type S3Communicator struct {
 	conn       net.Conn
 	connReader *LimitedConnReader
@@ -144,6 +153,7 @@ type S3Communicator struct {
 	sigV4SecretKey string
 }
 
+// NewS3Communicator wraps a net.Conn as an S3 gateway communicator.
 func NewS3Communicator(conn net.Conn) *S3Communicator {
 	connReader := &LimitedConnReader{r: conn}
 	return &S3Communicator{
@@ -154,6 +164,7 @@ func NewS3Communicator(conn net.Conn) *S3Communicator {
 	}
 }
 
+// SetStore attaches the storage backend used for S3 object operations.
 func (m *S3Communicator) SetStore(store storage.Store) {
 	m.store = store
 }
@@ -331,6 +342,7 @@ func (m *S3Communicator) SendOPRFEval(authToken string, timestamp int64, blinded
 	return results, nil
 }
 
+// Read reads from the underlying HTTP connection.
 func (m *S3Communicator) Read(p []byte) (n int, err error) {
 	return m.readUnderlying(p)
 }
@@ -385,6 +397,7 @@ func (m *S3Communicator) OnIntegrityChecksumMismatch() error {
 	return fmt.Errorf("s3 checksum mismatch: %w", syscall.EBADMSG)
 }
 
+// Write writes to the underlying HTTP connection.
 func (m *S3Communicator) Write(p []byte) (n int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -395,6 +408,7 @@ func (m *S3Communicator) Write(p []byte) (n int, err error) {
 	return m.conn.Write(p)
 }
 
+// Close closes the underlying connection.
 func (m *S3Communicator) Close() (err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -413,6 +427,8 @@ func (m *S3Communicator) Close() (err error) {
 	return m.conn.Close()
 }
 
+// SetAbsoluteDeadline sets a hard deadline for all subsequent operations
+// on the connection.
 func (m *S3Communicator) SetAbsoluteDeadline(t interface{}) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -427,6 +443,8 @@ func (m *S3Communicator) SetAbsoluteDeadline(t interface{}) (err error) {
 	return m.conn.SetDeadline(deadline)
 }
 
+// HandshakeClient sends an OPTIONS preflight request to the server to
+// negotiate the effective replication mode for the S3 session.
 func (m *S3Communicator) HandshakeClient(authToken string, timestamp int64, requestedMode int) (finalMode int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -500,6 +518,10 @@ func (m *S3Communicator) HandshakeClient(authToken string, timestamp int64, requ
 	return finalMode, nil
 }
 
+// HandshakeServer validates the SigV4 credentials for an S3 request. When
+// dedicated gateway credentials are configured, the access key must match and
+// the signature must verify with the gateway secret; otherwise the legacy
+// single-token mode applies (issue #656).
 func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMode int, timestamp int64, err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -1624,6 +1646,8 @@ func (m *S3Communicator) writeStreamingError(status int, code, msg, resource str
 	m.conn.SetWriteDeadline(time.Time{})
 }
 
+// SendReplicationMode records the effective replication mode negotiated for
+// the S3 session.
 func (m *S3Communicator) SendReplicationMode(mode int) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -1653,6 +1677,8 @@ func (m *S3Communicator) SendReplicationMode(mode int) (err error) {
 	return nil
 }
 
+// SendMetadata echoes the received metadata back with a send-payload status
+// (S3 requests carry the payload directly, so no transfer handshake applies).
 func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (status int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -1770,6 +1796,7 @@ func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (status int, er
 	return statusVal, nil
 }
 
+// ReceiveMetadata returns the metadata extracted from the current S3 request.
 func (m *S3Communicator) ReceiveMetadata() (meta common.FileMetadata, err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -1839,6 +1866,8 @@ func (m *S3Communicator) ReceiveMetadata() (meta common.FileMetadata, err error)
 	return m.meta, nil
 }
 
+// SendMetadataStatus writes an HTTP 200 response carrying the dedup status in
+// the X-Momo-Metadata-Status header.
 func (m *S3Communicator) SendMetadataStatus(status int) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -1868,6 +1897,7 @@ func (m *S3Communicator) SendMetadataStatus(status int) (err error) {
 	return nil
 }
 
+// SendACK sends the server acknowledgment for the S3 request.
 func (m *S3Communicator) SendACK(serverId int) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -1904,6 +1934,7 @@ func (m *S3Communicator) SendACK(serverId int) (err error) {
 	return nil
 }
 
+// ReceiveACK waits for the server's acknowledgment of the S3 request.
 func (m *S3Communicator) ReceiveACK() (err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -1931,14 +1962,17 @@ func (m *S3Communicator) ReceiveACK() (err error) {
 	return nil
 }
 
+// RemoteAddr returns the remote address of the S3 client.
 func (m *S3Communicator) RemoteAddr() net.Addr {
 	return m.remoteAddr
 }
 
+// IsExternalClient always returns true: S3 clients are external by definition.
 func (m *S3Communicator) IsExternalClient() bool {
 	return m.isExternalClient
 }
 
+// IsPeer always returns false: the S3 gateway never authenticates as a momo peer.
 func (m *S3Communicator) IsPeer() bool {
 	return m.isPeer
 }

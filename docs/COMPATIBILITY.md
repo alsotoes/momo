@@ -11,21 +11,20 @@ Momo's support for various operating systems is categorized into the following t
 These are the platforms where Momo is actively developed, tested, and expected to perform reliably.
 
 -   **Linux:** (Kernel 4.x and newer) - This is the primary development and production environment for Momo.
--   **FreeBSD:** (12.x and newer) - Fully supported and regularly tested.
 
 ### Tier 2: Best-Effort Support
 
 These platforms are expected to work, and may even have specific optimizations, but are not part of the regular, continuous testing cycle.
 
+-   **FreeBSD:** (12.x and newer) - Buildable on a POSIX environment; not part of the regular CI test cycle.
 -   **macOS (Apple Silicon):** The inclusion of specific libraries for the M1 CPU architecture (`go-m1cpu`) indicates that Momo is aware of and should perform well on modern Apple hardware.
--   **DragonflyBSD:** The codebase contains specific system call definitions for DragonflyBSD, so it is expected to compile and run correctly. However, it is not a primary test platform.
+-   **DragonflyBSD / OpenBSD / NetBSD:** Other POSIX-compliant Unix systems may build and run Momo, but they are not tested in CI.
 
 ### Tier 3: Experimental / Limited Support
 
 These platforms are not officially supported. While Momo might compile or run, functionality is likely to be limited or unstable.
 
 -   **Windows:** Momo's core design relies heavily on POSIX system calls and a Unix-like environment. While some of its dependencies have Windows compatibility (e.g., `go-ole`), the main application is **not expected to run natively on Windows**. Users seeking to run Momo on a Windows machine should use the **Windows Subsystem for Linux (WSL) 2**.
--   **Other Unix-like Systems:** Other POSIX-compliant systems (e.g., OpenBSD, NetBSD) may be able to build and run Momo, but they have not been tested.
 
 ## Build Dependencies
 
@@ -42,7 +41,7 @@ Legend: ✅ supported · ◐ supported as an RPC mirror on a surface it is not n
 
 | Feature | momo-tcp | momo-quic | s3-tcp | s3-quic | S3 API standard |
 |---|---|---|---|---|---|
-| **Binary momo handshake** (84B plaintext / 20B challenge-response) | ✅ | ✅ | ❌ | ❌ | **N/A** — S3 is HTTPS REST, no binary framing |
+| **Binary momo handshake** (84B plaintext / 64B challenge-response: 32B nonce + 32B HMAC) | ✅ | ✅ | ❌ | ❌ | **N/A** — S3 is HTTPS REST, no binary framing |
 | **Handshake auth mechanism** | binary token / challenge-response (HMAC-SHA256) | binary token / challenge-response | SigV4 (`Authorization`/presigned) + Bearer | SigV4 (`Authorization`/presigned) + Bearer | **✅ conforms** — SigV4 + presigned query-string (Bearer is a momo extension) |
 | **Metadata / payload framing** (192B metadata, ACK) | ✅ | ✅ | ❌ (HTTP framing instead) | ❌ | **✅ conforms** — HTTP headers + XML payloads |
 | **Replication modes** (None/Chain/Splay/Primary-Splay) | ✅ | ✅ | ✅ (server-side downgrade for external clients) | ✅ | **N/A** — server-side momo feature, not part of S3 API |

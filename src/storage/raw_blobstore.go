@@ -104,6 +104,7 @@ func NewRawBlobStore(cfg common.ConfigurationStorage, daemon *common.Daemon) (rb
 	}, nil
 }
 
+// Close closes the allocation database and the underlying device.
 func (r *RawBlobStore) Close() error {
 	if err := r.allocDB.Close(); err != nil {
 		log.Printf("AUDIT: allocDB.Close() failed: %v", err)

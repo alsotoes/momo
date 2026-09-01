@@ -16,7 +16,7 @@ Any code marked under **⚡ Bolt** must avoid GC (Garbage Collector) pauses and 
 Go's Garbage Collector introduces unpredictable tail-latencies. To achieve sub-microsecond throughput, code in hot-paths MUST NOT escape variables to the heap.
 - **Rule:** Avoid converting byte slices to strings (which triggers a heap allocation).
 - **Rule:** Use pre-allocated, stack-bound byte arrays (e.g., `[256]byte`) instead of calling `make([]byte, size)` inside hot loops.
-- **Example:** Our optimized `PadString` and `CrushOptimized` algorithms use stack-allocated buffers, reducing allocation overhead from **164 B/op to 0 B/op**.
+- **Example:** Our optimized `PadString` and CRUSH placement scoring (`ClusterMap.Placement` / `hashToScoreValue` in `src/common/crush.go`) use stack-allocated buffers, reducing allocation overhead from **164 B/op to 0 B/op**.
 
 ### 2. Bitwise Amortization of System Calls
 System calls (like `SetDeadline` or `Write`) carry high kernel context-switch costs.

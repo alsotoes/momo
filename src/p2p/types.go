@@ -15,6 +15,7 @@ import (
 // PeerState represents the liveness state of a peer in the cluster.
 type PeerState int32
 
+// PeerState values.
 const (
 	PeerStateAlive   PeerState = 0
 	PeerStateSuspect PeerState = 1
@@ -96,6 +97,7 @@ func (p *Peer) Conn() net.Conn {
 // MessageType identifies the kind of gossip message.
 type MessageType uint8
 
+// MessageType values carried in gossip message headers.
 const (
 	MsgHeartbeat        MessageType = 1
 	MsgMembership       MessageType = 2
@@ -236,6 +238,7 @@ func DecodeHeartbeatPayload(data []byte) (result *HeartbeatPayload, err error) {
 // QueryType identifies the kind of scatter-gather query.
 type QueryType uint8
 
+// QueryType values.
 const (
 	QueryList   QueryType = 1
 	QueryGet    QueryType = 2

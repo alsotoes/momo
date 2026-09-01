@@ -10,6 +10,7 @@ import (
 
 // QueryHandler processes a scatter-gather query locally and returns the result.
 type QueryHandler interface {
+	// HandleQuery processes a scatter-gather query locally and returns the result.
 	HandleQuery(qt QueryType, data []byte) ([]byte, error)
 }
 

@@ -201,6 +201,7 @@ var (
 	_ fs.NodeForgetter      = (*fuseDir)(nil)
 )
 
+// Attr fills the FUSE attribute structure for the directory.
 func (d *fuseDir) Attr(ctx context.Context, a *fuse.Attr) error {
 	e, err := d.root.fs.Lookup(d.path)
 	if err != nil {
@@ -210,10 +211,12 @@ func (d *fuseDir) Attr(ctx context.Context, a *fuse.Attr) error {
 	return nil
 }
 
+// Getattr returns the directory attributes.
 func (d *fuseDir) Getattr(ctx context.Context, req *fuse.GetattrRequest, resp *fuse.GetattrResponse) error {
 	return d.Attr(ctx, &resp.Attr)
 }
 
+// Setattr applies attribute changes (mode, size, times) to the directory.
 func (d *fuseDir) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) error {
 	var mode, uid, gid *uint32
 	var mtime *int64
@@ -239,11 +242,13 @@ func (d *fuseDir) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *f
 	return d.Attr(ctx, &resp.Attr)
 }
 
+// Lookup resolves a child name within the directory.
 func (d *fuseDir) Lookup(ctx context.Context, name string) (fs.Node, error) {
 	p := joinPath(d.path, name)
 	return d.root.nodeFor(p)
 }
 
+// Mkdir creates a subdirectory entry.
 func (d *fuseDir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error) {
 	p := joinPath(d.path, req.Name)
 	if err := d.root.fs.Mkdir(p, uint32(req.Mode.Perm())); err != nil {
@@ -252,6 +257,7 @@ func (d *fuseDir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, e
 	return d.root.nodeFor(p)
 }
 
+// Create creates a file in the directory and returns a handle to it.
 func (d *fuseDir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
 	p := joinPath(d.path, req.Name)
 	if _, _, err := d.root.fs.Create(p, uint32(req.Mode.Perm()), strings.NewReader("")); err != nil {
@@ -265,6 +271,7 @@ func (d *fuseDir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fus
 	return n, h, nil
 }
 
+// Remove deletes the named child entry.
 func (d *fuseDir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 	p := joinPath(d.path, req.Name)
 	if err := d.root.fs.Remove(p); err != nil {
@@ -273,6 +280,7 @@ func (d *fuseDir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 	return nil
 }
 
+// Rename moves the named entry to a new name in newDir.
 func (d *fuseDir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Node) error {
 	nd, ok := newDir.(*fuseDir)
 	if !ok {
@@ -286,6 +294,7 @@ func (d *fuseDir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs
 	return nil
 }
 
+// Link creates a hard link to the old node under the given name.
 func (d *fuseDir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.Node, error) {
 	oldNode, ok := old.(*fuseFile)
 	if !ok {
@@ -298,10 +307,12 @@ func (d *fuseDir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) 
 	return d.root.nodeFor(dst)
 }
 
+// Open opens the directory for reading.
 func (d *fuseDir) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (fs.Handle, error) {
 	return &fuseDirHandle{root: d.root, path: d.path}, nil
 }
 
+// Forget drops the kernel's reference to the directory node.
 func (d *fuseDir) Forget() {}
 
 // ---- dir handle (readdir) ---------------------------------------------------
@@ -313,6 +324,7 @@ type fuseDirHandle struct {
 
 var _ fs.HandleReadDirAller = (*fuseDirHandle)(nil)
 
+// ReadDirAll returns all directory entries.
 func (h *fuseDirHandle) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	entries, err := h.root.fs.ReadDir(h.path)
 	if err != nil {
@@ -347,6 +359,7 @@ var (
 	_ fs.NodeForgetter = (*fuseFile)(nil)
 )
 
+// Attr fills the FUSE attribute structure for the file.
 func (f *fuseFile) Attr(ctx context.Context, a *fuse.Attr) error {
 	e, err := f.root.fs.Lookup(f.path)
 	if err != nil {
@@ -356,10 +369,12 @@ func (f *fuseFile) Attr(ctx context.Context, a *fuse.Attr) error {
 	return nil
 }
 
+// Getattr returns the file attributes.
 func (f *fuseFile) Getattr(ctx context.Context, req *fuse.GetattrRequest, resp *fuse.GetattrResponse) error {
 	return f.Attr(ctx, &resp.Attr)
 }
 
+// Setattr applies attribute changes (mode, size, times) to the file.
 func (f *fuseFile) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) error {
 	var mode, uid, gid *uint32
 	var mtime *int64
@@ -388,6 +403,7 @@ func (f *fuseFile) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *
 	return f.Attr(ctx, &resp.Attr)
 }
 
+// Open opens the file and returns a handle for I/O.
 func (f *fuseFile) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (fs.Handle, error) {
 	// Readable opens serve straight from the store; writable opens materialize
 	// on flush.
@@ -398,6 +414,7 @@ func (f *fuseFile) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.O
 	return newFuseFileHandle(f.root, f.path, e), nil
 }
 
+// Forget drops the kernel's reference to the file node.
 func (f *fuseFile) Forget() {}
 
 // ---- file handle ---------------------------------------------------------------
@@ -452,6 +469,7 @@ func (h *fuseFileHandle) load() error {
 	return nil
 }
 
+// Read reads file data starting at the requested offset.
 func (h *fuseFileHandle) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -470,6 +488,7 @@ func (h *fuseFileHandle) Read(ctx context.Context, req *fuse.ReadRequest, resp *
 	return nil
 }
 
+// ReadAll returns the full file contents.
 func (h *fuseFileHandle) ReadAll(ctx context.Context) ([]byte, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -479,6 +498,7 @@ func (h *fuseFileHandle) ReadAll(ctx context.Context) ([]byte, error) {
 	return append([]byte(nil), h.data...), nil
 }
 
+// Write writes data to the file at the requested offset.
 func (h *fuseFileHandle) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -513,10 +533,12 @@ func (h *fuseFileHandle) flush() error {
 	return nil
 }
 
+// Flush persists pending data for the open handle.
 func (h *fuseFileHandle) Flush(ctx context.Context, req *fuse.FlushRequest) error {
 	return h.flush()
 }
 
+// Release closes the open handle.
 func (h *fuseFileHandle) Release(ctx context.Context, req *fuse.ReleaseRequest) error {
 	return h.flush()
 }

@@ -45,7 +45,7 @@ This document outlines the high-level roadmap for the Momo project, tracking maj
 
 | Feature | Issue | Spec | Priority | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| **Metrics Exporter Phase 2-4** | [#364](https://github.com/alsotoes/momo/issues/364) | [Metrics Spec](../openspec/changes/add-metrics-exporter/specs/observability/spec.md) | Medium | Storage metrics (disk/CAS), P2P/cluster gauges, opt-in latency histograms. Phase 1 (wiring) complete. |
+| **Metadata Catalog HA + Backup/Recovery** | [#934](https://github.com/alsotoes/momo/issues/934) | — | High | R6: distributed metadata; snapshot/restore. |
 
 ## 🔴 Future Explorations
 
@@ -72,7 +72,7 @@ Ratified in [prod-ready-roadmap](../openspec/changes/prod-ready-roadmap/specs/pr
 
 | ID | Item | Deliverable |
 |----|------|-------------|
-| R5 | Metrics phases 2–4 + dashboards/alerts | Storage/CAS + P2P/cluster gauges, latency histograms |
+| R5 | Metrics phases 2–4 + dashboards/alerts | ✅ Storage/CAS + P2P/cluster gauges, latency histograms, dashboards/alerts (implemented #933) |
 | R6 | Metadata catalog HA + backup/recovery | Distributed metadata; snapshot/restore |
 | R7 | Error model & ops | ENOSPC surfacing, distinct exit codes, cluster health |
 | R8 | Multi-tenancy + authorization + audit | Identity/ACL/policy, audit logging |

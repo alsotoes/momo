@@ -104,6 +104,7 @@ func NewS3BlobStore(cfg common.ConfigurationStorage) (*S3BlobStore, error) {
 	}, nil
 }
 
+// Close closes idle HTTP connections held by the S3 client.
 func (s *S3BlobStore) Close() error {
 	if transport, ok := s.client.Transport.(*http.Transport); ok {
 		transport.CloseIdleConnections()

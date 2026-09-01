@@ -76,6 +76,6 @@ The micro-benchmarks demonstrate the performance of the WRH + SHA-256 design:
 *   **`BenchmarkCrushOriginal` (~400 ns/op, 164 B/op, 3 allocs/op):** Uses standard reflection, `binary.Write`, and `h.Sum(nil)` heap allocation.
 *   **`BenchmarkCrushOptimized` (~300 ns/op, 0 B/op, 0 allocs/op):** Uses stack-allocated buffers for node ID and SHA-256 digest, eliminating heap escapes in the hot path.
 
-> **Note:** The micro-benchmarks above (`BenchmarkCrushOriginal`/`BenchmarkCrushOptimized` in `bench_crush_test.go`) measure the pre-#647 scoring path (full-uint64 `/MaxUint64` normalization); the shipping `Placement` uses the 52-bit mantissa fold in `hashToScoreValue` (`crush.go`), so benchmark figures are indicative of the allocation profile rather than an exact measurement of the shipping placement path.
+> **Note:** The micro-benchmarks above (`BenchmarkCrushOriginal`/`BenchmarkCrushOptimized` in `src/common/bench_crush_test.go`) measure the pre-#647 scoring path (full-uint64 `/MaxUint64` normalization); the shipping `Placement` uses the 52-bit mantissa fold in `hashToScoreValue` (`src/common/crush.go`), so benchmark figures are indicative of the allocation profile rather than an exact measurement of the shipping placement path.
 
 By stripping out Ceph's heavy hierarchical backtrack recursion, Momo's `CRUSH-lite` executes in sub-microsecond time with minimal GC pressure, guaranteeing predictable latencies during intensive S3 gateway streams.

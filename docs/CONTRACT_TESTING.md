@@ -16,7 +16,7 @@ The Momo wire protocol has fixed-size fields that **must not change** without a 
 
 - **AuthToken**: 64-byte null-padded string
 - **Timestamp**: 19-byte ASCII string (UnixNano)
-- **Mode**: 1-byte ASCII character (`'0'`-`'3'`, `'L'`, `'D'`, `'G'`)
+- **Mode**: 1-byte ASCII character (`'0'`-`'3'`, `'L'`, `'D'`, `'G'`, `'O'`)
 
 ### Metadata (192 bytes)
 

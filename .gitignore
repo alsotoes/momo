@@ -65,3 +65,13 @@ node_modules/
 package-lock.json
 package.json
 
+
+# MemPalace per-project files (issue #185)
+mempalace.yaml
+entities.json
+
+# Generated godoc HTML exports (make doc)
+docs/html/
+
+# cortexkit (Magic Context) local state
+.cortexkit/

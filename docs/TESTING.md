@@ -19,7 +19,10 @@ This document describes every test suite and validation step that runs in the Mo
 | Weekly Sanity | `weekly_sanity.yml` | Weekly cron (Sun 00:00 UTC) | Full suite + security audit |
 | Storage Backend E2E | `storage_backends_test.yml` | PRs touching `src/storage/` | S3 and raw device backend E2E tests (`-race`) |
 | External Client Replication | `external_client_test.yml` | push to master, PRs (path-filtered) | External S3 client replication mode downgrade |
-| Pentest | `pentest.yml` | push to master, PRs, manual dispatch | DotDotPwn fuzzing + Python exploit toolkit (9 CVEs found) |
+| Encryption Smoke | `encryption_smoke_test.yml` | push to master, PRs | E2E encryption across TCP/QUIC/S3 transports (`make smoke-encryption-*`) |
+| MomoFS FUSE E2E | `momofs_fuse_test.yml` | push to master, PRs (path-filtered) | FUSE mount round-trip (`TestFuseE2E_MountRoundTrip`) |
+| Blog Check | `blog_check.yml` | PRs, push to master | Validates docs/blog posts (Rule 76) |
+| Pentest | `pentest.yml` | push to master, PRs, manual dispatch | DotDotPwn fuzzing + Python exploit toolkit (10 CVEs found) |
 
 ---
 
@@ -44,7 +47,7 @@ The primary CI pipeline. Runs on every push to `master` and every PR targeting `
 ### Modules under test
 
 ```
-./src/common ./src/transport ./src/client ./src/metrics ./src/p2p ./src/server ./src/storage
+./src/common ./src/transport ./src/client ./src/metrics ./src/p2p ./src/server ./src/storage ./src/crypto ./src/momofs
 ```
 
 ### Test flags
@@ -177,10 +180,10 @@ Run as part of `make test` in the Go workflow.
 | `TestIntegration_NodeJoinAfterStart` | Node joins after cluster is running, discovered via gossip |
 | `TestGossiper_PingAck` | Direct ping/ack between 2 nodes |
 | `TestGossiper_IndirectPing` | Indirect ping via intermediary peer |
-| `TestAdaptiveTimeout_Update` | Adaptive timeout adjusts based on RTT |
-| `TestAdaptiveTimeout_Bounds` | Adaptive timeout stays within min/max bounds |
-| `TestRTTTracker_Update` | RTT EWMA tracking (alpha=0.25) |
-| `TestRTTTracker_EWMA` | RTT exponential weighted moving average |
+| `TestAdaptiveTimeout_Fallback` / `TestAdaptiveTimeout_WithRTT` | Adaptive timeout adjusts based on RTT |
+| `TestAdaptiveTimeout_CappedAtMin` / `TestAdaptiveTimeout_CappedAtMax` | Adaptive timeout stays within min/max bounds |
+| `TestRTTTracker_UpdateAndGet` | RTT EWMA tracking (alpha=0.25) |
+| `TestRTTTracker_EWMAConvergence` | RTT exponential weighted moving average |
 | `TestLeaseManager_AcquireRelease` | Lease acquire and release lifecycle |
 | `TestLeaseManager_NoPeers` | Lease acquisition fails with no peers |
 | `TestLeaseManager_Expiry` | Lease expires after timeout |
@@ -282,14 +285,14 @@ Runs DotDotPwn fuzzing and Python exploit scripts against Momo's S3 REST gateway
 
 ### Security Gates
 
-Security gates **only fail on `workflow_dispatch`** (manual trigger), not on PR/push. This allows the pentest tooling to merge even though CVE-008 (SigV4 bypass) is a known, documented vulnerability.
+Security gates **only fail on `workflow_dispatch`** (manual trigger), not on PR/push. This allows the pentest tooling to merge while keeping the gates as **regression checks** for previously-fixed CVEs (e.g. CVE-008 SigV4 bypass, fixed in PR #549).
 
 | Gate | Condition | Failure means |
 |---|---|---|
-| SigV4 bypass | `SIGV4_BYPASS=true` | CVE-008 confirmed — S3 gateway accepts invalid signatures |
+| SigV4 bypass | `SIGV4_BYPASS=true` | CVE-008 regression confirmed — S3 gateway accepts invalid signatures (fixed in PR #549) |
 | Filesystem traversal | `RUN_B_ROOT != 0` | /etc/passwd content leaked via S3 gateway |
 
-### Findings (9 CVEs)
+### Findings (10 CVEs)
 
 | CVE | Vulnerability | Severity | Issue | Status |
 |---|---|---|---|---|
@@ -484,10 +487,16 @@ Scrapes `/metrics` from all 3 Momo nodes (`server0:9100`, `server1:9100`, `serve
 | `MomoNodeDown` | `up{job="momo"} == 0` | 30s | critical |
 | `MomoHighGoroutines` | `momo_goroutines > 1000` | 1m | warning |
 | `MomoHighMemory` | `momo_memory_alloc_bytes > 1GiB` | 2m | warning |
+| `MomoDiskPressure` | `momo_disk_free_bytes / (momo_disk_used_bytes + momo_disk_free_bytes) < 0.1` | 5m | warning |
+| `MomoSwimAlivePeersDropped` | `momo_swim_alive_count < 2 and on(instance) momo_cluster_peers > 2` | 2m | critical |
+| `MomoLeaseStarvation` | `momo_leases_active > momo_cluster_peers * 2` | 5m | warning |
+| `MomoScatterTimeouts` | `rate(momo_scatter_timeout_total[5m]) > 0.5` | 5m | warning |
+| `MomoReplicationFailures` | `rate(momo_replication_failures_total[5m]) > 0.1` | 5m | critical |
+| `MomoBlobCountSpike` | `rate(momo_blob_count[5m]) * 60 > 1000` | 5m | warning |
 
 #### Grafana Dashboard (`grafana/dashboards/momo-overview.json`)
 
-7-panel dashboard auto-provisioned on startup:
+21-panel dashboard auto-provisioned on startup:
 
 | Panel | Metric | Type |
 |---|---|---|
@@ -498,6 +507,20 @@ Scrapes `/metrics` from all 3 Momo nodes (`server0:9100`, `server1:9100`, `serve
 | Goroutines | `momo_goroutines` | graph |
 | Memory Usage | `momo_memory_alloc_bytes / 1024 / 1024` | graph |
 | Bytes Uploaded (rate) | `rate(momo_bytes_uploaded_total[1m])` | graph |
+| Blob Count | `momo_blob_count` | stat |
+| Stored Bytes | `momo_stored_bytes_total` | stat |
+| Dedup Hits | `rate(momo_dedup_hits_total[1m])` | graph |
+| Disk Free | `momo_disk_free_bytes` | stat |
+| Replication Bytes | `rate(momo_replication_bytes_total[1m])` | graph |
+| Replication Failures | `rate(momo_replication_failures_total[1m])` | graph |
+| CAS GC Evicted Bytes | `momo_cas_gc_evicted_bytes` | stat |
+| Cluster Peers | `momo_cluster_peers` | stat |
+| SWIM Alive | `momo_swim_alive_count` | stat |
+| SWIM Suspect | `momo_swim_suspect_count` | stat |
+| SWIM Ping Latency | `momo_swim_ping_latency_seconds` | stat |
+| Active Leases | `momo_leases_active` | stat |
+| Scatter Queries | `rate(momo_scatter_queries_total[1m])` | graph |
+| Scatter Timeouts | `rate(momo_scatter_timeout_total[1m])` | graph |
 
 #### Prometheus `/metrics` Endpoint (`src/server/metrics_exporter.go`)
 
@@ -712,26 +735,27 @@ Runs on every push to `master` and every PR that touches Go files. Verifies the 
 | `momo_memory_sys_bytes` | Present | Runtime gauge |
 | `momo_gc_runs_total` | Present | Runtime counter |
 
-### Metrics Not Yet Implemented (Phase 2-4)
+### R5 Metrics (Phase 2-4, all implemented)
 
-These metrics are planned but not yet implemented in the exporter:
+The phase 2-4 metrics from the [add-metrics-exporter spec](../openspec/changes/add-metrics-exporter/specs/observability/spec.md) are implemented in `metrics_exporter.go` and exercised by `metrics_exporter_r5_test.go` (`TestR5_*`):
 
-| Category | Metrics | Phase | Priority | Overhead |
-|---|---|---|---|---|
-| **Storage** | `momo_disk_used_bytes`, `momo_disk_free_bytes` | 2 | High | Scrape-only (`syscall.Statfs`) |
-| **Storage** | `momo_blob_count`, `momo_stored_bytes_total` | 2 | High | Scrape-only (bbolt read) |
-| **CAS** | `momo_dedup_hits_total` | 2 | Medium | ~5ns per dedup (atomic) |
-| **CAS** | `momo_cas_gc_runs_total`, `momo_cas_gc_evicted_bytes` | 2 | Medium | ~5ns per GC run (atomic) |
-| **Replication** | `momo_replication_bytes_total` | 3 | High | ~5ns per replication (atomic) |
-| **Replication** | `momo_replication_failures_total` | 3 | High | ~5ns per failure (atomic) |
-| **Replication** | `momo_replication_latency_seconds` (histogram) | 3 | High | ~40ns per op (opt-in) |
-| **P2P** | `momo_cluster_peers` | 3 | Medium | Scrape-only (read PeerMap) |
-| **P2P** | `momo_swim_alive_count`, `momo_swim_suspect_count` | 3 | Medium | Scrape-only (read SWIM state) |
-| **P2P** | `momo_swim_ping_latency_seconds` | 3 | Medium | Scrape-only (read EWMA) |
-| **Leases** | `momo_leases_active` | 3 | Low | Scrape-only (read LeaseManager) |
-| **Leases** | `momo_lease_contentions_total` | 3 | Low | ~5ns per contention (atomic) |
-| **Scatter/Gather** | `momo_scatter_queries_total`, `momo_scatter_timeout_total` | 3 | Low | ~5ns per query (atomic) |
-| **Latency** | `momo_request_latency_seconds{operation}` | 4 | Medium | ~40ns per request (opt-in, config-gated) |
-| **Latency** | `momo_replication_latency_seconds` | 4 | Medium | ~40ns per op (opt-in, config-gated) |
+| Category | Metrics | Overhead |
+|---|---|---|
+| **Storage** | `momo_disk_used_bytes`, `momo_disk_free_bytes` | Scrape-only (`syscall.Statfs`) |
+| **Storage** | `momo_blob_count`, `momo_stored_bytes_total` | Scrape-only (bbolt read) |
+| **CAS** | `momo_dedup_hits_total` | ~5ns per dedup (atomic) |
+| **CAS** | `momo_cas_gc_runs_total`, `momo_cas_gc_evicted_bytes` | ~5ns per GC run (atomic) |
+| **Replication** | `momo_replication_bytes_total` | ~5ns per replication (atomic) |
+| **Replication** | `momo_replication_failures_total` | ~5ns per failure (atomic) |
+| **Replication** | `momo_replication_latency_seconds` (histogram) | ~40ns per op (opt-in) |
+| **P2P** | `momo_cluster_peers` | Scrape-only (read PeerMap) |
+| **P2P** | `momo_swim_alive_count`, `momo_swim_suspect_count`, `momo_swim_offline_count` | Scrape-only (read SWIM state) |
+| **P2P** | `momo_swim_ping_latency_seconds` | Scrape-only (read EWMA) |
+| **Leases** | `momo_leases_active` | Scrape-only (read LeaseManager) |
+| **Scatter/Gather** | `momo_scatter_queries_total`, `momo_scatter_timeout_total` | ~5ns per query (atomic) |
+| **Latency** | `momo_request_latency_seconds{operation}` | ~40ns per request (opt-in, config-gated) |
+| **Latency** | `momo_replication_latency_seconds` | ~40ns per op (opt-in, config-gated) |
+
+The only phase 2-4 metric not yet implemented is `momo_lease_contentions_total`.
 
 **Design principle:** All Phase 2-4 metrics maintain the zero-overhead guarantee — counters use `sync/atomic` (~5ns), gauges are read at scrape time only, and histograms are opt-in via `enable_latency_histograms` config flag (default: false).

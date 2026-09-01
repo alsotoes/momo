@@ -99,6 +99,7 @@ type fsyncBarrier struct {
 	ops DurabilityOps
 }
 
+// Commit fsyncs the blob's file before acknowledging the write (durable default).
 func (b *fsyncBarrier) Commit(hash string) error {
 	if b.ops == nil {
 		return nil // backend persistence is the bar
@@ -113,6 +114,7 @@ func (b *fsyncBarrier) Commit(hash string) error {
 // Explicitly non-durable: a crash may lose acknowledged writes.
 type noDurabilityBarrier struct{}
 
+// Commit acknowledges buffered writes without fsync (non-durable mode).
 func (noDurabilityBarrier) Commit(string) error { return nil }
 
 // groupCommitBarrier covers a batch of renamed blobs with a single winner-

@@ -15,7 +15,9 @@ import (
 // SystemMetrics defines an interface for getting system metrics.
 // This allows for mocking in tests.
 type SystemMetrics interface {
+	// VirtualMemory returns the virtual memory statistics.
 	VirtualMemory() (*mem.VirtualMemoryStat, error)
+	// CPUPercent returns the CPU usage percentage.
 	CPUPercent() ([]float64, error)
 }
 

@@ -233,10 +233,10 @@ consistency model, both enforced in the storage core and documented here.
   appear in the mount under synthetic directories, and mount-created files are
   visible store objects. Zero TTL means manifests are re-read fresh on every
   op (read-your-writes; remounts see committed state, R4-C4).
-- The **FUSE/syscall transport** (`bazil.org/fuse` binding, `momo fs mount`,
-  mmap/posix-locks surface, CI mount-e2e) is the separable adapter — the
-  documented follow-up to this core, matching the R2 `RebuildSource` /
-  R3 barrier transport pattern.
+- The **FUSE/syscall transport** (`bazil.org/fuse` binding, CLI flags `-imp fs`
+  and `-fs-mount`, CI mount-e2e) is implemented (`src/momofs/fuse.go`, R4 #963).
+  The mmap/posix-locks advisory surface remains a documented follow-up,
+  matching the R2 `RebuildSource` / R3 barrier transport pattern.
 
 ### 5. Automated Governance & AI Reviewer
 To maintain high integrity in a single-contributor environment, Momo employs an automated governance layer:
@@ -250,7 +250,7 @@ The system is backed by a multi-stage automated testing pipeline:
 - **Integrity Checks**: Every test suite verifies data consistency and metadata accuracy across all participating nodes.
 - **Contract Tests**: Wire protocol contract tests verify handshake framing (84 bytes), metadata framing (192 bytes), round-trip integrity, and RPC framing.
 - **Prometheus Metrics E2E**: Automated test starts a node, uploads a file, scrapes `/metrics`, and verifies Prometheus format + counter increments.
-- **Security Pentest**: DotDotPwn fuzzing (5526 traversal patterns) + Python exploit toolkit against S3 and native TCP protocols. 9 CVEs found (1 critical, 4 high, 3 medium, 1 low). See [pentest/README.md](../pentest/README.md).
+- **Security Pentest**: DotDotPwn fuzzing (5526 traversal patterns) + Python exploit toolkit against S3 and native TCP protocols. 10 CVEs found (1 critical, 5 high, 3 medium, 1 low). See [pentest/README.md](../pentest/README.md).
 
 ### 7. Observability (Prometheus Metrics Exporter)
 Momo includes a built-in Prometheus metrics exporter (`src/server/metrics_exporter.go`) that runs as a separate goroutine on a configurable port. No external dependencies — all counters use `sync/atomic` on integer types.
@@ -261,7 +261,7 @@ Momo includes a built-in Prometheus metrics exporter (`src/server/metrics_export
 - `MetricsCollector` is also used directly in `server.go` for connection, upload, replication, and error counters on the main request path.
 - Runtime gauges (goroutines, memory, GC runs) are computed only at scrape time via `runtime.ReadMemStats` — zero per-request overhead.
 
-**Currently exported metrics (15):**
+**Currently exported metrics (34 families):**
 
 | Metric | Type | Description |
 |---|---|---|
@@ -281,17 +281,22 @@ Momo includes a built-in Prometheus metrics exporter (`src/server/metrics_export
 | `momo_gc_runs_total` | counter | Total GC runs |
 | `momo_build_info{hostname}` | gauge | Build info with hostname label |
 
-**Metrics not yet implemented (planned for Phase 2-4):**
+**R5 storage/CAS/P2P/cluster metrics (phases 2-4, all implemented in `metrics_exporter.go`):**
 
-| Category | Metrics | Phase | Priority |
-|---|---|---|---|
-| **Storage** | `momo_disk_used_bytes`, `momo_disk_free_bytes`, `momo_blob_count`, `momo_stored_bytes_total` | 2 | High |
-| **CAS** | `momo_dedup_hits_total`, `momo_cas_gc_runs_total`, `momo_cas_gc_evicted_bytes` | 2 | Medium |
-| **Replication** | `momo_replication_bytes_total`, `momo_replication_failures_total`, `momo_replication_latency_seconds` | 3 | High |
-| **P2P** | `momo_cluster_peers`, `momo_swim_alive_count`, `momo_swim_suspect_count`, `momo_swim_ping_latency_seconds` | 3 | Medium |
-| **Leases** | `momo_leases_active`, `momo_lease_contentions_total` | 3 | Low |
-| **Scatter/Gather** | `momo_scatter_queries_total`, `momo_scatter_timeout_total` | 3 | Low |
-| **Latency Histograms** | `momo_request_latency_seconds{operation}`, `momo_replication_latency_seconds` | 4 | Medium (opt-in) |
+| Category | Metrics | Type |
+|---|---|---|
+| **Storage** | `momo_disk_used_bytes`, `momo_disk_free_bytes` (Statfs), `momo_blob_count`, `momo_stored_bytes_total` | gauge |
+| **CAS** | `momo_dedup_hits_total`, `momo_cas_gc_runs_total`, `momo_cas_gc_evicted_bytes` | counter |
+| **Replication** | `momo_replication_bytes_total`, `momo_replication_failures_total`, `momo_replication_latency_seconds` (opt-in histogram) | counter / histogram |
+| **P2P** | `momo_cluster_peers`, `momo_swim_alive_count`, `momo_swim_suspect_count`, `momo_swim_offline_count`, `momo_swim_ping_latency_seconds` (mean EWMA RTT) | gauge |
+| **Leases** | `momo_leases_active` | gauge |
+| **Scatter/Gather** | `momo_scatter_queries_total`, `momo_scatter_timeout_total` | counter |
+| **Latency Histograms** | `momo_request_latency_seconds{operation}` (upload/download/delete/list), `momo_replication_latency_seconds` | opt-in histogram |
+
+The only phase 2-4 metric not yet implemented is `momo_lease_contentions_total`.
+Latency histograms are gated behind `enable_latency_histograms = true` in the
+`[metrics]` section and add zero overhead when disabled (no `time.Now()` /
+bucket increments on the hot path).
 
 **Configuration:** Add `prometheus_port = 9100` to the `[metrics]` section of `momo.conf`. Set to `0` or omit to disable. The metrics server runs on a separate port from the data plane — it does not share the accept loop, connection pool, or semaphore with the main daemon.
 

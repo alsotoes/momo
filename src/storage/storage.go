@@ -68,16 +68,23 @@ func decodeObjectMeta(val []byte) (ObjectMeta, error) {
 // Store defines the interface for object storage operations.
 type Store interface {
 	io.Closer
+	// Put stores a blob and its metadata (name, hash, size, remote path) under
+	// the given name, reading the content from the provided reader.
 	Put(name string, hash string, size int64, remotePath string, content io.Reader) error
+	// Get retrieves the blob content stream and metadata for the given name.
 	Get(name string) (io.ReadCloser, common.FileMetadata, error)
 	// GetMeta returns file metadata without opening the content stream. Query
 	// paths that only need metadata (e.g. scatter-gather QueryGet) must use this
 	// to avoid an unnecessary stream open on large blobs or remote S3 backends
 	// (issue #660).
 	GetMeta(name string) (common.FileMetadata, error)
+	// Has reports whether a blob with the given content hash is already stored.
 	Has(hash string) (bool, error)
+	// GetHashForName returns the content hash recorded for the given name.
 	GetHashForName(name string) (string, error)
+	// Delete removes the blob and its metadata for the given name.
 	Delete(name string) error
+	// List returns metadata for all stored objects.
 	List() ([]common.FileMetadata, error)
 }
 
@@ -202,6 +209,8 @@ func newCASStore(dataDir string, blobs BlobStore, opts ...func(*CASStore)) (*CAS
 	return s, nil
 }
 
+// Close shuts down the store, waiting for background GC, scrub, and rebuild
+// goroutines to finish. It is idempotent: repeated calls are safe.
 func (s *CASStore) Close() error {
 	s.closeOnce.Do(func() {
 		if s.gcDone != nil {
@@ -594,6 +603,8 @@ func (s *CASStore) GetHashForName(name string) (hash string, err error) {
 	return
 }
 
+// Delete removes the object named name from the store. Panics are recovered
+// and surfaced as EIO errors (zero-crash guarantee).
 func (s *CASStore) Delete(name string) (err error) {
 	// 🛡️ Zero-Crash: Recover from any unexpected panics.
 	defer func() {
@@ -761,6 +772,8 @@ func (s *CASStore) List() (list []common.FileMetadata, err error) {
 	return list, err
 }
 
+// GetBlobPath resolves the on-disk path of the blob for the given name.
+// Panics are recovered and surfaced as EIO errors (zero-crash guarantee).
 func (s *CASStore) GetBlobPath(name string) (path string, err error) {
 	// 🛡️ Zero-Crash: Recover from any unexpected panics.
 	defer func() {

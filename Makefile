@@ -24,9 +24,15 @@ doc:
 	godoc -http=:6060 & \
 	while ! nc -z localhost 6060; do sleep 1; done; \
 	curl -s http://localhost:6060/pkg/github.com/alsotoes/momo/ > $(HTML_DOCS)/index.html; \
-	curl -s http://localhost:6060/pkg/github.com/alsotoes/momo/common/ > $(HTML_DOCS)/common.html; \
-	curl -s http://localhost:6060/pkg/github.com/alsotoes/momo/metrics/ > $(HTML_DOCS)/metrics.html; \
-	curl -s http://localhost:6060/pkg/github.com/alsotoes/momo/server/ > $(HTML_DOCS)/server.html; \
+	curl -s http://localhost:6060/pkg/github.com/alsotoes/momo/src/client/ > $(HTML_DOCS)/client.html; \
+	curl -s http://localhost:6060/pkg/github.com/alsotoes/momo/src/common/ > $(HTML_DOCS)/common.html; \
+	curl -s http://localhost:6060/pkg/github.com/alsotoes/momo/src/crypto/ > $(HTML_DOCS)/crypto.html; \
+	curl -s http://localhost:6060/pkg/github.com/alsotoes/momo/src/metrics/ > $(HTML_DOCS)/metrics.html; \
+	curl -s http://localhost:6060/pkg/github.com/alsotoes/momo/src/momofs/ > $(HTML_DOCS)/momofs.html; \
+	curl -s http://localhost:6060/pkg/github.com/alsotoes/momo/src/p2p/ > $(HTML_DOCS)/p2p.html; \
+	curl -s http://localhost:6060/pkg/github.com/alsotoes/momo/src/server/ > $(HTML_DOCS)/server.html; \
+	curl -s http://localhost:6060/pkg/github.com/alsotoes/momo/src/storage/ > $(HTML_DOCS)/storage.html; \
+	curl -s http://localhost:6060/pkg/github.com/alsotoes/momo/src/transport/ > $(HTML_DOCS)/transport.html; \
 	pkill godoc
 
 fmt:

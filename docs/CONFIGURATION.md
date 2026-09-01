@@ -17,7 +17,7 @@ The configuration file uses a standard INI-style format. The parser is flexible 
 This section contains cluster-wide settings that affect all daemons.
 
 -   **`auth_token`**
-    -   **Description:** A shared secret token used for authentication between clients and servers. All nodes in the cluster must share the same token. For S3-compatible protocols, this token is used as the AWS access key ID unless `s3_server_access_key`/`s3_server_secret_key` are configured (issue #656). Tokens longer than 64 bytes are rejected with `EINVAL` at startup. On the plaintext (non-challenge-response) native handshake, the client sends a UnixNano timestamp that the server validates within ±15 minutes to block replayed handshakes (issue #657).
+    -   **Description:** A shared secret token used for authentication between clients and servers. All nodes in the cluster must share the same token. For S3-compatible protocols, this token is used as the AWS access key ID unless `s3_server_access_key`/`s3_server_secret_key` are configured (issue #656). Tokens longer than 64 bytes are rejected at startup. On the plaintext (non-challenge-response) native handshake, the client sends a UnixNano timestamp that the server validates within ±15 minutes to block replayed handshakes (issue #657).
     -   **Type:** String (exactly 64 bytes when null-padded; max 64 bytes)
     -   **Default:** None (required)
     -   **Example:** `a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6` <!-- notsecret -->
@@ -121,7 +121,7 @@ This section contains cluster-wide settings that affect all daemons.
     -   **Default:** `default`
 
 -   **`oprf_enabled`**
-    -   **Description:** Enables **confidential dedup via a threshold Oblivious PRF (OPRF)**. When enabled, the client derives each file's content key from the plaintext dedup tag (`SHA-256(plaintext)`) through a threshold OPRF evaluated over a quorum of daemons. Identical plaintexts deduplicate to a single blob under `H(plaintext)` across tenants, while no single daemon can derive the content key offline because the OPRF secret is Shamir-split across the cluster. Content is still encrypted with AES-GCM-256 end-to-end. Requires `encryption_enabled = true`, an `oprf_share` (and optionally `oprf_share_index`) on **every** `[daemon.N]` section, and `[p2p]` enabled when `oprf_threshold > 1`. The operation fails closed (no convergent fallback) when fewer than `oprf_threshold` daemons respond.
+    -   **Description:** Enables **confidential dedup via a threshold Oblivious PRF (OPRF)**. When enabled, the client derives each file's content key from the plaintext dedup tag (`SHA-256(plaintext)`) through a threshold OPRF evaluated over a quorum of daemons. Identical plaintexts deduplicate to a single blob under `H(plaintext)` across tenants, while no single daemon can derive the content key offline because the OPRF secret is Shamir-split across the cluster. Content is still encrypted with AES-GCM-256 end-to-end. Designed to be used with `encryption_enabled = true` (the pairing is **not** enforced at config load — an OPRF-enabled client configured without encryption silently proceeds unencrypted rather than failing closed), and requires an `oprf_share` (and optionally `oprf_share_index`) on **every** `[daemon.N]` section, plus `[p2p]` enabled when `oprf_threshold > 1`. The operation fails closed (no convergent fallback) when fewer than `oprf_threshold` daemons respond.
     -   **Protocol availability:** OPRF confidential dedup is primarily a **native** capability: the native protocols (`momo-tcp`, `momo-quic`) perform the binary `ModeOPRFEval` (`'O'`) handshake, and a momo client with `oprf_enabled = true` dials a native transport for evaluation. The S3 gateway (`s3-tcp`, `s3-quic`) additionally exposes an RPC mirror of the evaluation at `POST /?momo-oprf-eval` (same wire layout, driven by `S3Communicator.SendOPRFEval`) so a config that sets `protocol` to an S3 value still functions; this mirror is **not a designed parity surface** — standard S3-ecosystem clients cannot perform OPRF. Requires `[p2p]` enabled when `oprf_threshold > 1` (peers evaluate their Shamir shares via P2P). A client that cannot perform OPRF evaluation (e.g. a stock `aws-cli` upload with `oprf_enabled`) still fails closed rather than silently falling back to a determinable content key.
     -   **Type:** Boolean (`true` or `false`)
     -   **Default:** `false` (must be set explicitly; not inferred from `encryption_enabled`)
@@ -130,6 +130,11 @@ This section contains cluster-wide settings that affect all daemons.
     -   **Description:** The minimum number of distinct daemon OPRF share evaluations required to derive a content key. Must satisfy `1 <= oprf_threshold <= len(daemons)`. Values greater than `1` require the P2P transport to gather peer evaluations.
     -   **Type:** Integer
     -   **Default:** number of configured daemons (all)
+
+-   **`write_quorum`**
+    -   **Description:** The minimum number of **durable** replicas required before a write is acknowledged (R3-C2, #931). Default `1`; must be within `[1, replication_factor]` (validated at load). A write that cannot reach `write_quorum` durable replicas fails instead of silently acknowledging. The metrics controller's `minimum_durability_factor` floor (issue #822) is honored beneath it: the controller never selects a mode whose achievable durable replicas fall below the quorum.
+    -   **Type:** Integer
+    -   **Default:** `1`
 
 ### [metrics] (required)
 
@@ -401,11 +406,6 @@ This section controls the Content-Addressable Storage (CAS) engine, including ba
     -   **Type:** String (`fsync` | `group-commit` | `none`)
     -   **Default:** `fsync` (empty config value also means `fsync`)
     -   **Invalid values:** rejected at config load (`EINVAL`)
-
--   **`write_quorum`**
-    -   **Description:** The minimum number of **durable** replicas required before a write is acknowledged (R3-C2, #931). Default `1`; must be within `[1, replication_factor]` (validated at load). A write that cannot reach `write_quorum` durable replicas fails instead of silently acknowledging. The metrics controller's `minimum_durability_factor` floor (issue #822) is honored beneath it: the controller never selects a mode whose achievable durable replicas fall below the quorum.
-    -   **Type:** Integer
-    -   **Default:** `1`
 
 -   **`s3_endpoint`**
     -   **Description:** S3-compatible API endpoint URL (e.g., `https://s3.amazonaws.com`). Only used when `backend = s3`.

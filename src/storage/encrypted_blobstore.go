@@ -179,6 +179,8 @@ type ctxReader struct {
 	r   io.Reader
 }
 
+// Read reads from the wrapped reader, aborting with ctx.Err when the
+// context is cancelled first.
 func (c ctxReader) Read(p []byte) (int, error) {
 	select {
 	case <-c.ctx.Done():

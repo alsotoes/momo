@@ -44,6 +44,8 @@ func newVerifyingReader(src io.Reader, expected string) *verifyingReader {
 	return &verifyingReader{src: src, h: sha256.New(), expected: expected}
 }
 
+// Read streams bytes while computing the running SHA-256, verifying the full
+// digest against the expected value at EOF.
 func (v *verifyingReader) Read(p []byte) (int, error) {
 	if v.corrupt != nil {
 		return 0, v.corrupt
@@ -78,6 +80,7 @@ type verifyingReadCloser struct {
 	underlying io.Closer
 }
 
+// Close forwards the close to the underlying stream.
 func (v *verifyingReadCloser) Close() error { return v.underlying.Close() }
 
 // ScrubConfig configures the background integrity scrub.

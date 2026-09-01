@@ -14,6 +14,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// Cipher parameters for AES-256-GCM.
 const (
 	KeySize       = 32
 	NonceSize     = 12
@@ -31,6 +32,7 @@ var (
 	DomainOPRF    = []byte("momo/oprf")
 )
 
+// Sentinel errors returned by the cipher operations.
 var (
 	ErrInvalidKeySize     = errors.New("crypto: key must be 32 bytes")
 	ErrInvalidNonceSize   = errors.New("crypto: nonce must be 12 bytes")
@@ -39,6 +41,7 @@ var (
 	ErrInvalidHexKey      = errors.New("crypto: encryption_key must be 64 hex characters (256-bit)")
 )
 
+// Cipher wraps an AES-256-GCM AEAD with a configurable stream chunk size.
 type Cipher struct {
 	aead cipher.AEAD
 	// chunkSize is the plaintext chunk length used by EncryptStream. It
@@ -47,6 +50,7 @@ type Cipher struct {
 	chunkSize int
 }
 
+// NewCipher creates an AES-256-GCM cipher from a 32-byte key.
 func NewCipher(key []byte) (*Cipher, error) {
 	if len(key) != KeySize {
 		return nil, ErrInvalidKeySize
@@ -77,6 +81,7 @@ func (c *Cipher) SetStreamChunkSize(n int) error {
 	return nil
 }
 
+// NewCipherFromHex decodes a 64-hex-character key and creates a Cipher from it.
 func NewCipherFromHex(hexKey string) (*Cipher, error) {
 	if len(hexKey) != MaxKeyHexSize {
 		return nil, ErrInvalidHexKey
@@ -90,6 +95,8 @@ func NewCipherFromHex(hexKey string) (*Cipher, error) {
 	return NewCipher(key)
 }
 
+// Encrypt seals plaintext with a fresh random nonce and returns
+// nonce||ciphertext||tag.
 func (c *Cipher) Encrypt(plaintext []byte) ([]byte, error) {
 	nonce := make([]byte, NonceSize)
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
@@ -100,6 +107,8 @@ func (c *Cipher) Encrypt(plaintext []byte) ([]byte, error) {
 	return ciphertext, nil
 }
 
+// Decrypt opens nonce||ciphertext||tag and returns the plaintext, or
+// ErrTampered when authentication fails.
 func (c *Cipher) Decrypt(ciphertext []byte) ([]byte, error) {
 	if len(ciphertext) < NonceSize+TagSize {
 		return nil, ErrCiphertextTooShort
@@ -116,6 +125,7 @@ func (c *Cipher) Decrypt(ciphertext []byte) ([]byte, error) {
 	return plaintext, nil
 }
 
+// GenerateKey returns a fresh random 256-bit key.
 func GenerateKey() ([]byte, error) {
 	key := make([]byte, KeySize)
 	if _, err := io.ReadFull(rand.Reader, key); err != nil {
@@ -124,6 +134,8 @@ func GenerateKey() ([]byte, error) {
 	return key, nil
 }
 
+// DeriveKey derives a domain-separated key from the master key using
+// HKDF-SHA256, scoped to the given tenant and context.
 func DeriveKey(masterKey []byte, tenant string, context []byte) ([]byte, error) {
 	if len(masterKey) != KeySize {
 		return nil, ErrInvalidKeySize

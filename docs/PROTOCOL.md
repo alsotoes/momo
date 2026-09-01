@@ -208,7 +208,7 @@ The file payload is streamed until EOF. The server reads exactly the number of b
 
 ### Limits
 
-- **MaxFileSize:** 1 GB (`1024 * 1024 * 1024` bytes). The server rejects oversized/negative `fileSize` values (checked at `server.go:432`), logs an audit line, and closes the connection. The failure maps to `EBADMSG` for POSIX compliance when surfaced as an error, but is not transmitted as a wire error — the client sees the connection close.
+- **MaxFileSize:** 1 GB (`1024 * 1024 * 1024` bytes). The server rejects oversized/negative `fileSize` values (checked at `server.go:462`), logs an audit line, and closes the connection. The failure maps to `EBADMSG` for POSIX compliance when surfaced as an error, but is not transmitted as a wire error — the client sees the connection close.
 - **MaxPathLength:** 4096 bytes. Virtual paths exceeding this limit are rejected with `EBADMSG` in `DecodeFileMetadataList`.
 - **FileInfoLength:** 64 bytes. Hash and name fields exceeding this length are rejected with `EBADMSG` in `DecodeFileMetadataList`.
 - **Fixed-length padding:** Wire fields padded via `common.PadString` (auth tokens, timestamps, hashes, names) must never exceed their fixed byte width. `PadString` **panics** on overlong input instead of silently truncating (recovered at caller boundaries per Rule 37), so an overlong value that slips past validation surfaces as a `syscall.EIO` failure rather than corrupting the stream.

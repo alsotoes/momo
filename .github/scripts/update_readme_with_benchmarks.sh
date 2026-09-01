@@ -88,7 +88,7 @@ CONTENT_FILE=$(mktemp)
 cat <<EOF > "$CONTENT_FILE"
 ## Performance
 
-This section is automatically updated by our GitHub Actions workflow.
+This section is automatically updated by the pre-commit hook (via .github/scripts/update_readme_with_benchmarks.sh).
 
 ### Comparison with previous commit
 

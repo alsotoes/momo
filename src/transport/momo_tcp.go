@@ -68,6 +68,8 @@ func (m *MomoTCPCommunicator) SetChallengeResponse(enabled bool) {
 	m.useChallengeResp = enabled
 }
 
+// SetStore attaches the storage backend used for server-side operations
+// (OPRF evaluation, metadata lookups).
 func (m *MomoTCPCommunicator) SetStore(store storage.Store) {
 	m.store = store
 }
@@ -192,6 +194,8 @@ func (m *MomoTCPCommunicator) SendOPRFEval(authToken string, timestamp int64, bl
 	return results, nil
 }
 
+// SetAbsoluteDeadline sets a hard deadline for all subsequent operations
+// on the connection.
 func (m *MomoTCPCommunicator) SetAbsoluteDeadline(t interface{}) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -207,6 +211,8 @@ func (m *MomoTCPCommunicator) SetAbsoluteDeadline(t interface{}) (err error) {
 	return nil
 }
 
+// HandshakeClient performs the client-side handshake: sends AuthToken +
+// Timestamp + RequestedMode and receives the confirmed replication mode.
 func (m *MomoTCPCommunicator) HandshakeClient(authToken string, timestamp int64, requestedMode int) (mode int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -268,6 +274,8 @@ func (m *MomoTCPCommunicator) HandshakeClient(authToken string, timestamp int64,
 	return int(replicationModeInt64), nil
 }
 
+// HandshakeServer performs the server-side handshake: receives and validates
+// the client credentials, returning the requested mode and timestamp.
 func (m *MomoTCPCommunicator) HandshakeServer(expectedAuthToken []byte) (requestedMode int, timestamp int64, err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -667,6 +675,8 @@ func (m *MomoTCPCommunicator) SendReplicationMode(mode int) (err error) {
 	return nil
 }
 
+// SendMetadata writes file metadata (hash, name, size) and returns the
+// server's status (send payload or skip).
 func (m *MomoTCPCommunicator) SendMetadata(meta *common.FileMetadata) (status int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -718,6 +728,7 @@ func (m *MomoTCPCommunicator) SendMetadata(meta *common.FileMetadata) (status in
 	return int(statusBuf[0]), nil
 }
 
+// ReceiveMetadata reads file metadata sent by the peer.
 func (m *MomoTCPCommunicator) ReceiveMetadata() (meta common.FileMetadata, err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -780,6 +791,7 @@ func (m *MomoTCPCommunicator) SendMetadataStatus(status int) (err error) {
 	return nil
 }
 
+// SendACK sends a server acknowledgment to the client.
 func (m *MomoTCPCommunicator) SendACK(serverId int) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -807,6 +819,7 @@ func (m *MomoTCPCommunicator) SendACK(serverId int) (err error) {
 	return nil
 }
 
+// ReceiveACK waits for the server's acknowledgment.
 func (m *MomoTCPCommunicator) ReceiveACK() (err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -827,10 +840,14 @@ func (m *MomoTCPCommunicator) ReceiveACK() (err error) {
 	return nil
 }
 
+// IsExternalClient reports whether the connection is from an external S3
+// client rather than a momo-aware peer.
 func (m *MomoTCPCommunicator) IsExternalClient() bool {
 	return false
 }
 
+// IsPeer reports whether the connection was authenticated with the derived
+// peer token (Secondary role) rather than the client auth token.
 func (m *MomoTCPCommunicator) IsPeer() bool {
 	return m.isPeer
 }
