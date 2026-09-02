@@ -117,7 +117,7 @@ The prior custom FUSE wire protocol embedded in `src/momofs/fuse.go` **SHALL** b
 ## Changed Files
 
 - `src/momofs/fuse.go` — replaced with `go-fuse/v2` adapter (22 callbacks mapped)
-- `src/momofs/config.go` — `consistency` field deprecated, emits AUDIT if set
+- `src/common/config.go` + `src/common/struct.go` — `[momofs]` section with deprecated `consistency` field, emits AUDIT when `cached`
 - `src/momofs/daemon.go` — injection of `go-fuse/v2` Filesystem interface
 - `openspec/changes/add-fuse-implementation/` — this specification
 

@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"bazil.org/fuse"
-	"bazil.org/fuse/fs"
+	"github.com/hanwen/go-fuse/v2/fs"
+	"github.com/hanwen/go-fuse/v2/fuse"
 
 	"github.com/alsotoes/momo/src/storage"
 	"go.uber.org/goleak"
@@ -24,15 +24,19 @@ func errorsIsENOENT(err error) bool {
 }
 
 // newTestRoot builds a fuseRoot over a fresh local CAS store backed by a
-// temp dir, mirroring newTestFS from momofs_test.go.
-func newTestRoot(t *testing.T, opts ...Option) (*fuseRoot, *storage.CASStore) {
+// temp dir, mirroring newTestFS from momofs_test.go. The root inode is wired
+// to a go-fuse bridge via NewNodeFS (no mount required) so node-level tests
+// can exercise Lookup/Create/Readdir without /dev/fuse.
+func newTestRoot(t *testing.T, opts ...Option) (*fuseDir, *storage.CASStore) {
 	t.Helper()
 	s, err := storage.NewCASStore(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewCASStore: %v", err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
-	return newFuseRoot(New(s, opts...)), s
+	root := newFuseRoot(New(s, opts...))
+	fs.NewNodeFS(root, &fs.Options{})
+	return root, s
 }
 
 func TestFuseUnit_LookupCreateReadWriteFlush(t *testing.T) {
@@ -42,51 +46,50 @@ func TestFuseUnit_LookupCreateReadWriteFlush(t *testing.T) {
 	ctx := context.Background()
 
 	// Root resolves as a directory.
-	_, err := root.Lookup(ctx, "docs")
-	if got := err; !errorsIsENOENT(got) {
-		t.Fatalf("missing entry: want ENOENT, got %v", err)
+	var out fuse.EntryOut
+	if _, errno := root.Lookup(ctx, "docs", &out); errno != syscall.ENOENT {
+		t.Fatalf("missing entry: want ENOENT, got %v", errno)
 	}
 
 	// mkdir via node interface.
-	d, err := root.Mkdir(ctx, &fuse.MkdirRequest{Name: "docs", Mode: 0o755})
-	if err != nil {
-		t.Fatalf("Mkdir: %v", err)
+	var mout fuse.EntryOut
+	d, errno := root.Mkdir(ctx, "docs", 0o755, &mout)
+	if errno != 0 {
+		t.Fatalf("Mkdir: %v", errno)
 	}
-	ddir := d.(*fuseDir)
+	ddir := d.Operations().(*fuseDir)
 	if ddir.path != "/docs" {
 		t.Fatalf("dir path = %q, want /docs", ddir.path)
 	}
 
 	// create a file, return node+handle.
-	fileNode, handle, err := ddir.Create(ctx, &fuse.CreateRequest{Name: "note.txt", Mode: 0o640}, &fuse.CreateResponse{})
-	if err != nil {
-		t.Fatalf("Create: %v", err)
+	var cout fuse.EntryOut
+	fnode, handle, _, errno := ddir.Create(ctx, "note.txt", 0, 0o640, &cout)
+	if errno != 0 {
+		t.Fatalf("Create: %v", errno)
 	}
-	_ = fileNode
+	_ = fnode
 	h := handle.(*fuseFileHandle)
 	if h.path != "/docs/note.txt" {
 		t.Fatalf("file handle path = %q, want /docs/note.txt", h.path)
 	}
 
 	// write a couple of chunks, then read them back from the handle buffer.
-	w := &fuse.WriteRequest{Offset: 0, Data: []byte("hello ")}
-	rsp := &fuse.WriteResponse{}
-	if err := h.Write(ctx, w, rsp); err != nil {
-		t.Fatalf("Write: %v", err)
+	if _, errno := h.Write(ctx, []byte("hello "), 0); errno != 0 {
+		t.Fatalf("Write: %v", errno)
 	}
-	w2 := &fuse.WriteRequest{Offset: 6, Data: []byte("momofs!")}
-	if err := h.Write(ctx, w2, rsp); err != nil {
-		t.Fatalf("Write2: %v", err)
+	if _, errno := h.Write(ctx, []byte("momofs!"), 6); errno != 0 {
+		t.Fatalf("Write2: %v", errno)
 	}
 
 	// Flush materializes the whole file as one CAS blob.
-	if err := h.Flush(ctx, nil); err != nil {
-		t.Fatalf("Flush: %v", err)
+	if errno := h.Flush(ctx); errno != 0 {
+		t.Fatalf("Flush: %v", errno)
 	}
 
 	// Store now holds exactly one object for the file.
 	buf := make([]byte, 64)
-	n, err := root.fs.ReadAt("/docs/note.txt", 0, buf)
+	n, err := root.root.core.ReadAt("/docs/note.txt", 0, buf)
 	if err != nil && err != io.EOF {
 		t.Fatalf("ReadAt: %v", err)
 	}
@@ -96,7 +99,7 @@ func TestFuseUnit_LookupCreateReadWriteFlush(t *testing.T) {
 	}
 
 	// Attr reflects file size + mode.
-	fa, err := root.fs.GetAttr("/docs/note.txt")
+	fa, err := root.root.core.GetAttr("/docs/note.txt")
 	if err != nil {
 		t.Fatalf("GetAttr: %v", err)
 	}
@@ -108,15 +111,19 @@ func TestFuseUnit_LookupCreateReadWriteFlush(t *testing.T) {
 	}
 
 	// ReadDir lists both dot entries plus the file.
-	dh := &fuseDirHandle{root: root, path: "/docs"}
-	ents, err := dh.ReadDirAll(ctx)
-	if err != nil {
-		t.Fatalf("ReadDirAll: %v", err)
+	stream, errno := ddir.Readdir(ctx)
+	if errno != 0 {
+		t.Fatalf("Readdir: %v", errno)
 	}
 	var names []string
-	for _, e := range ents {
-		names = append(names, e.Name)
+	for stream.HasNext() {
+		de, e2 := stream.Next()
+		if e2 != 0 {
+			t.Fatalf("Readdir Next: %v", e2)
+		}
+		names = append(names, de.Name)
 	}
+	stream.Close()
 	joined := strings.Join(names, ",")
 	for _, want := range []string{".", "..", "note.txt"} {
 		if !strings.Contains(joined, want) {
@@ -131,54 +138,57 @@ func TestFuseUnit_RemoveRenameLink(t *testing.T) {
 	ctx := context.Background()
 
 	// mkdir /d, create /d/a.txt
-	d, err := root.Mkdir(ctx, &fuse.MkdirRequest{Name: "d", Mode: 0o755})
-	if err != nil {
-		t.Fatalf("Mkdir: %v", err)
+	var mout fuse.EntryOut
+	d, errno := root.Mkdir(ctx, "d", 0o755, &mout)
+	if errno != 0 {
+		t.Fatalf("Mkdir: %v", errno)
 	}
-	ddir := d.(*fuseDir)
-	_, h, err := ddir.Create(ctx, &fuse.CreateRequest{Name: "a.txt", Mode: 0o644}, &fuse.CreateResponse{})
-	if err != nil {
-		t.Fatalf("Create: %v", err)
+	ddir := d.Operations().(*fuseDir)
+	var cout fuse.EntryOut
+	_, handle, _, errno := ddir.Create(ctx, "a.txt", 0, 0o644, &cout)
+	if errno != 0 {
+		t.Fatalf("Create: %v", errno)
 	}
-	if err := h.(*fuseFileHandle).Write(ctx, &fuse.WriteRequest{Offset: 0, Data: []byte("aaa")}, &fuse.WriteResponse{}); err != nil {
-		t.Fatalf("Write: %v", err)
+	if _, errno := handle.(*fuseFileHandle).Write(ctx, []byte("aaa"), 0); errno != 0 {
+		t.Fatalf("Write: %v", errno)
 	}
-	if err := h.(*fuseFileHandle).Flush(ctx, nil); err != nil {
-		t.Fatalf("Flush: %v", err)
+	if errno := handle.(*fuseFileHandle).Flush(ctx); errno != 0 {
+		t.Fatalf("Flush: %v", errno)
 	}
 
 	// rename /d/a.txt -> /d/b.txt
-	if err := ddir.Rename(ctx, &fuse.RenameRequest{OldName: "a.txt", NewName: "b.txt"}, ddir); err != nil {
-		t.Fatalf("Rename: %v", err)
+	if errno := ddir.Rename(ctx, "a.txt", ddir, "b.txt", 0); errno != 0 {
+		t.Fatalf("Rename: %v", errno)
 	}
-	if _, err := root.fs.Lookup("/d/a.txt"); !errorsIsENOENT(err) {
+	if _, err := root.root.core.Lookup("/d/a.txt"); !errorsIsENOENT(err) {
 		t.Fatalf("old name should be gone, got %v", err)
 	}
-	if _, err := root.fs.Lookup("/d/b.txt"); err != nil {
+	if _, err := root.root.core.Lookup("/d/b.txt"); err != nil {
 		t.Fatalf("new name missing: %v", err)
 	}
 
 	// hardlink /d/b.txt -> /d/c.txt
-	fnode, err := root.nodeFor("/d/b.txt")
-	if err != nil {
-		t.Fatalf("nodeFor b.txt: %v", err)
+	var lout fuse.EntryOut
+	fnode, errno := root.root.nodeFor(ctx, &ddir.Inode, "/d/b.txt", fuse.S_IFREG)
+	if errno != 0 {
+		t.Fatalf("nodeFor b.txt: %v", errno)
 	}
-	if _, err := ddir.Link(ctx, &fuse.LinkRequest{NewName: "c.txt"}, fnode); err != nil {
-		t.Fatalf("Link: %v", err)
+	if _, errno := ddir.Link(ctx, fnode, "c.txt", &lout); errno != 0 {
+		t.Fatalf("Link: %v", errno)
 	}
 	// both link names resolve to the same content
 	bbuf, ccbuf := make([]byte, 16), make([]byte, 16)
-	bn, _ := root.fs.ReadAt("/d/b.txt", 0, bbuf)
-	cn, _ := root.fs.ReadAt("/d/c.txt", 0, ccbuf)
+	bn, _ := root.root.core.ReadAt("/d/b.txt", 0, bbuf)
+	cn, _ := root.root.core.ReadAt("/d/c.txt", 0, ccbuf)
 	if string(bbuf[:bn]) != string(ccbuf[:cn]) {
 		t.Fatalf("link contents differ: %q vs %q", bbuf[:bn], ccbuf[:cn])
 	}
 
 	// unlink
-	if err := ddir.Remove(ctx, &fuse.RemoveRequest{Name: "b.txt"}); err != nil {
-		t.Fatalf("Remove: %v", err)
+	if errno := ddir.Unlink(ctx, "b.txt"); errno != 0 {
+		t.Fatalf("Unlink: %v", errno)
 	}
-	if _, err := root.fs.Lookup("/d/b.txt"); !errorsIsENOENT(err) {
+	if _, err := root.root.core.Lookup("/d/b.txt"); !errorsIsENOENT(err) {
 		t.Fatalf("unlinked name should be gone, got %v", err)
 	}
 }
@@ -188,20 +198,20 @@ func TestFuseUnit_NodeCacheStable(t *testing.T) {
 	root, store := newTestRoot(t)
 	_ = store
 
-	if err := root.fs.Mkdir("/stable", DefaultDirMode); err != nil {
+	if err := root.root.core.Mkdir("/stable", DefaultDirMode); err != nil {
 		t.Fatalf("Mkdir: %v", err)
 	}
-	if _, _, err := root.fs.Create("/stable/x", 0o644, strings.NewReader("x")); err != nil {
+	if _, _, err := root.root.core.Create("/stable/x", 0o644, strings.NewReader("x")); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
-	n1, err := root.nodeFor("/stable/x")
-	if err != nil {
-		t.Fatalf("nodeFor 1: %v", err)
+	n1, errno := root.root.nodeFor(context.Background(), &root.Inode, "/stable/x", fuse.S_IFREG)
+	if errno != 0 {
+		t.Fatalf("nodeFor 1: %v", errno)
 	}
-	n2, err := root.nodeFor("/stable/x")
-	if err != nil {
-		t.Fatalf("nodeFor 2: %v", err)
+	n2, errno := root.root.nodeFor(context.Background(), &root.Inode, "/stable/x", fuse.S_IFREG)
+	if errno != 0 {
+		t.Fatalf("nodeFor 2: %v", errno)
 	}
 	if n1 != n2 {
 		t.Fatalf("same path returned different nodes (cache not stable): %v vs %v", n1, n2)
@@ -215,35 +225,39 @@ func TestFuseUnit_AttrMapping(t *testing.T) {
 	root, _ := newTestRoot(t)
 	ctx := context.Background()
 
-	if err := root.fs.Mkdir("/m", 0o750); err != nil {
+	if err := root.root.core.Mkdir("/m", 0o750); err != nil {
 		t.Fatalf("Mkdir: %v", err)
 	}
-	if _, _, err := root.fs.Create("/m/f", 0o600, strings.NewReader("12345")); err != nil {
+	if _, _, err := root.root.core.Create("/m/f", 0o600, strings.NewReader("12345")); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
-	d, err := root.nodeFor("/m")
-	if err != nil {
-		t.Fatalf("nodeFor dir: %v", err)
+	var mout fuse.EntryOut
+	dn, errno := root.Lookup(ctx, "m", &mout)
+	if errno != 0 {
+		t.Fatalf("Lookup dir: %v", errno)
 	}
-	var a fuse.Attr
-	if err := d.(fs.Node).Attr(ctx, &a); err != nil {
-		t.Fatalf("dir Attr: %v", err)
+	ddir := dn.Operations().(*fuseDir)
+	var aout fuse.AttrOut
+	if errno := ddir.Getattr(ctx, nil, &aout); errno != 0 {
+		t.Fatalf("dir Getattr: %v", errno)
 	}
-	if a.Mode&os.ModeDir == 0 || a.Mode.Perm() != 0o750 {
-		t.Fatalf("dir mode = %v, want dir+750", a.Mode)
+	if aout.Mode&fuse.S_IFDIR == 0 || aout.Mode&0o777 != 0o750 {
+		t.Fatalf("dir mode = %o, want dir+750", aout.Mode)
 	}
 
-	f, err := root.nodeFor("/m/f")
-	if err != nil {
-		t.Fatalf("nodeFor file: %v", err)
+	var fout fuse.EntryOut
+	fn, errno := ddir.Lookup(ctx, "f", &fout)
+	if errno != 0 {
+		t.Fatalf("Lookup file: %v", errno)
 	}
-	var fa fuse.Attr
-	if err := f.(fs.Node).Attr(ctx, &fa); err != nil {
-		t.Fatalf("file Attr: %v", err)
+	ffile := fn.Operations().(*fuseFile)
+	var fa fuse.AttrOut
+	if errno := ffile.Getattr(ctx, nil, &fa); errno != 0 {
+		t.Fatalf("file Getattr: %v", errno)
 	}
-	if fa.Mode&os.ModeDir != 0 || fa.Mode.Perm() != 0o600 {
-		t.Fatalf("file mode = %v, want 600", fa.Mode)
+	if fa.Mode&fuse.S_IFDIR != 0 || fa.Mode&0o777 != 0o600 {
+		t.Fatalf("file mode = %o, want 600", fa.Mode)
 	}
 	if fa.Size != 5 {
 		t.Fatalf("file size = %d, want 5", fa.Size)

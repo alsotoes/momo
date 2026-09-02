@@ -5,11 +5,11 @@ go 1.25.10
 require (
 	github.com/alsotoes/momo/src/common v0.0.0
 	github.com/alsotoes/momo/src/storage v0.0.0
+	github.com/hanwen/go-fuse/v2 v2.11.0
 	go.uber.org/goleak v1.3.0
 )
 
 require (
-	bazil.org/fuse v0.0.0-20230120002735-62a210ff1fd5 // indirect
 	filippo.io/edwards25519 v1.1.1 // indirect
 	filippo.io/nistec v0.0.2 // indirect
 	github.com/alsotoes/momo/src/crypto v0.0.0-00010101000000-000000000000 // indirect
