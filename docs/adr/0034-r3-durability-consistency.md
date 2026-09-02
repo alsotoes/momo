@@ -1,10 +1,10 @@
 # 0034-r3-durability-consistency
 
 ## Status
-Accepted
+Proposed
 
 ## Confidence
-High
+Medium
 
 ## Context
 Momo's write path has no defined durability contract. A replica set acknowledges a write
@@ -23,12 +23,9 @@ semantics, survivor-set quorum, or linearizable/read-your-writes behavior.
 ## Alternatives Considered
 None documented.
 
-## Confidence
-High
-
 ## Implementation Status
-- **Code**: Done
-- **Tests**: Done
+- **Code**: Partial
+- **Tests**: Partial
 - **Docs**: Done
 - **Blog post**: docs/blog/posts/...md
 

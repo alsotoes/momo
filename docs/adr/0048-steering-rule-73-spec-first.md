@@ -1,10 +1,10 @@
 # 0048-steering-rule-73-spec-first
 
 ## Status
-Accepted
+Proposed
 
 ## Confidence
-High
+Medium
 
 ## Context
 Feature/spec-driven work occasionally shipped with only a tracking issue and no
@@ -23,11 +23,8 @@ OpenSpec change linked to a GitHub issue before code lands.
 ## Alternatives Considered
 None documented.
 
-## Confidence
-High
-
 ## Implementation Status
-- **Code**: Done
+- **Code**: Planned
 - **Tests**: Done
 - **Docs**: Done
 - **Blog post**: docs/blog/posts/...md

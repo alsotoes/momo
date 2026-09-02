@@ -50,9 +50,6 @@ and `scrub_interval` (seconds, default `3600`).
 ## Alternatives Considered
 None documented.
 
-## Confidence
-High
-
 ## Implementation Status
 - **Code**: Done
 - **Tests**: Done

@@ -1,10 +1,10 @@
 # 0045-s3-p5-remaining-subresource-501
 
 ## Status
-Accepted
+Proposed
 
 ## Confidence
-High
+Medium
 
 ## Context
 The honest `501 NotImplemented` posture from P3 (#912/#913), P4 (#914/#915) and
@@ -30,13 +30,10 @@ Momo should answer a clean, S3-compliant `501 NotImplemented` for each.
 ## Alternatives Considered
 None documented.
 
-## Confidence
-High
-
 ## Implementation Status
 - **Code**: Done
-- **Tests**: Done
-- **Docs**: Done
+- **Tests**: Partial
+- **Docs**: Planned
 - **Blog post**: docs/blog/posts/...md
 
 ## References

@@ -1,10 +1,10 @@
 # 0031-prod-ready-roadmap
 
 ## Status
-Accepted
+Proposed
 
 ## Confidence
-High
+Low
 
 ## Context
 Momo today is a replicated, content-addressed **blob store** with an S3-compatible
@@ -24,13 +24,10 @@ roadmap** and gates future work.
 ## Alternatives Considered
 None documented.
 
-## Confidence
-High
-
 ## Implementation Status
-- **Code**: Done
-- **Tests**: Done
-- **Docs**: Done
+- **Code**: Partial
+- **Tests**: Partial
+- **Docs**: Planned
 - **Blog post**: docs/blog/posts/...md
 
 ## References

@@ -28,9 +28,6 @@ them. Stated contract: scrape-only / atomic-only, zero hot-path overhead.
 ## Alternatives Considered
 None documented.
 
-## Confidence
-High
-
 ## Implementation Status
 - **Code**: Done
 - **Tests**: Done

@@ -1,7 +1,7 @@
 # 0035-r4-momofs
 
 ## Status
-Accepted
+Proposed
 
 ## Confidence
 High
@@ -23,11 +23,8 @@ needs a mountable POSIX surface with correct metadata semantics over the replica
 ## Alternatives Considered
 None documented.
 
-## Confidence
-High
-
 ## Implementation Status
-- **Code**: Done
+- **Code**: Partial
 - **Tests**: Done
 - **Docs**: Done
 - **Blog post**: docs/blog/posts/...md

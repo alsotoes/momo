@@ -24,13 +24,10 @@ To ensure the Momo cluster remains highly available and resilient against both a
 ## Alternatives Considered
 None documented.
 
-## Confidence
-High
-
 ## Implementation Status
 - **Code**: Done
 - **Tests**: Done
-- **Docs**: Done
+- **Docs**: Planned
 - **Blog post**: docs/blog/posts/...md
 
 ## References

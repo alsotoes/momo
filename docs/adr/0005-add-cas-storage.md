@@ -1,10 +1,10 @@
 # 0005-add-cas-storage
 
 ## Status
-Accepted
+Proposed
 
 ## Confidence
-High
+Low
 
 ## Context
 The current storage model is name-based and relies on a fixed primary node (Node 0). To transform Momo into a truly scalable, high-performance **Object Storage system**, we must:
@@ -21,13 +21,10 @@ The current storage model is name-based and relies on a fixed primary node (Node
 ## Alternatives Considered
 None documented.
 
-## Confidence
-High
-
 ## Implementation Status
-- **Code**: Done
-- **Tests**: Done
-- **Docs**: Done
+- **Code**: Planned
+- **Tests**: Planned
+- **Docs**: Planned
 - **Blog post**: docs/blog/posts/...md
 
 ## References

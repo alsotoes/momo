@@ -1,10 +1,10 @@
 # 0047-signed-payload-and-sse
 
 ## Status
-Accepted
+Proposed
 
 ## Confidence
-High
+Medium
 
 ## Context
 Two integrity/security gaps in the S3 boundary:
@@ -37,12 +37,9 @@ Two integrity/security gaps in the S3 boundary:
 ## Alternatives Considered
 None documented.
 
-## Confidence
-High
-
 ## Implementation Status
-- **Code**: Done
-- **Tests**: Done
+- **Code**: Partial
+- **Tests**: Partial
 - **Docs**: Done
 - **Blog post**: docs/blog/posts/...md
 

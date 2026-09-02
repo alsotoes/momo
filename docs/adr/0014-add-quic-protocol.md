@@ -1,10 +1,10 @@
 # 0014-add-quic-protocol
 
 ## Status
-Accepted
+Proposed
 
 ## Confidence
-High
+Low
 
 ## Context
 Momo currently intertwines its communication protocol with its core replication logic. To support a pluggable architecture (Issue #131), we must separate **how** nodes communicate from **what** they do with the data. This spec focuses on implementing the **Momo-QUIC** variant and the underlying **Protocol Factory**, while the **S3** variant is tracked separately in `openspec/changes/add-s3-protocol/`.
@@ -21,13 +21,10 @@ Momo currently intertwines its communication protocol with its core replication 
 ## Alternatives Considered
 None documented.
 
-## Confidence
-High
-
 ## Implementation Status
-- **Code**: Done
-- **Tests**: Done
-- **Docs**: Done
+- **Code**: Planned
+- **Tests**: Planned
+- **Docs**: Planned
 - **Blog post**: docs/blog/posts/...md
 
 ## References

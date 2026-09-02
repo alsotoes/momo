@@ -1,7 +1,7 @@
 # 0043-s3-p3-bucket-subresource-501
 
 ## Status
-Accepted
+Proposed
 
 ## Confidence
 High
@@ -27,13 +27,10 @@ the same honest reject-and-document posture already applied to unsupported SSE
 ## Alternatives Considered
 None documented.
 
-## Confidence
-High
-
 ## Implementation Status
 - **Code**: Done
-- **Tests**: Done
-- **Docs**: Done
+- **Tests**: Partial
+- **Docs**: Planned
 - **Blog post**: docs/blog/posts/...md
 
 ## References

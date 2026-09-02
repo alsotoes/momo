@@ -1,10 +1,10 @@
 # 0037-reduce-read-verify-hashing
 
 ## Status
-Accepted
+Proposed
 
 ## Confidence
-High
+Low
 
 ## Context
 Phase-0 baseline (#948/#949) proves read-path SHA-256 is the dominant storage
@@ -36,13 +36,10 @@ integrity loss, while the existing background scrub re-catches silent disk rot.
 ## Alternatives Considered
 None documented.
 
-## Confidence
-High
-
 ## Implementation Status
-- **Code**: Done
-- **Tests**: Done
-- **Docs**: Done
+- **Code**: Planned
+- **Tests**: Partial
+- **Docs**: Planned
 - **Blog post**: docs/blog/posts/...md
 
 ## References

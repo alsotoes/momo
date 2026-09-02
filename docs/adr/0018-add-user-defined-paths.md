@@ -1,10 +1,10 @@
 # 0018-add-user-defined-paths
 
 ## Status
-Accepted
+Proposed
 
 ## Confidence
-High
+Low
 
 ## Context
 Users need a way to organize and reference uploaded files using human-readable, hierarchical directory paths (e.g., `customer01/documents/invoice.pdf`). 
@@ -22,13 +22,10 @@ By storing user-defined paths purely as virtual metadata mapping to the content 
 ## Alternatives Considered
 None documented.
 
-## Confidence
-High
-
 ## Implementation Status
-- **Code**: Done
-- **Tests**: Done
-- **Docs**: Done
+- **Code**: Planned
+- **Tests**: Planned
+- **Docs**: Planned
 - **Blog post**: docs/blog/posts/...md
 
 ## References

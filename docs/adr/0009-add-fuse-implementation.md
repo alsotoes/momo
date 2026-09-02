@@ -1,10 +1,10 @@
 # 0009-add-fuse-implementation
 
 ## Status
-Accepted
+Proposed
 
 ## Confidence
-High
+Low
 
 ## Context
 
@@ -23,13 +23,10 @@ High
 ## Alternatives Considered
 None documented.
 
-## Confidence
-High
-
 ## Implementation Status
-- **Code**: Done
-- **Tests**: Done
-- **Docs**: Done
+- **Code**: Partial
+- **Tests**: Partial
+- **Docs**: Partial
 - **Blog post**: docs/blog/posts/...md
 
 ## References

@@ -19,9 +19,6 @@ The storage backend was hardcoded to the local filesystem. To support NFS, S3-co
 ## Alternatives Considered
 None documented.
 
-## Confidence
-High
-
 ## Implementation Status
 - **Code**: Done
 - **Tests**: Done

@@ -23,13 +23,10 @@ High
 ## Alternatives Considered
 None documented.
 
-## Confidence
-High
-
 ## Implementation Status
 - **Code**: Done
 - **Tests**: Done
-- **Docs**: Done
+- **Docs**: Planned
 - **Blog post**: docs/blog/posts/...md
 
 ## References
