@@ -1,4 +1,10 @@
 # Design Decisions
+# Architecture Decision Records
+
+All architectural decisions are now documented as **Architecture Decision Records (ADRs)** in `docs/adr/`. Each ADR corresponds to an OpenSpec change under `openspec/changes/`. See `docs/adr/README.md` for the index and process.
+
+---
+
 
 This section records the key architectural decisions, their alternatives, and the rationale for each choice. These decisions are foundational — changing any of them would require a major redesign.
 

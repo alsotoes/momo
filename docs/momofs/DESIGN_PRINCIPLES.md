@@ -1,4 +1,10 @@
 # Design Principles & Vision
+# Architecture Decision Records
+
+Architectural decisions are documented as **Architecture Decision Records (ADRs)** in `docs/adr/`. Each ADR corresponds to an OpenSpec change under `openspec/changes/`. See `docs/adr/README.md` for the index and process.
+
+---
+
 
 ### 2.1 Design Principles
 

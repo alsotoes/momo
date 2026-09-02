@@ -1,4 +1,10 @@
 # Momo Architecture
+# Architecture Decision Records
+
+All architectural decisions are documented as **Architecture Decision Records (ADRs)** in `docs/adr/`. Each ADR corresponds to an OpenSpec change under `openspec/changes/`. See `docs/adr/README.md` for the index and process.
+
+---
+
 
 This document provides a high-level overview of the Momo architecture, its components, and the replication strategies it supports.
 

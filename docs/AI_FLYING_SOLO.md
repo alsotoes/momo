@@ -85,6 +85,8 @@ Record the issue number (`ISSUE_N`).
 
 ### Step 1b: Author OpenSpec Change (features) — Rule 73
 
+**ADR Creation:** After the OpenSpec change is authored, create an ADR in `docs/adr/NNNN-<change-id>.md` using the template in `docs/adr/template.md`. The ADR must link to the OpenSpec change, GitHub issue, PR, and blog post. The ADR status starts as `Proposed` and becomes `Accepted` on merge.
+
 For **ANY new feature / spec-driven change / architectural shift** (NOT routine bug fixes), author the OpenSpec change proposal on the branch BEFORE implementing:
 
 ```bash
