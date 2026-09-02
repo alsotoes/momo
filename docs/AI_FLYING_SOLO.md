@@ -26,9 +26,14 @@ This document is governed by the steering rules in [`openspec/config.yaml`](../o
 - **Rule 69**: Jules PR reviewer protocol — comments to Jules MUST come from `alsotoes`, not `github-actions[bot]`
 - **Rule 70**: Steering rule → reviewer script sync — update `ai_reviewer.py` when adding rules that affect PR review/labeling/commenting/merge
 - **Rule 71**: Master CI gate before new work — wait for all master CI workflows to finish and pass before creating a new branch
+- **Rule 72**: Issue Ownership Gate — assign the issue to `alsotoes`, ensure `bug`/`enhancement` + `automation` labels, before starting any work
 - **Rule 73**: Spec-First Implementation Mandate — every new feature / spec-driven change MUST author an OpenSpec change (`openspec/changes/<id>/`) linked to a GitHub issue BEFORE implementation; the PR MUST include the spec and `Resolves #ISSUE_ID`. Bug fixes are exempt from a formal spec but still need a tracking issue
 - **Rule 74**: Seam-Over-Plugins — adaptive/mutating behavior (degraded-read, self-heal/rebuild, R4 momofs FS semantics) MUST be a compile-time Go interface seam (constructor/functional-option injection + compiled-in registry, selected by declarative policy); external dynamic plugins forbidden in the data path (read-only policy feeds only); fast paths concrete/zero-indirect; core trust invariants stay in the auditable core. See `docs/momofs/PLUGIN_ARCHITECTURE.md`
+- **Rule 75**: No Networked pprof on Unauthenticated Listeners — profiling via file-based `go test -cpuprofile/-memprofile` flags only; no `net/http/pprof` listener on the unauthenticated data path (RCE-class surface); future admin endpoint = loopback/Unix socket only, boot-enabled, TLS if it leaves loopback
 - **Rule 76**: Blog Post Per Ratified Change — every ratified feature/enhancement OpenSpec change MUST ship a Hugo-format post in `docs/blog/posts/` (same PR or immediately-following) with date=anchor issue/PR `createdAt` (or earliest code/plan commit), implemented-state grounding (no `docs/momofs/` design presented as shipped), ⚡ Bolt/🛡 Sentinel tags where relevant, plus `artifacts`/`related` front matter. `no-blog` justification exempts internal-only changes. Reviewer enforces (Rule 70)
+- **Rule 77**: ADR Mandate — every ratified feature/enhancement OpenSpec change MUST have an ADR in `docs/adr/NNNN-<change-id>.md` following `docs/adr/template.md`, linking spec + issue + PR + blog post; status `Proposed` → `Accepted` on merge; supersession = new ADR + `Deprecated` old (Fowler)
+- **Rule 78**: ADR-Spec Synchronization — ADRs are auto-generated from specs via `make adr-sync` (context ← proposal, decision ← requirement summaries, status ← tasks.md checkboxes, blog link ← issue match); `make adr-sync-check` validates parity and runs in CI; ADR status never hand-edited
+- **Rule 79**: No Direct Push to Master — all changes go through issue → branch → PR (`Resolves #ISSUE_ID`) → CI → reviewer → merge `--merge --delete-branch`. Doc-only / pre-commit-regen / trivial-refactor / CI-fix / emergency-hotfix exceptions may bypass, but must be tagged in the commit message
 
 ## Pre-Flight Checklist
 
@@ -85,7 +90,7 @@ Record the issue number (`ISSUE_N`).
 
 ### Step 1b: Author OpenSpec Change (features) — Rule 73
 
-**ADR Creation:** After the OpenSpec change is authored, create an ADR in `docs/adr/NNNN-<change-id>.md` using the template in `docs/adr/template.md`. The ADR must link to the OpenSpec change, GitHub issue, PR, and blog post. The ADR status starts as `Proposed` and becomes `Accepted` on merge.
+**ADR Creation (Rules 77/78):** After the OpenSpec change is authored, run `make adr-sync` to auto-generate the ADR in `docs/adr/NNNN-<change-id>.md` from the spec (context ← proposal.md, decision ← spec requirement summaries, status ← tasks.md checkboxes). The ADR links spec + issue + PR + blog post. Never hand-edit an ADR — regenerate it. `make adr-sync-check` (CI) validates parity. ADR status `Proposed` → `Accepted` on merge; supersession = new ADR + `Deprecated` old (Fowler).
 
 For **ANY new feature / spec-driven change / architectural shift** (NOT routine bug fixes), author the OpenSpec change proposal on the branch BEFORE implementing:
 
@@ -283,6 +288,8 @@ When the **3-push circuit breaker** trips (an automated agent has pushed 3 times
    go build ./...
    go vet ./...
    go test ./...
+   make adr-sync-check   # Rule 78: ADRs match specs
+   make blog-check       # Rule 76: blog posts valid + related graph complete
    ```
 
 6. **Fix any remaining issues directly** (see "Handling Pre-Existing CI Failures" below).

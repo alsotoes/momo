@@ -28,6 +28,7 @@ This document explains the architecture, configuration, wire protocol, replicati
 | [PENTESTING.md](PENTESTING.md) | Pentesting Momo with DotDotPwn — traversal fuzzing overview |
 | [../pentest/README.md](../pentest/README.md) | Security pentest toolkit — DotDotPwn fuzzing + Python exploit scripts (9 CVEs found) |
 | [blog/README.md](blog/README.md) | Engineering journal (Hugo-format posts) — journey, research, architecture decisions, changes |
+| [adr/README.md](adr/README.md) | Architecture Decision Records (Fowler pattern) — one per ratified OpenSpec change, auto-synced from specs |
 
 ## Key Performance & Security Features (⚡ Bolt & 🛡️ Sentinel)
 
