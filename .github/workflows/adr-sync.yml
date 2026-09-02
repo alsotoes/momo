@@ -1,0 +1,32 @@
+name: ADR Sync Validation
+
+on:
+  pull_request:
+    paths:
+      - 'openspec/changes/**'
+      - 'docs/adr/**'
+      - 'tools/adr-sync/**'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+
+      - name: Check ADR-Spec Sync
+        run: make adr-sync-check
+
+      - name: Verify No Untracked ADR Changes
+        run: |
+          if ! git diff --quiet docs/adr/; then
+            echo "::error::ADRs out of sync with specs. Run 'make adr-sync' and commit."
+            exit 1
+          fi
