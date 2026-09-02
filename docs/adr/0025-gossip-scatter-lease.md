@@ -1,10 +1,10 @@
 # 0025-gossip-scatter-lease
 
 ## Status
-Accepted
+Proposed
 
 ## Confidence
-High
+Low
 
 ## Context
 
@@ -20,13 +20,10 @@ High
 ## Alternatives Considered
 None documented.
 
-## Confidence
-High
-
 ## Implementation Status
-- **Code**: Done
-- **Tests**: Done
-- **Docs**: Done
+- **Code**: Planned
+- **Tests**: Planned
+- **Docs**: Planned
 - **Blog post**: docs/blog/posts/...md
 
 ## References

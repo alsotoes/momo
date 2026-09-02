@@ -1,7 +1,7 @@
 # 0044-s3-p4-object-subresource-501
 
 ## Status
-Accepted
+Proposed
 
 ## Confidence
 High
@@ -27,13 +27,10 @@ unsupported SSE (PR #906 / P1 #907).
 ## Alternatives Considered
 None documented.
 
-## Confidence
-High
-
 ## Implementation Status
 - **Code**: Done
-- **Tests**: Done
-- **Docs**: Done
+- **Tests**: Partial
+- **Docs**: Planned
 - **Blog post**: docs/blog/posts/...md
 
 ## References

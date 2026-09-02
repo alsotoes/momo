@@ -8,6 +8,11 @@ Checks every docs/blog/posts/*.md:
   - every `related` entry resolves to an existing sibling post file
   - every `artifacts: {type: spec, path: ...}` resolves under openspec/changes/
 
+Also enforces Rule 76 COVERAGE: every spec whose ADR (docs/adr/) is "Accepted"
+must be referenced by at least one blog post's artifacts, OR have an explicit
+`no-blog` justification recorded (either a `no-blog: <reason>` key in the ADR
+front matter or a sibling `docs/adr/<id>.no-blog.md` file).
+
 Exit 0 on success, 1 on any violation.
 """
 import datetime as dt
@@ -31,7 +36,7 @@ FRONT_MATTER_RE = re.compile(r"^---\r?\n(.*?)\r?\n---\r?\n", re.DOTALL)
 
 
 def parse_front_matter(path: Path) -> tuple[dict, str]:
-    text = path.read_text()
+    text = path.read_text(errors="replace")
     m = FRONT_MATTER_RE.match(text)
     if not m:
         return {}, text
@@ -101,6 +106,49 @@ def check_post(path: Path, now: dt.datetime, errors: list[str]) -> None:
                 errors.append(f"{path.relative_to(ROOT)}: artifacts spece path '{art['path']}' does not exist")
 
 
+def check_coverage(errors: list[str]) -> None:
+    """Rule 76 coverage: every Accepted-ADR spec must have a blog post (or no-blog justification)."""
+    adr_dir = ROOT / "docs" / "adr"
+    if not adr_dir.is_dir():
+        return
+
+    # Map every spec ID referenced by any post's artifacts (type: spec).
+    covered_specs: set[str] = set()
+    for post in sorted(BLOG_DIR.glob("*.md")):
+        fm, _ = parse_front_matter(post)
+        for art in fm.get("artifacts", []) or []:
+            if isinstance(art, dict) and art.get("type") == "spec" and art.get("path"):
+                p = art["path"].strip().rstrip("/")
+                if p.startswith("openspec/changes/"):
+                    covered_specs.add(Path(p).name)
+
+    # Accepted ADRs mark the spec as ratified → requires a post (or no-blog).
+    for adr in sorted(adr_dir.glob("*.md")):
+        fm, text = parse_front_matter(adr)
+        status = None
+        m = re.search(r"^## Status\s*\n\s*(Accepted|Proposed|Deprecated)", text, re.M)
+        if m:
+            status = m.group(1)
+        if status != "Accepted":
+            continue
+
+        # ADR filename is NNNN-<spec-id>.md → spec id is everything after the first '-'.
+        stem = adr.stem
+        spec_id = stem.split("-", 1)[1] if "-" in stem else stem
+
+        if spec_id in covered_specs:
+            continue
+        # no-blog justification: ADR front-matter key or sibling .no-blog.md file.
+        if fm.get("no-blog"):
+            continue
+        if (adr_dir / f"{stem}.no-blog.md").exists():
+            continue
+        errors.append(
+            f"{adr.relative_to(ROOT)}: Accepted spec '{spec_id}' has no matching blog post "
+            f"and no no-blog justification (Rule 76 coverage)"
+        )
+
+
 def main() -> int:
     logging.basicConfig(level=logging.INFO)
     posts = sorted(BLOG_DIR.glob("*.md"))
@@ -129,6 +177,8 @@ def main() -> int:
                     f"{post.relative_to(ROOT)}: one-way related '{rel}' — "
                     f"{target.name} should list '{post.stem}' back (bidirectional)"
                 )
+
+    check_coverage(errors)
 
     if errors:
         for e in errors:

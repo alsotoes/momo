@@ -1,10 +1,10 @@
 # 0020-blog-posts-hugo
 
 ## Status
-Accepted
+Proposed
 
 ## Confidence
-High
+Low
 
 ## Context
 Momo's evolution from a file-replication playground to a distributed object
@@ -28,13 +28,10 @@ but undocumented as a story.
 ## Alternatives Considered
 None documented.
 
-## Confidence
-High
-
 ## Implementation Status
-- **Code**: Done
-- **Tests**: Done
-- **Docs**: Done
+- **Code**: Planned
+- **Tests**: Partial
+- **Docs**: Planned
 - **Blog post**: docs/blog/posts/...md
 
 ## References

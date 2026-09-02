@@ -22,9 +22,6 @@ Production durability requires copying to be spread across independent failure d
 ## Alternatives Considered
 None documented.
 
-## Confidence
-High
-
 ## Implementation Status
 - **Code**: Done
 - **Tests**: Done

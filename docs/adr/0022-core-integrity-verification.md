@@ -1,7 +1,7 @@
 # 0022-core-integrity-verification
 
 ## Status
-Accepted
+Proposed
 
 ## Confidence
 High
@@ -30,13 +30,10 @@ guarantees without touching shared logic.
 ## Alternatives Considered
 None documented.
 
-## Confidence
-High
-
 ## Implementation Status
 - **Code**: Done
-- **Tests**: Done
-- **Docs**: Done
+- **Tests**: Partial
+- **Docs**: Planned
 - **Blog post**: docs/blog/posts/...md
 
 ## References

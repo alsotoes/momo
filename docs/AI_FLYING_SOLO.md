@@ -92,6 +92,10 @@ Record the issue number (`ISSUE_N`).
 
 **ADR Creation (Rules 77/78):** After the OpenSpec change is authored, run `make adr-sync` to auto-generate the ADR in `docs/adr/NNNN-<change-id>.md` from the spec (context ← proposal.md, decision ← spec requirement summaries, status ← tasks.md checkboxes). The ADR links spec + issue + PR + blog post. Never hand-edit an ADR — regenerate it. `make adr-sync-check` (CI) validates parity. ADR status `Proposed` → `Accepted` on merge; supersession = new ADR + `Deprecated` old (Fowler).
 
+**MemPalace knowledge store:** The project knowledge base lives in MemPalace under `wing: momo` (re-mined per release; `mempalace mine <dir> --wing momo`). Query it (`mempalace search "<topic>" --wing momo`) before starting work to ground decisions in prior context. Keep it current by re-mining `src/`, `docs/`, `openspec/`, `conf/`, `tools/` after significant changes.
+
+**Blog post (Rule 76):** Every feature PR MUST ship a matching blog post under `docs/blog/posts/NNN-<slug>.md` (front matter per `docs/blog/README.md`; `date` = anchor issue/PR `createdAt`), OR carry an explicit `no-blog` justification (ADR sibling `<adr>.no-blog.md` for internal-only changes). Coverage is enforced by `make blog-check` in CI, not just by the reviewer.
+
 For **ANY new feature / spec-driven change / architectural shift** (NOT routine bug fixes), author the OpenSpec change proposal on the branch BEFORE implementing:
 
 ```bash
@@ -289,7 +293,7 @@ When the **3-push circuit breaker** trips (an automated agent has pushed 3 times
    go vet ./...
    go test ./...
    make adr-sync-check   # Rule 78: ADRs match specs
-   make blog-check       # Rule 76: blog posts valid + related graph complete
+   make blog-check       # Rule 76: posts valid + related graph + Accepted-ADR coverage
    ```
 
 6. **Fix any remaining issues directly** (see "Handling Pre-Existing CI Failures" below).

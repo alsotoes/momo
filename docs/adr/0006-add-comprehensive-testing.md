@@ -20,13 +20,10 @@ While Momo has robust unit, E2E, load, and concurrency tests (via `goleak` and `
 ## Alternatives Considered
 None documented.
 
-## Confidence
-High
-
 ## Implementation Status
 - **Code**: Done
-- **Tests**: Done
-- **Docs**: Done
+- **Tests**: Planned
+- **Docs**: Planned
 - **Blog post**: docs/blog/posts/...md
 
 ## References

@@ -1,10 +1,10 @@
 # 0007-add-e2e-encryption
 
 ## Status
-Accepted
+Proposed
 
 ## Confidence
-High
+Medium
 
 ## Context
 
@@ -26,13 +26,10 @@ High
 ## Alternatives Considered
 None documented.
 
-## Confidence
-High
-
 ## Implementation Status
-- **Code**: Done
-- **Tests**: Done
-- **Docs**: Done
+- **Code**: Partial
+- **Tests**: Partial
+- **Docs**: Partial
 - **Blog post**: docs/blog/posts/...md
 
 ## References

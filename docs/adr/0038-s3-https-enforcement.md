@@ -1,10 +1,10 @@
 # 0038-s3-https-enforcement
 
 ## Status
-Accepted
+Proposed
 
 ## Confidence
-High
+Medium
 
 ## Context
 The S3 backend client (`S3BlobStore.S3Endpoint`) accepts any scheme (`http://` or `https://`) without validation, sending SigV4 credentials, blob content, and object metadata in cleartext when the endpoint is `http://`. AWS requires TLS for S3; the current highest practice is HTTPS-only plus bucket encryption at rest.
@@ -19,12 +19,9 @@ The S3 backend client (`S3BlobStore.S3Endpoint`) accepts any scheme (`http://` o
 ## Alternatives Considered
 None documented.
 
-## Confidence
-High
-
 ## Implementation Status
-- **Code**: Done
-- **Tests**: Done
+- **Code**: Partial
+- **Tests**: Partial
 - **Docs**: Done
 - **Blog post**: docs/blog/posts/...md
 

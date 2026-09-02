@@ -23,9 +23,6 @@ into the response `bytes.Buffer` with zero heap allocations.
 ## Alternatives Considered
 None documented.
 
-## Confidence
-High
-
 ## Implementation Status
 - **Code**: Done
 - **Tests**: Done

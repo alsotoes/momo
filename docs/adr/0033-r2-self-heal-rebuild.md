@@ -24,9 +24,6 @@ self-healing re-replication loop.
 ## Alternatives Considered
 None documented.
 
-## Confidence
-High
-
 ## Implementation Status
 - **Code**: Done
 - **Tests**: Done

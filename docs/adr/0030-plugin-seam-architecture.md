@@ -1,10 +1,10 @@
 # 0030-plugin-seam-architecture
 
 ## Status
-Accepted
+Proposed
 
 ## Confidence
-High
+Low
 
 ## Context
 Momo moves toward an **adaptive filesystem** (R4 momofs) and **mutating
@@ -40,13 +40,10 @@ dynamically loaded.
 ## Alternatives Considered
 None documented.
 
-## Confidence
-High
-
 ## Implementation Status
-- **Code**: Done
-- **Tests**: Done
-- **Docs**: Done
+- **Code**: Planned
+- **Tests**: Partial
+- **Docs**: Planned
 - **Blog post**: docs/blog/posts/...md
 
 ## References
