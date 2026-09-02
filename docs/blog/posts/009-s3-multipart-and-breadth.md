@@ -15,6 +15,7 @@ artifacts:
 related:
   - 008-s3-gateway-core
   - 012-s3-integrity-checksums
+  - 033-s3-501-discipline-bucket-config
 ---
 # S3 Multipart and Protocol Breadth: 501 Discipline
 

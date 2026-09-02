@@ -26,6 +26,9 @@ related:
 - 007-at-rest-integrity-and-gc
 - 005-crush-placement
 - 026-metrics-observability
+- 032-r5-metrics-phases-2-4
+- 036-s3-listxml-appendformat-optimization
+- 042-perf-profiling-baseline
 ---
 ⚡ Bolt: Zero-Allocation and Hot-Path Engineering
 

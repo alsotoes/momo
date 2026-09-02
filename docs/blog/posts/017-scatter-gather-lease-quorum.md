@@ -26,6 +26,7 @@ related:
 - 014-confidential-dedup-oprf
 - 018-adaptive-scaling-peer-quality
 - 020-r2-degraded-read-self-heal
+- 032-r5-metrics-phases-2-4
 ---
 catter-Gather and Lease Consensus: Quorum Math
 

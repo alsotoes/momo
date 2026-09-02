@@ -31,6 +31,7 @@ related:
 - 014-confidential-dedup-oprf
 - 017-scatter-gather-lease-quorum
 - 026-metrics-observability
+- 037-zero-crash-hardening-patterns
 ---
 he Sentinel Sweep: An Audit-Driven Security Journey
 

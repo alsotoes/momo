@@ -26,6 +26,7 @@ related:
 - 010-s3-auth-presigned-sigv4
 - 003-transport-tcp-to-quic
 - 015-sentinel-security-audit
+- 033-s3-501-discipline-bucket-config
 ---
  S3 and Inbound TLS: HTTPS-by-Default Enforcement
 

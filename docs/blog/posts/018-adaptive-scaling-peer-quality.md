@@ -16,6 +16,8 @@ related:
   - 016-p2p-gossip-swim
   - 017-scatter-gather-lease-quorum
   - 020-r2-degraded-read-self-heal
+  - 030-external-s3-client-replication-downgrade
+  - 044-plugin-seam-architecture
 ---
 # Adaptive Scaling: Gossip Fanout, Stream Chunks, Peer Quality
 

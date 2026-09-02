@@ -28,6 +28,8 @@ related:
 - 029-fuse-go-fuse-v2-migration
 - 016-p2p-gossip-swim
 - 023-momofs-fuse-transport
+- 031-core-integrity-verification
+- 037-zero-crash-hardening-patterns
 ---
 CAS: Content-Addressable Storage and Deduplication
 

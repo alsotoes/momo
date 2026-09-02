@@ -14,6 +14,8 @@ related:
   - 004-cas-content-addressable-store
   - 017-scatter-gather-lease-quorum
   - 018-adaptive-scaling-peer-quality
+  - 030-external-s3-client-replication-downgrade
+  - 032-r5-metrics-phases-2-4
 ---
 # P2P: Gossip, SWIM, and Membership
 

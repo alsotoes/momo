@@ -15,6 +15,7 @@ artifacts:
 related:
   - 024-bolt-performance-engineering
   - 015-sentinel-security-audit
+  - 032-r5-metrics-phases-2-4
 ---
 # Metrics and Observability: Per-Node Bind, Prometheus Export
 

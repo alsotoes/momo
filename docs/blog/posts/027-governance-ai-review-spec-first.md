@@ -15,6 +15,7 @@ artifacts:
 related:
   - 025-benchmark-benchstat-gate
   - 028-roadmap-and-research
+  - 041-architecture-decision-records
 ---
 # Governance: AI Review, Spec-First, Three-Dot Diff
 

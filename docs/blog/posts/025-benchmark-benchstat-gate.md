@@ -14,6 +14,7 @@ artifacts:
 related:
   - 024-bolt-performance-engineering
   - 027-governance-ai-review-spec-first
+  - 042-perf-profiling-baseline
 ---
 # The Benchstat Gauntlet: Performance Regressions as CI
 

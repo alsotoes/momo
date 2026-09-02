@@ -14,6 +14,8 @@ related:
   - 008-s3-gateway-core
   - 011-s3-https-tls-enforcement
   - 015-sentinel-security-audit
+  - 039-signed-payload-sse-s3
+  - 040-aws-chunked-streaming
 ---
 # S3 Auth: SigV4, Presigned URLs, and Key Decoupling
 

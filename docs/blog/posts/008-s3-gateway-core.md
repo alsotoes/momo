@@ -27,6 +27,12 @@ related:
 - 010-s3-auth-presigned-sigv4
 - 012-s3-integrity-checksums
 - 011-s3-https-tls-enforcement
+- 033-s3-501-discipline-bucket-config
+- 034-s3-501-discipline-object-subresources
+- 035-s3-501-discipline-remaining-ops
+- 036-s3-listxml-appendformat-optimization
+- 039-signed-payload-sse-s3
+- 040-aws-chunked-streaming
 ---
  S3 Gateway Core: XML, Buckets, Objects, Lists
 

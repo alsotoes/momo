@@ -21,6 +21,7 @@ related:
 - 007-at-rest-integrity-and-gc
 - 008-s3-gateway-core
 - 009-s3-multipart-and-breadth
+- 031-core-integrity-verification
 ---
  S3 Integrity Checksums: x-amz-checksum-*
 

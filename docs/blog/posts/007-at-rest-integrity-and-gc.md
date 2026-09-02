@@ -28,6 +28,8 @@ related:
 - 015-sentinel-security-audit
 - 020-r2-degraded-read-self-heal
 - 024-bolt-performance-engineering
+- 031-core-integrity-verification
+- 043-reduce-read-verify-hashing
 ---
  At-Rest Integrity: Verify-on-Read, Checksums, and GC
 

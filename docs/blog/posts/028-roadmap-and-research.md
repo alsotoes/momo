@@ -15,6 +15,7 @@ related:
   - 021-r3-write-durability-quorum
   - 023-momofs-fuse-transport
   - 029-fuse-go-fuse-v2-migration
+  - 041-architecture-decision-records
 ---
 # Forward: Production Roadmap (R5–R11) and the Research Guide
 
