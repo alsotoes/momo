@@ -148,6 +148,17 @@ func (r *fuseRoot) nodeFor(ctx context.Context, parent *fs.Inode, p string, mode
 	return n, 0
 }
 
+// fuseRecover is the Rule 43/37 panic guard for FUSE node callbacks. A panic
+// in a callback must never cross the kernel bridge (it would tear down the
+// whole mount); the two-line pattern logs and maps the failure to EIO so the
+// offending op fails cleanly while the connection survives.
+func fuseRecover(errno *syscall.Errno) {
+	if r := recover(); r != nil {
+		log.Printf("CRITICAL: Recovered from panic in momofs FUSE op: %v", r)
+		*errno = syscall.EIO
+	}
+}
+
 // toFuseErr maps a momofs error to a kernel errno, preserving the syscall
 // errno the core already selected (EINVAL/ENOENT/EISDIR/...). Non-syscall
 // errors become EIO rather than leaking into the kernel as opaque strings.
@@ -192,7 +203,8 @@ var (
 func (d *fuseDir) OnForget() {}
 
 // Statfs reports filesystem-wide statistics.
-func (d *fuseDir) Statfs(ctx context.Context, out *fuse.StatfsOut) syscall.Errno {
+func (d *fuseDir) Statfs(ctx context.Context, out *fuse.StatfsOut) (errno syscall.Errno) {
+	defer fuseRecover(&errno)
 	out.Bsize = 4096
 	out.Frsize = 4096
 	out.NameLen = 255
@@ -200,7 +212,8 @@ func (d *fuseDir) Statfs(ctx context.Context, out *fuse.StatfsOut) syscall.Errno
 }
 
 // Getattr fills the FUSE attribute structure for the directory.
-func (d *fuseDir) Getattr(ctx context.Context, _ fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
+func (d *fuseDir) Getattr(ctx context.Context, _ fs.FileHandle, out *fuse.AttrOut) (errno syscall.Errno) {
+	defer fuseRecover(&errno)
 	e, err := d.root.core.Lookup(d.path)
 	if err != nil {
 		return toFuseErr(d.path, err)
@@ -210,7 +223,8 @@ func (d *fuseDir) Getattr(ctx context.Context, _ fs.FileHandle, out *fuse.AttrOu
 }
 
 // Setattr applies attribute changes (mode, uid, gid, mtime) to the directory.
-func (d *fuseDir) Setattr(ctx context.Context, _ fs.FileHandle, in *fuse.SetAttrIn, out *fuse.AttrOut) syscall.Errno {
+func (d *fuseDir) Setattr(ctx context.Context, _ fs.FileHandle, in *fuse.SetAttrIn, out *fuse.AttrOut) (errno syscall.Errno) {
+	defer fuseRecover(&errno)
 	var mode, uid, gid *uint32
 	var mtime *int64
 	if m, ok := in.GetMode(); ok {
@@ -233,7 +247,8 @@ func (d *fuseDir) Setattr(ctx context.Context, _ fs.FileHandle, in *fuse.SetAttr
 }
 
 // Lookup resolves a child name within the directory.
-func (d *fuseDir) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+func (d *fuseDir) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (ch *fs.Inode, errno syscall.Errno) {
+	defer fuseRecover(&errno)
 	p := joinPath(d.path, name)
 	e, err := d.root.core.Lookup(p)
 	if err != nil {
@@ -245,7 +260,7 @@ func (d *fuseDir) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (
 	} else {
 		mode = fuse.S_IFREG
 	}
-	ch, errno := d.root.nodeFor(ctx, &d.Inode, p, mode)
+	ch, errno = d.root.nodeFor(ctx, &d.Inode, p, mode)
 	if errno != 0 {
 		return nil, errno
 	}
@@ -254,12 +269,13 @@ func (d *fuseDir) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (
 }
 
 // Mkdir creates a subdirectory entry.
-func (d *fuseDir) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+func (d *fuseDir) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.EntryOut) (ch *fs.Inode, errno syscall.Errno) {
+	defer fuseRecover(&errno)
 	p := joinPath(d.path, name)
 	if err := d.root.core.Mkdir(p, mode&0o7777); err != nil {
 		return nil, toFuseErr(p, err)
 	}
-	ch, errno := d.root.nodeFor(ctx, &d.Inode, p, fuse.S_IFDIR|(mode&0o7777))
+	ch, errno = d.root.nodeFor(ctx, &d.Inode, p, fuse.S_IFDIR|(mode&0o7777))
 	if errno != 0 {
 		return nil, errno
 	}
@@ -273,12 +289,13 @@ func (d *fuseDir) Mkdir(ctx context.Context, name string, mode uint32, out *fuse
 
 // Create creates a file in the directory and returns an inode plus a handle
 // buffering subsequent writes until Flush materializes the CAS blob.
-func (d *fuseDir) Create(ctx context.Context, name string, flags, mode uint32, out *fuse.EntryOut) (*fs.Inode, fs.FileHandle, uint32, syscall.Errno) {
+func (d *fuseDir) Create(ctx context.Context, name string, flags, mode uint32, out *fuse.EntryOut) (ch *fs.Inode, fh fs.FileHandle, _ uint32, errno syscall.Errno) {
+	defer fuseRecover(&errno)
 	p := joinPath(d.path, name)
 	if _, _, err := d.root.core.Create(p, mode&0o7777, strings.NewReader("")); err != nil {
 		return nil, nil, 0, toFuseErr(p, err)
 	}
-	ch, errno := d.root.nodeFor(ctx, &d.Inode, p, fuse.S_IFREG|(mode&0o7777))
+	ch, errno = d.root.nodeFor(ctx, &d.Inode, p, fuse.S_IFREG|(mode&0o7777))
 	if errno != 0 {
 		return nil, nil, 0, errno
 	}
@@ -291,7 +308,8 @@ func (d *fuseDir) Create(ctx context.Context, name string, flags, mode uint32, o
 }
 
 // Unlink removes the named child entry.
-func (d *fuseDir) Unlink(ctx context.Context, name string) syscall.Errno {
+func (d *fuseDir) Unlink(ctx context.Context, name string) (errno syscall.Errno) {
+	defer fuseRecover(&errno)
 	p := joinPath(d.path, name)
 	if err := d.root.core.Remove(p); err != nil {
 		return toFuseErr(p, err)
@@ -300,12 +318,14 @@ func (d *fuseDir) Unlink(ctx context.Context, name string) syscall.Errno {
 }
 
 // Rmdir removes the named child directory.
-func (d *fuseDir) Rmdir(ctx context.Context, name string) syscall.Errno {
+func (d *fuseDir) Rmdir(ctx context.Context, name string) (errno syscall.Errno) {
+	defer fuseRecover(&errno)
 	return d.Unlink(ctx, name)
 }
 
 // Rename moves the named entry to a new name in newParent.
-func (d *fuseDir) Rename(ctx context.Context, name string, newParent fs.InodeEmbedder, newName string, flags uint32) syscall.Errno {
+func (d *fuseDir) Rename(ctx context.Context, name string, newParent fs.InodeEmbedder, newName string, flags uint32) (errno syscall.Errno) {
+	defer fuseRecover(&errno)
 	nd, ok := newParent.(*fuseDir)
 	if !ok {
 		return syscall.EXDEV
@@ -319,7 +339,8 @@ func (d *fuseDir) Rename(ctx context.Context, name string, newParent fs.InodeEmb
 }
 
 // Link creates a hard link to the old node under the given name.
-func (d *fuseDir) Link(ctx context.Context, target fs.InodeEmbedder, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+func (d *fuseDir) Link(ctx context.Context, target fs.InodeEmbedder, name string, out *fuse.EntryOut) (ch *fs.Inode, errno syscall.Errno) {
+	defer fuseRecover(&errno)
 	// target is an existing inode (the *fs.Inode), whose operations are the
 	// momofs node it wraps.
 	var tf *fuseFile
@@ -333,7 +354,7 @@ func (d *fuseDir) Link(ctx context.Context, target fs.InodeEmbedder, name string
 	if err := d.root.core.Link(tf.path, dst); err != nil {
 		return nil, toFuseErr(dst, err)
 	}
-	ch, errno := d.root.nodeFor(ctx, &d.Inode, dst, fuse.S_IFREG)
+	ch, errno = d.root.nodeFor(ctx, &d.Inode, dst, fuse.S_IFREG)
 	if errno != 0 {
 		return nil, errno
 	}
@@ -346,12 +367,14 @@ func (d *fuseDir) Link(ctx context.Context, target fs.InodeEmbedder, name string
 }
 
 // Opendir opens the directory for reading.
-func (d *fuseDir) Opendir(ctx context.Context) syscall.Errno {
+func (d *fuseDir) Opendir(ctx context.Context) (errno syscall.Errno) {
+	defer fuseRecover(&errno)
 	return 0
 }
 
 // Readdir returns all directory entries.
-func (d *fuseDir) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
+func (d *fuseDir) Readdir(ctx context.Context) (stream fs.DirStream, errno syscall.Errno) {
+	defer fuseRecover(&errno)
 	entries, err := d.root.core.ReadDir(d.path)
 	if err != nil {
 		return nil, toFuseErr(d.path, err)
@@ -385,7 +408,8 @@ var (
 )
 
 // Getattr fills the FUSE attribute structure for the file.
-func (f *fuseFile) Getattr(ctx context.Context, _ fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
+func (f *fuseFile) Getattr(ctx context.Context, _ fs.FileHandle, out *fuse.AttrOut) (errno syscall.Errno) {
+	defer fuseRecover(&errno)
 	e, err := f.root.core.Lookup(f.path)
 	if err != nil {
 		return toFuseErr(f.path, err)
@@ -395,7 +419,8 @@ func (f *fuseFile) Getattr(ctx context.Context, _ fs.FileHandle, out *fuse.AttrO
 }
 
 // Setattr applies attribute changes (mode, uid, gid, mtime) to the file.
-func (f *fuseFile) Setattr(ctx context.Context, _ fs.FileHandle, in *fuse.SetAttrIn, out *fuse.AttrOut) syscall.Errno {
+func (f *fuseFile) Setattr(ctx context.Context, _ fs.FileHandle, in *fuse.SetAttrIn, out *fuse.AttrOut) (errno syscall.Errno) {
+	defer fuseRecover(&errno)
 	var mode, uid, gid *uint32
 	var mtime *int64
 	if m, ok := in.GetMode(); ok {
@@ -421,7 +446,8 @@ func (f *fuseFile) Setattr(ctx context.Context, _ fs.FileHandle, in *fuse.SetAtt
 }
 
 // Open opens the file and returns a handle for I/O.
-func (f *fuseFile) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
+func (f *fuseFile) Open(ctx context.Context, flags uint32) (fh fs.FileHandle, _ uint32, errno syscall.Errno) {
+	defer fuseRecover(&errno)
 	e, err := f.root.core.Lookup(f.path)
 	if err != nil {
 		return nil, 0, toFuseErr(f.path, err)
@@ -481,7 +507,8 @@ func (h *fuseFileHandle) load() error {
 }
 
 // Read reads file data starting at the requested offset.
-func (h *fuseFileHandle) Read(ctx context.Context, dest []byte, off int64) (fuse.ReadResult, syscall.Errno) {
+func (h *fuseFileHandle) Read(ctx context.Context, dest []byte, off int64) (res fuse.ReadResult, errno syscall.Errno) {
+	defer fuseRecover(&errno)
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if err := h.load(); err != nil {
@@ -498,7 +525,8 @@ func (h *fuseFileHandle) Read(ctx context.Context, dest []byte, off int64) (fuse
 }
 
 // Write writes data to the file at the requested offset.
-func (h *fuseFileHandle) Write(ctx context.Context, data []byte, off int64) (uint32, syscall.Errno) {
+func (h *fuseFileHandle) Write(ctx context.Context, data []byte, off int64) (written uint32, errno syscall.Errno) {
+	defer fuseRecover(&errno)
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if err := h.load(); err != nil {
@@ -532,12 +560,14 @@ func (h *fuseFileHandle) flush() syscall.Errno {
 }
 
 // Flush persists pending data for the open handle.
-func (h *fuseFileHandle) Flush(ctx context.Context) syscall.Errno {
+func (h *fuseFileHandle) Flush(ctx context.Context) (errno syscall.Errno) {
+	defer fuseRecover(&errno)
 	return h.flush()
 }
 
 // Release closes the open handle.
-func (h *fuseFileHandle) Release(ctx context.Context) syscall.Errno {
+func (h *fuseFileHandle) Release(ctx context.Context) (errno syscall.Errno) {
+	defer fuseRecover(&errno)
 	return h.flush()
 }
 
