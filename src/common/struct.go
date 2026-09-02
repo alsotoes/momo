@@ -273,4 +273,14 @@ type Configuration struct {
 	P2P ConfigurationP2P
 	// Storage is the storage and GC configuration.
 	Storage ConfigurationStorage
+	// Momofs is the optional [momofs] FUSE configuration.
+	Momofs ConfigurationMomofs
+}
+
+// ConfigurationMomofs is the optional [momofs] section configuration.
+type ConfigurationMomofs struct {
+	// Consistency is the deprecated momofs consistency mode. The only
+	// accepted value is "cached", which is redundant with kernel-level
+	// consistency and is ignored with an AUDIT log (issue #980).
+	Consistency string
 }

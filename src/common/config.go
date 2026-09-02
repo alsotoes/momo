@@ -23,6 +23,8 @@ const (
 	sectionP2P = "p2p"
 	// sectionStorage is the name of the [storage] section in the configuration file.
 	sectionStorage = "storage"
+	// sectionMomofs is the name of the optional [momofs] section in the configuration file.
+	sectionMomofs = "momofs"
 	// prefixDaemon is the prefix for daemon sections in the configuration file (e.g., [daemon.0]).
 	prefixDaemon = "daemon."
 )
@@ -167,7 +169,31 @@ func GetConfig(path string) (Configuration, error) {
 		config.Storage = defaultStorageConfig()
 	}
 
+	// Load [momofs] section (optional). consistency=cached is deprecated:
+	// kernel-level consistency makes it redundant, so it is ignored with an
+	// AUDIT log (issue #980).
+	momofsSec, err := cfg.GetSection(sectionMomofs)
+	if err == nil {
+		config.Momofs, err = loadMomofsConfig(momofsSec)
+		if err != nil {
+			return Configuration{}, fmt.Errorf("failed to load [%s] section: %w", sectionMomofs, err)
+		}
+	}
+	if config.Momofs.Consistency == "cached" {
+		log.Printf("AUDIT: consistency=cached is redundant with kernel-level DAX consistency; ignoring")
+	}
+
 	return config, nil
+}
+
+// loadMomofsConfig loads the optional [momofs] section from the configuration.
+func loadMomofsConfig(section *ini.Section) (ConfigurationMomofs, error) {
+	var momofsCfg ConfigurationMomofs
+	momofsCfg.Consistency = section.Key("consistency").String()
+	if momofsCfg.Consistency != "" && momofsCfg.Consistency != "cached" {
+		return ConfigurationMomofs{}, fmt.Errorf("'consistency' only accepts \"cached\", got %q: %w", momofsCfg.Consistency, syscall.EINVAL)
+	}
+	return momofsCfg, nil
 }
 
 // getConfigFromFileMu protects getConfigFromFileFn from concurrent reads/writes (Rule 471).

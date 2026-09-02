@@ -14,6 +14,7 @@ related:
   - 027-governance-ai-review-spec-first
   - 021-r3-write-durability-quorum
   - 023-momofs-fuse-transport
+  - 029-fuse-go-fuse-v2-migration
 ---
 # Forward: Production Roadmap (R5–R11) and the Research Guide
 

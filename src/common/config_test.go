@@ -1068,3 +1068,38 @@ fallback_interval = 30
 		t.Fatalf("expected enable_latency_histograms default false, got true")
 	}
 }
+
+// TestGetConfig_MomofsConsistencyDeprecation verifies the [momofs] section:
+// consistency=cached is accepted (and ignored with an AUDIT log), unknown
+// values are rejected, and the field defaults empty when the section is absent.
+func TestGetConfig_MomofsConsistencyDeprecation(t *testing.T) {
+	base := "[global]\ndebug = true\nauth_token = " + strings.Repeat("a", 64) + "\nreplication_order = 1\npolymorphic_system = true\n\n" +
+		"[metrics]\ninterval = 10\nmin_threshold = 0.1\nmax_threshold = 0.9\nfallback_interval = 30\n\n"
+
+	// Absent section -> default empty.
+	cfgNo, err := GetConfig(writeConf(t, base+"[daemon.0]\nhost = h0\ndrive = d0\nchange_replication = c0\ndata = d0\n"))
+	if err != nil {
+		t.Fatalf("config without [momofs] failed: %v", err)
+	}
+	if cfgNo.Momofs.Consistency != "" {
+		t.Fatalf("expected empty Consistency without [momofs], got %q", cfgNo.Momofs.Consistency)
+	}
+
+	// consistency=cached accepted.
+	cfgCached := base + "[daemon.0]\nhost = h0\ndrive = d0\nchange_replication = c0\ndata = d0\n\n" +
+		"[momofs]\nconsistency = cached\n"
+	cfg, err := GetConfig(writeConf(t, cfgCached))
+	if err != nil {
+		t.Fatalf("config with consistency=cached failed: %v", err)
+	}
+	if cfg.Momofs.Consistency != "cached" {
+		t.Fatalf("expected Consistency=cached, got %q", cfg.Momofs.Consistency)
+	}
+
+	// Unknown consistency value rejected.
+	cfgBad := base + "[daemon.0]\nhost = h0\ndrive = d0\nchange_replication = c0\ndata = d0\n\n" +
+		"[momofs]\nconsistency = full\n"
+	if _, err := GetConfig(writeConf(t, cfgBad)); err == nil {
+		t.Fatal("expected unknown consistency value to be rejected")
+	}
+}

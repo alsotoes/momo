@@ -25,6 +25,7 @@ related:
 - 006-pluggable-storage-backends
 - 007-at-rest-integrity-and-gc
 - 022-momofs-posix-core
+- 029-fuse-go-fuse-v2-migration
 - 016-p2p-gossip-swim
 - 023-momofs-fuse-transport
 ---

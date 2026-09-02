@@ -457,6 +457,16 @@ This section controls the Content-Addressable Storage (CAS) engine, including ba
     -   **Type:** String
     -   **Default:** (none; falls back to `daemon.drive`)
 
+### [momofs] (optional)
+
+This section controls the momofs FUSE filesystem. It is entirely optional; the
+FUSE transport itself is selected at launch with `-imp fs`.
+
+-   **`consistency`**
+    -   **Description:** **Deprecated.** The only accepted value is `cached`. The kernel provides native consistency (DAX/VirtioFS), so this option is redundant and is ignored with an `AUDIT` log entry. Any other value is rejected with an `EINVAL` config error.
+    -   **Type:** String
+    -   **Default:** (none)
+
 ## Example Configurations
 
 ### High-Durability Object Storage
