@@ -263,6 +263,9 @@ func DecodeFileMetadataList(data []byte) (result []common.FileMetadata, err erro
 		off += 8
 
 		// 🛡️ Sentinel: Sanitize decoded metadata to prevent path traversal and resource exhaustion from malicious peers.
+		if strings.ContainsAny(hash, "\r\n") || strings.ContainsAny(name, "\r\n") || strings.ContainsAny(remotePath, "\r\n") {
+			return nil, fmt.Errorf("invalid characters (CRLF) in metadata at entry %d: %w", i, syscall.EBADMSG)
+		}
 		if common.HasPathTraversalChars(hash) {
 			return nil, fmt.Errorf("invalid hash at entry %d: %w", i, syscall.EBADMSG)
 		}
