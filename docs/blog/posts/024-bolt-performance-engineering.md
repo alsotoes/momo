@@ -21,6 +21,7 @@ artifacts:
   path: openspec/changes/perf-profiling-baseline
 related:
 - bolt-s3-copyresult-time-alloc
+- 045-bolt-lastmodified-header
 - 003-transport-tcp-to-quic
 - 025-benchmark-benchstat-gate
 - 007-at-rest-integrity-and-gc

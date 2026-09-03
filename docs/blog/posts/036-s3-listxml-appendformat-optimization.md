@@ -12,6 +12,7 @@ related:
   - 008-s3-gateway-core
   - 024-bolt-performance-engineering
   - 042-perf-profiling-baseline
+  - 045-bolt-lastmodified-header
 ---
 # ⚡ Bolt: S3 ListXML AppendFormat
 
