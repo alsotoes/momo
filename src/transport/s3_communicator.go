@@ -911,7 +911,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		// ETag/Last-Modified are derived from the same metadata HEAD uses, so
 		// conditional and range semantics stay consistent per object (issue #771).
 		etag := meta.Hash
-		lastModifiedStr := formatHTTPLastModified(meta.ModTime)
+		// ⚡ Bolt: Eliminate string allocation overhead by using time.AppendFormat directly into the byte slice.
 		// Preserved S3 object metadata (Content-Type, x-amz-meta-*, cache headers)
 		// stored at rest on PUT and echoed here (issue #772).
 		s3Headers := m.storedS3Meta(key)
@@ -968,7 +968,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			b = append(b, "HTTP/1.1 304 Not Modified\r\nETag: \""...)
 			b = append(b, etag...)
 			b = append(b, "\"\r\nLast-Modified: "...)
-			b = append(b, lastModifiedStr...)
+			b = time.Unix(0, meta.ModTime).UTC().AppendFormat(b, http.TimeFormat)
 			b = append(b, "\r\nContent-Length: 0\r\n"...)
 			b = appendS3MetaHeaders(b, s3Headers, contentType)
 			b = append(b, "Connection: close\r\n\r\n"...)
@@ -1049,7 +1049,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		b = append(b, "\r\nETag: \""...)
 		b = append(b, etag...)
 		b = append(b, "\"\r\nLast-Modified: "...)
-		b = append(b, lastModifiedStr...)
+		b = time.Unix(0, meta.ModTime).UTC().AppendFormat(b, http.TimeFormat)
 		b = append(b, "\r\n"...)
 		b = appendS3MetaHeaders(b, s3Headers, contentType)
 		if forceChecksumHeader != "" {
@@ -1154,7 +1154,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		b = append(b, "\"\r\nContent-Length: "...)
 		b = strconv.AppendInt(b, meta.Size, 10)
 		b = append(b, "\r\nLast-Modified: "...)
-		b = append(b, formatHTTPLastModified(meta.ModTime)...)
+		b = time.Unix(0, meta.ModTime).UTC().AppendFormat(b, http.TimeFormat)
 		b = append(b, "\r\n"...)
 		b = appendS3MetaHeaders(b, s3Headers, contentType)
 		b = append(b, "Connection: close\r\n\r\n"...)
@@ -2083,21 +2083,6 @@ func extractS3BucketAndKey(req *http.Request) (bucket string, key string) {
 		key = ""
 	}
 	return bucket, key
-}
-
-// formatLastModified renders a Unix-nano modification time in the
-// S3 XML LastModified format (UTC with millisecond precision).
-// A zero timestamp (unknown/modern fallback) renders as the Unix epoch.
-func formatLastModified(modTime int64) string {
-	return time.Unix(0, modTime).UTC().Format("2006-01-02T15:04:05.000Z")
-}
-
-// formatHTTPLastModified renders a Unix-nano modification time as an
-// HTTP IMF-fixdate header value (RFC 7231), which AWS SDKs and aws-cli
-// parse for the Last-Modified response header. A zero timestamp renders
-// as the Unix epoch.
-func formatHTTPLastModified(modTime int64) string {
-	return time.Unix(0, modTime).UTC().Format(http.TimeFormat)
 }
 
 // FormatListBucketsXML constructs an S3-compliant ListBuckets

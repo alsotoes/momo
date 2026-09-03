@@ -13,7 +13,7 @@ summary: "How we optimized S3 XML responses by replacing time.Format with time.A
 artifacts:
   - type: spec
     path: openspec/changes/bolt-s3-copyresult-time-alloc
-related: ["024-bolt-performance-engineering"]
+related: ["024-bolt-performance-engineering", "045-bolt-lastmodified-header"]
 ---
 
 In our continuous pursuit of performance, we identified a small but frequent allocation in our S3 compatibility layer. When constructing the XML response for `CopyObject`, the system was using `time.Format()` to render the `LastModified` date. While convenient, `time.Format()` dynamically allocates a new string on the heap for every call. In a high-throughput storage system, these small allocations add up, creating unnecessary pressure on the Go garbage collector.
