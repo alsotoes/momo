@@ -1053,7 +1053,65 @@ func (s *CASStore) Stats() (blobCount int64, storedBytes int64, err error) {
 	return blobCount, storedBytes, err
 }
 
-// DataDir returns the store's data directory (used for Statfs disk gauges).
+// Backup writes a consistent snapshot of the bbolt database to the provided writer.
+// It uses a read-only transaction to ensure consistency without blocking writers.
+// Uses bbolt's built-in WriteTo for a complete, consistent backup.
+func (s *CASStore) Backup(w io.Writer) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	// Start a read-only transaction for consistent snapshot
+	tx, err := s.db.Begin(false)
+	if err != nil {
+		return fmt.Errorf("failed to start read transaction for backup: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Use bbolt's built-in WriteTo for consistent backup
+	if _, err = tx.WriteTo(w); err != nil {
+		return fmt.Errorf("failed to write backup: %w", err)
+	}
+
+	return nil
+}
+
+// Restore restores a bbolt database from a backup file by copying the backup
+// file directly to the output path. The backup file is a raw bbolt page stream
+// produced by Backup(). force=true is required to overwrite an existing file.
+func Restore(inputPath, outputPath string, force bool) error {
+	// Open backup file
+	f, err := os.Open(inputPath)
+	if err != nil {
+		return fmt.Errorf("failed to open backup file: %w", err)
+	}
+	defer f.Close()
+
+	// Check if output file exists
+	if _, err := os.Stat(outputPath); err == nil && !force {
+		return fmt.Errorf("output file %s already exists (use --force to overwrite): %w", outputPath, syscall.EEXIST)
+	}
+
+	// Copy backup file to output path
+	out, err := os.OpenFile(outputPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %w", err)
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, f); err != nil {
+		return fmt.Errorf("failed to copy backup to output: %w", err)
+	}
+
+	// Verify the restored database can be opened
+	db, err := bbolt.Open(outputPath, 0600, nil)
+	if err != nil {
+		return fmt.Errorf("restored database failed to open: %w", err)
+	}
+	db.Close()
+
+	log.Printf("AUDIT: Restored backup from %s to %s", inputPath, outputPath)
+	return nil
+}
 func (s *CASStore) DataDir() string { return s.base }
 
 // GCMetrics returns (gcRuns, gcEvictedBytes) collected by the CAS GC sweep.
