@@ -57,36 +57,39 @@
 - [ ] Integration tests: owner down → fallback to replica; cache hit after 2 reads; read repair on stale replica
 
 ## Phase 4 — ListObjects + Config + Backward Compat
-- [ ] Implement shard-aware `ListShard` RPC:
+- [x] Implement shard-aware `ListShard` RPC:
   - Args: `ShardKey`, `Prefix`, `Delimiter`, `MaxKeys`, `ContinuationToken`
   - Reply: `FileMetadata[]`, `CommonPrefixes[]`, `NextContinuationToken`
-- [ ] Modify S3 ListObjectsV2 handler (`s3_communicator.go`):
+- [x] Modify S3 ListObjectsV2 handler (`s3_communicator.go`):
   - When `momofs.enabled=true`: determine shard owners for prefix
   - Fan-out `ListShard` RPC to shard owners only
   - Merge responses → return to client
-- [ ] Add config keys: `metadata_ttl`, `[global] metadata_snapshot_interval`, `metadata_backup_retention`
-- [ ] Backward compat: `momofs.enabled=false` → skip all distributed logic, use local `CASStore.List()`
-- [ ] Update `docs/CONFIGURATION.md`, `conf/momo.conf` with new keys
-- [ ] Integration tests: ListObjectsV2 with prefix on 10-node cluster → O(M) RPCs verified
+- [x] Add config keys: `metadata_ttl`, `[global] metadata_snapshot_interval`, `metadata_backup_retention`
+- [x] Backward compat: `momofs.enabled=false` → skip all distributed logic, use local `CASStore.List()`
+- [x] Update `docs/CONFIGURATION.md`, `conf/momo.conf` with new keys
+- [x] Integration tests: ListObjectsV2 with prefix on 10-node cluster → O(M) RPCs verified
 
 ## Phase 5 — Backup/Recovery (R6a)
-- [ ] Implement `momo backup` CLI in `src/momo.go`:
+- [x] Implement `momo backup` CLI in `src/momo.go`:
   - `backupCmd` with flags `--output`, `--compress`
-  - Stream bbolt pages using `bbolt.Tx.Page()` (online, non-blocking)
+  - Stream bbolt pages using `bbolt.Tx.WriteTo()` (online, non-blocking)
   - Write to file(s) with optional gzip compression
   - Include metadata: timestamp, node ID, DB version
-- [ ] Implement `momo restore` CLI:
+- [x] Implement `momo restore` CLI:
   - `restoreCmd` with flags `--input`, `--force`
   - Validate backup header + checksum
   - `--force` required to overwrite existing DB
   - Restore pages to new DB file
-- [ ] Automated periodic snapshots:
+- [x] Automated periodic snapshots:
   - Background goroutine in `CASStore` (or server) triggered by `metadata_snapshot_interval`
   - Write to configured directory with rotation (daily/weekly)
   - Retention policy: 7 daily + 4 weekly (`metadata_backup_retention`)
-- [ ] Point-in-time recovery documentation:
+- [x] Point-in-time recovery documentation:
   - `docs/BACKUP_RECOVERY.md`: stop node → restore → verify → restart
   - Integrity verification: re-hash all blobs vs `ObjectMeta.Checksum`
+- [x] Update `docs/CONFIGURATION.md`, `conf/momo.conf` with backup keys
+- [x] Integration test: write data → backup → corrupt DB → restore → verify all data intact + checksums match
+- [x] Update `docs/ARCHITECTURE.md` with backup/recovery section
 - [ ] Integration test: write data → backup → corrupt DB → restore → verify all data intact + checksums match
 - [ ] Update `docs/ARCHITECTURE.md` § with backup/recovery section
 
