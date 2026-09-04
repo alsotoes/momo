@@ -99,19 +99,25 @@ type MessageType uint8
 
 // MessageType values carried in gossip message headers.
 const (
-	MsgHeartbeat        MessageType = 1
-	MsgMembership       MessageType = 2
-	MsgSuspect          MessageType = 3
-	MsgQuery            MessageType = 4
-	MsgQueryResponse    MessageType = 5
-	MsgLeaseRequest     MessageType = 6
-	MsgLeaseGrant       MessageType = 7
-	MsgLeaseRelease     MessageType = 8
-	MsgPing             MessageType = 9
-	MsgAck              MessageType = 10
-	MsgIndirectPing     MessageType = 11
-	MsgOPRFEvalRequest  MessageType = 12
-	MsgOPRFEvalResponse MessageType = 13
+	MsgHeartbeat                 MessageType = 1
+	MsgMembership                MessageType = 2
+	MsgSuspect                   MessageType = 3
+	MsgQuery                     MessageType = 4
+	MsgQueryResponse             MessageType = 5
+	MsgLeaseRequest              MessageType = 6
+	MsgLeaseGrant                MessageType = 7
+	MsgLeaseRelease              MessageType = 8
+	MsgPing                      MessageType = 9
+	MsgAck                       MessageType = 10
+	MsgIndirectPing              MessageType = 11
+	MsgOPRFEvalRequest           MessageType = 12
+	MsgOPRFEvalResponse          MessageType = 13
+	MsgPutMetadata               MessageType = 14
+	MsgPutMetadataResponse       MessageType = 15
+	MsgResolveMetadata           MessageType = 16
+	MsgResolveMetadataResponse   MessageType = 17
+	MsgReplicateMetadata         MessageType = 18
+	MsgReplicateMetadataResponse MessageType = 19
 )
 
 // RPC is a remote procedure call exchanged between peers.
