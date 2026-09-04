@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"gopkg.in/ini.v1"
 )
@@ -178,9 +179,27 @@ func GetConfig(path string) (Configuration, error) {
 		if err != nil {
 			return Configuration{}, fmt.Errorf("failed to load [%s] section: %w", sectionMomofs, err)
 		}
-	}
-	if config.Momofs.Consistency == "cached" {
-		log.Printf("AUDIT: consistency=cached is redundant with kernel-level DAX consistency; ignoring")
+		// Validate momofs config
+		if config.Momofs.Enabled {
+			if config.Momofs.MetadataReplication < 1 {
+				return Configuration{}, fmt.Errorf("'metadata_replication' must be >= 1: %w", syscall.EINVAL)
+			}
+			if config.Momofs.MetadataReplication > len(config.Daemons) {
+				return Configuration{}, fmt.Errorf("'metadata_replication' %d exceeds number of daemons %d: %w", config.Momofs.MetadataReplication, len(config.Daemons), syscall.EINVAL)
+			}
+			if config.Momofs.MetadataQuorum != 0 {
+				if config.Momofs.MetadataQuorum < 1 || config.Momofs.MetadataQuorum > config.Momofs.MetadataReplication {
+					return Configuration{}, fmt.Errorf("'metadata_quorum' %d out of range [1, metadata_replication=%d]: %w", config.Momofs.MetadataQuorum, config.Momofs.MetadataReplication, syscall.EINVAL)
+				}
+			}
+			if config.Momofs.MetadataTTL < 0 {
+				return Configuration{}, fmt.Errorf("'metadata_ttl' must be >= 0: %w", syscall.EINVAL)
+			}
+			// P2P must be enabled for distributed metadata
+			if !config.P2P.Enabled {
+				return Configuration{}, fmt.Errorf("[momofs] enabled=true requires [p2p] enabled=true: %w", syscall.EINVAL)
+			}
+		}
 	}
 
 	return config, nil
@@ -189,9 +208,17 @@ func GetConfig(path string) (Configuration, error) {
 // loadMomofsConfig loads the optional [momofs] section from the configuration.
 func loadMomofsConfig(section *ini.Section) (ConfigurationMomofs, error) {
 	var momofsCfg ConfigurationMomofs
-	momofsCfg.Consistency = section.Key("consistency").String()
-	if momofsCfg.Consistency != "" && momofsCfg.Consistency != "cached" {
-		return ConfigurationMomofs{}, fmt.Errorf("'consistency' only accepts \"cached\", got %q: %w", momofsCfg.Consistency, syscall.EINVAL)
+	momofsCfg.Enabled = section.Key("enabled").MustBool(false)
+	momofsCfg.MetadataReplication = section.Key("metadata_replication").MustInt(3)
+	momofsCfg.MetadataQuorum = section.Key("metadata_quorum").MustInt(0) // 0 = default (M/2)+1
+	momofsCfg.MetadataTTL = section.Key("metadata_ttl").MustDuration(60 * time.Second)
+
+	// Backward compat: accept deprecated "consistency" key but log warning
+	if consistency := section.Key("consistency").String(); consistency != "" {
+		log.Printf("AUDIT: [momofs] 'consistency' key is deprecated (R6 #934). Use 'enabled' instead.")
+		if consistency != "cached" {
+			return ConfigurationMomofs{}, fmt.Errorf("'consistency' only accepts \"cached\", got %q: %w", consistency, syscall.EINVAL)
+		}
 	}
 	return momofsCfg, nil
 }

@@ -118,6 +118,8 @@ const (
 	MsgResolveMetadataResponse   MessageType = 17
 	MsgReplicateMetadata         MessageType = 18
 	MsgReplicateMetadataResponse MessageType = 19
+	MsgListShard                 MessageType = 20
+	MsgListShardResponse         MessageType = 21
 )
 
 // RPC is a remote procedure call exchanged between peers.
