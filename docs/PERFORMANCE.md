@@ -39,42 +39,42 @@ Each table compares the previous commit (left) to the current commit (right).
 ```
                                       │ /tmp/old_bench_filtered.txt │      /tmp/new_bench_filtered.txt       │
                                       │           sec/op            │    sec/op      vs base                 │
-CrushOriginal-8                                        734.0n ± ∞ ¹    697.2n ± ∞ ¹        ~ (p=1.000 n=1) ²
-Placement-8                                            7.696µ ± ∞ ¹    7.054µ ± ∞ ¹        ~ (p=1.000 n=1) ²
-PlacementDomainSpread-8                                8.677µ ± ∞ ¹    7.666µ ± ∞ ¹        ~ (p=1.000 n=1) ²
-CrushOptimized-8                                       492.4n ± ∞ ¹    487.0n ± ∞ ¹        ~ (p=1.000 n=1) ²
-LoadGlobalConfig-8                                     16.53µ ± ∞ ¹    15.64µ ± ∞ ¹        ~ (p=1.000 n=1) ²
-HashBytes/1MiB-8                                       5.622m ± ∞ ¹    4.965m ± ∞ ¹        ~ (p=1.000 n=1) ²
-HashBytes/64MiB-8                                      359.3m ± ∞ ¹    340.0m ± ∞ ¹        ~ (p=1.000 n=1) ²
-HashBytes/256MiB-8                                      1.502 ± ∞ ¹     1.211 ± ∞ ¹        ~ (p=1.000 n=1) ²
-HashFile/1MiB-8                                        5.725m ± ∞ ¹    5.039m ± ∞ ¹        ~ (p=1.000 n=1) ²
-HashFile/64MiB-8                                       342.3m ± ∞ ¹    356.3m ± ∞ ¹        ~ (p=1.000 n=1) ²
-HashFile/256MiB-8                                       1.478 ± ∞ ¹     1.193 ± ∞ ¹        ~ (p=1.000 n=1) ²
-PadString-8                                            77.54n ± ∞ ¹    64.37n ± ∞ ¹        ~ (p=1.000 n=1) ²
-SanitizeLog/Safe-8                                     418.9n ± ∞ ¹    341.0n ± ∞ ¹        ~ (p=1.000 n=1) ²
-SanitizeLog/Unsafe-8                                  1210.0n ± ∞ ¹    999.9n ± ∞ ¹        ~ (p=1.000 n=1) ²
-AWSChunkedReaderSigned-8                               741.0µ ± ∞ ¹    596.0µ ± ∞ ¹        ~ (p=1.000 n=1) ²
-AWSChunkedReaderUnsigned-8                             721.6µ ± ∞ ¹    625.0µ ± ∞ ¹        ~ (p=1.000 n=1) ²
-LastModifiedHeader_AppendFormat-8                      377.2n ± ∞ ¹    410.8n ± ∞ ¹        ~ (p=1.000 n=1) ²
-LastModifiedHeader_Format-8                            474.3n ± ∞ ¹    418.4n ± ∞ ¹        ~ (p=1.000 n=1) ²
-FormatListObjectsV2XML_AppendFormat-8                 1117.1µ ± ∞ ¹    928.4µ ± ∞ ¹        ~ (p=1.000 n=1) ²
-FormatListObjectsV2XML_OldFormat-8                     661.5µ ± ∞ ¹    521.5µ ± ∞ ¹        ~ (p=1.000 n=1) ²
-CheckMetricsAndSwap-8                                  13.93n ± ∞ ¹    12.80n ± ∞ ¹        ~ (p=1.000 n=1) ²
-IndexSearch-8                                          2.903n ± ∞ ¹    2.248n ± ∞ ¹        ~ (p=1.000 n=1) ²
-IndexDirectTracking-8                                 0.6977n ± ∞ ¹   0.4985n ± ∞ ¹        ~ (p=1.000 n=1) ²
-LocalWrite/1MiB-8                                      653.2µ ± ∞ ¹    620.5µ ± ∞ ¹        ~ (p=1.000 n=1) ²
-LocalWrite/64MiB-8                                     41.27m ± ∞ ¹    35.90m ± ∞ ¹        ~ (p=1.000 n=1) ²
-LocalWrite/256MiB-8                                    171.1m ± ∞ ¹    136.6m ± ∞ ¹        ~ (p=1.000 n=1) ²
-ReadVerify/1MiB-8                                      5.316m ± ∞ ¹    4.787m ± ∞ ¹        ~ (p=1.000 n=1) ²
-ReadVerify/64MiB-8                                     337.1m ± ∞ ¹    347.2m ± ∞ ¹        ~ (p=1.000 n=1) ²
-ReadVerify/256MiB-8                                     1.356 ± ∞ ¹     1.338 ± ∞ ¹        ~ (p=1.000 n=1) ²
-TrustedRead/1MiB-8                                     5.560m ± ∞ ¹    5.638m ± ∞ ¹        ~ (p=1.000 n=1) ²
-TrustedRead/64MiB-8                                    376.2m ± ∞ ¹    296.3m ± ∞ ¹        ~ (p=1.000 n=1) ²
-TrustedRead/256MiB-8                                    1.467 ± ∞ ¹     1.031 ± ∞ ¹        ~ (p=1.000 n=1) ²
-S3PutSpool/1MiB-8                                      6.149m ± ∞ ¹    5.305m ± ∞ ¹        ~ (p=1.000 n=1) ²
-S3PutSpool/64MiB-8                                     362.7m ± ∞ ¹    347.2m ± ∞ ¹        ~ (p=1.000 n=1) ²
-S3PutSpool/256MiB-8                                     1.551 ± ∞ ¹     1.298 ± ∞ ¹        ~ (p=1.000 n=1) ²
-geomean                                                501.7µ          440.4µ        -12.22%
+CrushOriginal-8                                        697.2n ± ∞ ¹    658.3n ± ∞ ¹        ~ (p=1.000 n=1) ²
+Placement-8                                            7.054µ ± ∞ ¹    7.086µ ± ∞ ¹        ~ (p=1.000 n=1) ²
+PlacementDomainSpread-8                                7.666µ ± ∞ ¹    6.917µ ± ∞ ¹        ~ (p=1.000 n=1) ²
+CrushOptimized-8                                       487.0n ± ∞ ¹    521.7n ± ∞ ¹        ~ (p=1.000 n=1) ²
+LoadGlobalConfig-8                                     15.64µ ± ∞ ¹    12.96µ ± ∞ ¹        ~ (p=1.000 n=1) ²
+HashBytes/1MiB-8                                       4.965m ± ∞ ¹    4.316m ± ∞ ¹        ~ (p=1.000 n=1) ²
+HashBytes/64MiB-8                                      340.0m ± ∞ ¹    213.9m ± ∞ ¹        ~ (p=1.000 n=1) ²
+HashBytes/256MiB-8                                      1.211 ± ∞ ¹     1.049 ± ∞ ¹        ~ (p=1.000 n=1) ²
+HashFile/1MiB-8                                        5.039m ± ∞ ¹    3.961m ± ∞ ¹        ~ (p=1.000 n=1) ²
+HashFile/64MiB-8                                       356.3m ± ∞ ¹    288.3m ± ∞ ¹        ~ (p=1.000 n=1) ²
+HashFile/256MiB-8                                       1.193 ± ∞ ¹     1.178 ± ∞ ¹        ~ (p=1.000 n=1) ²
+PadString-8                                            64.37n ± ∞ ¹    58.87n ± ∞ ¹        ~ (p=1.000 n=1) ²
+SanitizeLog/Safe-8                                     341.0n ± ∞ ¹    308.9n ± ∞ ¹        ~ (p=1.000 n=1) ²
+SanitizeLog/Unsafe-8                                   999.9n ± ∞ ¹   1005.0n ± ∞ ¹        ~ (p=1.000 n=1) ²
+AWSChunkedReaderSigned-8                               596.0µ ± ∞ ¹    541.8µ ± ∞ ¹        ~ (p=1.000 n=1) ²
+AWSChunkedReaderUnsigned-8                             625.0µ ± ∞ ¹    521.0µ ± ∞ ¹        ~ (p=1.000 n=1) ²
+LastModifiedHeader_AppendFormat-8                      410.8n ± ∞ ¹    306.1n ± ∞ ¹        ~ (p=1.000 n=1) ²
+LastModifiedHeader_Format-8                            418.4n ± ∞ ¹    380.9n ± ∞ ¹        ~ (p=1.000 n=1) ²
+FormatListObjectsV2XML_AppendFormat-8                  928.4µ ± ∞ ¹    977.4µ ± ∞ ¹        ~ (p=1.000 n=1) ²
+FormatListObjectsV2XML_OldFormat-8                     521.5µ ± ∞ ¹    565.6µ ± ∞ ¹        ~ (p=1.000 n=1) ²
+CheckMetricsAndSwap-8                                  12.80n ± ∞ ¹    10.69n ± ∞ ¹        ~ (p=1.000 n=1) ²
+IndexSearch-8                                          2.248n ± ∞ ¹    2.235n ± ∞ ¹        ~ (p=1.000 n=1) ²
+IndexDirectTracking-8                                 0.4985n ± ∞ ¹   0.4033n ± ∞ ¹        ~ (p=1.000 n=1) ²
+LocalWrite/1MiB-8                                      620.5µ ± ∞ ¹    558.3µ ± ∞ ¹        ~ (p=1.000 n=1) ²
+LocalWrite/64MiB-8                                     35.90m ± ∞ ¹    33.61m ± ∞ ¹        ~ (p=1.000 n=1) ²
+LocalWrite/256MiB-8                                    136.6m ± ∞ ¹    121.3m ± ∞ ¹        ~ (p=1.000 n=1) ²
+ReadVerify/1MiB-8                                      4.787m ± ∞ ¹    3.901m ± ∞ ¹        ~ (p=1.000 n=1) ²
+ReadVerify/64MiB-8                                     347.2m ± ∞ ¹    259.9m ± ∞ ¹        ~ (p=1.000 n=1) ²
+ReadVerify/256MiB-8                                     1.338 ± ∞ ¹     1.103 ± ∞ ¹        ~ (p=1.000 n=1) ²
+TrustedRead/1MiB-8                                     5.638m ± ∞ ¹    4.655m ± ∞ ¹        ~ (p=1.000 n=1) ²
+TrustedRead/64MiB-8                                    296.3m ± ∞ ¹    281.3m ± ∞ ¹        ~ (p=1.000 n=1) ²
+TrustedRead/256MiB-8                                    1.031 ± ∞ ¹     1.174 ± ∞ ¹        ~ (p=1.000 n=1) ²
+S3PutSpool/1MiB-8                                      5.305m ± ∞ ¹    5.592m ± ∞ ¹        ~ (p=1.000 n=1) ²
+S3PutSpool/64MiB-8                                     347.2m ± ∞ ¹    296.1m ± ∞ ¹        ~ (p=1.000 n=1) ²
+S3PutSpool/256MiB-8                                     1.298 ± ∞ ¹     1.269 ± ∞ ¹        ~ (p=1.000 n=1) ²
+geomean                                                440.4µ          394.8µ        -10.35%
 ¹ need >= 6 samples for confidence interval at level 0.95
 ² need >= 4 samples to detect a difference at alpha level 0.05
 
@@ -94,8 +94,8 @@ HashFile/256MiB-8                                     32.35Ki ± ∞ ¹   32.35K
 PadString-8                                             64.00 ± ∞ ¹     64.00 ± ∞ ¹       ~ (p=1.000 n=1) ²
 SanitizeLog/Safe-8                                      0.000 ± ∞ ¹     0.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
 SanitizeLog/Unsafe-8                                    704.0 ± ∞ ¹     704.0 ± ∞ ¹       ~ (p=1.000 n=1) ²
-AWSChunkedReaderSigned-8                              11.09Ki ± ∞ ¹   11.05Ki ± ∞ ¹       ~ (p=1.000 n=1) ³
-AWSChunkedReaderUnsigned-8                            76.78Ki ± ∞ ¹   76.75Ki ± ∞ ¹       ~ (p=1.000 n=1) ³
+AWSChunkedReaderSigned-8                              11.05Ki ± ∞ ¹   11.05Ki ± ∞ ¹       ~ (p=1.000 n=1) ³
+AWSChunkedReaderUnsigned-8                            76.75Ki ± ∞ ¹   76.74Ki ± ∞ ¹       ~ (p=1.000 n=1) ³
 LastModifiedHeader_AppendFormat-8                       0.000 ± ∞ ¹     0.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
 LastModifiedHeader_Format-8                             32.00 ± ∞ ¹     32.00 ± ∞ ¹       ~ (p=1.000 n=1) ²
 FormatListObjectsV2XML_AppendFormat-8                 512.2Ki ± ∞ ¹   512.2Ki ± ∞ ¹       ~ (p=1.000 n=1) ³
@@ -104,18 +104,18 @@ CheckMetricsAndSwap-8                                   0.000 ± ∞ ¹     0.00
 IndexSearch-8                                           0.000 ± ∞ ¹     0.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
 IndexDirectTracking-8                                   0.000 ± ∞ ¹     0.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
 LocalWrite/1MiB-8                                     65.46Ki ± ∞ ¹   65.46Ki ± ∞ ¹       ~ (p=1.000 n=1) ³
-LocalWrite/64MiB-8                                    65.53Ki ± ∞ ¹   65.53Ki ± ∞ ¹       ~ (p=1.000 n=1) ³
-LocalWrite/256MiB-8                                   65.97Ki ± ∞ ¹   65.79Ki ± ∞ ¹       ~ (p=1.000 n=1) ³
-ReadVerify/1MiB-8                                       479.0 ± ∞ ¹     467.0 ± ∞ ¹       ~ (p=1.000 n=1) ³
-ReadVerify/64MiB-8                                    3.474Ki ± ∞ ¹   3.474Ki ± ∞ ¹       ~ (p=1.000 n=1) ²
+LocalWrite/64MiB-8                                    65.53Ki ± ∞ ¹   65.48Ki ± ∞ ¹       ~ (p=1.000 n=1) ³
+LocalWrite/256MiB-8                                   65.79Ki ± ∞ ¹   65.81Ki ± ∞ ¹       ~ (p=1.000 n=1) ³
+ReadVerify/1MiB-8                                       467.0 ± ∞ ¹     465.0 ± ∞ ¹       ~ (p=1.000 n=1) ³
+ReadVerify/64MiB-8                                    3.474Ki ± ∞ ¹   2.711Ki ± ∞ ¹       ~ (p=1.000 n=1) ³
 ReadVerify/256MiB-8                                   9.578Ki ± ∞ ¹   9.578Ki ± ∞ ¹       ~ (p=1.000 n=1) ²
-TrustedRead/1MiB-8                                      800.0 ± ∞ ¹     834.0 ± ∞ ¹       ~ (p=1.000 n=1) ³
+TrustedRead/1MiB-8                                      834.0 ± ∞ ¹     800.0 ± ∞ ¹       ~ (p=1.000 n=1) ³
 TrustedRead/64MiB-8                                     800.0 ± ∞ ¹     800.0 ± ∞ ¹       ~ (p=1.000 n=1) ²
 TrustedRead/256MiB-8                                    800.0 ± ∞ ¹     800.0 ± ∞ ¹       ~ (p=1.000 n=1) ²
 S3PutSpool/1MiB-8                                       447.0 ± ∞ ¹     447.0 ± ∞ ¹       ~ (p=1.000 n=1) ²
 S3PutSpool/64MiB-8                                      448.0 ± ∞ ¹     448.0 ± ∞ ¹       ~ (p=1.000 n=1) ²
 S3PutSpool/256MiB-8                                     448.0 ± ∞ ¹     448.0 ± ∞ ¹       ~ (p=1.000 n=1) ²
-geomean                                                           ⁴                  +0.03%               ⁴
+geomean                                                           ⁴                  -0.84%               ⁴
 ¹ need >= 6 samples for confidence interval at level 0.95
 ² all samples are equal
 ³ need >= 4 samples to detect a difference at alpha level 0.05
@@ -146,9 +146,9 @@ FormatListObjectsV2XML_OldFormat-8                     1.000k ± ∞ ¹   1.000k
 CheckMetricsAndSwap-8                                   0.000 ± ∞ ¹    0.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
 IndexSearch-8                                           0.000 ± ∞ ¹    0.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
 IndexDirectTracking-8                                   0.000 ± ∞ ¹    0.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
-LocalWrite/1MiB-8                                       18.00 ± ∞ ¹    19.00 ± ∞ ¹       ~ (p=1.000 n=1) ³
+LocalWrite/1MiB-8                                       19.00 ± ∞ ¹    18.00 ± ∞ ¹       ~ (p=1.000 n=1) ³
 LocalWrite/64MiB-8                                      18.00 ± ∞ ¹    18.00 ± ∞ ¹       ~ (p=1.000 n=1) ²
-LocalWrite/256MiB-8                                     21.00 ± ∞ ¹    20.00 ± ∞ ¹       ~ (p=1.000 n=1) ³
+LocalWrite/256MiB-8                                     20.00 ± ∞ ¹    20.00 ± ∞ ¹       ~ (p=1.000 n=1) ²
 ReadVerify/1MiB-8                                       6.000 ± ∞ ¹    6.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
 ReadVerify/64MiB-8                                      7.000 ± ∞ ¹    7.000 ± ∞ ¹       ~ (p=1.000 n=1) ²
 ReadVerify/256MiB-8                                     10.00 ± ∞ ¹    10.00 ± ∞ ¹       ~ (p=1.000 n=1) ²
@@ -158,35 +158,35 @@ TrustedRead/256MiB-8                                    11.00 ± ∞ ¹    11.00
 S3PutSpool/1MiB-8                                       10.00 ± ∞ ¹    10.00 ± ∞ ¹       ~ (p=1.000 n=1) ²
 S3PutSpool/64MiB-8                                      10.00 ± ∞ ¹    10.00 ± ∞ ¹       ~ (p=1.000 n=1) ²
 S3PutSpool/256MiB-8                                     10.00 ± ∞ ¹    10.00 ± ∞ ¹       ~ (p=1.000 n=1) ²
-geomean                                                           ⁴                 +0.02%               ⁴
+geomean                                                           ⁴                 -0.15%               ⁴
 ¹ need >= 6 samples for confidence interval at level 0.95
 ² all samples are equal
 ³ need >= 4 samples to detect a difference at alpha level 0.05
 ⁴ summaries must be >0 to compute geomean
 
-                           │ /tmp/old_bench_filtered.txt │       /tmp/new_bench_filtered.txt       │
-                           │             B/s             │      B/s        vs base                 │
-HashBytes/1MiB-8                           177.9Mi ± ∞ ¹    201.4Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
-HashBytes/64MiB-8                          178.1Mi ± ∞ ¹    188.2Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
-HashBytes/256MiB-8                         170.4Mi ± ∞ ¹    211.4Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
-HashFile/1MiB-8                            174.7Mi ± ∞ ¹    198.4Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
-HashFile/64MiB-8                           187.0Mi ± ∞ ¹    179.6Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
-HashFile/256MiB-8                          173.2Mi ± ∞ ¹    214.6Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
-AWSChunkedReaderSigned-8                   85.66Mi ± ∞ ¹   106.50Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
-AWSChunkedReaderUnsigned-8                 87.97Mi ± ∞ ¹   101.57Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
-LocalWrite/1MiB-8                          1.495Gi ± ∞ ¹    1.574Gi ± ∞ ¹        ~ (p=1.000 n=1) ²
-LocalWrite/64MiB-8                         1.514Gi ± ∞ ¹    1.741Gi ± ∞ ¹        ~ (p=1.000 n=1) ²
-LocalWrite/256MiB-8                        1.461Gi ± ∞ ¹    1.830Gi ± ∞ ¹        ~ (p=1.000 n=1) ²
-ReadVerify/1MiB-8                          188.1Mi ± ∞ ¹    208.9Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
-ReadVerify/64MiB-8                         189.9Mi ± ∞ ¹    184.3Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
-ReadVerify/256MiB-8                        188.7Mi ± ∞ ¹    191.3Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
-TrustedRead/1MiB-8                         179.9Mi ± ∞ ¹    177.4Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
-TrustedRead/64MiB-8                        170.1Mi ± ∞ ¹    216.0Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
-TrustedRead/256MiB-8                       174.5Mi ± ∞ ¹    248.2Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
-S3PutSpool/1MiB-8                          162.6Mi ± ∞ ¹    188.5Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
-S3PutSpool/64MiB-8                         176.5Mi ± ∞ ¹    184.4Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
-S3PutSpool/256MiB-8                        165.0Mi ± ∞ ¹    197.2Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
-geomean                                    227.6Mi          258.0Mi        +13.37%
+                           │ /tmp/old_bench_filtered.txt │      /tmp/new_bench_filtered.txt       │
+                           │             B/s             │      B/s       vs base                 │
+HashBytes/1MiB-8                           201.4Mi ± ∞ ¹   231.7Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
+HashBytes/64MiB-8                          188.2Mi ± ∞ ¹   299.2Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
+HashBytes/256MiB-8                         211.4Mi ± ∞ ¹   244.1Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
+HashFile/1MiB-8                            198.4Mi ± ∞ ¹   252.5Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
+HashFile/64MiB-8                           179.6Mi ± ∞ ¹   222.0Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
+HashFile/256MiB-8                          214.6Mi ± ∞ ¹   217.4Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
+AWSChunkedReaderSigned-8                   106.5Mi ± ∞ ¹   117.2Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
+AWSChunkedReaderUnsigned-8                 101.6Mi ± ∞ ¹   121.8Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
+LocalWrite/1MiB-8                          1.574Gi ± ∞ ¹   1.749Gi ± ∞ ¹        ~ (p=1.000 n=1) ²
+LocalWrite/64MiB-8                         1.741Gi ± ∞ ¹   1.859Gi ± ∞ ¹        ~ (p=1.000 n=1) ²
+LocalWrite/256MiB-8                        1.830Gi ± ∞ ¹   2.061Gi ± ∞ ¹        ~ (p=1.000 n=1) ²
+ReadVerify/1MiB-8                          208.9Mi ± ∞ ¹   256.4Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
+ReadVerify/64MiB-8                         184.3Mi ± ∞ ¹   246.3Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
+ReadVerify/256MiB-8                        191.3Mi ± ∞ ¹   232.1Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
+TrustedRead/1MiB-8                         177.4Mi ± ∞ ¹   214.8Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
+TrustedRead/64MiB-8                        216.0Mi ± ∞ ¹   227.5Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
+TrustedRead/256MiB-8                       248.2Mi ± ∞ ¹   218.1Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
+S3PutSpool/1MiB-8                          188.5Mi ± ∞ ¹   178.8Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
+S3PutSpool/64MiB-8                         184.4Mi ± ∞ ¹   216.1Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
+S3PutSpool/256MiB-8                        197.2Mi ± ∞ ¹   201.7Mi ± ∞ ¹        ~ (p=1.000 n=1) ²
+geomean                                    258.0Mi         295.5Mi        +14.52%
 ¹ need >= 6 samples for confidence interval at level 0.95
 ² need >= 4 samples to detect a difference at alpha level 0.05
 ```
@@ -199,41 +199,41 @@ three columns: time (speed), bytes (memory), allocs (GC pressure).
 
 | Benchmark | Avg. Time/Op | Avg. Bytes/Op | Avg. Allocs/Op |
 |-----------|--------------|---------------|----------------|
-| BenchmarkAWSChunkedReaderSigned-8 | 596016.00 ns/op | 111.67 B/op | 11316.00 allocs/op |
-| BenchmarkAWSChunkedReaderUnsigned-8 | 624951.00 ns/op | 106.50 B/op | 78588.00 allocs/op |
-| BenchmarkCheckMetricsAndSwap-8 | 12.80 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkCrushOptimized-8 | 487.00 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkCrushOriginal-8 | 697.20 ns/op | 164.00 B/op | 3.00 allocs/op |
-| BenchmarkFormatListObjectsV2XML_AppendFormat-8 | 928365.00 ns/op | 524456.00 B/op | 16.00 allocs/op |
-| BenchmarkFormatListObjectsV2XML_OldFormat-8 | 521514.00 ns/op | 24000.00 B/op | 1000.00 allocs/op |
-| BenchmarkHashBytes/1MiB-8 | 4965423.00 ns/op | 211.18 B/op | 64.00 allocs/op |
-| BenchmarkHashBytes/256MiB-8 | 1211052717.00 ns/op | 221.65 B/op | 64.00 allocs/op |
-| BenchmarkHashBytes/64MiB-8 | 339981640.00 ns/op | 197.39 B/op | 64.00 allocs/op |
-| BenchmarkHashFile/1MiB-8 | 5039192.00 ns/op | 208.08 B/op | 33128.00 allocs/op |
-| BenchmarkHashFile/256MiB-8 | 1193078064.00 ns/op | 224.99 B/op | 33128.00 allocs/op |
-| BenchmarkHashFile/64MiB-8 | 356293580.00 ns/op | 188.35 B/op | 33128.00 allocs/op |
-| BenchmarkIndexDirectTracking-8 | 0.50 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkIndexSearch-8 | 2.25 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkLastModifiedHeader_AppendFormat-8 | 410.80 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkLastModifiedHeader_Format-8 | 418.40 ns/op | 32.00 B/op | 1.00 allocs/op |
-| BenchmarkLoadGlobalConfig-8 | 15639.00 ns/op | 1976.00 B/op | 58.00 allocs/op |
-| BenchmarkLocalWrite/1MiB-8 | 620492.00 ns/op | 1689.91 B/op | 67032.00 allocs/op |
-| BenchmarkLocalWrite/256MiB-8 | 136595670.00 ns/op | 1965.18 B/op | 67369.00 allocs/op |
-| BenchmarkLocalWrite/64MiB-8 | 35901035.00 ns/op | 1869.27 B/op | 67107.00 allocs/op |
-| BenchmarkPadString-8 | 64.37 ns/op | 64.00 B/op | 1.00 allocs/op |
-| BenchmarkPlacement-8 | 7054.00 ns/op | 352.00 B/op | 6.00 allocs/op |
-| BenchmarkPlacementDomainSpread-8 | 7666.00 ns/op | 352.00 B/op | 6.00 allocs/op |
-| BenchmarkReadVerify/1MiB-8 | 4787467.00 ns/op | 219.03 B/op | 467.00 allocs/op |
-| BenchmarkReadVerify/256MiB-8 | 1338425672.00 ns/op | 200.56 B/op | 9808.00 allocs/op |
-| BenchmarkReadVerify/64MiB-8 | 347180139.00 ns/op | 193.30 B/op | 3557.00 allocs/op |
-| BenchmarkS3PutSpool/1MiB-8 | 5304842.00 ns/op | 197.66 B/op | 447.00 allocs/op |
-| BenchmarkS3PutSpool/256MiB-8 | 1298058993.00 ns/op | 206.80 B/op | 448.00 allocs/op |
-| BenchmarkS3PutSpool/64MiB-8 | 347153910.00 ns/op | 193.31 B/op | 448.00 allocs/op |
-| BenchmarkSanitizeLog/Safe-8 | 341.00 ns/op | 0.00 B/op | 0.00 allocs/op |
-| BenchmarkSanitizeLog/Unsafe-8 | 999.90 ns/op | 704.00 B/op | 1.00 allocs/op |
-| BenchmarkTrustedRead/1MiB-8 | 5638483.00 ns/op | 185.97 B/op | 834.00 allocs/op |
-| BenchmarkTrustedRead/256MiB-8 | 1031346576.00 ns/op | 260.28 B/op | 800.00 allocs/op |
-| BenchmarkTrustedRead/64MiB-8 | 296255358.00 ns/op | 226.52 B/op | 800.00 allocs/op |
+| BenchmarkAWSChunkedReaderSigned-8 | 541759.00 ns/op | 122.86 B/op | 11313.00 allocs/op |
+| BenchmarkAWSChunkedReaderUnsigned-8 | 521049.00 ns/op | 127.74 B/op | 78582.00 allocs/op |
+| BenchmarkCheckMetricsAndSwap-8 | 10.69 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkCrushOptimized-8 | 521.70 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkCrushOriginal-8 | 658.30 ns/op | 164.00 B/op | 3.00 allocs/op |
+| BenchmarkFormatListObjectsV2XML_AppendFormat-8 | 977381.00 ns/op | 524462.00 B/op | 16.00 allocs/op |
+| BenchmarkFormatListObjectsV2XML_OldFormat-8 | 565611.00 ns/op | 24000.00 B/op | 1000.00 allocs/op |
+| BenchmarkHashBytes/1MiB-8 | 4315588.00 ns/op | 242.97 B/op | 64.00 allocs/op |
+| BenchmarkHashBytes/256MiB-8 | 1048575116.00 ns/op | 256.00 B/op | 64.00 allocs/op |
+| BenchmarkHashBytes/64MiB-8 | 213869807.00 ns/op | 313.78 B/op | 64.00 allocs/op |
+| BenchmarkHashFile/1MiB-8 | 3960989.00 ns/op | 264.73 B/op | 33128.00 allocs/op |
+| BenchmarkHashFile/256MiB-8 | 1177833636.00 ns/op | 227.91 B/op | 33128.00 allocs/op |
+| BenchmarkHashFile/64MiB-8 | 288277413.00 ns/op | 232.79 B/op | 33128.00 allocs/op |
+| BenchmarkIndexDirectTracking-8 | 0.40 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkIndexSearch-8 | 2.23 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkLastModifiedHeader_AppendFormat-8 | 306.10 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkLastModifiedHeader_Format-8 | 380.90 ns/op | 32.00 B/op | 1.00 allocs/op |
+| BenchmarkLoadGlobalConfig-8 | 12955.00 ns/op | 1976.00 B/op | 58.00 allocs/op |
+| BenchmarkLocalWrite/1MiB-8 | 558337.00 ns/op | 1878.03 B/op | 67034.00 allocs/op |
+| BenchmarkLocalWrite/256MiB-8 | 121311016.00 ns/op | 2212.79 B/op | 67393.00 allocs/op |
+| BenchmarkLocalWrite/64MiB-8 | 33613673.00 ns/op | 1996.48 B/op | 67056.00 allocs/op |
+| BenchmarkPadString-8 | 58.87 ns/op | 64.00 B/op | 1.00 allocs/op |
+| BenchmarkPlacement-8 | 7086.00 ns/op | 352.00 B/op | 6.00 allocs/op |
+| BenchmarkPlacementDomainSpread-8 | 6917.00 ns/op | 352.00 B/op | 6.00 allocs/op |
+| BenchmarkReadVerify/1MiB-8 | 3900770.00 ns/op | 268.81 B/op | 465.00 allocs/op |
+| BenchmarkReadVerify/256MiB-8 | 1103105249.00 ns/op | 243.35 B/op | 9808.00 allocs/op |
+| BenchmarkReadVerify/64MiB-8 | 259882135.00 ns/op | 258.23 B/op | 2776.00 allocs/op |
+| BenchmarkS3PutSpool/1MiB-8 | 5592080.00 ns/op | 187.51 B/op | 447.00 allocs/op |
+| BenchmarkS3PutSpool/256MiB-8 | 1269281522.00 ns/op | 211.49 B/op | 448.00 allocs/op |
+| BenchmarkS3PutSpool/64MiB-8 | 296132654.00 ns/op | 226.62 B/op | 448.00 allocs/op |
+| BenchmarkSanitizeLog/Safe-8 | 308.90 ns/op | 0.00 B/op | 0.00 allocs/op |
+| BenchmarkSanitizeLog/Unsafe-8 | 1005.00 ns/op | 704.00 B/op | 1.00 allocs/op |
+| BenchmarkTrustedRead/1MiB-8 | 4655498.00 ns/op | 225.23 B/op | 800.00 allocs/op |
+| BenchmarkTrustedRead/256MiB-8 | 1173571296.00 ns/op | 228.73 B/op | 800.00 allocs/op |
+| BenchmarkTrustedRead/64MiB-8 | 281349472.00 ns/op | 238.52 B/op | 800.00 allocs/op |
 
 
 ### Performance History
@@ -262,44 +262,44 @@ xychart-beta
     title "Performance Trend (Avg. Time, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Time (ns/op)"
-    x-axis [100b5ad,353921e,2d1b220,6615813,fda25a1,27a847a]
-    line "AWSChunkedReaderSigned" [534318,636346,690357,622918,512707,501241,721946,582789,741042,596016]
-    line "AWSChunkedReaderUnsigned" [593403,613680,684347,616129,457742,556893,695362,580668,721611,624951]
-    line "CheckMetricsAndSwap" [11,13,14,14,10,10,14,9,14,13]
-    line "CrushOptimized" [439,383,433,463,354,433,532,484,492,487]
-    line "CrushOriginal" [591,678,598,642,502,597,715,641,734,697]
-    line "FormatListObjectsV2XML_AppendFormat" [913648,876655,1035620,900618,648718,775274,1080271,993577,1117129,928365]
-    line "FormatListObjectsV2XML_OldFormat" [527726,499237,554225,498654,406141,479265,671030,530555,661534,521514]
-    line "HashBytes/1MiB" [3924626,3806841,4997033,4520322,3555390,4784039,3995457,4596495,5621676,4965423]
-    line "HashBytes/256MiB" [1334138916,1086104803,1161959394,1081431052,798133130,1113482493,1284091050,1365990323,1502178110,1211052717]
-    line "HashBytes/64MiB" [282406448,294324496,253497415,254442334,225124511,298951068,308162718,336895373,359262045,339981640]
-    line "HashFile/1MiB" [4730225,4355866,5020414,4836717,3959247,3915050,5430358,4960660,5725417,5039192]
-    line "HashFile/256MiB" [1110334520,1039461142,1402967574,1130963414,1055197690,1258679744,1441073207,1316970291,1477907273,1193078064]
-    line "HashFile/64MiB" [280320210,335648128,350050718,282645449,218474314,322488540,355303054,397283922,342325433,356293580]
-    line "IndexDirectTracking" [1,0,1,1,0,1,1,1,1,0]
-    line "IndexSearch" [2,2,3,2,2,2,3,2,3,2]
-    line "LastModifiedHeader_AppendFormat" [0,0,0,0,0,0,0,273,377,411]
-    line "LastModifiedHeader_Format" [0,0,0,0,0,0,0,359,474,418]
-    line "LoadGlobalConfig" [13477,12586,12915,11283,9939,13465,16787,14343,16534,15639]
-    line "LocalWrite/1MiB" [620083,533203,606315,575526,474416,479322,627788,515217,653242,620492]
-    line "LocalWrite/256MiB" [163107200,137014284,135157963,132539343,118094125,126110483,141240477,133129249,171131397,136595670]
-    line "LocalWrite/64MiB" [34009604,32925149,33266024,33235605,33404598,32661319,39561620,34587683,41271450,35901035]
-    line "PadString" [74,66,65,63,47,69,97,85,78,64]
+    x-axis [353921e,2d1b220,6615813,fda25a1,27a847a,bfc529b]
+    line "AWSChunkedReaderSigned" [636346,690357,622918,512707,501241,721946,582789,741042,596016,541759]
+    line "AWSChunkedReaderUnsigned" [613680,684347,616129,457742,556893,695362,580668,721611,624951,521049]
+    line "CheckMetricsAndSwap" [13,14,14,10,10,14,9,14,13,11]
+    line "CrushOptimized" [383,433,463,354,433,532,484,492,487,522]
+    line "CrushOriginal" [678,598,642,502,597,715,641,734,697,658]
+    line "FormatListObjectsV2XML_AppendFormat" [876655,1035620,900618,648718,775274,1080271,993577,1117129,928365,977381]
+    line "FormatListObjectsV2XML_OldFormat" [499237,554225,498654,406141,479265,671030,530555,661534,521514,565611]
+    line "HashBytes/1MiB" [3806841,4997033,4520322,3555390,4784039,3995457,4596495,5621676,4965423,4315588]
+    line "HashBytes/256MiB" [1086104803,1161959394,1081431052,798133130,1113482493,1284091050,1365990323,1502178110,1211052717,1048575116]
+    line "HashBytes/64MiB" [294324496,253497415,254442334,225124511,298951068,308162718,336895373,359262045,339981640,213869807]
+    line "HashFile/1MiB" [4355866,5020414,4836717,3959247,3915050,5430358,4960660,5725417,5039192,3960989]
+    line "HashFile/256MiB" [1039461142,1402967574,1130963414,1055197690,1258679744,1441073207,1316970291,1477907273,1193078064,1177833636]
+    line "HashFile/64MiB" [335648128,350050718,282645449,218474314,322488540,355303054,397283922,342325433,356293580,288277413]
+    line "IndexDirectTracking" [0,1,1,0,1,1,1,1,0,0]
+    line "IndexSearch" [2,3,2,2,2,3,2,3,2,2]
+    line "LastModifiedHeader_AppendFormat" [0,0,0,0,0,0,273,377,411,306]
+    line "LastModifiedHeader_Format" [0,0,0,0,0,0,359,474,418,381]
+    line "LoadGlobalConfig" [12586,12915,11283,9939,13465,16787,14343,16534,15639,12955]
+    line "LocalWrite/1MiB" [533203,606315,575526,474416,479322,627788,515217,653242,620492,558337]
+    line "LocalWrite/256MiB" [137014284,135157963,132539343,118094125,126110483,141240477,133129249,171131397,136595670,121311016]
+    line "LocalWrite/64MiB" [32925149,33266024,33235605,33404598,32661319,39561620,34587683,41271450,35901035,33613673]
+    line "PadString" [66,65,63,47,69,97,85,78,64,59]
     line "ParseReplicationOrder_NoPrealloc" [350,349,357,354,345,225,229,165,232,234]
     line "ParseReplicationOrder_Prealloc" [229,231,237,234,229,108,107,80,110,109]
-    line "Placement" [7169,6982,6435,6648,4864,6529,7421,7230,7696,7054]
-    line "PlacementDomainSpread" [7367,6165,7125,6936,5246,8024,8867,7769,8677,7666]
-    line "ReadVerify/1MiB" [5893653,4349552,4844958,4821081,3882918,3731377,5836051,3976066,5316396,4787467]
-    line "ReadVerify/256MiB" [1292102083,1527966144,1208865206,1079520105,1058504265,1020754000,1422892660,1249941171,1356438969,1338425672]
-    line "ReadVerify/64MiB" [368423405,360046306,301883250,211152290,244603172,284251269,341875566,317667291,337069645,347180139]
-    line "S3PutSpool/1MiB" [5792248,4040951,5594802,4971787,5964641,5931927,6588614,5572982,6149011,5304842]
-    line "S3PutSpool/256MiB" [1552306291,1093403586,1746985899,1161989262,1392397511,1157791795,1438649885,1075603816,1551204244,1298058993]
-    line "S3PutSpool/64MiB" [376146327,294844128,391765533,283817898,367879613,355148274,389689212,272526470,362667390,347153910]
-    line "SanitizeLog/Safe" [332,277,365,264,226,242,388,301,419,341]
-    line "SanitizeLog/Unsafe" [854,1098,1183,1013,768,930,1274,1021,1210,1000]
-    line "TrustedRead/1MiB" [4314592,6674262,5737318,4407789,4777459,4326085,5334409,5277115,5559663,5638483]
-    line "TrustedRead/256MiB" [1265914846,1581862210,1346158360,1079106743,1430194708,1367894050,1290238092,1112381854,1466748131,1031346576]
-    line "TrustedRead/64MiB" [361331755,408809763,349215436,302381501,362734452,260957497,306360304,291068280,376225072,296255358]
+    line "Placement" [6982,6435,6648,4864,6529,7421,7230,7696,7054,7086]
+    line "PlacementDomainSpread" [6165,7125,6936,5246,8024,8867,7769,8677,7666,6917]
+    line "ReadVerify/1MiB" [4349552,4844958,4821081,3882918,3731377,5836051,3976066,5316396,4787467,3900770]
+    line "ReadVerify/256MiB" [1527966144,1208865206,1079520105,1058504265,1020754000,1422892660,1249941171,1356438969,1338425672,1103105249]
+    line "ReadVerify/64MiB" [360046306,301883250,211152290,244603172,284251269,341875566,317667291,337069645,347180139,259882135]
+    line "S3PutSpool/1MiB" [4040951,5594802,4971787,5964641,5931927,6588614,5572982,6149011,5304842,5592080]
+    line "S3PutSpool/256MiB" [1093403586,1746985899,1161989262,1392397511,1157791795,1438649885,1075603816,1551204244,1298058993,1269281522]
+    line "S3PutSpool/64MiB" [294844128,391765533,283817898,367879613,355148274,389689212,272526470,362667390,347153910,296132654]
+    line "SanitizeLog/Safe" [277,365,264,226,242,388,301,419,341,309]
+    line "SanitizeLog/Unsafe" [1098,1183,1013,768,930,1274,1021,1210,1000,1005]
+    line "TrustedRead/1MiB" [6674262,5737318,4407789,4777459,4326085,5334409,5277115,5559663,5638483,4655498]
+    line "TrustedRead/256MiB" [1581862210,1346158360,1079106743,1430194708,1367894050,1290238092,1112381854,1466748131,1031346576,1173571296]
+    line "TrustedRead/64MiB" [408809763,349215436,302381501,362734452,260957497,306360304,291068280,376225072,296255358,281349472]
 ```
 
 #### Memory per Operation (B/op)
@@ -312,44 +312,44 @@ xychart-beta
     title "Memory Trend (Avg. Bytes/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Bytes/Op"
-    x-axis [100b5ad,353921e,2d1b220,6615813,fda25a1,27a847a]
-    line "AWSChunkedReaderSigned" [125,105,96,107,130,133,92,114,90,112]
-    line "AWSChunkedReaderUnsigned" [112,108,97,108,145,120,96,115,92,106]
+    x-axis [353921e,2d1b220,6615813,fda25a1,27a847a,bfc529b]
+    line "AWSChunkedReaderSigned" [105,96,107,130,133,92,114,90,112,123]
+    line "AWSChunkedReaderUnsigned" [108,97,108,145,120,96,115,92,106,128]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "CrushOptimized" [0,0,0,0,0,0,0,0,0,0]
     line "CrushOriginal" [164,164,164,164,164,164,164,164,164,164]
-    line "FormatListObjectsV2XML_AppendFormat" [524477,524470,524490,524474,524448,524456,524497,524459,524497,524456]
+    line "FormatListObjectsV2XML_AppendFormat" [524470,524490,524474,524448,524456,524497,524459,524497,524456,524462]
     line "FormatListObjectsV2XML_OldFormat" [24000,24000,24000,24000,24000,24000,24000,24000,24000,24000]
-    line "HashBytes/1MiB" [267,275,210,232,295,219,262,228,187,211]
-    line "HashBytes/256MiB" [201,247,231,248,336,241,209,197,179,222]
-    line "HashBytes/64MiB" [238,228,265,264,298,224,218,199,187,197]
-    line "HashFile/1MiB" [222,241,209,217,265,268,193,211,183,208]
-    line "HashFile/256MiB" [242,258,191,237,254,213,186,204,182,225]
-    line "HashFile/64MiB" [239,200,192,237,307,208,189,169,196,188]
+    line "HashBytes/1MiB" [275,210,232,295,219,262,228,187,211,243]
+    line "HashBytes/256MiB" [247,231,248,336,241,209,197,179,222,256]
+    line "HashBytes/64MiB" [228,265,264,298,224,218,199,187,197,314]
+    line "HashFile/1MiB" [241,209,217,265,268,193,211,183,208,265]
+    line "HashFile/256MiB" [258,191,237,254,213,186,204,182,225,228]
+    line "HashFile/64MiB" [200,192,237,307,208,189,169,196,188,233]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [0,0,0,0,0,0,0,0,0,0]
     line "LastModifiedHeader_AppendFormat" [0,0,0,0,0,0,0,0,0,0]
-    line "LastModifiedHeader_Format" [0,0,0,0,0,0,0,32,32,32]
+    line "LastModifiedHeader_Format" [0,0,0,0,0,0,32,32,32,32]
     line "LoadGlobalConfig" [1976,1976,1976,1976,1976,1976,1976,1976,1976,1976]
-    line "LocalWrite/1MiB" [1691,1967,1729,1822,2210,2188,1670,2035,1605,1690]
-    line "LocalWrite/256MiB" [1646,1959,1986,2025,2273,2129,1901,2016,1569,1965]
-    line "LocalWrite/64MiB" [1973,2038,2017,2019,2009,2055,1696,1940,1626,1869]
+    line "LocalWrite/1MiB" [1967,1729,1822,2210,2188,1670,2035,1605,1690,1878]
+    line "LocalWrite/256MiB" [1959,1986,2025,2273,2129,1901,2016,1569,1965,2213]
+    line "LocalWrite/64MiB" [2038,2017,2019,2009,2055,1696,1940,1626,1869,1996]
     line "PadString" [64,64,64,64,64,64,64,64,64,64]
     line "ParseReplicationOrder_NoPrealloc" [408,408,408,408,408,248,248,248,248,248]
     line "ParseReplicationOrder_Prealloc" [240,240,240,240,240,80,80,80,80,80]
     line "Placement" [352,352,352,352,352,352,352,352,352,352]
     line "PlacementDomainSpread" [352,352,352,352,352,352,352,352,352,352]
-    line "ReadVerify/1MiB" [178,241,216,218,270,281,180,264,197,219]
-    line "ReadVerify/256MiB" [208,176,222,249,254,263,189,215,198,201]
-    line "ReadVerify/64MiB" [182,186,222,318,274,236,196,211,199,193]
-    line "S3PutSpool/1MiB" [181,259,187,211,176,177,159,188,171,198]
-    line "S3PutSpool/256MiB" [173,246,154,231,193,232,187,250,173,207]
-    line "S3PutSpool/64MiB" [178,228,171,236,182,189,172,246,185,193]
+    line "ReadVerify/1MiB" [241,216,218,270,281,180,264,197,219,269]
+    line "ReadVerify/256MiB" [176,222,249,254,263,189,215,198,201,243]
+    line "ReadVerify/64MiB" [186,222,318,274,236,196,211,199,193,258]
+    line "S3PutSpool/1MiB" [259,187,211,176,177,159,188,171,198,188]
+    line "S3PutSpool/256MiB" [246,154,231,193,232,187,250,173,207,211]
+    line "S3PutSpool/64MiB" [228,171,236,182,189,172,246,185,193,227]
     line "SanitizeLog/Safe" [0,0,0,0,0,0,0,0,0,0]
     line "SanitizeLog/Unsafe" [704,704,704,704,704,704,704,704,704,704]
-    line "TrustedRead/1MiB" [243,157,183,238,219,242,197,199,189,186]
-    line "TrustedRead/256MiB" [212,170,199,249,188,196,208,241,183,260]
-    line "TrustedRead/64MiB" [186,164,192,222,185,257,219,231,178,227]
+    line "TrustedRead/1MiB" [157,183,238,219,242,197,199,189,186,225]
+    line "TrustedRead/256MiB" [170,199,249,188,196,208,241,183,260,229]
+    line "TrustedRead/64MiB" [164,192,222,185,257,219,231,178,227,239]
 ```
 
 #### Allocations per Operation (allocs/op)
@@ -362,9 +362,9 @@ xychart-beta
     title "Allocation Trend (Avg. Allocs/Op, Last 10 Commits)"
     x-axis "Commit"
     y-axis "Avg. Allocs/Op"
-    x-axis [100b5ad,353921e,2d1b220,6615813,fda25a1,27a847a]
-    line "AWSChunkedReaderSigned" [11304,11317,11324,11331,11296,11287,11338,11329,11352,11316]
-    line "AWSChunkedReaderUnsigned" [78578,78592,78605,78609,78579,78582,78651,78603,78618,78588]
+    x-axis [353921e,2d1b220,6615813,fda25a1,27a847a,bfc529b]
+    line "AWSChunkedReaderSigned" [11317,11324,11331,11296,11287,11338,11329,11352,11316,11313]
+    line "AWSChunkedReaderUnsigned" [78592,78605,78609,78579,78582,78651,78603,78618,78588,78582]
     line "CheckMetricsAndSwap" [0,0,0,0,0,0,0,0,0,0]
     line "CrushOptimized" [0,0,0,0,0,0,0,0,0,0]
     line "CrushOriginal" [3,3,3,3,3,3,3,3,3,3]
@@ -375,29 +375,29 @@ xychart-beta
     line "HashBytes/64MiB" [64,64,64,64,64,64,64,64,64,64]
     line "HashFile/1MiB" [33128,33128,33128,33128,33128,33128,33128,33128,33128,33128]
     line "HashFile/256MiB" [33128,33128,33128,33128,33128,33128,33128,33128,33128,33128]
-    line "HashFile/64MiB" [33128,33128,33128,33128,33137,33128,33128,33128,33128,33128]
+    line "HashFile/64MiB" [33128,33128,33128,33137,33128,33128,33128,33128,33128,33128]
     line "IndexDirectTracking" [0,0,0,0,0,0,0,0,0,0]
     line "IndexSearch" [0,0,0,0,0,0,0,0,0,0]
     line "LastModifiedHeader_AppendFormat" [0,0,0,0,0,0,0,0,0,0]
-    line "LastModifiedHeader_Format" [0,0,0,0,0,0,0,1,1,1]
+    line "LastModifiedHeader_Format" [0,0,0,0,0,0,1,1,1,1]
     line "LoadGlobalConfig" [58,58,58,58,58,58,58,58,58,58]
-    line "LocalWrite/1MiB" [67034,67030,67036,67036,67029,67028,67031,67030,67036,67032]
-    line "LocalWrite/256MiB" [67492,67349,67409,67379,67372,67383,67413,67386,67552,67369]
-    line "LocalWrite/64MiB" [67097,67104,67086,67092,67077,67052,67096,67102,67105,67107]
+    line "LocalWrite/1MiB" [67030,67036,67036,67029,67028,67031,67030,67036,67032,67034]
+    line "LocalWrite/256MiB" [67349,67409,67379,67372,67383,67413,67386,67552,67369,67393]
+    line "LocalWrite/64MiB" [67104,67086,67092,67077,67052,67096,67102,67105,67107,67056]
     line "PadString" [1,1,1,1,1,1,1,1,1,1]
     line "ParseReplicationOrder_NoPrealloc" [6,6,6,6,6,5,5,5,5,5]
     line "ParseReplicationOrder_Prealloc" [2,2,2,2,2,1,1,1,1,1]
     line "Placement" [6,6,6,6,6,6,6,6,6,6]
     line "PlacementDomainSpread" [6,6,6,6,6,6,6,6,6,6]
-    line "ReadVerify/1MiB" [437,469,466,470,460,462,473,468,479,467]
-    line "ReadVerify/256MiB" [9808,9808,9808,5120,9808,5120,9808,9808,9808,9808]
-    line "ReadVerify/64MiB" [2776,2776,2776,2307,2307,2776,2776,2776,3557,3557]
-    line "S3PutSpool/1MiB" [447,447,448,447,447,447,447,447,447,447]
+    line "ReadVerify/1MiB" [469,466,470,460,462,473,468,479,467,465]
+    line "ReadVerify/256MiB" [9808,9808,5120,9808,5120,9808,9808,9808,9808,9808]
+    line "ReadVerify/64MiB" [2776,2776,2307,2307,2776,2776,2776,3557,3557,2776]
+    line "S3PutSpool/1MiB" [447,448,447,447,447,447,447,447,447,447]
     line "S3PutSpool/256MiB" [448,448,448,448,448,448,448,448,448,448]
     line "S3PutSpool/64MiB" [448,448,448,448,448,448,448,448,448,448]
     line "SanitizeLog/Safe" [0,0,0,0,0,0,0,0,0,0]
     line "SanitizeLog/Unsafe" [1,1,1,1,1,1,1,1,1,1]
-    line "TrustedRead/1MiB" [800,800,800,800,800,800,839,840,800,834]
+    line "TrustedRead/1MiB" [800,800,800,800,800,839,840,800,834,800]
     line "TrustedRead/256MiB" [800,800,800,800,800,800,800,800,800,800]
     line "TrustedRead/64MiB" [800,800,800,800,800,800,800,800,800,800]
 ```

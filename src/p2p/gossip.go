@@ -135,6 +135,7 @@ type Gossiper struct {
 	scatterGather *ScatterGather
 	leaseManager  *LeaseManager
 	oprfProvider  *OPRFProvider
+	metadataRPC   *MetadataRPCProvider
 
 	rtt          *rttTracker
 	pendingMu    sync.Mutex
@@ -188,6 +189,14 @@ func (g *Gossiper) SetLeaseManager(lm *LeaseManager) {
 func (g *Gossiper) SetOPRFProvider(op *OPRFProvider) {
 	g.cbMu.Lock()
 	g.oprfProvider = op
+	g.cbMu.Unlock()
+}
+
+// SetMetadataRPCProvider attaches a MetadataRPCProvider instance whose
+// distributed metadata RPCs will be routed by the gossiper's consumer loop.
+func (g *Gossiper) SetMetadataRPCProvider(m *MetadataRPCProvider) {
+	g.cbMu.Lock()
+	g.metadataRPC = m
 	g.cbMu.Unlock()
 }
 
@@ -673,6 +682,13 @@ func (g *Gossiper) HandleRPC(rpc *RPC) {
 		g.cbMu.RUnlock()
 		if op != nil {
 			op.HandleRPC(rpc)
+		}
+	case MsgPutMetadata, MsgPutMetadataResponse, MsgResolveMetadata, MsgResolveMetadataResponse, MsgReplicateMetadata, MsgReplicateMetadataResponse:
+		g.cbMu.RLock()
+		mr := g.metadataRPC
+		g.cbMu.RUnlock()
+		if mr != nil {
+			mr.HandleRPC(rpc)
 		}
 	}
 }
