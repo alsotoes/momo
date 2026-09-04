@@ -425,6 +425,96 @@ Please address these and push updates."
 
 **Critical**: The `gh pr comment` command MUST be run from an authenticated `alsotoes` session (PAT), not from the `GITHUB_TOKEN` used by CI. Comments posted as `github-actions[bot]` will NOT be actioned by Jules.
 
+### Jules PR Takeover/Rebuild Protocol (Rule 79)
+
+When a Jules PR requires significant cleanup (rogue commits, wrong dates, bogus Resolves, regressions):
+
+1. **Analyze**: `gh pr view PR_N --json commits,files` — identify rogue changes.
+2. **Rebuild**:
+   ```bash
+   git checkout -b fix/<N>-<slug> origin/master
+   git cherry-pick <legitimate-fix-commit>
+   # Fix dates, drop rogue changes, gofmt
+   ```
+3. **Force-push to PR head**: `git push --force-with-lease origin fix/<N>-<slug>:<jules-branch>`
+4. **Update PR body**: Add `Resolves #<canonical>`, full reviewer summary (Rule 54).
+5. **Post STOP comment** if Jules pushed concurrently (Rule 66).
+6. **Monitor CI + reviewer** on new head.
+
+**Common Jules issues to fix**:
+- Rogue `go.mod`/`go.sum` reverts (bazil restore, breaking R4 FUSE migration)
+- Future-dated `.jules/` learning entries → correct to PR creation date
+- Bogus `Resolves #1` → replace with canonical auto-trace issue
+- Missing `jules`/`bug`/`enhancement`/`automation` labels
+
+### Auto-Trace Consolidation Protocol (Rule 80)
+
+When multiple auto-trace issues exist for one PR:
+1. Identify canonical (lowest number, OPEN).
+2. Close dups: `gh issue close <dup1> <dup2> --comment "Duplicate of #<canonical> (canonical tracker for PR #<N>). Closed per Rule 20."`
+3. Update PR body: `Resolves #<canonical>`.
+4. If new auto-trace created during takeover (stale reviewer read), close it immediately.
+
+### Phase-Based Implementation Pattern (Rule 81)
+
+For large features (estimated >1 PR):
+1. **One OpenSpec change**: `openspec/changes/<feature-id>/` with proposal.md, specs/<id>/spec.md, tasks.md.
+2. **tasks.md** lists ALL phases with checkboxes; link to GitHub issue.
+3. **Phase 0**: Author spec on branch, `make adr-sync`, PR with `Resolves #ISSUE_N` (spec-only, no code).
+4. **Phase N**: Separate branch `feature/<N>-<slug>-phaseN`, implement phase tasks, update tasks.md.
+5. **Each phase PR**: `Resolves #ISSUE_N` (same issue); `tasks.md` shows phase progress.
+6. **Issue stays OPEN** until final phase merges; auto-closes via `Resolves` on last phase.
+
+### Benchmark Flake Allowlist Pattern (Rule 82)
+
+When a benchmark flakes on CI:
+1. **Rerun failed job** — if passes, likely noise.
+2. **Local comparison**: run bench on HEAD^1 vs HEAD locally — if binary-identical code, it's noise.
+3. **Add to `.github/workflows/benchmark_compare.yml` allowlist** with rationale comment matching precedent.
+4. **Example entry**:
+   ```yaml
+   - name: LocalWrite
+     # Temp file I/O in /tmp on shared runners; known noise per #846, #955, #960
+   - name: S3PutSpool
+     # Temp file I/O (os.CreateTemp+io.Copy) in /tmp on shared runners; similar to LocalWrite
+   ```
+
+### PR Rejection Protocol (Rule 83)
+
+When a PR is fundamentally incorrect (regression, wrong fix):
+1. Post detailed rejection review on PR with code analysis + empirical proof.
+2. Close PR: `gh pr close PR_N --comment "<detailed rationale>"`
+3. Close auto-trace issues: `gh issue close <dups> --comment "Duplicate of rejection rationale for PR #<N>. Closed per Rule 20."`
+4. Delete branch: `gh api -X DELETE repos/.../git/refs/heads/<branch>`
+5. **Do NOT merge** — no salvage via partial fix; the approach is wrong.
+
+### Jules Learning File Date Fix (Rule 84)
+
+Jules `.jules/*.md` entries often have future/incorrect dates. During takeover:
+- Correct to PR creation date: `gh pr view PR_N --json createdAt --jq '.createdAt'` → extract date.
+- Existing pattern: `2026-08-*` / `2026-09-01` format.
+- Update entry date in `.jules/<file>.md` before commit.
+
+### Benchmark Hook Management (Rule 85)
+
+- **Implementation commits**: `git commit --no-verify` (skip hook bench regeneration).
+- **Benchmark addition commits**: Let hook run (adds new rows).
+- **Chore commits**: `chore: regenerate bench docs (pre-commit hook)` for hook output.
+
+### Direct-Master Doc Commits (Rule 86)
+
+Trivial doc fixes (typos, clarifications, link fixes) MAY commit directly to master:
+```bash
+git commit -m "docs: <description> (#ISSUE_N)" --no-verify
+```
+Criteria: No code changes, no behavioral surface, pure markdown/typos/links.
+
+### Reviewer Re-Evaluation Trigger (Rule 87)
+
+AI reviewer only re-evaluates on `synchronize` (push). To force re-eval:
+- `git commit --allow-empty -m "sync: trigger reviewer re-evaluation" && git push`
+- Or use PR "Update branch" button.
+
 ## Common Pitfalls & Solutions
 
 ### Forgetting Labels and Assignment (Rules 49, 51, 52)
@@ -440,6 +530,41 @@ gh pr edit PR_N --add-label automation  # for AI-driven work
 ### Forgetting the Issue Ownership Gate (Rule 72)
 **Pitfall**: Starting implementation on a pre-existing or batch issue that is unassigned or missing the `automation` label (e.g., the #606–#623 batch, where all issues lacked an assignee).
 **Solution**: Before any work, run the Issue Ownership Gate (Step 0): assign the issue to `alsotoes` and validate/add the category + `automation` labels via `gh issue edit ISSUE_N`. Treat missing assignee/labels as a blocking condition.
+
+### Jules PR Comments Posted as Bot (Rule 69)
+**Pitfall**: Posting reviewer feedback or STOP comments as `github-actions[bot]` on a Jules-created PR. Jules only recognizes comments from `alsotoes` and will silently ignore bot comments, causing Jules to continue working or miss feedback.
+**Solution**: Before posting any comment on a PR, check for the `jules` label. If present, ensure the `gh pr comment` command runs from an authenticated `alsotoes` session (PAT), not the `GITHUB_TOKEN` used by CI:
+```bash
+# Check for jules label
+gh pr view PR_N --json labels --jq '.labels[].name'
+
+# If "jules" is present, comment as alsotoes (PAT session)
+gh pr comment PR_N --body "..."
+```
+
+### Forgetting to Update the Reviewer Script (Rule 70)
+**Pitfall**: Adding or modifying a steering rule that affects PR review, labeling, commenting, or merge behavior, but forgetting to update `.github/scripts/ai_reviewer.py` and `.github/workflows/gemini_reviewer.yml` to implement the new behavior. The rule exists on paper but is never enforced in code.
+**Solution**: Before merging a PR that adds or modifies rules in `openspec/config.yaml`, verify that the reviewer script implements the new rule. If the rule affects any of these areas, the PR MUST include corresponding changes to `ai_reviewer.py`:
+- PR detection logic (e.g., Jules detection per Rule 68)
+- Labeling (Rules 49, 52, 68)
+- Comment posting identity — bot vs PAT (Rules 48, 69)
+- Circuit breaker enforcement (Rules 14, 18)
+- Traceability checks (Rules 11, 20)
+- Merge gate conditions (Rule 55)
+
+If no script change is needed, add a PR comment explaining why.
+
+### Pre-Commit Hooks Updating Benchmark Docs
+**Pitfall**: The pre-commit hook regenerates `docs/PERFORMANCE.md` and `.github/data/benchmark_history.csv`, adding unexpected files to the commit.
+**Solution**: This is expected behavior. Include these files in the commit. Do NOT revert them. Per Rule 61, when rebasing, resolve these by taking the master version (`--theirs`) since they are regenerated.
+
+### Benchstat Check Timing & Frozen Check Status
+**Pitfall**: The `benchstat` CI check can take **7+ minutes** to complete, and `gh pr checks` may report a check (e.g., `benchstat`) as `pending` for 15+ minutes with a frozen `updatedAt` while the underlying job is actually `completed/success`.
+**Solution**: Budget at least 8 minutes for the final CI wait. Poll with `gh pr checks PR_N` until NO checks show `pending`. If a long-pending check has a frozen `updatedAt`, do NOT deadlock waiting — cross-check the actual job state via the API and read its steps' conclusions:
+```bash
+gh api repos/<owner>/<repo>/actions/runs/<run-id>/jobs \
+  --jq '.jobs[0] | {status, conclusion, steps:[.steps[]|{name,status,conclusion}]}'
+```
 
 ### Jules PR Comments Posted as Bot (Rule 69)
 **Pitfall**: Posting reviewer feedback or STOP comments as `github-actions[bot]` on a Jules-created PR. Jules only recognizes comments from `alsotoes` and will silently ignore bot comments, causing Jules to continue working or miss feedback.
@@ -498,6 +623,42 @@ git merge master --no-edit
 gh run list --branch master --limit 5
 ```
 If any runs are `in_progress` or `queued`, wait. If any failed, fix `master` first. Only branch from a fully validated `master`.
+
+### Jules PR Takeover Without Rebuild (Rule 79)
+**Pitfall**: Taking over a Jules PR and pushing incremental fixes instead of a clean rebuild. Jules PRs often contain rogue commits (go.mod/go.sum reverts, bazil restore, future-dated learning entries, bogus Resolves). Incremental fixes compound the problems; the reviewer sees merge-inflated diffs and spurious violations.
+**Solution**: Always do a clean rebuild on current master: `git checkout -b fix/<N>-<slug> origin/master`, cherry-pick only the legitimate fix, fix dates, drop rogue changes, then force-push the clean rebuild to the PR head.
+
+### Auto-Trace Proliferation Without Consolidation (Rule 80)
+**Pitfall**: Multiple auto-trace issues created for the same PR (e.g., #982/#983 for #981, #977/#978/#979 for #976). Each auto-trace clutters the tracker and the PR body lacks a proper `Resolves`.
+**Solution**: Immediately consolidate to one canonical issue (lowest number, OPEN), close dups with `gh issue close <dups> --comment "Duplicate of #<canonical> (canonical tracker for PR #<N>). Closed per Rule 20."`, update PR body with `Resolves #<canonical>`. If new auto-trace appears during takeover (stale reviewer read), close it immediately.
+
+### Monolithic Feature in One PR (Rule 81)
+**Pitfall**: Attempting to implement a large feature (e.g., R6 metadata HA) in a single massive PR. The diff is unreadable, reviewer cannot verify, CI timeout risk, all-or-nothing merge risk.
+**Solution**: Split into phases with shared OpenSpec change. Phase 0 = spec authoring; Phase N = implementation + test. Each phase = separate PR with `Resolves #ISSUE_N` (same issue). tasks.md tracks phase progress. Issue auto-closes on final phase merge.
+
+### Benchmark Flake Ignored (Rule 82)
+**Pitfall**: A benchmark flakes on CI (e.g., `LocalWrite/64MiB`, `S3PutSpool/64MiB`) and the agent either blocks the PR or merges with a false regression. The benchmark involves temp file I/O on shared runners — it's noise, not regression.
+**Solution**: Rerun failed job. If passes, confirm noise via local HEAD^1 vs HEAD comparison (binary-identical code). Add to `.github/workflows/benchmark_compare.yml` allowlist with rationale comment matching precedent. Allowlisted benches exceed 5% alloc without failing CI.
+
+### Merging a Regression Instead of Rejecting (Rule 83)
+**Pitfall**: A PR introduces a regression (e.g., #985 breaks hierarchical S3 keys) but the agent merges it because tests pass (tests don't cover the regressed case). The "fix" is fundamentally wrong.
+**Solution**: Post detailed rejection review with code analysis + empirical proof. Close PR with rationale. Close auto-trace issues. Delete branch. **Do NOT merge** — no salvage via partial fix; the approach is wrong.
+
+### Jules Learning File Future Date (Rule 84)
+**Pitfall**: Jules `.jules/*.md` entries use future dates (e.g., `2026-09-10` when today is `2026-09-01`). The learning file is a knowledge base, not a prediction log.
+**Solution**: During takeover, correct date to PR creation date: `gh pr view PR_N --json createdAt --jq '.createdAt'` → extract date. Existing pattern: `2026-08-*` / `2026-09-01` format.
+
+### Benchmark Hook Churn in Implementation Commit (Rule 85)
+**Pitfall**: An implementation commit includes the pre-commit hook's benchmark regeneration (200+ lines of `PERFORMANCE.md` + `benchmark_history.csv` churn), bloating the diff and hiding the actual change.
+**Solution**: For implementation commits, use `git commit --no-verify` to skip the hook. Let the hook run on benchmark-addition commits. For pure implementation commits, `--no-verify` keeps diff clean.
+
+### Trivial Doc Fix via PR Instead of Direct Master (Rule 86)
+**Pitfall**: Opening a PR for a typo fix or link correction. Wastes CI time and review slots.
+**Solution**: For pure doc fixes (typos, links, clarifications, zero code/behavior): `git commit -m "docs: <description> (#ISSUE_N)" --no-verify` directly on master. Criteria: no code changes, no behavioral surface.
+
+### Reviewer Stale Verdict on Force-Push (Rule 87)
+**Pitfall**: After force-pushing a clean rebuild to a PR, the agent assumes the old reviewer verdict (on the old head) is still valid. The reviewer must re-evaluate on the new head.
+**Solution**: Force-push triggers `synchronize` → reviewer re-runs. Verify `gh pr checks PR_N` shows `review` as `pass` on the new head. If stuck, push empty sync commit: `git commit --allow-empty -m "sync: trigger reviewer re-evaluation" && git push`.
 
 ## Key Principles
 
