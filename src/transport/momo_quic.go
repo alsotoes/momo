@@ -747,6 +747,9 @@ func (m *MomoQUICCommunicator) ReceiveMetadata() (meta common.FileMetadata, err 
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Recovered from panic in ReceiveMetadata: %v", r)
+			if m != nil {
+				m.Close() // Explicitly close the connection to prevent zombie sockets (Rule 43)
+			}
 			err = fmt.Errorf("panic in ReceiveMetadata: %v: %w", r, syscall.EIO)
 		}
 	}()
