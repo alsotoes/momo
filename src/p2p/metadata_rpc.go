@@ -7,6 +7,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/alsotoes/momo/src/storage"
 )
 
 const (
@@ -137,7 +139,7 @@ type MetadataRPCProvider struct {
 	localID   int32
 	transport Transport
 	ring      *Ring
-	store     interface{} // Store interface; avoided circular import
+	store     *storage.CASStore
 
 	nextRequestID atomic.Uint64
 	pendingMu     sync.Mutex
@@ -158,7 +160,7 @@ type MetadataResponse struct {
 }
 
 // NewMetadataRPCProvider creates a new MetadataRPCProvider.
-func NewMetadataRPCProvider(localID int32, transport Transport, ring *Ring, store interface{}) *MetadataRPCProvider {
+func NewMetadataRPCProvider(localID int32, transport Transport, ring *Ring, store *storage.CASStore) *MetadataRPCProvider {
 	return &MetadataRPCProvider{
 		localID:   localID,
 		transport: transport,
@@ -193,15 +195,27 @@ func (m *MetadataRPCProvider) HandleRPC(rpc *RPC) {
 
 // handlePutMetadata processes an incoming PutMetadata request.
 func (m *MetadataRPCProvider) handlePutMetadata(rpc *RPC) {
-	_, err := DecodePutMetadataArgs(rpc.Payload)
+	args, err := DecodePutMetadataArgs(rpc.Payload)
 	if err != nil {
 		log.Printf("MetadataRPC: failed to decode PutMetadata from peer %d: %v (errno=%d)", rpc.From, err, syscall.EBADMSG)
 		return
 	}
 
-	// TODO: Implement actual storage write when CASStore is wired
-	// For now, return success to unblock Phase 1 compilation
-	reply := &PutMetadataReply{Success: true}
+	// Write metadata with distributed fields
+	err = m.store.PutWithMetadata(
+		args.Name,
+		args.Hash,
+		args.Size,
+		args.RemotePath,
+		nil, // content is nil for metadata-only RPC; blob written separately
+		args.VectorClock,
+		args.ShardKey,
+		args.MetadataReplicas,
+	)
+	reply := &PutMetadataReply{Success: err == nil}
+	if err != nil {
+		reply.Error = err.Error()
+	}
 	payload, _ := EncodePutMetadataReply(reply)
 	m.transport.Send(rpc.From, &RPC{
 		Type:    MsgPutMetadataResponse,
@@ -248,14 +262,68 @@ func (m *MetadataRPCProvider) handleResolveMetadataResponse(rpc *RPC) {
 
 // handleReplicateMetadata processes an incoming ReplicateMetadata request.
 func (m *MetadataRPCProvider) handleReplicateMetadata(rpc *RPC) {
-	_, err := DecodeReplicateMetadataArgs(rpc.Payload)
+	args, err := DecodeReplicateMetadataArgs(rpc.Payload)
 	if err != nil {
 		log.Printf("MetadataRPC: failed to decode ReplicateMetadata from peer %d: %v (errno=%d)", rpc.From, err, syscall.EBADMSG)
 		return
 	}
 
-	// TODO: Implement actual replication write when CASStore is wired
-	reply := &ReplicateMetadataReply{Success: true}
+	// Decode the ObjectMeta from the args.Meta map
+	// For now, we'll use the simpler approach of writing the metadata directly
+	// The args.Meta should contain the fields from PutMetadataArgs
+	var name, hash, shardKey, remotePath string
+	var size int64
+	var vectorClock []uint64
+	var metadataReplicas []int32
+
+	if args.Meta != nil {
+		if v, ok := args.Meta["Name"].(string); ok {
+			name = v
+		}
+		if v, ok := args.Meta["Hash"].(string); ok {
+			hash = v
+		}
+		if v, ok := args.Meta["Size"].(float64); ok {
+			size = int64(v)
+		}
+		if v, ok := args.Meta["RemotePath"].(string); ok {
+			remotePath = v
+		}
+		if v, ok := args.Meta["ShardKey"].(string); ok {
+			shardKey = v
+		}
+		if v, ok := args.Meta["VectorClock"].([]interface{}); ok {
+			vectorClock = make([]uint64, len(v))
+			for i, val := range v {
+				if f, ok := val.(float64); ok {
+					vectorClock[i] = uint64(f)
+				}
+			}
+		}
+		if v, ok := args.Meta["MetadataReplicas"].([]interface{}); ok {
+			metadataReplicas = make([]int32, len(v))
+			for i, val := range v {
+				if f, ok := val.(float64); ok {
+					metadataReplicas[i] = int32(f)
+				}
+			}
+		}
+	}
+
+	err = m.store.PutWithMetadata(
+		name,
+		hash,
+		size,
+		remotePath,
+		nil,
+		vectorClock,
+		shardKey,
+		metadataReplicas,
+	)
+	reply := &ReplicateMetadataReply{Success: err == nil}
+	if err != nil {
+		reply.Error = err.Error()
+	}
 	payload, _ := EncodeReplicateMetadataReply(reply)
 	m.transport.Send(rpc.From, &RPC{
 		Type:    MsgReplicateMetadataResponse,

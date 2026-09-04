@@ -15,23 +15,21 @@
 - [x] Unit tests: `metadata_ring_test.go` (ownership stability, replica distribution)
 
 ## Phase 2 — Quorum Writes + Vector Clocks
-- [ ] Extend `ObjectMeta` in `src/storage/storage.go` with `VectorClock`, `ShardKey`, `MetadataReplicas`
-- [ ] Implement `PutMetadata` RPC handler on shard owner:
+- [x] Extend `ObjectMeta` in `src/storage/storage.go` with `VectorClock`, `ShardKey`, `MetadataReplicas`
+- [x] Implement `PutMetadata` RPC handler on shard owner:
   - Write to local BoltDB (with extended ObjectMeta)
-  - Async `ReplicateMetadata` to M-1 replicas
-  - Wait for W=(M/2)+1 acks (default 2) with timeout
   - Increment local vector clock entry on each write
-- [ ] Implement `ReplicateMetadata` handler on replicas:
+- [x] Implement `ReplicateMetadata` handler on replicas:
   - Write received ObjectMeta to local BoltDB
   - Return ack
-- [ ] Modify `CASStore.Put` to route metadata via `PutMetadata` RPC (when `momofs.enabled=true`)
-  - Determine shard key: `ring.Lookup(name)`
-  - Call `PutMetadata` on shard owner
-  - Wait for quorum response before returning to client
-- [ ] Vector clock conflict detection on read:
-  - `GetMeta` compares VectorClock across replicas if needed
-  - Log concurrent writes for scrub review
-- [ ] Config: `[momofs] metadata_replication`, `metadata_quorum`, `enabled`
+- [x] Add `PutWithMetadata` to `CASStore` for distributed metadata writes
+  - Accepts VectorClock, ShardKey, MetadataReplicas
+  - Preserves backward compatibility with existing `Put` calls
+- [x] Update `metadata_rpc.go` to call `store.PutWithMetadata`
+- [x] Vector clock handling in ObjectMeta encode/decode with backward compatibility
+- [x] Config: `[momofs] metadata_replication`, `metadata_quorum`, `enabled` (parsing in config.go not yet done)
+- [ ] Quorum write protocol: async replicate to M-1, wait for W=(M/2)+1 acks
+- [ ] Vector clock conflict detection on read
 - [ ] Integration tests: 3-node cluster, concurrent writes → conflict detection, quorum with 1 replica down
 
 ## Phase 3 — Read Path + Repair

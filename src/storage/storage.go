@@ -29,40 +29,130 @@ var (
 )
 
 // ObjectMeta is the binary metadata stored in the objects bucket.
-// Wire format: [8B size (big-endian)] [8B refCount (big-endian)] [8B deletedAt (big-endian)]
+// Wire format v2 (24 bytes legacy + variable):
+//
+//	[8B size] [8B refCount] [8B deletedAt] [4B vectorClockLen] [vectorClock...] [4B shardKeyLen] [shardKey...] [4B replicaCount] [replica1...replicaN]
+//
+// Legacy format (24 bytes): [8B size] [8B refCount] [8B deletedAt]
 type ObjectMeta struct {
-	Size      int64
-	RefCount  int64
-	DeletedAt int64 // unix nano; 0 = not deleted
+	Size             int64
+	RefCount         int64
+	DeletedAt        int64    // unix nano; 0 = not deleted
+	VectorClock      []uint64 // per-node logical clock for conflict detection
+	ShardKey         string   // consistent hash ring shard key
+	MetadataReplicas []int32  // node IDs holding metadata replicas
 }
 
-// encodeObjectMeta serializes ObjectMeta into a fixed 24-byte binary slice.
+// encodeObjectMeta serializes ObjectMeta into a binary slice.
 func (m ObjectMeta) encode() []byte {
+	// Legacy fixed part
 	buf := make([]byte, 24)
 	binary.BigEndian.PutUint64(buf[0:8], uint64(m.Size))
 	binary.BigEndian.PutUint64(buf[8:16], uint64(m.RefCount))
 	binary.BigEndian.PutUint64(buf[16:24], uint64(m.DeletedAt))
+
+	// Vector clock
+	vcLen := len(m.VectorClock)
+	vcBuf := make([]byte, 4+8*vcLen)
+	binary.BigEndian.PutUint32(vcBuf[0:4], uint32(vcLen))
+	for i, v := range m.VectorClock {
+		binary.BigEndian.PutUint64(vcBuf[4+8*i:4+8*(i+1)], v)
+	}
+	buf = append(buf, vcBuf...)
+
+	// Shard key
+	skBytes := []byte(m.ShardKey)
+	skLen := len(skBytes)
+	skBuf := make([]byte, 4+skLen)
+	binary.BigEndian.PutUint32(skBuf[0:4], uint32(skLen))
+	buf = append(buf, skBuf...)
+	buf = append(buf, skBytes...)
+
+	// Metadata replicas
+	mrLen := len(m.MetadataReplicas)
+	mrBuf := make([]byte, 4+4*mrLen)
+	binary.BigEndian.PutUint32(mrBuf[0:4], uint32(mrLen))
+	for i, v := range m.MetadataReplicas {
+		binary.BigEndian.PutUint32(mrBuf[4+4*i:4+4*(i+1)], uint32(v))
+	}
+	buf = append(buf, mrBuf...)
+
 	return buf
 }
 
-// decodeObjectMeta deserializes a 24-byte binary slice into ObjectMeta.
-// Falls back to legacy ASCII size format for backward compatibility.
-// A legacy value that cannot be parsed returns an error instead of silently
-// degrading to a zero-size object (fix #640).
+// decodeObjectMeta deserializes a binary slice into ObjectMeta.
+// Supports legacy ASCII format (size only), legacy 24-byte binary format,
+// and v2 format with vector clock, shard key, and replicas.
 func decodeObjectMeta(val []byte) (ObjectMeta, error) {
 	if len(val) == 24 {
+		// Legacy binary format: size/refCount/deletedAt only
 		return ObjectMeta{
 			Size:      int64(binary.BigEndian.Uint64(val[0:8])),
 			RefCount:  int64(binary.BigEndian.Uint64(val[8:16])),
 			DeletedAt: int64(binary.BigEndian.Uint64(val[16:24])),
 		}, nil
 	}
-	// Legacy format: ASCII integer = size only, refCount=1, not deleted
+	// Legacy ASCII format: size as decimal string (e.g., "6")
+	// This handles the pre-binary format from very old versions
 	size, err := strconv.ParseInt(string(val), 10, 64)
-	if err != nil {
-		return ObjectMeta{}, fmt.Errorf("legacy object metadata parse failed for %q: %w", val, syscall.EBADMSG)
+	if err == nil {
+		return ObjectMeta{Size: size, RefCount: 1}, nil
 	}
-	return ObjectMeta{Size: size, RefCount: 1}, nil
+
+	// New v2 format with vector clock, shard key, replicas
+	if len(val) < 24 {
+		return ObjectMeta{}, fmt.Errorf("object metadata too short (%d bytes): %w", len(val), syscall.EBADMSG)
+	}
+	m := ObjectMeta{
+		Size:      int64(binary.BigEndian.Uint64(val[0:8])),
+		RefCount:  int64(binary.BigEndian.Uint64(val[8:16])),
+		DeletedAt: int64(binary.BigEndian.Uint64(val[16:24])),
+	}
+	offset := 24
+
+	// Vector clock
+	if len(val) < offset+4 {
+		return ObjectMeta{}, fmt.Errorf("truncated vector clock length: %w", syscall.EBADMSG)
+	}
+	vcLen := int(binary.BigEndian.Uint32(val[offset : offset+4]))
+	offset += 4
+	if len(val) < offset+8*vcLen {
+		return ObjectMeta{}, fmt.Errorf("truncated vector clock data: %w", syscall.EBADMSG)
+	}
+	m.VectorClock = make([]uint64, vcLen)
+	for i := 0; i < vcLen; i++ {
+		m.VectorClock[i] = binary.BigEndian.Uint64(val[offset : offset+8])
+		offset += 8
+	}
+
+	// Shard key
+	if len(val) < offset+4 {
+		return ObjectMeta{}, fmt.Errorf("truncated shard key length: %w", syscall.EBADMSG)
+	}
+	skLen := int(binary.BigEndian.Uint32(val[offset : offset+4]))
+	offset += 4
+	if len(val) < offset+skLen {
+		return ObjectMeta{}, fmt.Errorf("truncated shard key data: %w", syscall.EBADMSG)
+	}
+	m.ShardKey = string(val[offset : offset+skLen])
+	offset += skLen
+
+	// Metadata replicas
+	if len(val) < offset+4 {
+		return ObjectMeta{}, fmt.Errorf("truncated replica count: %w", syscall.EBADMSG)
+	}
+	mrLen := int(binary.BigEndian.Uint32(val[offset : offset+4]))
+	offset += 4
+	if len(val) < offset+4*mrLen {
+		return ObjectMeta{}, fmt.Errorf("truncated replica data: %w", syscall.EBADMSG)
+	}
+	m.MetadataReplicas = make([]int32, mrLen)
+	for i := 0; i < mrLen; i++ {
+		m.MetadataReplicas[i] = int32(binary.BigEndian.Uint32(val[offset : offset+4]))
+		offset += 4
+	}
+
+	return m, nil
 }
 
 // Store defines the interface for object storage operations.
@@ -238,10 +328,17 @@ func (s *CASStore) Close() error {
 // Put saves an object to the store.
 // If the hash already exists, it only updates the namespace mapping (deduplication).
 func (s *CASStore) Put(name string, hash string, size int64, remotePath string, content io.Reader) (err error) {
+	return s.PutWithMetadata(name, hash, size, remotePath, content, nil, "", nil)
+}
+
+// PutWithMetadata is the internal implementation that accepts optional
+// distributed metadata fields (VectorClock, ShardKey, MetadataReplicas).
+// Used by the metadata RPC handler for quorum writes.
+func (s *CASStore) PutWithMetadata(name string, hash string, size int64, remotePath string, content io.Reader, vectorClock []uint64, shardKey string, metadataReplicas []int32) (err error) {
 	// 🛡️ Zero-Crash: Recover from any unexpected panics in the storage backend.
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in CASStore.Put for %s: %v", name, r)
+			log.Printf("CRITICAL: Panic recovered in CASStore.PutWithMetadata for %s: %v", name, r)
 			err = fmt.Errorf("internal storage panic: %w", syscall.EIO)
 		}
 	}()
@@ -298,8 +395,35 @@ func (s *CASStore) Put(name string, hash string, size int64, remotePath string, 
 			}
 			meta = decoded
 			meta.RefCount++
+			// Increment our vector clock entry if provided
+			if len(vectorClock) > 0 {
+				// Ensure vector clock is at least as large as provided
+				if len(meta.VectorClock) < len(vectorClock) {
+					meta.VectorClock = make([]uint64, len(vectorClock))
+				}
+				for i := range vectorClock {
+					if vectorClock[i] > meta.VectorClock[i] {
+						meta.VectorClock[i] = vectorClock[i]
+					}
+				}
+				// Increment our own entry (local node ID would be known in Phase 3)
+				// For Phase 2, we just preserve the incoming clock
+			}
 		} else {
-			meta = ObjectMeta{Size: size, RefCount: 1}
+			meta = ObjectMeta{
+				Size:             size,
+				RefCount:         1,
+				VectorClock:      vectorClock,
+				ShardKey:         shardKey,
+				MetadataReplicas: metadataReplicas,
+			}
+		}
+		// Preserve distributed fields if not already set
+		if meta.ShardKey == "" && shardKey != "" {
+			meta.ShardKey = shardKey
+		}
+		if len(meta.MetadataReplicas) == 0 && len(metadataReplicas) > 0 {
+			meta.MetadataReplicas = metadataReplicas
 		}
 		if err := obj.Put([]byte(hash), meta.encode()); err != nil {
 			return fmt.Errorf("metadata error: %w", syscall.EIO)
