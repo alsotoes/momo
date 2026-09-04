@@ -1,0 +1,2 @@
+- [x] Fix validation in MomoTCPCommunicator
+- [x] Fix validation in MomoQUICCommunicator

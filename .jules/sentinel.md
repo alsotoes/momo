@@ -147,3 +147,8 @@
 **Vulnerability:** The `StorageQueryHandler` decoded internal peer queries (`DecodeFileMetadataList`) without checking for Carriage Return and Line Feed (`\r\n`) characters in the `name`, `hash`, and `remotePath` fields.
 **Learning:** While the primary HTTP boundary (e.g. S3 communicators and network `getMetadata` connections) validates against CRLF injection, internally serialized metadata lists passed over trusted peer networks were not validated for CRLF upon deserialization. Defense-in-depth dictates that all data deserialized from network boundaries (even peer-to-peer internal traffic) must be sanitized.
 **Prevention:** Always perform strict validation for CRLF characters (`strings.ContainsAny(val, "\r\n")`) on all boundary inputs directly in the decoding handlers (e.g., `DecodeFileMetadataList`), even if the data originates from a supposedly trusted internal cluster node.
+
+## 2024-05-24 - Validate network buffers before sanitization
+**Vulnerability:** Path traversal checks were being performed on network buffers *after* they had been passed through `common.SanitizeLog()`.
+**Learning:** Sanitization functions (like `common.SanitizeLog()`) alter or remove control characters (including null bytes) and potentially path traversal sequences. If the raw input contained path traversal sequences, `SanitizeLog` might alter them, allowing the subsequent path traversal check to pass and admitting a malicious (but altered) payload.
+**Prevention:** Always perform validation checks (like `HasPathTraversalChars`) on the raw, unsanitized input *before* passing it to logging or sanitization functions.
