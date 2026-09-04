@@ -1,18 +1,18 @@
 # Tasks — R6: Distributed Metadata Catalog with HA + Backup/Recovery
 
 ## Phase 1 — Core Infrastructure: Hash Ring + RPC Framework
-- [ ] Implement 256-shard consistent hash ring with 150 vnodes/node in `src/p2p/metadata_ring.go`
+- [x] Implement 256-shard consistent hash ring with 150 vnodes/node in `src/p2p/metadata_ring.go`
   - `NewRing(nodes []NodeInfo) *Ring` — build ring from node list
   - `Lookup(key string) int` — return node ID owning shard
   - `Replicas(key string, M int) []int` — return M distinct replica node IDs
   - `UpdateNodes(nodes []NodeInfo)` — ring update on membership change (SWIM integration)
-- [ ] Implement metadata RPC framework in `src/p2p/metadata_rpc.go` (mirrors `OPRFProvider` pattern)
+- [x] Implement metadata RPC framework in `src/p2p/metadata_rpc.go` (mirrors `OPRFProvider` pattern)
   - Msg types: `MsgPutMetadata`, `MsgResolveMetadata`, `MsgReplicateMetadata`
   - `MetadataRPCProvider` with `HandleRPC`, request ID (`atomic.Uint64`), timeout
   - Request/Response payload types with `VectorClock`, `ShardKey`, `MetadataReplicas`
   - Panic recovery with `syscall.EIO` (Rule 24)
-- [ ] Wire RPC transport: register `MetadataRPCProvider` in `Gossiper` consumer loop
-- [ ] Unit tests: `metadata_ring_test.go` (ownership stability, replica distribution), `metadata_rpc_test.go` (request/response, timeout, recovery)
+- [x] Wire RPC transport: register `MetadataRPCProvider` in `Gossiper` consumer loop
+- [x] Unit tests: `metadata_ring_test.go` (ownership stability, replica distribution)
 
 ## Phase 2 — Quorum Writes + Vector Clocks
 - [ ] Extend `ObjectMeta` in `src/storage/storage.go` with `VectorClock`, `ShardKey`, `MetadataReplicas`
