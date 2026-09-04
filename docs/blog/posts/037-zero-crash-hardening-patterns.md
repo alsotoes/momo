@@ -9,6 +9,7 @@ artifacts:
   - {type: spec, path: openspec/changes/zero-crash-hardening}
   - {type: issue, id: "135"}
 related:
+  - 046-sentinel-path-traversal-fix
   - 015-sentinel-security-audit
   - 004-cas-content-addressable-store
 ---

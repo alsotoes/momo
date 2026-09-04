@@ -3,10 +3,12 @@ title: "🛡️ Sentinel: Fix Path Traversal Bypass via Sanitization"
 date: 2024-05-24T12:00:00Z
 draft: false
 description: "Addressing a critical path traversal vulnerability caused by late validation."
+categories: [encryption]
 tags: ["security", "sentinel"]
 artifacts:
-  - PR 100
-related: []
+  - openspec/changes/sentinel-path-traversal-fix
+related: ["037-zero-crash-hardening-patterns"]
+summary: "Addressing a critical path traversal vulnerability caused by late validation."
 ---
 
 ## Vulnerability
@@ -19,4 +21,4 @@ Always perform validation checks (like `HasPathTraversalChars`) on the raw, unsa
 
 ## Fix
 
-Moved the `common.HasPathTraversalChars` validation to occur immediately on the raw network buffer (`rawHash`), *before* it is passed to `common.SanitizeLog`. This ensures malicious payloads are rejected before they are mutated.
+Moved the `common.HasPathTraversalChars` validation to occur immediately on the raw network buffer (`rawHash`), *before* it is passed to `common.SanitizeLog`. This ensures malicious payloads are rejected before they are mutated. See [docs/STANDARDS.md](/docs/STANDARDS.md) for more info about Sentinel mindset.
