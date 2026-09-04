@@ -1089,7 +1089,7 @@ func TestGetConfig_MomofsConfig(t *testing.T) {
 	// enabled=true accepted with P2P.
 	cfgEnabled := base + "[daemon.0]\nhost = h0\ndrive = d0\nchange_replication = c0\ndata = d0\n\n" +
 		"[p2p]\nenabled = true\n\n" +
-		"[momofs]\nenabled = true\n"
+		"[momofs]\nenabled = true\nmetadata_replication = 1\n"
 	cfg, err := GetConfig(writeConf(t, cfgEnabled))
 	if err != nil {
 		t.Fatalf("config with enabled=true failed: %v", err)
@@ -1097,8 +1097,8 @@ func TestGetConfig_MomofsConfig(t *testing.T) {
 	if !cfg.Momofs.Enabled {
 		t.Fatalf("expected Enabled=true, got false")
 	}
-	if cfg.Momofs.MetadataReplication != 3 {
-		t.Fatalf("expected MetadataReplication=3 default, got %d", cfg.Momofs.MetadataReplication)
+	if cfg.Momofs.MetadataReplication != 1 {
+		t.Fatalf("expected MetadataReplication=1, got %d", cfg.Momofs.MetadataReplication)
 	}
 	if cfg.Momofs.MetadataQuorum != 0 {
 		t.Fatalf("expected MetadataQuorum=0 default, got %d", cfg.Momofs.MetadataQuorum)
