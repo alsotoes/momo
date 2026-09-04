@@ -57,6 +57,7 @@ type ResolveMetadataReply struct {
 	VectorClock      []uint64
 	Checksum         uint32
 	Error            string
+	ModTime          int64
 }
 
 // ReplicateMetadataArgs is the payload for a ReplicateMetadata RPC request.
@@ -235,14 +236,29 @@ func (m *MetadataRPCProvider) handlePutMetadataResponse(rpc *RPC) {
 
 // handleResolveMetadata processes an incoming ResolveMetadata request.
 func (m *MetadataRPCProvider) handleResolveMetadata(rpc *RPC) {
-	_, err := DecodeResolveMetadataArgs(rpc.Payload)
+	args, err := DecodeResolveMetadataArgs(rpc.Payload)
 	if err != nil {
 		log.Printf("MetadataRPC: failed to decode ResolveMetadata from peer %d: %v (errno=%d)", rpc.From, err, syscall.EBADMSG)
 		return
 	}
 
-	// TODO: Implement actual metadata lookup when CASStore is wired
-	reply := &ResolveMetadataReply{Error: "not implemented"}
+	// Read metadata from local store
+	meta, err := m.store.GetMeta(args.Name)
+	reply := &ResolveMetadataReply{}
+	if err != nil {
+		if err == syscall.ENOENT {
+			reply.Error = "not found"
+		} else {
+			reply.Error = err.Error()
+		}
+	} else {
+		reply.Hash = meta.Hash
+		reply.Size = meta.Size
+		reply.RemotePath = meta.RemotePath
+		reply.S3Headers = meta.S3Headers
+		// ModTime needs to be converted
+		reply.ModTime = meta.ModTime
+	}
 	payload, _ := EncodeResolveMetadataReply(reply)
 	m.transport.Send(rpc.From, &RPC{
 		Type:    MsgResolveMetadataResponse,

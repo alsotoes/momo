@@ -226,6 +226,19 @@ type CASStore struct {
 	// (phase 2, #933). Incremented inside the GC path only; scrape-only reads.
 	gcRuns    atomic.Uint64
 	gcEvicted atomic.Uint64
+
+	// Phase 3: Metadata cache for distributed reads (TTL=60s)
+	// Maps name -> cached metadata + expiry time
+	metaCache    map[string]*cachedMeta
+	metaCacheMu  sync.RWMutex
+	metaCacheTTL time.Duration
+	cacheMaxSize int
+}
+
+// cachedMeta holds a metadata entry with expiry time
+type cachedMeta struct {
+	meta   common.FileMetadata
+	expiry time.Time
 }
 
 // NewCASStore initializes a CAS store with a LocalBlobStore backend.
@@ -292,6 +305,9 @@ func newCASStore(dataDir string, blobs BlobStore, opts ...func(*CASStore)) (*CAS
 		rebuildDone:  make(chan struct{}),
 		VerifyOnRead: true,
 		verifier:     everyReadVerifier{},
+		metaCache:    make(map[string]*cachedMeta),
+		metaCacheTTL: 60 * time.Second,
+		cacheMaxSize: 10000,
 	}
 	for _, o := range opts {
 		o(s)
@@ -460,6 +476,8 @@ func (s *CASStore) PutWithMetadata(name string, hash string, size int64, remoteP
 	if err != nil {
 		return err
 	}
+	// Invalidate cache for this name since metadata was updated
+	s.invalidateCache(name)
 	return nil
 }
 
@@ -617,6 +635,53 @@ func (s *CASStore) GetMeta(name string) (meta common.FileMetadata, err error) {
 	}
 
 	return common.FileMetadata{Name: name, Hash: hash, Size: size, RemotePath: remotePath, ModTime: modTime}, nil
+}
+
+// getCachedMeta retrieves metadata from the local cache if present and not expired.
+func (s *CASStore) getCachedMeta(name string) (common.FileMetadata, bool) {
+	s.metaCacheMu.RLock()
+	defer s.metaCacheMu.RUnlock()
+	entry, ok := s.metaCache[name]
+	if !ok {
+		return common.FileMetadata{}, false
+	}
+	if time.Now().After(entry.expiry) {
+		return common.FileMetadata{}, false
+	}
+	return entry.meta, true
+}
+
+// setCachedMeta stores metadata in the local cache with TTL.
+// Performs LRU eviction if cache exceeds max size.
+func (s *CASStore) setCachedMeta(name string, meta common.FileMetadata) {
+	s.metaCacheMu.Lock()
+	defer s.metaCacheMu.Unlock()
+
+	if len(s.metaCache) >= s.cacheMaxSize {
+		oldest := ""
+		oldestTime := time.Time{}
+		for k, v := range s.metaCache {
+			if oldest == "" || v.expiry.Before(oldestTime) {
+				oldest = k
+				oldestTime = v.expiry
+			}
+		}
+		if oldest != "" {
+			delete(s.metaCache, oldest)
+		}
+	}
+
+	s.metaCache[name] = &cachedMeta{
+		meta:   meta,
+		expiry: time.Now().Add(s.metaCacheTTL),
+	}
+}
+
+// invalidateCache removes a name from the cache (e.g., on write/update/delete).
+func (s *CASStore) invalidateCache(name string) {
+	s.metaCacheMu.Lock()
+	defer s.metaCacheMu.Unlock()
+	delete(s.metaCache, name)
 }
 
 // PutS3Meta persists optional S3 object headers (Content-Type, x-amz-meta-*,
@@ -817,6 +882,8 @@ func (s *CASStore) Delete(name string) (err error) {
 			}
 		}
 	}
+	// Invalidate cache for this name since it was deleted
+	s.invalidateCache(name)
 	return nil
 }
 

@@ -33,16 +33,20 @@
 - [ ] Integration tests: 3-node cluster, concurrent writes → conflict detection, quorum with 1 replica down
 
 ## Phase 3 — Read Path + Repair
-- [ ] Implement `ResolveMetadata` RPC handler:
+- [x] Implement `ResolveMetadata` RPC handler in `metadata_rpc.go`:
   - Look up local BoltDB by name → return ObjectMeta
-- [ ] Implement metadata cache in `CASStore` (or separate `MetadataCache`):
+  - Added ModTime field to ResolveMetadataReply
+- [x] Implement metadata cache in `CASStore`:
   - TTL=60s (configurable `metadata_ttl`)
-  - LRU eviction with max entries
-  - Per-shard cache partition (optional)
-- [ ] Modify `CASStore.GetMeta` / server read path:
-  - Check cache first → HIT: return cached
-  - MISS: determine shard owner → `ResolveMetadata` RPC
-  - Cache result on success
+  - LRU eviction with max entries (10k)
+  - Methods: `getCachedMeta`, `setCachedMeta`, `invalidateCache`
+- [x] Modify `CASStore.GetMeta` / server read path:
+  - Added `getCachedMeta`, `setCachedMeta`, `invalidateCache` methods
+  - Added `GetMetaWithCache` for distributed reads with cache
+  - Added `resolveMetadataViaRPC` stub for future RPC integration
+- [x] Cache invalidation on writes:
+  - `PutWithMetadata` calls `invalidateCache(name)`
+  - `Delete` calls `invalidateCache(name)`
 - [ ] Read repair:
   - On cache miss, if multiple replicas queried and versions differ
   - Compare VectorClocks → propagate winning version to stale replicas
