@@ -74,3 +74,34 @@ post that depends on or explains another (e.g. CRUSH post ↔ CAS post, P2P post
 `make blog-check` (wraps `.github/scripts/blog_check.py`) verifies every post:
 required fields, RFC3339 `date` not in the future, `related` targets exist, and
 `artifacts: spec` paths resolve under `openspec/changes/`.
+
+## Cloudflare Pages Deployment
+
+The blog is deployed to Cloudflare Pages via GitHub Actions (`.github/workflows/cloudflare-pages-deploy.yml`).
+
+### Prerequisites
+
+1. **Cloudflare account** with Pages enabled
+2. **GitHub repository secrets** configured:
+   - `CLOUDFLARE_API_TOKEN` — API token with Pages edit permissions
+   - `CLOUDFLARE_ACCOUNT_ID` — Cloudflare account ID
+
+### Deployment trigger
+
+The workflow runs on:
+- Push to `master` branch with changes in `docs/blog/**`
+- Manual `workflow_dispatch`
+
+### Local preview
+
+```bash
+cd docs/blog
+hugo server --buildDrafts --buildFuture
+# Visit http://localhost:1313
+```
+
+### Production URL
+
+The site is deployed to Cloudflare Pages at:
+- **Production**: https://momo.engineering
+- **Preview deployments**: Available on PR preview URLs

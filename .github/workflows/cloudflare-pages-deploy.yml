@@ -1,0 +1,47 @@
+name: Deploy Blog to Cloudflare Pages
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'docs/blog/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup Hugo
+        uses: peaceiris/actions-hugo@v2
+        with:
+          hugo-version: '0.152.2'
+          extended: true
+
+      - name: Build Hugo site
+        working-directory: docs/blog
+        run: hugo --minify
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: momo-engineering-journal
+          directory: docs/blog/public
+          branch: master
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notify deployment
+        if: always()
+        run: |
+          echo "Deployment completed. Check https://dash.cloudflare.com for status."
