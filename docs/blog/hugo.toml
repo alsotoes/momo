@@ -1,9 +1,7 @@
-baseURL = 'https://momo.engineering/'
+baseURL = '/'
 languageCode = 'en-us'
 title = 'Momo Engineering Journal'
 theme = 'PaperMod'
-
-contentDir = "posts"
 
 enableRobotsTXT = true
 buildDrafts = false
@@ -12,6 +10,20 @@ buildExpired = false
 
 enableEmoji = true
 enableGitInfo = true
+
+[module]
+  [[module.mounts]]
+    source = "posts"
+    target = "content/posts"
+  [[module.mounts]]
+    source = "static"
+    target = "static"
+  [[module.mounts]]
+    source = "layouts"
+    target = "layouts"
+  [[module.mounts]]
+    source = "assets"
+    target = "assets"
 
 [markup]
   [markup.goldmark]
@@ -64,6 +76,7 @@ enableGitInfo = true
   TocSide = "right"
   TocFolded = false
   Comments = false
+  mainSections = ["posts"]
 
   [params.profileMode]
     enabled = false
@@ -97,10 +110,9 @@ enableGitInfo = true
 [menu]
   main = [
     {identifier = "posts", name = "Posts", url = "/posts/", weight = 10},
-    {identifier = "archive", name = "Archive", url = "/archives/", weight = 20},
-    {identifier = "categories", name = "Categories", url = "/categories/", weight = 30},
-    {identifier = "tags", name = "Tags", url = "/tags/", weight = 40},
-    {identifier = "github", name = "GitHub", url = "https://github.com/alsotoes/momo", weight = 50}
+    {identifier = "categories", name = "Categories", url = "/categories/", weight = 20},
+    {identifier = "tags", name = "Tags", url = "/tags/", weight = 30},
+    {identifier = "github", name = "GitHub", url = "https://github.com/alsotoes/momo", weight = 40}
   ]
 
 [sitemap]
