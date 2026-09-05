@@ -35,6 +35,7 @@ This document is governed by the steering rules in [`openspec/config.yaml`](../o
 - **Rule 78**: ADR-Spec Synchronization — ADRs are auto-generated from specs via `make adr-sync` (context ← proposal, decision ← requirement summaries, status ← tasks.md checkboxes, blog link ← issue match); `make adr-sync-check` validates parity and runs in CI; ADR status never hand-edited
 - **Rule 79**: No Direct Push to Master — all changes go through issue → branch → PR (`Resolves #ISSUE_ID`) → CI → reviewer → merge `--merge --delete-branch`. Doc-only / pre-commit-regen / trivial-refactor / CI-fix / emergency-hotfix exceptions may bypass, but must be tagged in the commit message
 - **Rule 89**: MemPalace Knowledge Grounding — run `mempalace mine .` from repo root + `npx repomix` to refresh context, then query `mempalace search "<topic>" --wing momo` BEFORE reading source files / re-investigating architecture. Reuse indexed project knowledge instead of re-loading files to cut token burn.
+- **Rule 90**: Auto-Trace Issue Deduplication — the AI reviewer MUST NEVER create duplicate auto-trace issues for the same PR: search existing OPEN auto-trace issues first and reuse the canonical, use the CURRENT PR body from the API (not the stale event payload), and rely on workflow `concurrency` (`cancel-in-progress: true`) to serialize pushes. Prevents the #1057 duplicate-issue incident.
 
 ## Pre-Flight Checklist
 
@@ -144,6 +145,7 @@ Guidelines:
 - When the task is a takeover or follow-up (Jules PR, prior phase), search for the prior work to recover decisions and constraints.
 - **Only read source files / `repomix-output.xml` when MemPalace returns insufficient grounding.** Prefer the indexed knowledge first.
 - Keep the base current: re-mine after significant code/spec/doc changes (Pre-Flight item 6).
+- **Auto-Trace check (Rule 90):** When taking over a PR or observing auto-trace issues, verify no duplicate auto-trace issues exist for the PR before creating or re-creating any. Consolidate to the canonical issue (Rule 80) and ensure the PR body carries `Resolves #<canonical>` so the reviewer short-circuits (its `find_existing_auto_trace` + `get_current_pr_body` prevent duplicate creation; see Rule 90).
 
 ### Step 2: Create Branch
 ```bash
@@ -487,6 +489,8 @@ When multiple auto-trace issues exist for one PR:
 3. Update PR body: `Resolves #<canonical>`.
 4. If new auto-trace created during takeover (stale reviewer read), close it immediately.
 
+**Prevention (Rule 90):** The reviewer script (`ai_reviewer.py`) must not CREATE duplicates: it searches existing OPEN auto-trace issues first (`find_existing_auto_trace`), reuses the canonical, and uses the CURRENT PR body from the API (`get_current_pr_body`) instead of the stale webhook payload. The `gemini_reviewer.yml` workflow carries `concurrency: cancel-in-progress: true` per PR so parallel pushes are serialized. If duplicates still appear, that is a Rule 90 bug — fix the script, don't just close the issues.
+
 ### Phase-Based Implementation Pattern (Rule 81)
 
 For large features (estimated >1 PR):
@@ -663,6 +667,8 @@ If any runs are `in_progress` or `queued`, wait. If any failed, fix `master` fir
 ### Auto-Trace Proliferation Without Consolidation (Rule 80)
 **Pitfall**: Multiple auto-trace issues created for the same PR (e.g., #982/#983 for #981, #977/#978/#979 for #976). Each auto-trace clutters the tracker and the PR body lacks a proper `Resolves`.
 **Solution**: Immediately consolidate to one canonical issue (lowest number, OPEN), close dups with `gh issue close <dups> --comment "Duplicate of #<canonical> (canonical tracker for PR #<N>). Closed per Rule 20."`, update PR body with `Resolves #<canonical>`. If new auto-trace appears during takeover (stale reviewer read), close it immediately.
+
+**Automated-duplicate variant (Rule 90):** When the AI reviewer itself creates 50+ duplicate auto-trace issues for one PR (e.g., #997–#1054 for PR #996), the root cause is the reviewer script — no dedup search, stale event payload, and no workflow concurrency. Fix `ai_reviewer.py` (`find_existing_auto_trace` + `get_current_pr_body`) and add `concurrency: cancel-in-progress: true` to `gemini_reviewer.yml`; then bulk-close the duplicates with the canonical message. Do NOT just close duplicates and leave the script broken — the next synchronize will re-create them.
 
 ### Monolithic Feature in One PR (Rule 81)
 **Pitfall**: Attempting to implement a large feature (e.g., R6 metadata HA) in a single massive PR. The diff is unreadable, reviewer cannot verify, CI timeout risk, all-or-nothing merge risk.

@@ -155,6 +155,55 @@ def pr_has_label(pr_number, label):
         return False
 
 
+def get_current_pr_body(pr_number):
+    """Rule 90: Fetch the CURRENT PR body from the GitHub API instead of relying
+    on the (possibly stale) webhook event payload. The event payload reflects the
+    body at event time; after create_missing_issue appends 'Resolves <url>' via
+    gh pr edit, subsequent synchronize events may still carry the old body,
+    causing duplicate auto-trace issues. Fetching live avoids that."""
+    if not pr_number:
+        return ""
+    try:
+        cmd = ["gh", "pr", "view", str(pr_number), "--json", "body", "--jq", ".body"]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        return result.stdout.strip()
+    except Exception:
+        return ""
+
+
+def find_existing_auto_trace(pr_number, pr_title):
+    """Rule 90: Search for an existing OPEN auto-trace issue already tracking this
+    PR (title pattern '[Auto-Trace] <PR title>' or body mentioning 'for PR #<n>').
+    Returns the canonical issue number, or None. This prevents the reviewer from
+    creating a new auto-trace issue on every synchronize event when the PR body
+    never gained a 'Resolves #N' link."""
+    if not pr_title or not pr_number:
+        return None
+    expected_title = f"[Auto-Trace] {pr_title}"
+    try:
+        cmd = ["gh", "issue", "list", "--state", "open", "--limit", "50",
+               "--search", f'"[Auto-Trace] {pr_title}" in:title',
+               "--json", "number,title"]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        issues = json.loads(result.stdout)
+        for issue in issues:
+            if issue.get("title") == expected_title:
+                return issue["number"]
+            # Fallback: body references this PR by number
+        # Secondary scan: issues mentioning 'for PR #<n>' in body
+        cmd = ["gh", "issue", "list", "--state", "open", "--limit", "50",
+               "--search", f'for PR #{pr_number} in:body',
+               "--json", "number,title"]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        issues = json.loads(result.stdout)
+        for issue in issues:
+            if f"for PR #{pr_number}" in issue.get("title", ""):
+                return issue["number"]
+    except Exception as e:
+        print(f"Failed to search for existing auto-trace issue: {e}", file=sys.stderr)
+    return None
+
+
 def has_openspec_change():
     """Rule 73: Return True if the PR branch adds any change under openspec/changes/."""
     try:
@@ -176,7 +225,23 @@ def has_blog_post():
 
 
 def create_missing_issue(pr_number, pr_title, pr_body):
+    # Rule 90: Deduplicate — never create a second auto-trace issue for a PR
+    # that already has one. Reuse the canonical issue and ensure the PR body
+    # carries 'Resolves #<canonical>' so future runs short-circuit.
     try:
+        existing = find_existing_auto_trace(pr_number, pr_title)
+        if existing is not None:
+            print(f"Rule 90: Reusing existing auto-trace issue #{existing} for PR #{pr_number} (no duplicate created)")
+            # Ensure the PR body links the canonical issue
+            if f"Resolves #{existing}" not in pr_body and f"resolves #{existing}" not in pr_body.lower():
+                try:
+                    subprocess.run(["gh", "pr", "edit", str(pr_number),
+                                    "--body", f"{pr_body}\n\nResolves #{existing}"], check=True)
+                    print(f"Linked existing issue #{existing} to PR #{pr_number}")
+                except Exception as e:
+                    print(f"Failed to link existing issue: {e}", file=sys.stderr)
+            return True
+
         print(f"Rule 11 Violation detected. Autonomously creating tracking issue for PR #{pr_number}...")
         
         issue_title = f"[Auto-Trace] {pr_title}"
@@ -232,6 +297,14 @@ def main():
     pr_body = os.environ.get("PR_BODY", "")
     pr_title = os.environ.get("PR_TITLE", "")
     pr_number = os.environ.get("PR_NUMBER", "")
+
+    # Rule 90: Use the CURRENT PR body from the API, not the (stale) webhook
+    # event payload. The event payload reflects the body at event time; after a
+    # previous run appended 'Resolves <url>' via gh pr edit, later synchronize
+    # events can still carry the old body, causing duplicate auto-trace issues.
+    current_body = get_current_pr_body(pr_number) if pr_number else ""
+    if current_body:
+        pr_body = current_body
 
     # ⚡ First: Sync labels from linked issues and assign alsotoes.
     # This ensures every PR has correct labels and an assignee before
