@@ -41,7 +41,7 @@ jobs:
         working-directory: docs/blog
         run: hugo --minify
 
-- name: Deploy to Cloudflare Pages
+      - name: Deploy to Cloudflare Pages
         if: ${{ steps.check-secrets.outputs.skip != 'true' }}
         uses: cloudflare/pages-action@v1
         with:
