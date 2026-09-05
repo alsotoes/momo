@@ -84,16 +84,19 @@ The blog interface is styled following the **Swiss Modernism 2.0 / Technical Edi
    - WCAG 2.4.7 visible focus indicator rings (`:focus-visible`)
    - WCAG 2.3.3 reduced motion overrides (`@media (prefers-reduced-motion: reduce)`)
    - WCAG 2.5.8 touch target scaling (min 44×44px for buttons, pagination, menu)
+   - Real-time reading progress bar (`#reading-progress`)
 
 2. **Frontend Design & Typography (`frontend-design/`, `uiux-designer/`)**:
-   - Technical color palette with clean CSS variables (`assets/css/extended/design.css`)
-   - Sticky glassmorphism header (`backdrop-filter: blur(14px)`)
-   - Interactive article cards with hover lift (`translateY(-2px)`) and accent glow
-   - Specialized mindset badges for ⚡ **Bolt** (amber) and 🛡 **Sentinel** (indigo shield)
-   - Code block readability: monospace font stack with zero-latency copy button
+   - Distinctive typography: `Outfit` for editorial headings and body, `JetBrains Mono` for code, labels, and metadata
+   - Architectural dot grid background texture (`radial-gradient`)
+   - Technical hero banner (`layouts/partials/home_info.html`): live status bar, pulsing green LED, clickable pillar chips (⚡ Bolt, 🛡 Sentinel, CAS, S3, FUSE)
+   - Card enhancements: left accent border on hover, entrance fade-slide animation, category badges (`cat-storage`, `cat-transport`, etc.)
+   - Code block readability: dark obsidian background with copy button hover feedback
+   - Global keyboard navigation: press `/` from any page to jump directly to search
 
 3. **Search (`/search/`)**:
    - Client-side Fuse.js search (`content/search.md`) indexing all 46 posts via `index.json` output
+   - Enhanced search box with focus rings and instant card previews
 
 4. **Cross-Link Resolution**:
    - Custom Hugo render hook (`layouts/_default/_markup/render-link.html`) converts sibling `.md` links to `/posts/<slug>/` and doc links (`../../STANDARDS.md`) to canonical GitHub URLs.

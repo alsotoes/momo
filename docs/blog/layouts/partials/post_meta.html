@@ -1,0 +1,19 @@
+{{- $scratch := newScratch }}
+
+{{- with .Params.categories }}
+    {{- range first 1 . }}
+        {{- $scratch.Add "meta" (slice (printf "<span class='meta-category-badge cat-%s'>%s</span>" (lower .) (upper .))) }}
+    {{- end }}
+{{- end }}
+
+{{- if not .Date.IsZero -}}
+    {{- $scratch.Add "meta" (slice (printf "<span class='meta-date' title='%s'>%s</span>" (.Date) (.Date | time.Format (default ":date_long" site.Params.DateFormat)))) }}
+{{- end }}
+
+{{- if (.Param "ShowReadingTime") -}}
+    {{- $scratch.Add "meta" (slice (printf "<span class='meta-readtime'>%s</span>" (i18n "read_time" .ReadingTime | default (printf "%d min" .ReadingTime)))) }}
+{{- end }}
+
+{{- with ($scratch.Get "meta") }}
+    {{- delimit . "<span class='meta-separator'>•</span>" | safeHTML -}}
+{{- end -}}

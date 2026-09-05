@@ -1,110 +1,145 @@
 /* ==========================================================================
-   Momo Engineering Journal — UI/UX Design System
+   Momo Engineering Journal — Comprehensive Design System
    Aesthetic: Swiss Modernism 2.0 / Technical Editorial
    Per docs/blog/.agents/skills/{frontend-design, uiux-designer, accessibility}
    ========================================================================== */
 
-/* 1. Theme Color Tokens & Variables */
+/* 1. Google Fonts: Outfit (Display & Body) + JetBrains Mono (Technical) */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');
+
+/* 2. Theme Color Tokens & Architectural Variables */
 :root {
     --theme: #ffffff;
     --entry: #f8fafc;
     --primary: #0f172a;
     --secondary: #475569;
-    --tertiary: #cbd5e1;
+    --tertiary: #e2e8f0;
     --content: #1e293b;
     --border: #e2e8f0;
     --code-block-bg: #0f172a;
     --code-bg: #f1f5f9;
-    --radius: 10px;
+    --radius: 12px;
 
     /* Technical accent tokens */
     --accent: #4f46e5;
-    --accent-glow: rgba(79, 70, 229, 0.12);
+    --accent-hover: #4338ca;
+    --accent-glow: rgba(79, 70, 229, 0.14);
+
     --bolt-accent: #d97706;
     --bolt-bg: #fef3c7;
+    --bolt-border: #fde68a;
+
     --sentinel-accent: #2563eb;
     --sentinel-bg: #dbeafe;
+    --sentinel-border: #bfdbfe;
+
+    --grid-dot: rgba(15, 23, 42, 0.06);
 }
 
 :root[data-theme="dark"] {
-    --theme: #0b0f19;
-    --entry: #111827;
+    --theme: #090d16;
+    --entry: #111726;
     --primary: #f8fafc;
     --secondary: #94a3b8;
-    --tertiary: #374151;
+    --tertiary: #1e293b;
     --content: #e2e8f0;
-    --border: #1f2937;
-    --code-block-bg: #0d1117;
-    --code-bg: #1e293b;
+    --border: #1e293b;
+    --code-block-bg: #070a10;
+    --code-bg: #151d30;
 
     /* Dark mode accent tokens */
     --accent: #818cf8;
-    --accent-glow: rgba(129, 140, 248, 0.15);
+    --accent-hover: #a5b4fc;
+    --accent-glow: rgba(129, 140, 248, 0.18);
+
     --bolt-accent: #fbbf24;
     --bolt-bg: rgba(251, 191, 36, 0.12);
+    --bolt-border: rgba(251, 191, 36, 0.25);
+
     --sentinel-accent: #60a5fa;
     --sentinel-bg: rgba(96, 165, 250, 0.12);
+    --sentinel-border: rgba(96, 165, 250, 0.25);
+
+    --grid-dot: rgba(248, 250, 252, 0.04);
 }
 
-/* 2. Global Typography & Smoothing */
+/* 3. Global Typography & Background Texture */
 body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    letter-spacing: -0.01em;
+    font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    letter-spacing: -0.012em;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    background-color: var(--theme);
+    background-image: radial-gradient(circle at 1px 1px, var(--grid-dot) 1px, transparent 0);
+    background-size: 28px 28px;
 }
 
-/* 3. Sticky Glassmorphism Header */
+/* 4. Reading Progress Bar (WCAG & UX) */
+.reading-progress {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 3px;
+    width: 0%;
+    background: linear-gradient(90deg, var(--accent), #06b6d4, #10b981);
+    z-index: 10000;
+    transition: width 0.08s ease-out;
+}
+
+/* 5. Sticky Glassmorphism Header */
 .header {
     position: sticky;
     top: 0;
     z-index: 100;
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-    background: color-mix(in srgb, var(--theme) 85%, transparent);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    background: color-mix(in srgb, var(--theme) 82%, transparent);
     border-bottom: 1px solid var(--border);
     transition: border-color 0.2s ease;
 }
 
 .logo a {
-    font-weight: 700;
-    font-size: 1.15rem;
-    letter-spacing: -0.02em;
+    font-weight: 800;
+    font-size: 1.2rem;
+    letter-spacing: -0.03em;
     display: inline-flex;
     align-items: center;
-    gap: 0.6rem;
+    gap: 0.65rem;
 }
 
 .logo a img {
-    border-radius: 6px;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    border-radius: 7px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 }
 
 .menu a {
-    font-size: 0.925rem;
-    font-weight: 500;
+    font-size: 0.9rem;
+    font-weight: 600;
     color: var(--secondary);
-    transition: color 0.15s ease, border-color 0.15s ease;
-    border-radius: 6px;
+    padding: 0.5rem 0.85rem;
+    border-radius: 8px;
+    transition: all 0.15s ease;
 }
 
 .menu a:hover,
 .menu a.active {
     color: var(--primary);
+    background: var(--entry);
 }
 
-/* 4. Home Hero Banner (Swiss Technical Editorial) */
-.home-info {
+/* 6. Technical Hero Banner */
+.technical-hero {
     position: relative;
-    padding: 2.25rem 2rem;
+    padding: 2.25rem 2.25rem;
     margin-bottom: 2.5rem;
     background: var(--entry);
     border: 1px solid var(--border);
     border-radius: var(--radius);
+    box-shadow: 0 4px 20px -4px rgba(0, 0, 0, 0.05);
     overflow: hidden;
 }
 
-.home-info::before {
+.technical-hero::before {
     content: "";
     position: absolute;
     top: 0;
@@ -114,56 +149,212 @@ body {
     background: linear-gradient(90deg, var(--accent), #06b6d4, #10b981);
 }
 
-.home-info .entry-header h1 {
-    font-size: 2rem;
+/* Status Bar */
+.hero-status-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin-bottom: 1.25rem;
+}
+
+.status-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.725rem;
+    font-weight: 700;
+    color: #10b981;
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.25);
+    padding: 0.2rem 0.6rem;
+    border-radius: 9999px;
+    letter-spacing: 0.05em;
+}
+
+.status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #10b981;
+    box-shadow: 0 0 8px #10b981;
+    animation: pulse-dot 2s infinite ease-in-out;
+}
+
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.35; transform: scale(0.8); }
+}
+
+.status-pill {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--secondary);
+    background: color-mix(in srgb, var(--border) 40%, transparent);
+    border: 1px solid var(--border);
+    padding: 0.2rem 0.55rem;
+    border-radius: 6px;
+    letter-spacing: 0.03em;
+}
+
+.technical-hero .entry-header h1 {
+    font-size: 2.25rem;
     font-weight: 800;
-    letter-spacing: -0.03em;
-    line-height: 1.2;
+    letter-spacing: -0.035em;
+    line-height: 1.15;
     margin-bottom: 0.75rem;
     color: var(--primary);
 }
 
-.home-info .entry-content p {
+.technical-hero .entry-content p {
     font-size: 1.05rem;
     line-height: 1.65;
     color: var(--secondary);
-    max-width: 680px;
+    max-width: 660px;
+    margin-bottom: 1.5rem;
 }
 
-/* 5. Post Entry Cards */
+/* Pillar Chips */
+.hero-pillars {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin-bottom: 1.5rem;
+}
+
+.pillar-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.825rem;
+    padding: 0.35rem 0.8rem;
+    background: var(--theme);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--secondary);
+    text-decoration: none;
+    transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.pillar-chip strong {
+    color: var(--primary);
+    font-weight: 700;
+}
+
+.pillar-chip span {
+    font-size: 0.75rem;
+    color: var(--secondary);
+}
+
+.pillar-chip:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent);
+    box-shadow: 0 4px 12px var(--accent-glow);
+    color: var(--primary);
+}
+
+.pillar-chip.bolt:hover {
+    border-color: var(--bolt-accent);
+    box-shadow: 0 4px 12px var(--bolt-border);
+}
+
+.pillar-chip.sentinel:hover {
+    border-color: var(--sentinel-accent);
+    box-shadow: 0 4px 12px var(--sentinel-border);
+}
+
+/* Hero Search Button */
+.hero-footer {
+    display: flex;
+    align-items: center;
+}
+
+.hero-search-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.875rem;
+    color: var(--secondary);
+    background: var(--theme);
+    border: 1px solid var(--border);
+    padding: 0.55rem 1rem;
+    border-radius: 8px;
+    text-decoration: none;
+    width: 100%;
+    max-width: 400px;
+    transition: all 0.18s ease;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+}
+
+.hero-search-button:hover {
+    border-color: var(--accent);
+    color: var(--primary);
+    box-shadow: 0 4px 14px var(--accent-glow);
+}
+
+.hero-kbd {
+    margin-left: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--secondary);
+    background: var(--entry);
+    border: 1px solid var(--border);
+    padding: 0.15rem 0.45rem;
+    border-radius: 4px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* 7. Post Entry Cards */
 .post-entry {
     position: relative;
-    padding: 1.5rem 1.75rem;
+    padding: 1.6rem 1.85rem;
     margin-bottom: 1.25rem;
     background: var(--entry);
     border: 1px solid var(--border);
+    border-left: 3.5px solid transparent;
     border-radius: var(--radius);
     cursor: pointer;
     transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
                 box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1),
                 border-color 0.2s ease;
+    animation: fadeSlideUp 0.35s ease-out forwards;
+}
+
+@keyframes fadeSlideUp {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .post-entry:hover {
     transform: translateY(-2px);
     border-color: var(--accent);
-    box-shadow: 0 10px 25px -5px var(--accent-glow), 0 4px 10px -2px rgba(0, 0, 0, 0.04);
+    border-left-color: var(--accent);
+    box-shadow: 0 12px 28px -6px var(--accent-glow), 0 4px 12px -2px rgba(0, 0, 0, 0.04);
 }
 
 .post-entry .entry-header h2 {
     font-size: 1.35rem;
     font-weight: 700;
-    letter-spacing: -0.02em;
-    line-height: 1.35;
+    letter-spacing: -0.025em;
+    line-height: 1.3;
     color: var(--primary);
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.6rem;
 }
 
 .post-entry .entry-content {
     font-size: 0.95rem;
     line-height: 1.6;
     color: var(--secondary);
-    margin-bottom: 0.75rem;
+    margin-bottom: 0.85rem;
 }
 
 .post-entry .entry-footer {
@@ -171,18 +362,48 @@ body {
     color: var(--secondary);
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    font-variant-numeric: tabular-nums;
+    flex-wrap: wrap;
+    gap: 0.6rem;
 }
 
-/* 6. Tags & Mindset Badges (Bolt & Sentinel) */
+/* Category Badge in Post Meta */
+.meta-category-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.675rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    padding: 0.2rem 0.55rem;
+    border-radius: 5px;
+    background: var(--theme);
+    color: var(--accent);
+    border: 1px solid var(--border);
+    display: inline-flex;
+    align-items: center;
+}
+
+.meta-category-badge.cat-storage { color: #059669; border-color: rgba(5, 150, 105, 0.3); background: rgba(5, 150, 105, 0.08); }
+.meta-category-badge.cat-transport { color: #2563eb; border-color: rgba(37, 99, 235, 0.3); background: rgba(37, 99, 235, 0.08); }
+.meta-category-badge.cat-performance { color: #d97706; border-color: rgba(217, 119, 6, 0.3); background: rgba(217, 119, 6, 0.08); }
+.meta-category-badge.cat-encryption { color: #7c3aed; border-color: rgba(124, 58, 237, 0.3); background: rgba(124, 58, 237, 0.08); }
+.meta-category-badge.cat-p2p { color: #0284c7; border-color: rgba(2, 132, 199, 0.3); background: rgba(2, 132, 199, 0.08); }
+.meta-category-badge.cat-durability { color: #dc2626; border-color: rgba(220, 38, 38, 0.3); background: rgba(220, 38, 38, 0.08); }
+.meta-category-badge.cat-momofs { color: #0891b2; border-color: rgba(8, 145, 178, 0.3); background: rgba(8, 145, 178, 0.08); }
+.meta-category-badge.cat-governance { color: #4b5563; border-color: rgba(75, 85, 99, 0.3); background: rgba(75, 85, 99, 0.08); }
+
+.meta-separator {
+    color: var(--border);
+    font-size: 0.65rem;
+}
+
+/* 8. Tags Styling */
 .post-tags a {
     display: inline-flex;
     align-items: center;
-    font-size: 0.8rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
     font-weight: 600;
     padding: 0.25rem 0.75rem;
-    border-radius: 9999px;
+    border-radius: 6px;
     border: 1px solid var(--border);
     background: var(--entry);
     color: var(--secondary);
@@ -191,48 +412,42 @@ body {
 }
 
 .post-tags a:hover {
-    border-color: var(--primary);
+    border-color: var(--accent);
     color: var(--primary);
     transform: translateY(-1px);
 }
 
-/* Bolt & Sentinel tag highlights */
 .post-tags a[href*="bolt"] {
-    border-color: var(--bolt-accent);
+    border-color: var(--bolt-border);
     color: var(--bolt-accent);
     background: var(--bolt-bg);
 }
 
 .post-tags a[href*="sentinel"] {
-    border-color: var(--sentinel-accent);
+    border-color: var(--sentinel-border);
     color: var(--sentinel-accent);
     background: var(--sentinel-bg);
 }
 
-/* 7. Article Page & Typography */
+/* 9. Article Page Layout */
 .post-header {
     margin-bottom: 2rem;
 }
 
 .post-title {
-    font-size: 2.25rem;
+    font-size: 2.35rem;
     font-weight: 800;
-    letter-spacing: -0.03em;
-    line-height: 1.2;
+    letter-spacing: -0.035em;
+    line-height: 1.18;
     color: var(--primary);
-    margin-bottom: 0.75rem;
+    margin-bottom: 0.85rem;
 }
 
-.post-meta {
-    font-size: 0.875rem;
-    color: var(--secondary);
-}
-
-/* Breadcrumbs navigation */
 .breadcrumbs {
-    font-size: 0.85rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.775rem;
     color: var(--secondary);
-    margin-bottom: 1rem;
+    margin-bottom: 1.15rem;
     display: flex;
     align-items: center;
     gap: 0.4rem;
@@ -248,24 +463,23 @@ body {
     color: var(--primary);
 }
 
-/* Table of Contents */
+/* 10. Table of Contents */
 details.toc {
     background: var(--entry);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 0.5rem 1rem;
+    padding: 0.65rem 1.15rem;
     margin: 1.75rem 0;
 }
 
 details.toc summary {
-    font-weight: 600;
+    font-weight: 700;
     font-size: 0.9rem;
     cursor: pointer;
     color: var(--primary);
-}
-
-details.toc .inner {
-    margin-top: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
 }
 
 details.toc a {
@@ -279,45 +493,81 @@ details.toc a:hover {
     color: var(--accent);
 }
 
-/* 8. Code Blocks & Copy Button */
+/* 11. Code Blocks & Copy Button */
 .highlight {
     border: 1px solid var(--border);
     border-radius: var(--radius);
     overflow: hidden;
-    margin: 1.5rem 0;
+    margin: 1.75rem 0;
+    background: var(--code-block-bg) !important;
 }
 
 .post-content pre code {
-    font-family: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-family: 'JetBrains Mono', ui-monospace, Menlo, Monaco, Consolas, monospace;
     font-size: 0.875rem;
-    line-height: 1.6;
+    line-height: 1.65;
+}
+
+.post-content code:not(pre code) {
+    font-family: 'JetBrains Mono', ui-monospace, Menlo, Monaco, monospace;
+    font-size: 0.825em;
+    padding: 0.2rem 0.45rem;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--primary);
 }
 
 .copy-code {
     border-radius: 6px;
-    font-size: 0.75rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.725rem;
     font-weight: 600;
-    padding: 3px 8px;
-    background: var(--tertiary);
-    color: var(--primary);
-    transition: background 0.15s ease;
+    padding: 4px 10px;
+    background: rgba(255, 255, 255, 0.12);
+    color: #f8fafc;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    transition: all 0.15s ease;
 }
 
-/* 9. Data Tables */
+.copy-code:hover {
+    background: rgba(255, 255, 255, 0.22);
+}
+
+/* 12. Blockquotes */
+.md-content blockquote {
+    margin: 1.75rem 0;
+    padding: 1rem 1.5rem;
+    border-left: 3.5px solid var(--accent);
+    background: color-mix(in srgb, var(--entry) 60%, transparent);
+    border-radius: 0 var(--radius) var(--radius) 0;
+    font-style: italic;
+    color: var(--secondary);
+}
+
+.md-content blockquote p {
+    margin: 0;
+    line-height: 1.65;
+}
+
+/* 13. Data Tables */
 .md-content table {
     width: 100%;
     border-collapse: collapse;
     margin: 1.75rem 0;
-    font-size: 0.9rem;
+    font-size: 0.875rem;
     border: 1px solid var(--border);
     border-radius: var(--radius);
     overflow: hidden;
 }
 
 .md-content table th {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
     background: var(--entry);
     color: var(--primary);
-    font-weight: 600;
     padding: 0.75rem 1rem;
     border-bottom: 2px solid var(--border);
     text-align: left;
@@ -332,13 +582,65 @@ details.toc a:hover {
     border-bottom: none;
 }
 
-/* 10. Pagination & Footer */
+.md-content table tr:hover td {
+    background: color-mix(in srgb, var(--entry) 50%, transparent);
+}
+
+/* 14. Search Experience */
+.searchbox {
+    margin: 1.5rem 0 2rem;
+}
+
+.searchbox input {
+    padding: 0.95rem 1.35rem;
+    font-family: 'Outfit', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    background: var(--entry);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--primary);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+    transition: all 0.2s ease;
+}
+
+.searchbox input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3.5px var(--accent-glow);
+}
+
+.searchResults {
+    gap: 0.85rem;
+}
+
+.searchResults li {
+    padding: 1.25rem 1.6rem;
+    background: var(--entry);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+                border-color 0.2s ease,
+                box-shadow 0.2s ease;
+}
+
+.searchResults li:hover,
+.searchResults li:focus-within {
+    transform: translateY(-2px);
+    border-color: var(--accent);
+    box-shadow: 0 8px 22px -4px var(--accent-glow);
+}
+
+/* 15. Pagination & Footer */
 .pagination a {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.825rem;
     background: var(--primary);
     color: var(--theme);
-    font-weight: 600;
+    font-weight: 700;
     border-radius: var(--radius);
-    padding: 0.5rem 1.25rem;
+    padding: 0.55rem 1.35rem;
     transition: opacity 0.15s ease, transform 0.15s ease;
 }
 
@@ -349,50 +651,8 @@ details.toc a:hover {
 
 .footer {
     border-top: 1px solid var(--border);
-    margin-top: 4rem;
+    margin-top: 4.5rem;
+    padding: 2.5rem 0;
     font-size: 0.85rem;
     color: var(--secondary);
-}
-
-/* 11. Enhanced Search UX (uiux-designer & frontend-design) */
-.searchbox {
-    margin: 1.5rem 0 2rem;
-}
-
-.searchbox input {
-    padding: 0.85rem 1.25rem;
-    font-size: 1.05rem;
-    font-weight: 500;
-    letter-spacing: -0.01em;
-    background: var(--entry);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--primary);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.searchbox input:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-glow);
-}
-
-.searchResults {
-    gap: 0.75rem;
-}
-
-.searchResults li {
-    padding: 1.15rem 1.5rem;
-    background: var(--entry);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.searchResults li:hover,
-.searchResults li:focus-within {
-    transform: translateY(-2px);
-    border-color: var(--accent);
-    box-shadow: 0 8px 20px -4px var(--accent-glow);
 }
