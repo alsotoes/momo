@@ -2,6 +2,7 @@
 title: "The Benchstat Gauntlet: Performance Regressions as CI"
 date: 2026-08-28T00:32:50Z
 draft: false
+post_type: issue
 tags: [go, bolt, benchmark, benchstat, ci]
 categories: [performance]
 summary: "Base-vs-branch benchmark comparison gates every PR — plus the runner-noise saga (S3PutSpool, LocalWrite, allowlist, apostrophe) that made it honest."

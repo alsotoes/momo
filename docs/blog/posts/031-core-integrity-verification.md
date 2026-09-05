@@ -2,6 +2,7 @@
 title: "Centralized Integrity Verification: Checksums Move to the Storage Core"
 date: 2026-08-24T18:03:31Z
 draft: false
+post_type: architecture
 tags: [integrity, checksums, storage, bolt, sentinel]
 categories: [storage]
 summary: "S3 integrity checksums moved from a surface-level adapter into the storage/ingest core via a protocol-agnostic ChecksumProvider seam — every write path verified, replicas re-verify on receive."

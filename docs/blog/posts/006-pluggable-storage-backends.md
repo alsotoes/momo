@@ -2,6 +2,7 @@
 title: "Pluggable Storage Backends: local, nfs, s3, raw"
 date: 2026-07-26T14:33:59Z
 draft: false
+post_type: architecture
 tags: [go, storage, s3, bolt]
 categories: [storage]
 summary: "The `[storage] backend` seam swaps blob storage (local, nfs, s3, raw) behind one Store interface, keeping CAS metadata local."

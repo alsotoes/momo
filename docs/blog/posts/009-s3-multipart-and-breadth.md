@@ -2,6 +2,7 @@
 title: "S3 Multipart and Protocol Breadth: 501 Discipline"
 date: 2026-08-13T06:02:26Z
 draft: false
+post_type: architecture
 tags: [go, s3, multipart, protocol, sentinel]
 categories: [s3]
 summary: "Multipart upload support plus a rigorous 501 strategy for unsupported S3 subresources — honest breadths over silent misbehavior."

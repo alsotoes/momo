@@ -2,6 +2,7 @@
 title: 'The Sentinel Sweep: An Audit-Driven Security Journey'
 date: 2026-08-04 00:47:24+00:00
 draft: false
+post_type: issue
 tags:
 - go
 - security

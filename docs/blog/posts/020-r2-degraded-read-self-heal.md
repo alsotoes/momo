@@ -2,6 +2,7 @@
 title: 'R2: Degraded-Read Survivor Fallback and Self-Heal'
 date: 2026-08-27 03:25:15+00:00
 draft: false
+post_type: architecture
 tags:
 - go
 - self-heal

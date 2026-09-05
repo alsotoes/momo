@@ -2,6 +2,7 @@
 title: "🛡 Auto-Trace Deduplication: Stopping the Issue Flood"
 date: 2026-09-05T01:02:34Z
 draft: false
+post_type: issue
 tags: [governance, automation, sentinel, reviewer]
 categories: [governance]
 summary: "The AI reviewer once created 52 identical auto-trace issues for a single PR. Rule 90 makes that impossible: dedup search, live PR body reads, and workflow concurrency."

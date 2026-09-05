@@ -2,6 +2,7 @@
 title: 'S3 Integrity Checksums: x-amz-checksum-*'
 date: 2026-08-24 16:36:34+00:00
 draft: false
+post_type: architecture
 tags:
 - go
 - s3

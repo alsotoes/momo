@@ -2,6 +2,7 @@
 title: "Seams, Not Plugins: A Fast Path That Stays Concrete"
 date: 2026-08-26T16:45:18Z
 draft: false
+post_type: architecture
 tags: [architecture, performance, security, bolt, sentinel]
 categories: [governance]
 summary: "Adaptive behaviors use compile-time Go interface seams injected at decision points — not dynamic plugins. The fast path stays concrete; the trust core stays auditable; policy is declarative."

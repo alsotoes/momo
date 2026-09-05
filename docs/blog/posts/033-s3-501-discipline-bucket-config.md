@@ -2,6 +2,7 @@
 title: "S3 501 Discipline: Honest 'Not Implemented' for 16 Bucket Config Subresources"
 date: 2026-08-24T20:00:50Z
 draft: false
+post_type: issue
 tags: [s3, compatibility, sentinel]
 categories: [s3]
 summary: "16 bucket config subresources (versioning, ACL, policy, CORS, lifecycle, etc.) now return honest 501 NotImplemented instead of silently misrouting to ListObjects/GetObject."

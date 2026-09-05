@@ -2,6 +2,7 @@
 title: "Signed Payloads and Server-Sent Events for S3"
 date: 2026-08-11T05:14:24Z
 draft: false
+post_type: architecture
 tags: [s3, streaming, sigv4, sentinel]
 categories: [s3]
 summary: "SigV4 signed payload verification for S3 PUT/POST and Server-Sent Events for async operation notifications."

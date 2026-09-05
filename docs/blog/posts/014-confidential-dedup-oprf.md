@@ -2,6 +2,7 @@
 title: "Confidential Dedup via Threshold OPRF — and Auth Lockout"
 date: 2026-08-14T00:26:56Z
 draft: false
+post_type: architecture
 tags: [go, crypto, oprf, e2ee, sentinel]
 categories: [encryption]
 summary: "Threshold-OPRF lets E2EE cas blobs dedup without revealing content hashes — plus adaptive failed-auth backoff and lockout."

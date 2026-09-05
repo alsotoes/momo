@@ -2,6 +2,7 @@
 title: 'R3: Write Durability — fsync-Before-Ack, Survivor Quorum'
 date: 2026-08-27 19:24:05+00:00
 draft: false
+post_type: architecture
 tags:
 - go
 - durability

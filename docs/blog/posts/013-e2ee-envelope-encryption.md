@@ -2,6 +2,7 @@
 title: "Client-Held E2EE: Envelope Encryption Real"
 date: 2026-08-11T16:36:53Z
 draft: false
+post_type: architecture
 tags: [go, encryption, e2ee, sentinel]
 categories: [encryption]
 summary: "Envelope encryption with a client-held key: the server stores ciphertext and can't read it — across S3 and native transports."

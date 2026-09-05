@@ -2,6 +2,7 @@
 title: "Adaptive Scaling: Gossip Fanout, Stream Chunks, Peer Quality"
 date: 2026-08-14T19:43:24Z
 draft: false
+post_type: architecture
 tags: [go, p2p, adaptive, peer-quality, bolt]
 categories: [p2p]
 summary: "Three adaptive feedback loops: gossip fanout scales with cluster size, streaming chunk size adapts to cipher/memory, peer quality feeds quorum decisions."

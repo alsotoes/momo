@@ -2,6 +2,7 @@
 title: "⚡ Bolt: 1000 → 16 Allocations in S3 ListObjectsV2 XML"
 date: 2026-08-24T11:24:01Z
 draft: false
+post_type: issue
 tags: [s3, performance, bolt]
 categories: [performance, s3]
 summary: "S3 ListObjectsV2 XML serialization dropped from ~1000 allocations to 16 per op via inlined time formatting and a pre-allocated escape buffer."

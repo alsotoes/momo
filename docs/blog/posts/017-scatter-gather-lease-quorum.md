@@ -2,6 +2,7 @@
 title: 'Scatter-Gather and Lease Consensus: Quorum Math'
 date: 2026-08-13 07:58:21+00:00
 draft: false
+post_type: architecture
 tags:
 - go
 - p2p

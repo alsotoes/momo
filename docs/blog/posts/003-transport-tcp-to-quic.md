@@ -2,6 +2,7 @@
 title: "Transport Evolution: TCP, QUIC, and the Wire Protocol"
 date: 2026-08-11T04:02:50Z
 draft: false
+post_type: architecture
 tags: [go, transport, quic, tcp, bolt]
 categories: [transport]
 summary: "Momo's transport layer grew from TCP to a QUIC/TLS 1.3 fan-out — fixing handshake, ACK framing, deadlines, and TLS identity along the way."

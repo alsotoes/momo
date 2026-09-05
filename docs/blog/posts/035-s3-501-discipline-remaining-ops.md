@@ -2,6 +2,7 @@
 title: "S3 501 Discipline: Remaining Ops — SelectObjectContent, UploadPartCopy, Analytics, Inventory, Metrics, Intelligent-Tiering"
 date: 2026-08-24T21:44:12Z
 draft: false
+post_type: issue
 tags: [s3, compatibility, sentinel]
 categories: [s3]
 summary: "Final 501 sweep: SelectObjectContent, UploadPartCopy, analytics, inventory, metrics, intelligent-tiering now return honest 501 NotImplemented."

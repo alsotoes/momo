@@ -2,6 +2,7 @@
 title: "🛡 Zero-Crash Hardening: Defensive Patterns for a Networked Object Store"
 date: 2026-06-03T06:03:39Z
 draft: false
+post_type: issue
 tags: [security, robustness, sentinel, bolt]
 categories: [governance]
 summary: "Systematic defensive coding: nil-safety, numeric overflow guards, resource lifecycle discipline, panic recovery at every boundary, and concurrency safety under -race."

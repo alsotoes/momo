@@ -2,6 +2,7 @@
 title: "External S3 Client Replication Downgrade: When aws-cli Can't Fan Out"
 date: 2026-07-01T23:36:39Z
 draft: false
+post_type: issue
 tags: [s3, replication, bolt, sentinel]
 categories: [s3]
 summary: "External S3 clients like aws-cli don't send momo headers — the server detects this and downgrades client-side replication modes to server-side alternatives, ensuring replication never silently drops."

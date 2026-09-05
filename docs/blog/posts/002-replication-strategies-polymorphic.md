@@ -2,6 +2,7 @@
 title: "Replication Strategies and the Polymorphic Engine"
 date: 2026-05-04T18:54:37Z
 draft: false
+post_type: architecture
 tags: [go, replication, architecture]
 categories: [origin]
 summary: "Chain, Splay, and Primary-Splay replication — and the metrics-driven controller that switches between them at runtime."

@@ -2,6 +2,7 @@
 title: "R5 Metrics Phases 2-4: Storage, P2P, and Latency Histograms"
 date: 2026-08-25T03:25:22Z
 draft: false
+post_type: architecture
 tags: [metrics, observability, prometheus, bolt, sentinel]
 categories: [metrics]
 summary: "R5 Phases 2-4 shipped: storage metrics (disk, CAS, GC), P2P metrics (SWIM, leases, scatter-gather), and opt-in latency histograms — all with <1% overhead via sync/atomic counters."

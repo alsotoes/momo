@@ -2,6 +2,7 @@
 title: "Governance: AI Review, Spec-First, Three-Dot Diff"
 date: 2026-08-24T19:07:36Z
 draft: false
+post_type: architecture
 tags: [go, governance, ai-review, spec, automation]
 categories: [governance]
 summary: "How momo governs itself: a Gemini AI reviewer, Rule 73 spec-first, three-dot diff gates, and the automation rules that keep agents honest."

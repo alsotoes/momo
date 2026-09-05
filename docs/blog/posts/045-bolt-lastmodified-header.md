@@ -2,6 +2,7 @@
 title: '⚡ Bolt: Zero-Allocation Last-Modified Headers'
 date: 2026-09-01 11:19:08+00:00
 draft: false
+post_type: issue
 tags:
 - go
 - bolt

@@ -2,6 +2,7 @@
 title: 'CAS: Content-Addressable Storage and Deduplication'
 date: 2026-03-11 14:34:18+00:00
 draft: false
+post_type: architecture
 tags:
 - go
 - cas

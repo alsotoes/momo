@@ -2,6 +2,7 @@
 title: "Architecture Decision Records: Ordering a Growing Documentation Set"
 date: 2026-09-02T19:02:00Z
 draft: false
+post_type: architecture
 tags: [governance, architecture, docs, adr]
 categories: [governance]
 summary: "Momo adopted Martin Fowler's Architecture Decision Record pattern: each OpenSpec change ships a numbered, status-tracked ADR that records context, decision, consequences, and alternatives — the decision log for a growing codebase."

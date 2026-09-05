@@ -2,6 +2,7 @@
 title: 'S3 Gateway Core: XML, Buckets, Objects, Lists'
 date: 2026-08-11 18:25:16+00:00
 draft: false
+post_type: architecture
 tags:
 - go
 - s3

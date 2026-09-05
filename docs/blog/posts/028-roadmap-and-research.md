@@ -2,6 +2,7 @@
 title: "Forward: Production Roadmap (R5–R11) and the Research Guide"
 date: 2026-08-25T03:24:12Z
 draft: false
+post_type: architecture
 tags: [go, roadmap, research, production]
 categories: [roadmap]
 summary: "After R1–R4: the P0 hardening done, the P1/P2 tracks (metrics, HA metadata, auth, secrets, S3 breadth) and the research reading guide that seeded it all."

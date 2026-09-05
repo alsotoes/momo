@@ -2,6 +2,7 @@
 title: "Reducing Read-Verify Hashing: Trust Earned by Real Verification"
 date: 2026-08-26T19:00:59Z
 draft: false
+post_type: issue
 tags: [performance, integrity, storage, bolt, sentinel]
 categories: [performance, storage]
 summary: "Verify-on-read re-hashes the full object on every local read (~8x slower than write). A ReadVerifier seam skips re-verification for blobs verified this process, while scrub still catches bitrot."

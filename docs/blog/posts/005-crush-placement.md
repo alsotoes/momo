@@ -2,6 +2,7 @@
 title: 'CRUSH-lite: Deterministic Weighted Placement'
 date: 2026-06-30 13:09:01+00:00
 draft: false
+post_type: architecture
 tags:
 - go
 - crush

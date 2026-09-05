@@ -2,6 +2,7 @@
 title: "P2P: Gossip, SWIM, and Membership"
 date: 2026-03-11T14:34:18Z
 draft: false
+post_type: architecture
 tags: [go, p2p, gossip, swim]
 categories: [p2p]
 summary: "A scaleless-gossip ring: SWIM-style failure detection, discovered-peer dialing, and ALIVE/OFFLINE restoration — momo's nervous system."

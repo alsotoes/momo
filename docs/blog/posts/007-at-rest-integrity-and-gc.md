@@ -2,6 +2,7 @@
 title: 'At-Rest Integrity: Verify-on-Read, Checksums, and GC'
 date: 2026-08-24 19:36:43+00:00
 draft: false
+post_type: architecture
 tags:
 - go
 - integrity

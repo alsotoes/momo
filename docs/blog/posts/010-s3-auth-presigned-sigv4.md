@@ -2,6 +2,7 @@
 title: "S3 Auth: SigV4, Presigned URLs, and Key Decoupling"
 date: 2026-08-11T23:11:16Z
 draft: false
+post_type: architecture
 tags: [go, s3, sigv4, auth, sentinel]
 categories: [s3]
 summary: "Query-string SigV4 for presigned URLs, mandatory X-Amz-Date freshness, and decoupling gateway access/secret keys from the native auth token."

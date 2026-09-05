@@ -2,6 +2,7 @@
 title: 'R4: momofs FUSE Transport — Mounting Momo as a Filesystem'
 date: 2026-08-28 15:57:34+00:00
 draft: false
+post_type: architecture
 tags:
 - go
 - momofs

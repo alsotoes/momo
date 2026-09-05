@@ -1,5 +1,13 @@
 {{- $scratch := newScratch }}
 
+{{- with .Params.post_type }}
+    {{- if eq . "issue" }}
+        {{- $scratch.Add "meta" (slice "<span class='meta-type-badge type-issue' title='Defect fix / incident resolution'>🐞 ISSUE FIX</span>") }}
+    {{- else }}
+        {{- $scratch.Add "meta" (slice "<span class='meta-type-badge type-architecture' title='Architecture decision / specification'>🏛 ARCHITECTURE</span>") }}
+    {{- end }}
+{{- end }}
+
 {{- with .Params.categories }}
     {{- range first 1 . }}
         {{- $scratch.Add "meta" (slice (printf "<span class='meta-category-badge cat-%s'>%s</span>" (lower .) (upper .))) }}

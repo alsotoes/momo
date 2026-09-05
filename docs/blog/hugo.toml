@@ -115,11 +115,13 @@ enableGitInfo = true
 
 [menu]
   main = [
-    {identifier = "search", name = "Search", url = "/search/", weight = 5},
-    {identifier = "posts", name = "Posts", url = "/posts/", weight = 10},
-    {identifier = "categories", name = "Categories", url = "/categories/", weight = 20},
-    {identifier = "tags", name = "Tags", url = "/tags/", weight = 30},
-    {identifier = "github", name = "GitHub", url = "https://github.com/alsotoes/momo", weight = 40}
+    {identifier = "architecture", name = "Architecture Decisions", url = "/architecture/", weight = 10},
+    {identifier = "issues", name = "Issues & Fixes", url = "/issues/", weight = 20},
+    {identifier = "posts", name = "All Posts", url = "/posts/", weight = 30},
+    {identifier = "categories", name = "Categories", url = "/categories/", weight = 40},
+    {identifier = "tags", name = "Tags", url = "/tags/", weight = 50},
+    {identifier = "search", name = "Search", url = "/search/", weight = 60},
+    {identifier = "github", name = "GitHub", url = "https://github.com/alsotoes/momo", weight = 70}
   ]
 
 [sitemap]

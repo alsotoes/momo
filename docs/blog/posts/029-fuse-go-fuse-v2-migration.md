@@ -2,6 +2,7 @@
 title: "FUSE Transport: Migrating to go-fuse/v2"
 date: 2026-09-01T18:40:07Z
 draft: false
+post_type: architecture
 tags: [go, fuse, momofs, bolt]
 categories: [momofs]
 summary: "The momofs FUSE mount traded its hand-rolled bazil.org/fuse adapter for the go-fuse/v2 high-level fs API, mapped all 22 node callbacks to go-fuse interfaces, and deprecated consistency=cached."

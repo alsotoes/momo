@@ -2,6 +2,7 @@
 title: '⚡ Bolt: Zero-Allocation and Hot-Path Engineering'
 date: 2026-08-12 11:40:41+00:00
 draft: false
+post_type: architecture
 tags:
 - go
 - bolt

@@ -2,6 +2,7 @@
 title: "Metrics and Observability: Per-Node Bind, Prometheus Export"
 date: 2026-08-25T06:12:59Z
 draft: false
+post_type: architecture
 tags: [go, metrics, prometheus, observability, bolt]
 categories: [metrics]
 summary: "Prometheus metrics export with a per-node metrics_host/metrics_port bind — observability that scales past the 'just scrape node 0' era."

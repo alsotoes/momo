@@ -37,6 +37,7 @@ Body in GitHub-flavored markdown.
 | `title` | yes | Human-readable title |
 | `date` | yes | `createdAt` of anchor issue/PR (`gh issue/pr view <N> --json createdAt`) or earliest code/plan commit date when no issue exists. Never future-dated (spec §date) |
 | `draft` | yes | `false` for published posts |
+| `post_type` | optional | `architecture` for design decisions/ADRs/specs, or `issue` for bug fixes/incident resolutions/hardening (defaults to `architecture`) |
 | `tags` | yes | Include `bolt` and/or `sentinel` when perf/security drove the design (spec §bolt-sentinel) |
 | `categories` | yes | One of: `origin`, `transport`, `storage`, `s3`, `p2p`, `durability`, `encryption`, `momofs`, `performance`, `governance`, `metrics`, `roadmap` |
 | `summary` | yes | ≤ 200 chars |
@@ -89,8 +90,9 @@ The blog interface is styled following the **Swiss Modernism 2.0 / Technical Edi
 2. **Frontend Design & Typography (`frontend-design/`, `uiux-designer/`)**:
    - Distinctive typography: `Outfit` for editorial headings and body, `JetBrains Mono` for code, labels, and metadata
    - Architectural dot grid background texture (`radial-gradient`)
-   - Technical hero banner (`layouts/partials/home_info.html`): live status bar, pulsing green LED, clickable pillar chips (⚡ Bolt, 🛡 Sentinel, CAS, S3, FUSE)
-   - Card enhancements: left accent border on hover, entrance fade-slide animation, category badges (`cat-storage`, `cat-transport`, etc.)
+   - Navigation menu sections: Dedicated streams for **Architecture Decisions** (`/architecture/`), **Issues & Fixes** (`/issues/`), and **All Posts** (`/posts/`)
+   - Technical hero banner (`layouts/partials/home_info.html`): live status bar, pulsing green LED, dual section navigation cards (🏛 Architecture Decisions vs 🐞 Issues & Bug Fixes), and clickable pillar chips (⚡ Bolt, 🛡 Sentinel, CAS, S3, FUSE)
+   - Card enhancements: left accent border on hover, entrance fade-slide animation, post type badges (`🏛 ARCHITECTURE`, `🐞 ISSUE FIX`), and category pills (`cat-storage`, `cat-transport`, etc.)
    - Code block readability: dark obsidian background with copy button hover feedback
    - Global keyboard navigation: press `/` from any page to jump directly to search
 

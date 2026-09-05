@@ -12,6 +12,24 @@
     <div class="entry-content md-content">
         <p>{{ .Content | markdownify }}</p>
     </div>
+    <div class="hero-sections-nav">
+        <a href="/architecture/" class="hero-section-card architecture-card">
+            <span class="section-icon">🏛</span>
+            <div class="section-text">
+                <div class="section-label">ARCHITECTURE DECISIONS</div>
+                <div class="section-desc">ADRs, specifications, distributed protocols & data structures (34)</div>
+            </div>
+            <span class="section-arrow">→</span>
+        </a>
+        <a href="/issues/" class="hero-section-card issues-card">
+            <span class="section-icon">🐞</span>
+            <div class="section-text">
+                <div class="section-label">ISSUES &amp; BUG FIXES</div>
+                <div class="section-desc">Defect root-causes, security audits, race condition fixes & hardening (12)</div>
+            </div>
+            <span class="section-arrow">→</span>
+        </a>
+    </div>
     <div class="hero-pillars">
         <a href="/tags/bolt/" class="pillar-chip bolt"><span class="chip-icon">⚡</span><strong>Bolt</strong> <span>Zero-Alloc Perf</span></a>
         <a href="/tags/sentinel/" class="pillar-chip sentinel"><span class="chip-icon">🛡</span><strong>Sentinel</strong> <span>Zero-Crash Sec</span></a>

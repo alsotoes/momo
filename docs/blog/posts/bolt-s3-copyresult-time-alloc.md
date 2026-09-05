@@ -2,6 +2,7 @@
 title: "⚡ Bolt: Eliminating Time Formatting Allocations in S3 HTTP Responses"
 date: "2026-08-30T11:20:58Z"
 draft: false
+post_type: issue
 tags:
   - bolt
   - performance

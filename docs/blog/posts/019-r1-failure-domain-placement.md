@@ -2,6 +2,7 @@
 title: "R1: Failure-Domain-Aware Placement"
 date: 2026-08-26T23:52:57Z
 draft: false
+post_type: architecture
 tags: [go, crush, failuredomain, placement, durability]
 categories: [durability]
 summary: "Replicas must not ride in the same rack: CRUSH weights become rack/zone/DC-aware so a single domain failure can't lose the data."

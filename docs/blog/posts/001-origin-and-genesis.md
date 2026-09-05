@@ -2,6 +2,7 @@
 title: "Origin: From Replication Playground to Object Store"
 date: 2025-09-09T20:10:05Z
 draft: false
+post_type: architecture
 tags: [go, origin, architecture]
 categories: [origin]
 summary: "How momo started as a file-replication playground in Go and grew into a distributed content-addressed object store."
