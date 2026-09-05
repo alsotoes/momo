@@ -75,6 +75,29 @@ post that depends on or explains another (e.g. CRUSH post ↔ CAS post, P2P post
 required fields, RFC3339 `date` not in the future, `related` targets exist, and
 `artifacts: spec` paths resolve under `openspec/changes/`.
 
+## UI/UX Architecture & Skills (`docs/blog/.agents/skills/`)
+
+The blog interface is styled following the **Swiss Modernism 2.0 / Technical Editorial** design system, enforcing rules from `.agents/skills/`:
+
+1. **Accessibility (`accessibility/`)**:
+   - WCAG 2.4.1 keyboard skip-to-content link (`layouts/baseof.html`)
+   - WCAG 2.4.7 visible focus indicator rings (`:focus-visible`)
+   - WCAG 2.3.3 reduced motion overrides (`@media (prefers-reduced-motion: reduce)`)
+   - WCAG 2.5.8 touch target scaling (min 44×44px for buttons, pagination, menu)
+
+2. **Frontend Design & Typography (`frontend-design/`, `uiux-designer/`)**:
+   - Technical color palette with clean CSS variables (`assets/css/extended/design.css`)
+   - Sticky glassmorphism header (`backdrop-filter: blur(14px)`)
+   - Interactive article cards with hover lift (`translateY(-2px)`) and accent glow
+   - Specialized mindset badges for ⚡ **Bolt** (amber) and 🛡 **Sentinel** (indigo shield)
+   - Code block readability: monospace font stack with zero-latency copy button
+
+3. **Search (`/search/`)**:
+   - Client-side Fuse.js search (`content/search.md`) indexing all 46 posts via `index.json` output
+
+4. **Cross-Link Resolution**:
+   - Custom Hugo render hook (`layouts/_default/_markup/render-link.html`) converts sibling `.md` links to `/posts/<slug>/` and doc links (`../../STANDARDS.md`) to canonical GitHub URLs.
+
 ## Cloudflare Pages Deployment
 
 The blog is deployed to Cloudflare Pages via GitHub Actions (`.github/workflows/cloudflare-pages-deploy.yml`).
