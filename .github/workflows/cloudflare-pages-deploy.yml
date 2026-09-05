@@ -16,10 +16,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check Cloudflare secrets
+        id: check-secrets
         run: |
           if [ -z "${{ secrets.CLOUDFLARE_API_TOKEN }}" ] || [ -z "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" ]; then
             echo "Cloudflare secrets not configured, skipping deployment"
-            exit 0
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Checkout
@@ -39,7 +42,7 @@ jobs:
         run: hugo --minify
 
       - name: Deploy to Cloudflare Pages
-        if: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+        if: ${{ steps.check-secrets.outputs.skip != 'true' }}
         uses: cloudflare/pages-action@v1
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
