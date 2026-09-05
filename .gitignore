@@ -46,6 +46,7 @@ src/src
 # Temporary local review body text files
 body*.txt
 .github/scripts/__pycache__/
+**/__pycache__/
 
 # Pentest generated artifacts (regenerable)
 pentest/server-logs/

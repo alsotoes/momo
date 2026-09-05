@@ -1,0 +1,398 @@
+/* ==========================================================================
+   Momo Engineering Journal — UI/UX Design System
+   Aesthetic: Swiss Modernism 2.0 / Technical Editorial
+   Per docs/blog/.agents/skills/{frontend-design, uiux-designer, accessibility}
+   ========================================================================== */
+
+/* 1. Theme Color Tokens & Variables */
+:root {
+    --theme: #ffffff;
+    --entry: #f8fafc;
+    --primary: #0f172a;
+    --secondary: #475569;
+    --tertiary: #cbd5e1;
+    --content: #1e293b;
+    --border: #e2e8f0;
+    --code-block-bg: #0f172a;
+    --code-bg: #f1f5f9;
+    --radius: 10px;
+
+    /* Technical accent tokens */
+    --accent: #4f46e5;
+    --accent-glow: rgba(79, 70, 229, 0.12);
+    --bolt-accent: #d97706;
+    --bolt-bg: #fef3c7;
+    --sentinel-accent: #2563eb;
+    --sentinel-bg: #dbeafe;
+}
+
+:root[data-theme="dark"] {
+    --theme: #0b0f19;
+    --entry: #111827;
+    --primary: #f8fafc;
+    --secondary: #94a3b8;
+    --tertiary: #374151;
+    --content: #e2e8f0;
+    --border: #1f2937;
+    --code-block-bg: #0d1117;
+    --code-bg: #1e293b;
+
+    /* Dark mode accent tokens */
+    --accent: #818cf8;
+    --accent-glow: rgba(129, 140, 248, 0.15);
+    --bolt-accent: #fbbf24;
+    --bolt-bg: rgba(251, 191, 36, 0.12);
+    --sentinel-accent: #60a5fa;
+    --sentinel-bg: rgba(96, 165, 250, 0.12);
+}
+
+/* 2. Global Typography & Smoothing */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    letter-spacing: -0.01em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* 3. Sticky Glassmorphism Header */
+.header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    background: color-mix(in srgb, var(--theme) 85%, transparent);
+    border-bottom: 1px solid var(--border);
+    transition: border-color 0.2s ease;
+}
+
+.logo a {
+    font-weight: 700;
+    font-size: 1.15rem;
+    letter-spacing: -0.02em;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.logo a img {
+    border-radius: 6px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.menu a {
+    font-size: 0.925rem;
+    font-weight: 500;
+    color: var(--secondary);
+    transition: color 0.15s ease, border-color 0.15s ease;
+    border-radius: 6px;
+}
+
+.menu a:hover,
+.menu a.active {
+    color: var(--primary);
+}
+
+/* 4. Home Hero Banner (Swiss Technical Editorial) */
+.home-info {
+    position: relative;
+    padding: 2.25rem 2rem;
+    margin-bottom: 2.5rem;
+    background: var(--entry);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.home-info::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent), #06b6d4, #10b981);
+}
+
+.home-info .entry-header h1 {
+    font-size: 2rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.2;
+    margin-bottom: 0.75rem;
+    color: var(--primary);
+}
+
+.home-info .entry-content p {
+    font-size: 1.05rem;
+    line-height: 1.65;
+    color: var(--secondary);
+    max-width: 680px;
+}
+
+/* 5. Post Entry Cards */
+.post-entry {
+    position: relative;
+    padding: 1.5rem 1.75rem;
+    margin-bottom: 1.25rem;
+    background: var(--entry);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+                border-color 0.2s ease;
+}
+
+.post-entry:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent);
+    box-shadow: 0 10px 25px -5px var(--accent-glow), 0 4px 10px -2px rgba(0, 0, 0, 0.04);
+}
+
+.post-entry .entry-header h2 {
+    font-size: 1.35rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.35;
+    color: var(--primary);
+    margin-bottom: 0.5rem;
+}
+
+.post-entry .entry-content {
+    font-size: 0.95rem;
+    line-height: 1.6;
+    color: var(--secondary);
+    margin-bottom: 0.75rem;
+}
+
+.post-entry .entry-footer {
+    font-size: 0.825rem;
+    color: var(--secondary);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-variant-numeric: tabular-nums;
+}
+
+/* 6. Tags & Mindset Badges (Bolt & Sentinel) */
+.post-tags a {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    border: 1px solid var(--border);
+    background: var(--entry);
+    color: var(--secondary);
+    text-decoration: none;
+    transition: all 0.15s ease;
+}
+
+.post-tags a:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+    transform: translateY(-1px);
+}
+
+/* Bolt & Sentinel tag highlights */
+.post-tags a[href*="bolt"] {
+    border-color: var(--bolt-accent);
+    color: var(--bolt-accent);
+    background: var(--bolt-bg);
+}
+
+.post-tags a[href*="sentinel"] {
+    border-color: var(--sentinel-accent);
+    color: var(--sentinel-accent);
+    background: var(--sentinel-bg);
+}
+
+/* 7. Article Page & Typography */
+.post-header {
+    margin-bottom: 2rem;
+}
+
+.post-title {
+    font-size: 2.25rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.2;
+    color: var(--primary);
+    margin-bottom: 0.75rem;
+}
+
+.post-meta {
+    font-size: 0.875rem;
+    color: var(--secondary);
+}
+
+/* Breadcrumbs navigation */
+.breadcrumbs {
+    font-size: 0.85rem;
+    color: var(--secondary);
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.breadcrumbs a {
+    color: var(--secondary);
+    text-decoration: none;
+    transition: color 0.15s ease;
+}
+
+.breadcrumbs a:hover {
+    color: var(--primary);
+}
+
+/* Table of Contents */
+details.toc {
+    background: var(--entry);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.5rem 1rem;
+    margin: 1.75rem 0;
+}
+
+details.toc summary {
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    color: var(--primary);
+}
+
+details.toc .inner {
+    margin-top: 0.75rem;
+}
+
+details.toc a {
+    font-size: 0.875rem;
+    color: var(--secondary);
+    text-decoration: none;
+    transition: color 0.15s ease;
+}
+
+details.toc a:hover {
+    color: var(--accent);
+}
+
+/* 8. Code Blocks & Copy Button */
+.highlight {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin: 1.5rem 0;
+}
+
+.post-content pre code {
+    font-family: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: 0.875rem;
+    line-height: 1.6;
+}
+
+.copy-code {
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 3px 8px;
+    background: var(--tertiary);
+    color: var(--primary);
+    transition: background 0.15s ease;
+}
+
+/* 9. Data Tables */
+.md-content table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1.75rem 0;
+    font-size: 0.9rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.md-content table th {
+    background: var(--entry);
+    color: var(--primary);
+    font-weight: 600;
+    padding: 0.75rem 1rem;
+    border-bottom: 2px solid var(--border);
+    text-align: left;
+}
+
+.md-content table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.md-content table tr:last-child td {
+    border-bottom: none;
+}
+
+/* 10. Pagination & Footer */
+.pagination a {
+    background: var(--primary);
+    color: var(--theme);
+    font-weight: 600;
+    border-radius: var(--radius);
+    padding: 0.5rem 1.25rem;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.pagination a:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+}
+
+.footer {
+    border-top: 1px solid var(--border);
+    margin-top: 4rem;
+    font-size: 0.85rem;
+    color: var(--secondary);
+}
+
+/* 11. Enhanced Search UX (uiux-designer & frontend-design) */
+.searchbox {
+    margin: 1.5rem 0 2rem;
+}
+
+.searchbox input {
+    padding: 0.85rem 1.25rem;
+    font-size: 1.05rem;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    background: var(--entry);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--primary);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.searchbox input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.searchResults {
+    gap: 0.75rem;
+}
+
+.searchResults li {
+    padding: 1.15rem 1.5rem;
+    background: var(--entry);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.searchResults li:hover,
+.searchResults li:focus-within {
+    transform: translateY(-2px);
+    border-color: var(--accent);
+    box-shadow: 0 8px 20px -4px var(--accent-glow);
+}

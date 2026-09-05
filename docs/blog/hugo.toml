@@ -13,6 +13,9 @@ enableGitInfo = true
 
 [module]
   [[module.mounts]]
+    source = "content"
+    target = "content"
+  [[module.mounts]]
     source = "posts"
     target = "content/posts"
   [[module.mounts]]
@@ -24,6 +27,9 @@ enableGitInfo = true
   [[module.mounts]]
     source = "assets"
     target = "assets"
+
+[outputs]
+  home = ["HTML", "RSS", "JSON"]
 
 [markup]
   [markup.goldmark]
@@ -109,6 +115,7 @@ enableGitInfo = true
 
 [menu]
   main = [
+    {identifier = "search", name = "Search", url = "/search/", weight = 5},
     {identifier = "posts", name = "Posts", url = "/posts/", weight = 10},
     {identifier = "categories", name = "Categories", url = "/categories/", weight = 20},
     {identifier = "tags", name = "Tags", url = "/tags/", weight = 30},
