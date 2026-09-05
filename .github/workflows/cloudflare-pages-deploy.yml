@@ -42,7 +42,7 @@ jobs:
       - name: Build Hugo site
         if: steps.check-config.outputs.skip != 'true'
         working-directory: docs/blog
-        run: hugo --minify
+        run: hugo --minify --cleanDestinationDir
 
       - name: Deploy to Cloudflare Pages
         if: steps.check-config.outputs.skip != 'true'

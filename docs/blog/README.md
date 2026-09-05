@@ -104,5 +104,5 @@ hugo server --buildDrafts --buildFuture
 ### Production URL
 
 The site is deployed to Cloudflare Pages at:
-- **Production**: https://momo.engineering
-- **Preview deployments**: Available on PR preview URLs
+- **Production**: https://momo-app-2r2.pages.dev
+- **Preview deployments**: Available on PR preview URLs (e.g. `https://<hash>.momo-app-2r2.pages.dev`)
