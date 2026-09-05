@@ -37,7 +37,7 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: momo-engineering-journal
+          projectName: ${{ secrets.CLOUDFLARE_PAGES_PROJECT }}
           directory: docs/blog/public
           branch: master
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
