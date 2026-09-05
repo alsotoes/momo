@@ -54,7 +54,7 @@ b = t.AppendFormat(b, time.RFC3339Nano, e.LastModified)
 
 ## Standards
 
-Per [docs/STANDARDS.md](../STANDARDS.md): ⚡ **Bolt** (zero-allocation hot path, stack buffers, pre-allocated reuse).
+Per [docs/STANDARDS.md](../../STANDARDS.md): ⚡ **Bolt** (zero-allocation hot path, stack buffers, pre-allocated reuse).
 
 ## Artifacts
 

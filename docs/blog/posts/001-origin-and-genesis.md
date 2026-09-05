@@ -22,9 +22,9 @@ The original pitch was deliberately narrow: prove that one daemon could switch
 replication strategies at runtime (`ReplicationNone`, `Chain`, `Splay`,
 `Primary-Splay`) based on live CPU/memory metrics, without a central
 coordinator. That is still visible today in
-[`docs/REPLICATION_STRATEGIES.md`](../REPLICATION_STRATEGIES.md) and the
+[`docs/REPLICATION_STRATEGIES.md`](../../REPLICATION_STRATEGIES.md) and the
 polymorphic engine described in
-[`docs/POLYMORPHIC_SYSTEM.md`](../POLYMORPHIC_SYSTEM.md).
+[`docs/POLYMORPHIC_SYSTEM.md`](../../POLYMORPHIC_SYSTEM.md).
 
 > This is the parent post of the whole journal. Everything after it — transports,
 > content-addressing, S3, P2P, durability, mounting — is this playground

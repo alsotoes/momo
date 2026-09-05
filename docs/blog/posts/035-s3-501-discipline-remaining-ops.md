@@ -61,7 +61,7 @@ Extended both reject maps + `UploadPartCopy` intercept in PUT dispatch:
 
 ## Standards
 
-Per [docs/STANDARDS.md](../STANDARDS.md): 🛡 **Sentinel** (complete honest 501 coverage, no silent misrouting).
+Per [docs/STANDARDS.md](../../STANDARDS.md): 🛡 **Sentinel** (complete honest 501 coverage, no silent misrouting).
 
 ## Follow-ups
 

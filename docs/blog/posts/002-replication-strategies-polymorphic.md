@@ -27,7 +27,7 @@ changes over a dedicated TCP control channel:
 The design document (`docs/REPLICATION_STRATEGIES.md`) formalizes when each
 applies and the downgrade rules the controller must respect — e.g. a
 client-side replication fallback when the primary path degrades, later codified
-in [`docs/EXTERNAL_CLIENT_REPLICATION.md`](../EXTERNAL_CLIENT_REPLICATION.md).
+in [`docs/EXTERNAL_CLIENT_REPLICATION.md`](../../EXTERNAL_CLIENT_REPLICATION.md).
 
 ## Why a polymorphic engine?
 

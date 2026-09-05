@@ -55,7 +55,7 @@ When an external S3 client connects:
 
 ## Standards
 
-Per [docs/STANDARDS.md](../STANDARDS.md), this follows ⚡ **Bolt** (zero-alloc CSV parsing, single config key) and 🛡 **Sentinel** (fail-closed: missing header = external client, never silent `ReplicationNone`).
+Per [docs/STANDARDS.md](../../STANDARDS.md), this follows ⚡ **Bolt** (zero-alloc CSV parsing, single config key) and 🛡 **Sentinel** (fail-closed: missing header = external client, never silent `ReplicationNone`).
 
 ## Follow-ups
 

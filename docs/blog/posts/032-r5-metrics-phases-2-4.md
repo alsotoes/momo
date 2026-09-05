@@ -82,7 +82,7 @@ When **enabled**: `momo_request_latency_seconds{operation="upload|download|delet
 
 ## Standards
 
-Per [docs/STANDARDS.md](../STANDARDS.md): ⚡ **Bolt** (atomic counters, zero allocations, scrape-time batching), 🛡 **Sentinel** (no external deps, bounded memory, fail-closed).
+Per [docs/STANDARDS.md](../../STANDARDS.md): ⚡ **Bolt** (atomic counters, zero allocations, scrape-time batching), 🛡 **Sentinel** (no external deps, bounded memory, fail-closed).
 
 ## Follow-ups
 

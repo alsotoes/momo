@@ -72,7 +72,7 @@ and Phase-5 load measurements.
 
 ## Standards
 
-Per [docs/STANDARDS.md](../STANDARDS.md), the transport layers follow the ⚡ Bolt
+Per [docs/STANDARDS.md](../../STANDARDS.md), the transport layers follow the ⚡ Bolt
 (performance, minimize syscalls/copies) and 🛡 Sentinel (fail-closed, honest
 error semantics) mindsets; the go-fuse/v2 migration keeps the momofs core
 protocol-agnostic so no momofs wire format is locked to the transport.

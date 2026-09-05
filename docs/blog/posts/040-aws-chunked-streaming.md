@@ -51,7 +51,7 @@ body:   [chunk-size][chunk-signature][chunk-data]...
 
 ## Standards
 
-Per [docs/STANDARDS.md](../STANDARDS.md): ⚡ **Bolt** (bounded memory, streaming, no buffering), 🛡 **Sentinel** (per-chunk integrity, honest mismatch errors).
+Per [docs/STANDARDS.md](../../STANDARDS.md): ⚡ **Bolt** (bounded memory, streaming, no buffering), 🛡 **Sentinel** (per-chunk integrity, honest mismatch errors).
 
 ## Artifacts
 

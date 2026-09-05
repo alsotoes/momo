@@ -81,7 +81,7 @@ Opt-in `CASStore.VerifyChecksum` (concrete method, doesn't break `Store` mockers
 
 ## Standards
 
-Per [docs/STANDARDS.md](../STANDARDS.md): ⚡ **Bolt** (single-pass streaming hasher, zero extra copies), 🛡 **Sentinel** (fail-closed: 400 BadDigest, delete on mismatch, core never trusts surface).
+Per [docs/STANDARDS.md](../../STANDARDS.md): ⚡ **Bolt** (single-pass streaming hasher, zero extra copies), 🛡 **Sentinel** (fail-closed: 400 BadDigest, delete on mismatch, core never trusts surface).
 
 ## Follow-ups
 

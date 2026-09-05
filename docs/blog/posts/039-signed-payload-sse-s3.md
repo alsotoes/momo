@@ -45,7 +45,7 @@ Long-running async operations (e.g., large multipart completes, batch deletes) c
 
 ## Standards
 
-Per [docs/STANDARDS.md](../STANDARDS.md): 🛡 **Sentinel** (verify what you sign — no trust gaps, honest mismatch errors).
+Per [docs/STANDARDS.md](../../STANDARDS.md): 🛡 **Sentinel** (verify what you sign — no trust gaps, honest mismatch errors).
 
 ## Artifacts
 

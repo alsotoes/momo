@@ -66,7 +66,7 @@ Added `unsupportedBucketConfigSubresources` map (16 entries) + detector at `Hand
 
 ## Standards
 
-Per [docs/STANDARDS.md](../STANDARDS.md): 🛡 **Sentinel** (honest error semantics, no silent misrouting, fail-closed).
+Per [docs/STANDARDS.md](../../STANDARDS.md): 🛡 **Sentinel** (honest error semantics, no silent misrouting, fail-closed).
 
 ## Follow-ups
 

@@ -60,7 +60,7 @@ Also fixed orphaned `extractS3BucketAndKey` doc comment left by P3.
 
 ## Standards
 
-Per [docs/STANDARDS.md](../STANDARDS.md): 🛡 **Sentinel** (honest error semantics, no silent misrouting).
+Per [docs/STANDARDS.md](../../STANDARDS.md): 🛡 **Sentinel** (honest error semantics, no silent misrouting).
 
 ## Follow-ups
 

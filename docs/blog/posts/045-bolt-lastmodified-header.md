@@ -39,7 +39,7 @@ all headed straight for the garbage collector.
 
 The fix is the same standard-library idiom we already shipped for XML
 LastModified rendering in
-[`bolt-s3-copyresult-time-alloc`](042-s3-listxml-appendformat.md): stop asking
+[`bolt-s3-copyresult-time-alloc`](bolt-s3-copyresult-time-alloc.md): stop asking
 `time.Format` for a string and write **directly into the response buffer**
 instead.
 
@@ -83,4 +83,4 @@ to a single idiom for header time rendering.
 
 Transport patterns: [003](003-transport-tcp-to-quic.md). Measurement:
 [025](025-benchmark-benchstat-gate.md). Allocation hunting:
-[042](042-s3-listxml-appendformat.md). Bolt mindset: [024](024-bolt-performance-engineering.md).
+[042](bolt-s3-copyresult-time-alloc.md). Bolt mindset: [024](024-bolt-performance-engineering.md).

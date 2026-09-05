@@ -74,7 +74,7 @@ Production services face:
 
 ## Standards
 
-Per [docs/STANDARDS.md](../STANDARDS.md): 🛡 **Sentinel** (fail-closed, panic→error, no silent corruption), ⚡ **Bolt** (bounded allocations, zero-copy defensive patterns).
+Per [docs/STANDARDS.md](../../STANDARDS.md): 🛡 **Sentinel** (fail-closed, panic→error, no silent corruption), ⚡ **Bolt** (bounded allocations, zero-copy defensive patterns).
 
 ## Artifacts
 
