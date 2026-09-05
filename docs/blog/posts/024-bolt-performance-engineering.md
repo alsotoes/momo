@@ -26,6 +26,7 @@ related:
 - 025-benchmark-benchstat-gate
 - 007-at-rest-integrity-and-gc
 - 005-crush-placement
+- 046-auto-trace-dedup
 - 026-metrics-observability
 - 032-r5-metrics-phases-2-4
 - 036-s3-listxml-appendformat-optimization

@@ -29,6 +29,7 @@ related:
 - 010-s3-auth-presigned-sigv4
 - 007-at-rest-integrity-and-gc
 - 014-confidential-dedup-oprf
+- 046-auto-trace-dedup
 - 017-scatter-gather-lease-quorum
 - 026-metrics-observability
 - 037-zero-crash-hardening-patterns
