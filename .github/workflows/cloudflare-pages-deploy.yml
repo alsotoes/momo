@@ -41,13 +41,13 @@ jobs:
         working-directory: docs/blog
         run: hugo --minify
 
-      - name: Deploy to Cloudflare Pages
+- name: Deploy to Cloudflare Pages
         if: ${{ steps.check-secrets.outputs.skip != 'true' }}
         uses: cloudflare/pages-action@v1
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: ${{ secrets.CLOUDFLARE_PAGES_PROJECT }}
+          projectName: ${{ vars.CLOUDFLARE_PAGES_PROJECT }}
           directory: docs/blog/public
           branch: master
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
