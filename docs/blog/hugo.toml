@@ -1,0 +1,109 @@
+baseURL = 'https://momo.engineering/'
+languageCode = 'en-us'
+title = 'Momo Engineering Journal'
+theme = 'PaperMod'
+
+contentDir = "posts"
+
+enableRobotsTXT = true
+buildDrafts = false
+buildFuture = false
+buildExpired = false
+
+enableEmoji = true
+enableGitInfo = true
+
+[markup]
+  [markup.goldmark]
+    [markup.goldmark.parser]
+      attribute = true
+      autoHeadingID = true
+    [markup.goldmark.renderer]
+      hardWraps = false
+      unsafe = true
+      xhtml = false
+  [markup.tableOfContents]
+    endLevel = 3
+    ordered = false
+    startLevel = 2
+  [markup.highlight]
+    codeFences = true
+    guessSyntax = true
+    hl_Lines = ""
+    lineNoStart = 1
+    lineNos = true
+    lineNumbersInTable = true
+    noClasses = false
+    style = "monokai"
+    tabWidth = 4
+
+[taxonomies]
+  category = "categories"
+  tag = "tags"
+  series = "series"
+
+[params]
+  env = "production"
+  title = "Momo Engineering Journal"
+  description = "The momo journey - research, architecture decisions, and changes behind a distributed object store written in Go."
+  keywords = ["go", "distributed systems", "object storage", "S3", "distributed systems", "CRUSH", "FUSE", "P2P", "encryption", "security", "performance"]
+  author = "Momo Team"
+  images = ["/images/og-image.png"]
+  defaultTheme = "auto"
+  disableThemeToggle = false
+  ShowReadingTime = true
+  ShowShareButtons = true
+  ShowPostNavLinks = true
+  ShowBreadCrumbs = true
+  ShowCodeCopyButtons = true
+  ShowRssButtonInSectionTermList = true
+  ShowAllPagesInArchive = true
+  ShowPageNums = true
+  ShowToc = true
+  TocOpen = false
+  TocSide = "right"
+  TocFolded = false
+  Comments = false
+
+  [params.profileMode]
+    enabled = false
+
+  [params.homeInfoParams]
+    Title = "Momo Engineering Journal"
+    Content = "The distilled journey of momo from a file-replication playground to a distributed, content-addressed object store with an S3 gateway, P2P gossip ring, quorum durability, and a FUSE/POSIX mount. Every post documents what was built (verified against src/), why (architecture decisions), and the Bolt / Sentinel tradeoffs that shaped it."
+
+  socialIcons = [
+    {name = "github", url = "https://github.com/alsotoes/momo"}
+  ]
+
+  [params.assets]
+    disableFingerprinting = true
+    favicon = "/favicon.ico"
+    favicon16x16 = "/favicon-16x16.png"
+    favicon32x32 = "/favicon-32x32.png"
+    apple_touch_icon = "/apple-touch-icon.png"
+    safari_pinned_tab = "/safari-pinned-tab.svg"
+
+  [params.cover]
+    hiddenInList = false
+    hiddenInSingle = false
+    responsiveImages = true
+
+  [params.label]
+    text = "Momo Engineering Journal"
+    icon = "/favicon.ico"
+    iconHeight = 18
+
+[menu]
+  main = [
+    {identifier = "posts", name = "Posts", url = "/posts/", weight = 10},
+    {identifier = "archive", name = "Archive", url = "/archives/", weight = 20},
+    {identifier = "categories", name = "Categories", url = "/categories/", weight = 30},
+    {identifier = "tags", name = "Tags", url = "/tags/", weight = 40},
+    {identifier = "github", name = "GitHub", url = "https://github.com/alsotoes/momo", weight = 50}
+  ]
+
+[sitemap]
+  changefreq = "weekly"
+  priority = 0.5
+  filename = "sitemap.xml"
