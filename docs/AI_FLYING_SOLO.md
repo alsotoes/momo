@@ -34,6 +34,7 @@ This document is governed by the steering rules in [`openspec/config.yaml`](../o
 - **Rule 77**: ADR Mandate — every ratified feature/enhancement OpenSpec change MUST have an ADR in `docs/adr/NNNN-<change-id>.md` following `docs/adr/template.md`, linking spec + issue + PR + blog post; status `Proposed` → `Accepted` on merge; supersession = new ADR + `Deprecated` old (Fowler)
 - **Rule 78**: ADR-Spec Synchronization — ADRs are auto-generated from specs via `make adr-sync` (context ← proposal, decision ← requirement summaries, status ← tasks.md checkboxes, blog link ← issue match); `make adr-sync-check` validates parity and runs in CI; ADR status never hand-edited
 - **Rule 79**: No Direct Push to Master — all changes go through issue → branch → PR (`Resolves #ISSUE_ID`) → CI → reviewer → merge `--merge --delete-branch`. Doc-only / pre-commit-regen / trivial-refactor / CI-fix / emergency-hotfix exceptions may bypass, but must be tagged in the commit message
+- **Rule 89**: MemPalace Knowledge Grounding — run `mempalace mine .` from repo root + `npx repomix` to refresh context, then query `mempalace search "<topic>" --wing momo` BEFORE reading source files / re-investigating architecture. Reuse indexed project knowledge instead of re-loading files to cut token burn.
 
 ## Pre-Flight Checklist
 
@@ -51,8 +52,17 @@ Before starting any autonomous work, verify:
    - If any run shows `failure`: **STOP**. Diagnose and fix the failure on `master` (per Rule 64) before starting new work.
    - Only proceed when all runs show `completed` with `success` conclusion.
    - **Rationale**: After merging a PR, GitHub Actions re-runs all workflows on `master`. Branching from mid-CI `master` risks branching from code that may fail or be reverted. This gate guarantees every new branch originates from a fully validated, stable `master`.
+6. **MemPalace knowledge base is current (Rule 89)**: Refresh the project knowledge base so prior decisions, specs, and architecture are queryable instead of re-derived (token efficiency):
+   ```bash
+   # Mine the repo into MemPalace (wing "momo")
+   mempalace mine . --wing momo
+   # Regenerate the codebase context map when the code has changed
+   npx repomix    # regenerates repomix-output.xml
+   ```
+   - Re-mine when significant code/spec/doc changes landed since the last session.
+   - After mining, **query MemPalace for grounding BEFORE reading source files** (see Step 1c).
 
-## Per-Task Cycle (17 Steps)
+## Per-Task Cycle (18 Steps)
 
 For each task (bug fix or feature), execute these steps strictly sequentially. Do NOT start the next task until the current one is merged.
 
@@ -92,7 +102,11 @@ Record the issue number (`ISSUE_N`).
 
 **ADR Creation (Rules 77/78):** After the OpenSpec change is authored, run `make adr-sync` to auto-generate the ADR in `docs/adr/NNNN-<change-id>.md` from the spec (context ← proposal.md, decision ← spec requirement summaries, status ← tasks.md checkboxes). The ADR links spec + issue + PR + blog post. Never hand-edit an ADR — regenerate it. `make adr-sync-check` (CI) validates parity. ADR status `Proposed` → `Accepted` on merge; supersession = new ADR + `Deprecated` old (Fowler).
 
-**MemPalace knowledge store:** The project knowledge base lives in MemPalace under `wing: momo` (re-mined per release; `mempalace mine <dir> --wing momo`). Query it (`mempalace search "<topic>" --wing momo`) before starting work to ground decisions in prior context. Keep it current by re-mining `src/`, `docs/`, `openspec/`, `conf/`, `tools/` after significant changes.
+**MemPalace knowledge store (Rule 89):** The project knowledge base lives in MemPalace under `wing: momo`. Refresh it with `mempalace mine . --wing momo` from the repo root, and regenerate the codebase map with `npx repomix` when the code changed. **Before reading source files or re-investigating architecture, query MemPalace first** — it is the durable memory layer reusing indexed specs, decisions, and code patterns across sessions, cutting token burn:
+```bash
+mempalace search "<topic>" --wing momo [--room <room>] [--results N]
+```
+Only fall back to full file reads / `repomix-output.xml` inspection when MemPalace search returns insufficient grounding. Keep it current by re-mining `src/`, `docs/`, `openspec/`, `conf/`, `tools/` after significant changes.
 
 **Blog post (Rule 76):** Every feature PR MUST ship a matching blog post under `docs/blog/posts/NNN-<slug>.md` (front matter per `docs/blog/README.md`; `date` = anchor issue/PR `createdAt`), OR carry an explicit `no-blog` justification (ADR sibling `<adr>.no-blog.md` for internal-only changes). Coverage is enforced by `make blog-check` in CI, not just by the reviewer.
 
@@ -112,6 +126,24 @@ Create three files (mirror the existing `openspec/changes/*/` layout):
 - The feature PR (Step 7) MUST include the OpenSpec change files and its body MUST use `Resolves #ISSUE_N`.
 - Author the spec on the branch in this step; implement in Step 3; both ship in the same PR.
 - **Bug fixes / internal refactors with no behavioral surface are exempt** from a formal spec (Rule 73) but MUST still have a tracking issue from Step 1.
+
+### Step 1c: Ground via MemPalace (Rule 89)
+
+Before implementing, query the project knowledge base to reuse indexed context instead of re-reading files (token efficiency):
+
+```bash
+# Refresh the knowledge base if the codebase has changed since the last mine
+mempalace mine . --wing momo
+
+# Ground the task: search for relevant prior specs, decisions, and code patterns
+mempalace search "<task topic>" --wing momo [--room <room>] [--results N]
+```
+
+Guidelines:
+- Search for the task's domain (e.g., `replication splay`, `metadata quorum`, `scrub integrity`, `FUSE mount`) and for the files/features the task touches.
+- When the task is a takeover or follow-up (Jules PR, prior phase), search for the prior work to recover decisions and constraints.
+- **Only read source files / `repomix-output.xml` when MemPalace returns insufficient grounding.** Prefer the indexed knowledge first.
+- Keep the base current: re-mine after significant code/spec/doc changes (Pre-Flight item 6).
 
 ### Step 2: Create Branch
 ```bash
@@ -660,6 +692,10 @@ If any runs are `in_progress` or `queued`, wait. If any failed, fix `master` fir
 **Pitfall**: After force-pushing a clean rebuild to a PR, the agent assumes the old reviewer verdict (on the old head) is still valid. The reviewer must re-evaluate on the new head.
 **Solution**: Force-push triggers `synchronize` → reviewer re-runs. Verify `gh pr checks PR_N` shows `review` as `pass` on the new head. If stuck, push empty sync commit: `git commit --allow-empty -m "sync: trigger reviewer re-evaluation" && git push`.
 
+### Skipping MemPalace Grounding (Rule 89)
+**Pitfall**: Starting a task by reading source files / `repomix-output.xml` from scratch, or relying on model training knowledge, instead of querying the project knowledge base. Re-reads the same files, specs, and decisions every session — wasted tokens and possible drift from the actual codebase state.
+**Solution**: Before implementation, run `mempalace search "<topic>" --wing momo` (refresh first with `mempalace mine . --wing momo` + `npx repomix` if the code changed). Ground in indexed prior specs/decisions/code patterns first; read files only when MemPalace returns insufficient context. Re-mine after significant changes so the base stays current.
+
 ## Key Principles
 
 ### Never Assume (Rule 59)
@@ -695,9 +731,12 @@ When manual intervention is happening, automated agents MUST be told to STOP. No
    │      └─ Master CI still running? → WAIT and poll until all complete
    │         Master CI failed? → STOP, diagnose and fix on master (Rule 64)
    │
+   ├─ 0.6 MemPalace refresh (Rule 89): mempalace mine . --wing momo + npx repomix
+   │
    ├─ 0.5 Issue Ownership Gate (Rule 72): assign issue to alsotoes + validate labels (bug|enhancement, automation)
    │
    ├─ 1. Create issue (label: bug|enhancement, assignee: alsotoes)
+   ├─ 1c. Ground via MemPalace (Rule 89): mempalace search "<topic>" --wing momo BEFORE reading files
    ├─ 2. Create branch off master (fix/ or feature/)
   ├─ 3. Implement + tests
   ├─ 4. Commit (fix: or feat:)
