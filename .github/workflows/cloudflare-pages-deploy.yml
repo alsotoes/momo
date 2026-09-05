@@ -15,34 +15,37 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Check Cloudflare secrets
-        id: check-secrets
+      - name: Check Cloudflare configuration
+        id: check-config
         run: |
-          if [ -z "${{ secrets.CLOUDFLARE_API_TOKEN }}" ] || [ -z "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" ]; then
-            echo "Cloudflare secrets not configured, skipping deployment"
+          if [ -z "${{ secrets.CLOUDFLARE_API_TOKEN }}" ] || [ -z "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}" ] || [ -z "${{ vars.CLOUDFLARE_PAGES_PROJECT }}" ]; then
+            echo "Cloudflare configuration missing (CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, or vars.CLOUDFLARE_PAGES_PROJECT), skipping deployment"
             echo "skip=true" >> $GITHUB_OUTPUT
           else
             echo "skip=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Checkout
+        if: steps.check-config.outputs.skip != 'true'
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
           submodules: recursive
 
       - name: Setup Hugo
+        if: steps.check-config.outputs.skip != 'true'
         uses: peaceiris/actions-hugo@v2
         with:
           hugo-version: '0.152.2'
           extended: true
 
       - name: Build Hugo site
+        if: steps.check-config.outputs.skip != 'true'
         working-directory: docs/blog
         run: hugo --minify
 
       - name: Deploy to Cloudflare Pages
-        if: ${{ steps.check-secrets.outputs.skip != 'true' }}
+        if: steps.check-config.outputs.skip != 'true'
         uses: cloudflare/pages-action@v1
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -53,6 +56,6 @@ jobs:
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Notify deployment
-        if: always()
+        if: always() && steps.check-config.outputs.skip != 'true'
         run: |
           echo "Deployment completed. Check https://dash.cloudflare.com for status."

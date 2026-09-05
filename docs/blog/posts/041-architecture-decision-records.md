@@ -14,8 +14,6 @@ related:
   - 030-external-s3-client-replication-downgrade
   - 031-core-integrity-verification
 ---
-# Architecture Decision Records
-
 As the codebase grew past 30 reference docs, ~40 ratified specs, and 30 blog
 posts, one thing was missing: a **decision log**. Why was CRUSH chosen over a
 central directory? Why embedded BoltDB over ScyllaDB? Why seams over dynamic

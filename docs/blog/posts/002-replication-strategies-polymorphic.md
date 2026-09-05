@@ -13,8 +13,6 @@ related:
   - 003-transport-tcp-to-quic
   - 021-r3-write-durability-quorum
 ---
-# Replication Strategies and the Polymorphic Engine
-
 The original core of momo was four replication modes, chosen per object by a
 **polymorphic controller** that watched CPU/memory and broadcast strategy
 changes over a dedicated TCP control channel:

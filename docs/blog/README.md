@@ -81,10 +81,11 @@ The blog is deployed to Cloudflare Pages via GitHub Actions (`.github/workflows/
 
 ### Prerequisites
 
-1. **Cloudflare account** with Pages enabled
-2. **GitHub repository secrets** configured:
-   - `CLOUDFLARE_API_TOKEN` — API token with Pages edit permissions
-   - `CLOUDFLARE_ACCOUNT_ID` — Cloudflare account ID
+1. **Cloudflare account** with Pages project created (e.g. `momo-app`)
+2. **GitHub repository configuration**:
+   - Secret `CLOUDFLARE_API_TOKEN` — API token with Pages edit permissions
+   - Secret `CLOUDFLARE_ACCOUNT_ID` — Cloudflare account ID
+   - Variable `CLOUDFLARE_PAGES_PROJECT` — Cloudflare Pages project name (`momo-app`)
 
 ### Deployment trigger
 

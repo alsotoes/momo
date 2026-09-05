@@ -12,8 +12,6 @@ related:
   - 015-sentinel-security-audit
   - 004-cas-content-addressable-store
 ---
-# 🛡 Zero-Crash Hardening
-
 A networked object store can't afford to crash on malformed input, race under concurrency, or leak resources on error paths. This post documents the defensive patterns applied across the codebase.
 
 ## The Problem

@@ -13,8 +13,6 @@ related:
   - 018-adaptive-scaling-peer-quality
   - 041-architecture-decision-records
 ---
-# External S3 Client Replication Downgrade
-
 External S3 clients (aws-cli, rclone, boto3, etc.) don't speak momo's private handshake protocol — they don't send `X-Momo-Requested-Mode` or `X-Momo-Timestamp` headers. The server previously treated missing headers as forwarded peer connections (valid timestamp ≠ `DummyEpoch`) and applied `ReplicationNone` — **no replication occurred**. Even worse, `primary-splay` (mode 3) requires the *client* to fan out to replicas, which external S3 clients fundamentally cannot do.
 
 ## The Problem

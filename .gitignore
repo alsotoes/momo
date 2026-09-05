@@ -75,3 +75,11 @@ docs/html/
 
 # cortexkit (Magic Context) local state
 .cortexkit/
+
+# AI agent local transient artifacts (Rule 45)
+skills-lock.json
+**/skills-lock.json
+.kiro/
+**/.kiro/
+plan.md
+**/plan.md

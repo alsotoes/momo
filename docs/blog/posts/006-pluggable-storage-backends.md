@@ -13,8 +13,6 @@ related:
   - 008-s3-gateway-core
   - 013-e2ee-envelope-encryption
 ---
-# Pluggable Storage Backends: local, nfs, s3, raw
-
 The storage layer exposes one **`Store` interface** and a `[storage] backend`
 config switch: `local` (default), `nfs`, `s3` (zero-dep SigV4 client), and
 `raw` (direct block I/O). Local bbolt metadata stays per-node; only the blob

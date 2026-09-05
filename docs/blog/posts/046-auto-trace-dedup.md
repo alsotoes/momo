@@ -13,8 +13,6 @@ related:
   - 015-sentinel-security-audit
   - 024-bolt-performance-engineering
 ---
-# 🛡 Auto-Trace Deduplication
-
 Automated governance is only as good as its ability to fail *once*. When the AI reviewer
 hit a PR whose body lacked an issue link, it was supposed to create one tracking issue
 (Rule 11) and move on. Instead, it created **52**.

@@ -13,8 +13,6 @@ related:
   - 034-s3-501-discipline-object-subresources
   - 008-s3-gateway-core
 ---
-# S3 501 Discipline: Remaining Operations
-
 The final sweep of unsupported S3 operations now return honest `501 NotImplemented` instead of misrouting.
 
 ## The Problem

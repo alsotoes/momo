@@ -17,8 +17,6 @@ related:
   - 030-external-s3-client-replication-downgrade
   - 032-r5-metrics-phases-2-4
 ---
-# P2P: Gossip, SWIM, and Membership
-
 Momo's cluster layer (`docs/P2P.md`) is a **masterless ring**: gossip for
 metadata, SWIM failure detection, scatter-gather for list, and lease consensus
 for its mutable metadata. This post covers the gossip/SWIM core; the lease/quorum

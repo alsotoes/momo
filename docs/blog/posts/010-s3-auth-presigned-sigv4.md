@@ -17,8 +17,6 @@ related:
   - 039-signed-payload-sse-s3
   - 040-aws-chunked-streaming
 ---
-# S3 Auth: SigV4, Presigned URLs, and Key Decoupling
-
 SigV4 isn't just "an auth scheme" — done wrong it's a replay machine. This
 post covers how the gateway made signing correct, honest, and separate from
 momo-native auth.

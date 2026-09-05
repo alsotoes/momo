@@ -13,8 +13,6 @@ related:
   - 018-adaptive-scaling-peer-quality
   - 043-reduce-read-verify-hashing
 ---
-# Seams, Not Plugins
-
 "Should everything be a plugin?" — the question comes up whenever a codebase
 wants adaptive, mutating behaviors. For momo the answer is **no, and the
 distinction matters**:

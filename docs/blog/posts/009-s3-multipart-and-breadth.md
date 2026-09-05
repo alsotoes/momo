@@ -17,8 +17,6 @@ related:
   - 012-s3-integrity-checksums
   - 033-s3-501-discipline-bucket-config
 ---
-# S3 Multipart and Protocol Breadth: 501 Discipline
-
 Two directions grew the S3 surface: **adding** multipart, and **brutally
 honest** `501 Not Implemented` responses for what momo deliberately doesn't do
 yet.

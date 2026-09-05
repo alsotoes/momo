@@ -17,8 +17,6 @@ related:
   - 029-fuse-go-fuse-v2-migration
   - 041-architecture-decision-records
 ---
-# Forward: Production Roadmap (R5–R11) and the Research Guide
-
 Issue #928 ratified the **production-readiness roadmap** (`prod-ready-roadmap`);
 `docs/ROADMAP.md` gates production behind phased deliverables. This post is the
 forward look — and the nod to the research that seeded the ideas.

@@ -19,8 +19,6 @@ related:
   - 030-external-s3-client-replication-downgrade
   - 044-plugin-seam-architecture
 ---
-# Adaptive Scaling: Gossip Fanout, Stream Chunks, Peer Quality
-
 Momo doesn't tune itself with one knob — it grows three independent feedback
 loops that learn the cluster shape at runtime.
 

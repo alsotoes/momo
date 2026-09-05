@@ -13,8 +13,6 @@ related:
   - 004-cas-content-addressable-store
   - 028-roadmap-and-research
 ---
-# FUSE Transport: Migrating to go-fuse/v2
-
 The momofs FUSE mount started as a thin bazil.org/fuse adapter over the CAS
 store: directories are content-addressed JSON manifests, files are CAS blobs,
 and the kernel's byte-range model is reconciled by buffering handle writes and

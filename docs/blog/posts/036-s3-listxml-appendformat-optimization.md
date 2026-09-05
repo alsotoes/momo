@@ -14,8 +14,6 @@ related:
   - 042-perf-profiling-baseline
   - 045-bolt-lastmodified-header
 ---
-# ⚡ Bolt: S3 ListXML AppendFormat
-
 The S3 `ListObjectsV2` XML response was formatting timestamps through a helper that allocated heavily — roughly **1000 allocations per op**. A focused fix brought it to **16** with ~60% less CPU.
 
 ## The Hot Path

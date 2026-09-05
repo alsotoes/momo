@@ -14,8 +14,6 @@ related:
   - 006-pluggable-storage-backends
   - 015-sentinel-security-audit
 ---
-# Client-Held E2EE: Envelope Encryption Real
-
 The strongest privacy claim momo makes: **the server can't read your data**.
 Delivered twice in one day — once for S3 (#779), once for native transports
 (#781) — as client-side **envelope encryption**.

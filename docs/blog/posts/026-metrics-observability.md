@@ -17,8 +17,6 @@ related:
   - 015-sentinel-security-audit
   - 032-r5-metrics-phases-2-4
 ---
-# Metrics and Observability: Per-Node Bind, Prometheus Export
-
 Momo was born "the metrics-driven controller" ([002](002-replication-strategies-polymorphic.md))
 — so its own observability had to be first-class. The metrics exporter
 (add-metrics-exporter) makes Prometheus endpoints real; **per-node binding**

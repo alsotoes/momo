@@ -15,8 +15,6 @@ related:
   - 043-reduce-read-verify-hashing
   - 044-plugin-seam-architecture
 ---
-# Perf Profiling Baseline
-
 You can't optimize what you can't measure. Phase-0 of the performance work
 built the measurement harness — and proved a hard security rule along the way.
 

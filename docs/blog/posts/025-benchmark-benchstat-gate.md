@@ -16,8 +16,6 @@ related:
   - 027-governance-ai-review-spec-first
   - 042-perf-profiling-baseline
 ---
-# The Benchstat Gauntlet: Performance Regressions as CI
-
 Bolt ([024](024-bolt-performance-engineering.md)) needs teeth: a **benchstat
 gate** compares branch benchmarks against `base` on every PR
 (`.github/workflows/benchmark_compare.yml`). A statistically significant

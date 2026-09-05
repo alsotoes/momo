@@ -14,8 +14,6 @@ related:
   - 020-r2-degraded-read-self-heal
   - 021-r3-write-durability-quorum
 ---
-# R1: Failure-Domain-Aware Placement
-
 CRUSH ([005](005-crush-placement.md)) chose *nodes* — but three replicas on
 three nodes **in the same rack** are one power-strip away from zero copies.
 R1 (#952) made placement failure-domain aware.

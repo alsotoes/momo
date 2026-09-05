@@ -15,8 +15,6 @@ related:
   - 023-momofs-fuse-transport
   - 005-crush-placement
 ---
-# R4: momofs — POSIX Core Over the CAS Store
-
 The biggest architecture bet yet: make momo a **filesystem**, not just an
 object store. R4 ships the POSIX core (#957), tracked by issue #932.
 

@@ -11,8 +11,6 @@ related:
   - 002-replication-strategies-polymorphic
   - 004-cas-content-addressable-store
 ---
-# Origin: From Replication Playground to Object Store
-
 Momo's earliest commit (`a8114af4`, 2025-09-09) is a bare `go.mod` and Docker
 scaffolding. Its stated purpose at the time: a **file-replication playground**
 in Go demonstrating different replication strategies behind a simple,

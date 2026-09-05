@@ -13,8 +13,6 @@ related:
   - 039-signed-payload-sse-s3
   - 008-s3-gateway-core
 ---
-# AWS Chunked Streaming
-
 Large S3 uploads can't be buffered whole for signing — memory explodes and latency spikes. `aws-chunked` payload encoding solves this by streaming the body as a sequence of individually-signed chunks.
 
 ## The Problem

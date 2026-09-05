@@ -13,8 +13,6 @@ related:
   - 035-s3-501-discipline-remaining-ops
   - 008-s3-gateway-core
 ---
-# S3 501 Discipline: Object Subresources
-
 Object-level query parameters (`?tagging`, `?acl`, `?versionId`, `?retention`, `?legal-hold`) on `GET/PUT/DELETE /bucket/key` were silently ignored — falling into `GetObject`/`PutObject`/`DeleteObject`.
 
 ## The Problem

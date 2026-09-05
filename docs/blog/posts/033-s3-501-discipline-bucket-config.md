@@ -15,8 +15,6 @@ related:
   - 034-s3-501-discipline-object-subresources
   - 035-s3-501-discipline-remaining-ops
 ---
-# S3 501 Discipline: Bucket Config Subresources
-
 Previously, unsupported bucket-level query parameters (`?versioning`, `?policy`, `?cors`, etc.) silently fell through to `ListObjectsV2`/`GetObject` — a silent misrouting bug. Now: **honest 501 NotImplemented**.
 
 ## The Problem

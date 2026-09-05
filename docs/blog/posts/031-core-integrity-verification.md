@@ -15,8 +15,6 @@ related:
   - 041-architecture-decision-records
   - 043-reduce-read-verify-hashing
 ---
-# Centralized Integrity Verification
-
 The S3 `x-amz-checksum-*` headers originally lived only in the S3 adapter — a surface-level check that didn't protect data written via momo-native protocols. The fix: centralize integrity verification in the storage/ingest core via a protocol-agnostic `ChecksumProvider` seam.
 
 ## The Problem

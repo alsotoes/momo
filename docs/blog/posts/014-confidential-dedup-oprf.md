@@ -15,8 +15,6 @@ related:
   - 017-scatter-gather-lease-quorum
   - 015-sentinel-security-audit
 ---
-# Confidential Dedup via Threshold OPRF — and Auth Lockout
-
 E2EE ([013](013-e2ee-envelope-encryption.md)) created a paradox: if only the
 client can see content, how do you dedup without leaking which files users have?
 

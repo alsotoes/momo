@@ -13,8 +13,6 @@ related:
   - 008-s3-gateway-core
   - 040-aws-chunked-streaming
 ---
-# Signed Payloads and Server-Sent Events for S3
-
 Two complementary additions round out S3 compatibility: **SigV4 signed payload verification** (integrity of request bodies) and **Server-Sent Events** (async operation notifications).
 
 ## Signed Payloads

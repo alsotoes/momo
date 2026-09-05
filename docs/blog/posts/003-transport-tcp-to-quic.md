@@ -15,8 +15,6 @@ related:
   - 011-s3-https-tls-enforcement
   - 024-bolt-performance-engineering
 ---
-# Transport Evolution: TCP, QUIC, and the Wire Protocol
-
 Momo ships two transports over one logical wire protocol (`docs/PROTOCOL.md`):
 legacy **TCP** (`momo-tcp`) and **QUIC/TLS 1.3** (`momo-quic`). The split was
 an explicitly measured bet: TCP for high-bandwidth LAN chains, QUIC for

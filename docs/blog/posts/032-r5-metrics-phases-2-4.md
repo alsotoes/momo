@@ -14,8 +14,6 @@ related:
   - 017-scatter-gather-lease-quorum
   - 024-bolt-performance-engineering
 ---
-# R5 Metrics Phases 2-4
-
 Phase 1 wired the exporter; Phases 2-4 complete the observability picture with storage internals, P2P cluster health, and opt-in latency histograms — all with strict <1% overhead guarantees.
 
 ## Phase 2: Storage Metrics (Scrape-Time Only)

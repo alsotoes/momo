@@ -14,8 +14,6 @@ related:
   - 031-core-integrity-verification
   - 044-plugin-seam-architecture
 ---
-# Reducing Read-Verify Hashing
-
 The baseline in [042](042-perf-profiling-baseline.md) exposed the biggest hot
 path: **verify-on-read re-hashes the entire object on every local read** — ~8×
 slower per byte than writing it. The fix isn't to drop integrity; it's to stop
