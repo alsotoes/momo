@@ -128,24 +128,22 @@ Create three files (mirror the existing `openspec/changes/*/` layout):
 - Author the spec on the branch in this step; implement in Step 3; both ship in the same PR.
 - **Bug fixes / internal refactors with no behavioral surface are exempt** from a formal spec (Rule 73) but MUST still have a tracking issue from Step 1.
 
-### Step 1c: Ground via MemPalace (Rule 89)
+### Step 1c: Ground via MemPalace (Rules 89, 91)
 
-Before implementing, query the project knowledge base to reuse indexed context instead of re-reading files (token efficiency):
+Before implementing, select the RIGHT tool for the question — token efficiency = speed:
 
-```bash
-# Refresh the knowledge base if the codebase has changed since the last mine
-mempalace mine . --wing momo
+| Question Type | First Tool (Fastest) | Fallback |
+|---------------|---------------------|----------|
+| "What did we decide about X?" / "Prior discussion on Y?" | `ctx_search "X"` or `ctx_memory get [ids]` | — |
+| "Where is symbol S defined?" / "Find all usages of S" | `grep -r "S" src/` / `glob "**/*S*.go"` | `mempalace search "S" --wing momo` |
+| "Where is file/pattern X?" | `glob "pattern"` / `grep "pattern"` | `mempalace search "X" --wing momo` |
+| "What does the spec/ADR say about Z?" | `mempalace search "Z" --wing momo --room specs` | `read openspec/changes/...` |
+| "Analyze entire architecture / cross-cutting concern" | `npx repomix` → read `repomix-output.xml` | — |
+| "Verify current code matches spec" | `read` target files + `mempalace search` spec ID | — |
+| "Token efficiency requested" | `caveman-compress` (inject output as session instructions) | — |
+| **Git operations** | `rtk git <cmd>` (preferred over raw `git`) | `bash "git <cmd>"` |
 
-# Ground the task: search for relevant prior specs, decisions, and code patterns
-mempalace search "<task topic>" --wing momo [--room <room>] [--results N]
-```
-
-Guidelines:
-- Search for the task's domain (e.g., `replication splay`, `metadata quorum`, `scrub integrity`, `FUSE mount`) and for the files/features the task touches.
-- When the task is a takeover or follow-up (Jules PR, prior phase), search for the prior work to recover decisions and constraints.
-- **Only read source files / `repomix-output.xml` when MemPalace returns insufficient grounding.** Prefer the indexed knowledge first.
-- Keep the base current: re-mine after significant code/spec/doc changes (Pre-Flight item 6).
-- **Auto-Trace check (Rule 90):** When taking over a PR or observing auto-trace issues, verify no duplicate auto-trace issues exist for the PR before creating or re-creating any. Consolidate to the canonical issue (Rule 80) and ensure the PR body carries `Resolves #<canonical>` so the reviewer short-circuits (its `find_existing_auto_trace` + `get_current_pr_body` prevent duplicate creation; see Rule 90).
+**Rule**: Start with session memory (`ctx_search`/`ctx_memory`) → durable knowledge (`mempalace search`) → targeted tools (`grep`/`glob`/`read`). **Only** escalate to `repomix` for WHOLE-REPO questions. Never dump entire codebase when a grep answers it.
 
 ### Step 2: Create Branch
 ```bash
@@ -550,6 +548,68 @@ Criteria: No code changes, no behavioral surface, pure markdown/typos/links.
 AI reviewer only re-evaluates on `synchronize` (push). To force re-eval:
 - `git commit --allow-empty -m "sync: trigger reviewer re-evaluation" && git push`
 - Or use PR "Update branch" button.
+
+## Tool Selection Cheat Sheet (Rule 91)
+
+### Memory & Context Tools (Zero File Reads)
+
+| Tool | Use When | Token Cost |
+|------|----------|------------|
+| `ctx_search "query"` | "Did we discuss X?" / "What was the error?" / "Find prior decision" | ~1KB |
+| `ctx_memory get [1,2,3]` | Retrieve known durable facts by ID | ~500B |
+| `ctx_memory write category="CONSTRAINTS" content="..."` | Save hard-won constraint for future sessions | — |
+| `mempalace search "topic" --wing momo` | Query indexed specs, decisions, code patterns from all sessions | ~2KB |
+| `mempalace mine . --wing momo` | Refresh knowledge base after significant changes | One-time |
+
+### Targeted Code Tools (Precision, Low Tokens)
+
+| Tool | Use When | Token Cost |
+|------|----------|------------|
+| `glob "pattern"` | Find files by name/pattern | ~1KB |
+| `grep "symbol" src/` | Find symbol usages, definitions | ~2KB |
+| `read file.md` | Read specific file (known path) | File size |
+| `edit file.go old new` | Surgical fix (known location) | Diff size |
+
+### Broad Analysis Tools (High Tokens — Use Sparingly)
+
+| Tool | Use When | Token Cost |
+|------|----------|------------|
+| `npx repomix` | Whole-repo architecture review, cross-cutting analysis | 500KB+ |
+| `task explore agent` | Multi-file exploration, unknown codebase areas | Variable |
+
+### Communication & Git Tools
+
+| Tool | Use When |
+|------|----------|
+| `caveman-compress` | User requests terse mode (`/caveman full`) — inject output as session instructions |
+| `rtk git status/commit/push` | All git operations (preferred over raw `git`) |
+| `bash "git <cmd>"` | When rtk unavailable or complex git ops |
+
+### Decision Flowchart
+
+```
+START: "I need to answer X"
+  │
+  ├─ Is it "what did we decide/discuss earlier?" → ctx_search / ctx_memory
+  │
+  ├─ Is it a SPECIFIC symbol/file/pattern? → glob / grep / read
+  │
+  ├─ Is it a PROJECT KNOWLEDGE question (specs, ADRs, patterns)? → mempalace search
+  │
+  ├─ Is it WHOLE-REPO architecture / cross-cutting? → npx repomix
+  │
+  └─ Token efficiency requested? → caveman-compress
+```
+
+### Anti-Patterns (Token Waste)
+
+| ❌ Don't | ✅ Do |
+|----------|-------|
+| `npx repomix` to find one function | `grep "funcName" src/` |
+| `read` entire directory to find a pattern | `glob "**/*pattern*.go"` |
+| Re-read files already in MemPalace | `mempalace search` first |
+| Forget `ctx_search` for session history | Check `ctx_search` before asking user |
+| Raw `git` when `rtk` available | `rtk git <cmd>` |
 
 ## Common Pitfalls & Solutions
 
