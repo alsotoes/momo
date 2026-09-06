@@ -72,25 +72,30 @@ For each task (bug fix or feature), execute these steps strictly sequentially. D
 **Before ANY work on an issue — whether newly created, pre-existing, or picked up from a batch — establish ownership and validate the issue's metadata.**
 
 ```bash
-# 1. Assign the issue to the maintainer
-gh issue edit ISSUE_N --add-assignee alsotoes
+# 1. Get current git user for assignee
+GIT_USER=$(git config user.name)
 
-# 2. Validate labels: category (bug|enhancement) + automation
+# 2. Assign the issue to the maintainer
+gh issue edit ISSUE_N --add-assignee "$GIT_USER"
+
+# 3. Validate labels: category (bug|enhancement) + automation
 gh issue view ISSUE_N --json assignees,labels
 
-# 3. Add any missing labels
+# 4. Add any missing labels
 gh issue edit ISSUE_N --add-label <bug|enhancement>
 gh issue edit ISSUE_N --add-label automation
 ```
 
-Only proceed to implementation (Step 2) once the issue is assigned to `alsotoes` and carries both the category label and the `automation` label. Issues lacking an assignee or the `automation` label are orphaned and MUST be remediated before work begins.
+Only proceed to implementation (Step 2) once the issue is assigned to `$GIT_USER` and carries both the category label and the `automation` label. Issues lacking an assignee or the `automation` label are orphaned and MUST be remediated before work begins.
 
 ### Step 1: Create GitHub Issue
 ```bash
+GIT_USER=$(git config user.name)
+
 gh issue create \
   --title "<type>: <description>" \
   --label "<bug|enhancement>" \
-  --assignee "alsotoes" \
+  --assignee "$GIT_USER" \
   --body "<issue documentation>"
 ```
 Record the issue number (`ISSUE_N`).
@@ -205,7 +210,8 @@ Record the PR number (`PR_N`).
 
 ### Step 8: Assign PR (Rule 51)
 ```bash
-gh pr edit PR_N --add-assignee alsotoes
+GIT_USER=$(git config user.name)
+gh pr edit PR_N --add-assignee "$GIT_USER"
 ```
 
 ### Step 9: Add Label (Rule 52)
@@ -249,10 +255,11 @@ If at ANY point you encounter something you don't know or understand:
 1. STOP work immediately
 2. Create a blocking issue:
    ```bash
+   GIT_USER=$(git config user.name)
    gh issue create \
      --title "[AIFS] <question or doubt>" \
      --label "bug" --label "automation" \
-     --assignee "alsotoes" \
+     --assignee "$GIT_USER" \
      --body "Blocked PR #PR_N pending resolution of this question.
 
    <context and specific question>"
@@ -617,7 +624,8 @@ START: "I need to answer X"
 **Pitfall**: During manual intervention, it's easy to forget assigning the PR and adding labels.
 **Solution**: Always run these immediately after creating or taking over a PR:
 ```bash
-gh pr edit PR_N --add-assignee alsotoes
+GIT_USER=$(git config user.name)
+gh pr edit PR_N --add-assignee "$GIT_USER"
 gh pr edit PR_N --add-label bug        # for bug fixes
 gh pr edit PR_N --add-label enhancement # for features
 gh pr edit PR_N --add-label automation  # for AI-driven work
@@ -625,7 +633,7 @@ gh pr edit PR_N --add-label automation  # for AI-driven work
 
 ### Forgetting the Issue Ownership Gate (Rule 72)
 **Pitfall**: Starting implementation on a pre-existing or batch issue that is unassigned or missing the `automation` label (e.g., the #606–#623 batch, where all issues lacked an assignee).
-**Solution**: Before any work, run the Issue Ownership Gate (Step 0): assign the issue to `alsotoes` and validate/add the category + `automation` labels via `gh issue edit ISSUE_N`. Treat missing assignee/labels as a blocking condition.
+**Solution**: Before any work, run the Issue Ownership Gate (Step 0): assign the issue to `$GIT_USER` (from `git config user.name`) and validate/add the category + `automation` labels via `gh issue edit ISSUE_N`. Treat missing assignee/labels as a blocking condition.
 
 ### Jules PR Comments Posted as Bot (Rule 69)
 **Pitfall**: Posting reviewer feedback or STOP comments as `github-actions[bot]` on a Jules-created PR. Jules only recognizes comments from `alsotoes` and will silently ignore bot comments, causing Jules to continue working or miss feedback.
@@ -799,9 +807,9 @@ When manual intervention is happening, automated agents MUST be told to STOP. No
    │
    ├─ 0.6 MemPalace refresh (Rule 89): mempalace mine . --wing momo + npx repomix
    │
-   ├─ 0.5 Issue Ownership Gate (Rule 72): assign issue to alsotoes + validate labels (bug|enhancement, automation)
-   │
-   ├─ 1. Create issue (label: bug|enhancement, assignee: alsotoes)
+├─ 0.5 Issue Ownership Gate (Rule 72): assign issue to $GIT_USER + validate labels (bug|enhancement, automation)
+    │
+    ├─ 1. Create issue (label: bug|enhancement, assignee: $GIT_USER)
    ├─ 1c. Ground via MemPalace (Rule 89): mempalace search "<topic>" --wing momo BEFORE reading files
    ├─ 2. Create branch off master (fix/ or feature/)
   ├─ 3. Implement + tests
@@ -809,7 +817,7 @@ When manual intervention is happening, automated agents MUST be told to STOP. No
   ├─ 5. Validate branch (Rule 58)
   ├─ 6. Push
   ├─ 7. Create PR (Resolves #NNN)
-  ├─ 8. Assign PR to alsotoes (Rule 51)
+  ├─ 8. Assign PR to $GIT_USER (Rule 51)
   ├─ 9. Add label bug|enhancement (Rule 52)
   ├─ 10. Wait for CI + reviewer
   │      │
