@@ -91,7 +91,7 @@ def add_jules_label(pr_number):
         print(f"Failed to add jules label: {e}", file=sys.stderr)
 
 def sync_pr_labels_and_assignee(pr_number, pr_title, pr_body):
-    """Sync labels from linked issues to the PR and assign alsotoes.
+    """Sync labels from linked issues to the PR and assign the git user.
 
     This runs BEFORE any review work, ensuring every PR has correct
     labels and an assignee from the moment it's opened.
@@ -99,11 +99,17 @@ def sync_pr_labels_and_assignee(pr_number, pr_title, pr_body):
     1. Parse 'Closes #NNN' / 'Fixes #NNN' / 'Resolves #NNN' from PR body.
     2. Fetch labels from each linked issue.
     3. Add those labels to the PR (deduplicated by gh).
-    4. Assign alsotoes to the PR.
+    4. Assign git user (from git config user.name) to the PR.
     5. Add 'bug' label if the PR title starts with 'fix('.
     """
     if not pr_number:
         return
+
+    # Get git user for assignee
+    try:
+        git_user = subprocess.run(["git", "config", "user.name"], capture_output=True, text=True, check=True).stdout.strip()
+    except Exception:
+        git_user = "alsotoes"
 
     labels_to_add = set()
 
@@ -136,13 +142,13 @@ def sync_pr_labels_and_assignee(pr_number, pr_title, pr_body):
         except Exception as e:
             print(f"Failed to sync labels: {e}", file=sys.stderr)
 
-    # Assign alsotoes to every PR
+    # Assign git user to every PR
     try:
-        subprocess.run(["gh", "pr", "edit", pr_number, "--add-assignee", "alsotoes"],
+        subprocess.run(["gh", "pr", "edit", pr_number, "--add-assignee", git_user],
                        capture_output=True, text=True, check=True)
-        print(f"Assigned alsotoes to PR #{pr_number}")
+        print(f"Assigned {git_user} to PR #{pr_number}")
     except Exception as e:
-        print(f"Failed to assign alsotoes: {e}", file=sys.stderr)
+        print(f"Failed to assign {git_user}: {e}", file=sys.stderr)
 
 def pr_has_label(pr_number, label):
     """Return True if the PR carries the given label (e.g. 'enhancement')."""
@@ -247,8 +253,12 @@ def create_missing_issue(pr_number, pr_title, pr_body):
         issue_title = f"[Auto-Trace] {pr_title}"
         issue_body = f"This issue was created autonomously to satisfy Rule 11 (Traceability) for PR #{pr_number}.\n\n### Original PR Description:\n{pr_body}"
         
-        # Create the issue
-        cmd = ["gh", "issue", "create", "--title", issue_title, "--body", issue_body, "--label", "enhancement", "--label", "automation", "--assignee", "alsotoes"]
+        # Create the issue (assignee from git config)
+        try:
+            git_user = subprocess.run(["git", "config", "user.name"], capture_output=True, text=True, check=True).stdout.strip()
+        except Exception:
+            git_user = "alsotoes"
+        cmd = ["gh", "issue", "create", "--title", issue_title, "--body", issue_body, "--label", "enhancement", "--label", "automation", "--assignee", git_user]
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         issue_url = result.stdout.strip()
         
