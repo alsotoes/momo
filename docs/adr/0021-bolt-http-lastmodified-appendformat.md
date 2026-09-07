@@ -29,10 +29,11 @@ None documented.
 - **Code**: Done
 - **Tests**: Done
 - **Docs**: Done
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/045-bolt-lastmodified-header.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/bolt-http-lastmodified-appendformat/
-- Blog: docs/blog/posts/...md
+- Issue: #977
+- PR: 
+- Spec: `openspec/changes/bolt-http-lastmodified-appendformat/`
+- Blog: docs/blog/posts/045-bolt-lastmodified-header.md
+

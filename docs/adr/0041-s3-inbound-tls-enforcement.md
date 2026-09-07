@@ -24,10 +24,11 @@ None documented.
 - **Code**: Partial
 - **Tests**: Partial
 - **Docs**: Partial
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/011-s3-https-tls-enforcement.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/s3-inbound-tls-enforcement/
-- Blog: docs/blog/posts/...md
+- Issue: #775
+- PR: 
+- Spec: `openspec/changes/s3-inbound-tls-enforcement/`
+- Blog: docs/blog/posts/011-s3-https-tls-enforcement.md
+

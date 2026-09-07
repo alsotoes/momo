@@ -37,10 +37,11 @@ None documented.
 - **Code**: Planned
 - **Tests**: Partial
 - **Docs**: Planned
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/025-benchmark-benchstat-gate.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/steering-three-dot-diff-gate/
-- Blog: docs/blog/posts/...md
+- Issue: #944
+- PR: #961
+- Spec: `openspec/changes/steering-three-dot-diff-gate/`
+- Blog: docs/blog/posts/025-benchmark-benchstat-gate.md
+

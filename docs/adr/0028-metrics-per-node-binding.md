@@ -31,10 +31,11 @@ None documented.
 - **Code**: Planned
 - **Tests**: Planned
 - **Docs**: Planned
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/026-metrics-observability.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/metrics-per-node-binding/
-- Blog: docs/blog/posts/...md
+- Issue: #941
+- PR: #942
+- Spec: `openspec/changes/metrics-per-node-binding/`
+- Blog: docs/blog/posts/026-metrics-observability.md
+

@@ -25,10 +25,11 @@ None documented.
 - **Code**: Planned
 - **Tests**: Planned
 - **Docs**: Planned
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/003-transport-tcp-to-quic.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/add-quic-protocol/
-- Blog: docs/blog/posts/...md
+- Issue: #131
+- PR: #763
+- Spec: `openspec/changes/add-quic-protocol/`
+- Blog: docs/blog/posts/003-transport-tcp-to-quic.md
+

@@ -50,9 +50,6 @@ func GenerateADR(adr model.ADR, specID string, num int) string {
 		b.WriteString("\n")
 	}
 
-	b.WriteString("## Confidence\n")
-	b.WriteString(string(adr.Confidence) + "\n\n")
-
 	b.WriteString("## Implementation Status\n")
 	b.WriteString(fmt.Sprintf("- **Code**: %s\n", adr.Implementation.Code))
 	b.WriteString(fmt.Sprintf("- **Tests**: %s\n", adr.Implementation.Tests))
@@ -77,7 +74,7 @@ func GenerateADR(adr model.ADR, specID string, num int) string {
 
 func FormatStatus(status string) string {
 	switch status {
-	case "done", "Done", "DONE":
+	case "accepted", "Accepted", "ACCEPTED", "done", "Done", "DONE":
 		return "Accepted"
 	case "proposed", "Proposed", "PROPOSED":
 		return "Proposed"

@@ -54,10 +54,11 @@ None documented.
 - **Code**: Done
 - **Tests**: Done
 - **Docs**: Done
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/007-at-rest-integrity-and-gc.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/storage-at-rest-integrity/
-- Blog: docs/blog/posts/...md
+- Issue: #924
+- PR: 
+- Spec: `openspec/changes/storage-at-rest-integrity/`
+- Blog: docs/blog/posts/007-at-rest-integrity-and-gc.md
+

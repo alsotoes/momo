@@ -28,10 +28,11 @@ None documented.
 - **Code**: Done
 - **Tests**: Done
 - **Docs**: Planned
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/037-zero-crash-hardening-patterns.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/zero-crash-hardening/
-- Blog: docs/blog/posts/...md
+- Issue: #135
+- PR: 
+- Spec: `openspec/changes/zero-crash-hardening/`
+- Blog: docs/blog/posts/037-zero-crash-hardening-patterns.md
+

@@ -24,10 +24,11 @@ None documented.
 - **Code**: Planned
 - **Tests**: Planned
 - **Docs**: Planned
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/008-s3-gateway-core.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/add-s3-protocol/
-- Blog: docs/blog/posts/...md
+- Issue: #131
+- PR: 
+- Spec: `openspec/changes/add-s3-protocol/`
+- Blog: docs/blog/posts/008-s3-gateway-core.md
+

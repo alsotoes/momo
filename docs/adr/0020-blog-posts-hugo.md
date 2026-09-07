@@ -32,10 +32,11 @@ None documented.
 - **Code**: Planned
 - **Tests**: Partial
 - **Docs**: Planned
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: 
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/blog-posts-hugo/
-- Blog: docs/blog/posts/...md
+- Issue: #964
+- PR: 
+- Spec: `openspec/changes/blog-posts-hugo/`
+- Blog: 
+

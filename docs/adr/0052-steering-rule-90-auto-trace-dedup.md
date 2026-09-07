@@ -38,10 +38,11 @@ None documented.
 - **Code**: Done
 - **Tests**: Done
 - **Docs**: Done
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/046-auto-trace-dedup.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/steering-rule-90-auto-trace-dedup/
-- Blog: docs/blog/posts/...md
+- Issue: #1057
+- PR: #1058
+- Spec: `openspec/changes/steering-rule-90-auto-trace-dedup/`
+- Blog: docs/blog/posts/046-auto-trace-dedup.md
+

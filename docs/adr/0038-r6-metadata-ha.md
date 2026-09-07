@@ -35,10 +35,11 @@ None documented.
 - **Code**: Partial
 - **Tests**: Partial
 - **Docs**: Partial
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: 
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/r6-metadata-ha/
-- Blog: docs/blog/posts/...md
+- Issue: #934
+- PR: 
+- Spec: `openspec/changes/r6-metadata-ha/`
+- Blog: 
+

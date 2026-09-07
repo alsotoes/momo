@@ -31,10 +31,11 @@ None documented.
 - **Code**: Planned
 - **Tests**: Planned
 - **Docs**: Planned
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/012-s3-integrity-checksums.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/s3-integrity-checksums/
-- Blog: docs/blog/posts/...md
+- Issue: #820
+- PR: 
+- Spec: `openspec/changes/s3-integrity-checksums/`
+- Blog: docs/blog/posts/012-s3-integrity-checksums.md
+

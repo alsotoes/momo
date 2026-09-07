@@ -25,10 +25,11 @@ None documented.
 - **Code**: Planned
 - **Tests**: Planned
 - **Docs**: Planned
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/004-cas-content-addressable-store.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/add-cas-storage/
-- Blog: docs/blog/posts/...md
+- Issue: #151
+- PR: 
+- Spec: `openspec/changes/add-cas-storage/`
+- Blog: docs/blog/posts/004-cas-content-addressable-store.md
+

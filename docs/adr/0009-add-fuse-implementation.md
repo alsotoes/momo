@@ -7,7 +7,11 @@ Proposed
 Low
 
 ## Context
-
+momofs currently implements a FUSE-like interface via 22 callbacks in `src/momofs/fuse.go`. The choice of FUSE implementation affects:
+- Performance (throughput, latency, zero-copy capabilities)
+- Security (userspace attack surface, kernel integration)
+- Platform support (Linux, macOS, cross-platform)
+- Operational overhead (daemon management, mount privileges)
 
 ## Decision
 - macOS VirtioFS (Resolves fuse-change): Docker Desktop on macOS uses VirtioFS as the file-sharing implementation. momofs **SHALL NOT** implement its own FURE transport for macOS, as Docker Desktop provides it natively. - **GIVEN** a macOS host running Docker Desktop - **WHEN** momofs is configured for blob storage - **THEN** the host uses Docker's VirtioFS transport, not momofs' FUSE implementation - **AND** `consistency=cached` flag **SHALL** be ignored or rejected with advisory message (kernel provides native consistency)
@@ -27,10 +31,11 @@ None documented.
 - **Code**: Partial
 - **Tests**: Partial
 - **Docs**: Partial
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/029-fuse-go-fuse-v2-migration.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/add-fuse-implementation/
-- Blog: docs/blog/posts/...md
+- Issue: #820
+- PR: #984
+- Spec: `openspec/changes/add-fuse-implementation/`
+- Blog: docs/blog/posts/029-fuse-go-fuse-v2-migration.md
+

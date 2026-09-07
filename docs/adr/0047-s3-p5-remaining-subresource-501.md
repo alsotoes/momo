@@ -34,10 +34,11 @@ None documented.
 - **Code**: Done
 - **Tests**: Partial
 - **Docs**: Planned
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/035-s3-501-discipline-remaining-ops.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/s3-p5-remaining-subresource-501/
-- Blog: docs/blog/posts/...md
+- Issue: #920
+- PR: 
+- Spec: `openspec/changes/s3-p5-remaining-subresource-501/`
+- Blog: docs/blog/posts/035-s3-501-discipline-remaining-ops.md
+

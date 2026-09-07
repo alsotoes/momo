@@ -31,10 +31,11 @@ None documented.
 - **Code**: Done
 - **Tests**: Partial
 - **Docs**: Planned
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/033-s3-501-discipline-bucket-config.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/s3-p3-bucket-subresource-501/
-- Blog: docs/blog/posts/...md
+- Issue: #912
+- PR: 
+- Spec: `openspec/changes/s3-p3-bucket-subresource-501/`
+- Blog: docs/blog/posts/033-s3-501-discipline-bucket-config.md
+

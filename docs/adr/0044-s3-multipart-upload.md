@@ -24,10 +24,11 @@ None documented.
 - **Code**: Partial
 - **Tests**: Partial
 - **Docs**: Planned
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/009-s3-multipart-and-breadth.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/s3-multipart-upload/
-- Blog: docs/blog/posts/...md
+- Issue: #764
+- PR: #801
+- Spec: `openspec/changes/s3-multipart-upload/`
+- Blog: docs/blog/posts/009-s3-multipart-and-breadth.md
+

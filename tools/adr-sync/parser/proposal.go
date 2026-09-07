@@ -19,9 +19,21 @@ func ParseProposal(content string) model.Proposal {
 
 	if why, ok := sections["Why"]; ok {
 		proposal.Why = cleanText(why)
+	} else if problem, ok := sections["1. Problem"]; ok {
+		proposal.Why = cleanText(problem)
+	} else if problem, ok := sections["Problem"]; ok {
+		proposal.Why = cleanText(problem)
+	} else if problem, ok := sections["Problem Statement"]; ok {
+		proposal.Why = cleanText(problem)
+	} else if ctx, ok := sections["Context"]; ok {
+		proposal.Why = cleanText(ctx)
 	}
 	if what, ok := sections["What Changes"]; ok {
 		proposal.WhatChanges = cleanText(what)
+	} else if sol, ok := sections["2. Proposed Solution"]; ok {
+		proposal.WhatChanges = cleanText(sol)
+	} else if sol, ok := sections["Proposed Solution"]; ok {
+		proposal.WhatChanges = cleanText(sol)
 	}
 	if nonGoals, ok := sections["Non-Goals"]; ok {
 		proposal.NonGoals = cleanText(nonGoals)

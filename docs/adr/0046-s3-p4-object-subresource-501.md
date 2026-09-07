@@ -31,10 +31,11 @@ None documented.
 - **Code**: Done
 - **Tests**: Partial
 - **Docs**: Planned
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/034-s3-501-discipline-object-subresources.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/s3-p4-object-subresource-501/
-- Blog: docs/blog/posts/...md
+- Issue: #914
+- PR: 
+- Spec: `openspec/changes/s3-p4-object-subresource-501/`
+- Blog: docs/blog/posts/034-s3-501-discipline-object-subresources.md
+

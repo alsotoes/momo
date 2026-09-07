@@ -32,10 +32,11 @@ None documented.
 - **Code**: Planned
 - **Tests**: Partial
 - **Docs**: Planned
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/042-perf-profiling-baseline.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/perf-profiling-baseline/
-- Blog: docs/blog/posts/...md
+- Issue: #948
+- PR: 
+- Spec: `openspec/changes/perf-profiling-baseline/`
+- Blog: docs/blog/posts/042-perf-profiling-baseline.md
+

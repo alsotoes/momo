@@ -7,7 +7,10 @@ Proposed
 Low
 
 ## Context
-
+Eliminate per-element heap allocation in `FormatListObjectsV2XML` by rendering
+`<LastModified>` with `time.AppendFormat` into a stack-allocated buffer instead
+of `formatLastModified`'s `time.Format` (which allocates a heap string each
+call).
 
 ## Decision
 
@@ -22,10 +25,11 @@ None documented.
 - **Code**: Partial
 - **Tests**: Partial
 - **Docs**: Partial
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/036-s3-listxml-appendformat-optimization.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/s3-listxml-appendformat/
-- Blog: docs/blog/posts/...md
+- Issue: #900
+- PR: 
+- Spec: `openspec/changes/s3-listxml-appendformat/`
+- Blog: docs/blog/posts/036-s3-listxml-appendformat-optimization.md
+

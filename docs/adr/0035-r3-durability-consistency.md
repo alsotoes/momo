@@ -27,10 +27,11 @@ None documented.
 - **Code**: Partial
 - **Tests**: Partial
 - **Docs**: Done
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/021-r3-write-durability-quorum.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/r3-durability-consistency/
-- Blog: docs/blog/posts/...md
+- Issue: #931
+- PR: 
+- Spec: `openspec/changes/r3-durability-consistency/`
+- Blog: docs/blog/posts/021-r3-write-durability-quorum.md
+

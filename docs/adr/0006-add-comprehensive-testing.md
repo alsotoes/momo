@@ -24,10 +24,11 @@ None documented.
 - **Code**: Done
 - **Tests**: Planned
 - **Docs**: Planned
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: 
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/add-comprehensive-testing/
-- Blog: docs/blog/posts/...md
+- Issue: #155
+- PR: 
+- Spec: `openspec/changes/add-comprehensive-testing/`
+- Blog: 
+

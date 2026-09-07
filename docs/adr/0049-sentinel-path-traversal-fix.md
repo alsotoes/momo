@@ -34,10 +34,11 @@ None documented.
 - **Code**: Done
 - **Tests**: Done
 - **Docs**: Planned
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: 
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/sentinel-path-traversal-fix/
-- Blog: docs/blog/posts/...md
+- Issue: #997
+- PR: 
+- Spec: `openspec/changes/sentinel-path-traversal-fix/`
+- Blog: 
+

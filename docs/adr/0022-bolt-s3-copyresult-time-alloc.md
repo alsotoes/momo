@@ -27,10 +27,11 @@ None documented.
 - **Code**: Done
 - **Tests**: Done
 - **Docs**: Done
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/047-bolt-s3-copyresult-time-alloc.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/bolt-s3-copyresult-time-alloc/
-- Blog: docs/blog/posts/...md
+- Issue: #968
+- PR: 
+- Spec: `openspec/changes/bolt-s3-copyresult-time-alloc/`
+- Blog: docs/blog/posts/047-bolt-s3-copyresult-time-alloc.md
+

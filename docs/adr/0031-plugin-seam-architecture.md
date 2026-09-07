@@ -44,10 +44,11 @@ None documented.
 - **Code**: Planned
 - **Tests**: Partial
 - **Docs**: Planned
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/044-plugin-seam-architecture.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/plugin-seam-architecture/
-- Blog: docs/blog/posts/...md
+- Issue: #946
+- PR: 
+- Spec: `openspec/changes/plugin-seam-architecture/`
+- Blog: docs/blog/posts/044-plugin-seam-architecture.md
+

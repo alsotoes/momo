@@ -5,11 +5,19 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
+	"github.com/alsotoes/momo/tools/adr-sync/generator"
 	"github.com/alsotoes/momo/tools/adr-sync/model"
 	"github.com/alsotoes/momo/tools/adr-sync/parser"
+)
+
+var (
+	issueLinkRe = regexp.MustCompile(`github\.com/[^/]+/[^/]+/issues/(\d+)`)
+	prLinkRe    = regexp.MustCompile(`github\.com/[^/]+/[^/]+/pull/(\d+)`)
+	issueRefRe  = regexp.MustCompile(`#(\d{2,})`)
 )
 
 func main() {
@@ -40,7 +48,10 @@ func main() {
 			continue
 		}
 
-		proposalBytes, _ := os.ReadFile(filepath.Join("openspec", "changes", specID, "proposal.md"))
+		proposalBytes, err := os.ReadFile(filepath.Join("openspec", "changes", specID, "proposal.md"))
+		if err != nil {
+			proposalBytes = nil
+		}
 		proposalContent := string(proposalBytes)
 
 		specBytes, _ := os.ReadFile(specDirs[0])
@@ -54,13 +65,45 @@ func main() {
 		tasks := parser.ParseTasks(tasksContent)
 
 		decision := buildDecisionFromSpec(spec)
-		status := deriveStatus(tasks)
+		status := generator.FormatStatus(deriveStatus(tasks))
 		confidence := deriveConfidence(tasks)
 		code, tests, docs := deriveImplementation(tasks)
 
-		expectedContent := fmt.Sprintf("# %04d-%s\n\n## Status\n%s\n\n## Confidence\n%s\n\n## Context\n%s\n\n## Decision\n%s\n\n## Consequences\n%s\n\n## Alternatives Considered\nNone documented.\n\n## Implementation Status\n- **Code**: %s\n- **Tests**: %s\n- **Docs**: %s\n- **Blog post**: docs/blog/posts/...md\n\n## References\n- Issue: #...\n- PR: #...\n- Spec: openspec/changes/%s/\n- Blog: docs/blog/posts/...md\n", num, specID, status, confidence, proposal.Why, decision, spec.Consequences, code, tests, docs, specID)
+		issue := resolveIssue(proposalContent, specContent)
+		blog := resolveBlog(specID)
+		pr := resolvePR(proposalContent, blog)
 
-		adrPath := filepath.Join("docs", "adr", fmt.Sprintf("%04d-%s.md", i+1, specID))
+		ctx := proposal.Why
+		if ctx == "" {
+			ctx = spec.Purpose
+		}
+
+		adr := model.ADR{
+			Number:       num,
+			SpecID:       specID,
+			Status:       status,
+			Confidence:   confidence,
+			Context:      ctx,
+			Decision:     decision,
+			Consequences: spec.Consequences,
+			Alternatives: spec.Alternatives,
+			Implementation: model.Implementation{
+				Code:  model.Status(code),
+				Tests: model.Status(tests),
+				Docs:  model.Status(docs),
+				Blog:  blog,
+			},
+			References: model.References{
+				Issue: issue,
+				PR:    pr,
+				Spec:  specID,
+				Blog:  blog,
+			},
+		}
+
+		expectedContent := generator.GenerateADR(adr, specID, num)
+
+		adrPath := filepath.Join("docs", "adr", fmt.Sprintf("%04d-%s.md", num, specID))
 
 		if *checkOnly {
 			existing, err := os.ReadFile(adrPath)
@@ -97,8 +140,8 @@ func buildDecisionFromSpec(spec model.SpecDoc) string {
 	return strings.Join(parts, "\n")
 }
 
-// deriveStatus maps task completion to ADR Status per Rule 78:
-// Accepted (all tasks done), Proposed (partial), Deprecated (archive, unreachable here).
+// deriveStatus maps task completion to ADR status per Rule 78:
+// Accepted (all tasks done), Proposed (partial).
 func deriveStatus(tasks model.Tasks) string {
 	done, total := taskCounts(tasks)
 	if total == 0 || done < total {
@@ -163,4 +206,103 @@ func taskCounts(tasks model.Tasks) (done, total int) {
 		}
 	}
 	return
+}
+
+// resolveIssue extracts the primary GitHub issue number. The authoritative
+// source is the spec.md "GitHub Issue URL" line (the tracking issue). Falls
+// back to the proposal's "Related Issues:" section (lowest number) or the first
+// bare #NNNN reference.
+func resolveIssue(proposalContent, specContent string) string {
+	// 1. Authoritative: spec.md GitHub Issue URL
+	if links := issueLinkRe.FindAllStringSubmatch(specContent, -1); len(links) > 0 {
+		return "#" + links[0][1]
+	}
+	// 2. Proposal related-issues block (lowest number)
+	links := issueLinkRe.FindAllStringSubmatch(proposalContent, -1)
+	if len(links) > 0 {
+		min := links[0][1]
+		for _, m := range links {
+			if m[1] < min {
+				min = m[1]
+			}
+		}
+		return "#" + min
+	}
+	// 3. First bare #NNNN reference
+	refs := issueRefRe.FindAllStringSubmatch(proposalContent, -1)
+	if len(refs) > 0 {
+		return "#" + refs[0][1]
+	}
+	return ""
+}
+
+// resolvePR finds a pull-request link: first from the proposal's PR links, then
+// from the matched blog post's front-matter artifacts ({type: pr, id: "NNN"}).
+func resolvePR(proposalContent, blog string) string {
+	if links := prLinkRe.FindAllStringSubmatch(proposalContent, -1); len(links) > 0 {
+		return "#" + links[0][1]
+	}
+	if blog != "" {
+		if data, err := os.ReadFile(blog); err == nil {
+			prArt := regexp.MustCompile(`\{type:\s*pr,\s*id:\s*"(\d+)"\}`)
+			if m := prArt.FindStringSubmatch(string(data)); len(m) > 1 {
+				return "#" + m[1]
+			}
+		}
+	}
+	return ""
+}
+
+// resolveBlog matches docs/blog/posts/<n>-<slug>.md for this spec. Resolution
+// order:
+//  1. Filename contains the spec ID.
+//  2. Front-matter artifacts block: exact `path: openspec/changes/<specID>`.
+//     When multiple posts reference the same spec, the most dedicated post wins
+//     (fewest `spec` artifacts listed); ties go to the highest post number.
+//  3. Body fallback (spec IDs ≥12 chars) when no artifact match.
+//
+// Returns "" when no post is associated (e.g. bugfix posts exempt from Rule 76).
+func resolveBlog(specID string) string {
+	matches, _ := filepath.Glob(filepath.Join("docs", "blog", "posts", "*.md"))
+	for _, m := range matches {
+		base := filepath.Base(m)
+		if strings.Contains(base, specID) {
+			return "docs/blog/posts/" + base
+		}
+	}
+	artifactRe := regexp.MustCompile(`path:\s*openspec/changes/` + regexp.QuoteMeta(specID) + `\s*[}\]]`)
+	specCountRe := regexp.MustCompile(`path:\s*openspec/changes/`)
+	best := ""
+	bestSpecs := int(^uint(0) >> 1) // max int
+	for _, m := range matches {
+		data, err := os.ReadFile(m)
+		if err != nil {
+			continue
+		}
+		if !artifactRe.Match(data) {
+			continue
+		}
+		nSpecs := len(specCountRe.FindAll(data, -1))
+		// Fewer listed specs = more dedicated post; ties → highest post number.
+		if nSpecs < bestSpecs || (nSpecs == bestSpecs && m > best) {
+			bestSpecs = nSpecs
+			best = m
+		}
+	}
+	if best != "" {
+		return "docs/blog/posts/" + filepath.Base(best)
+	}
+	for _, m := range matches {
+		if len(specID) < 12 {
+			continue
+		}
+		data, err := os.ReadFile(m)
+		if err != nil {
+			continue
+		}
+		if strings.Contains(string(data), specID) {
+			return "docs/blog/posts/" + filepath.Base(m)
+		}
+	}
+	return ""
 }

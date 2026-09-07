@@ -32,10 +32,11 @@ None documented.
 - **Code**: Done
 - **Tests**: Done
 - **Docs**: Done
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/032-r5-metrics-phases-2-4.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/r5-metrics-p2/
-- Blog: docs/blog/posts/...md
+- Issue: #933
+- PR: 
+- Spec: `openspec/changes/r5-metrics-p2/`
+- Blog: docs/blog/posts/032-r5-metrics-phases-2-4.md
+

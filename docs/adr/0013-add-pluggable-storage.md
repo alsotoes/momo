@@ -23,10 +23,11 @@ None documented.
 - **Code**: Done
 - **Tests**: Done
 - **Docs**: Done
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/006-pluggable-storage-backends.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/add-pluggable-storage/
-- Blog: docs/blog/posts/...md
+- Issue: #226
+- PR: 
+- Spec: `openspec/changes/add-pluggable-storage/`
+- Blog: docs/blog/posts/006-pluggable-storage-backends.md
+

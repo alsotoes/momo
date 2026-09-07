@@ -26,10 +26,11 @@ None documented.
 - **Code**: Planned
 - **Tests**: Planned
 - **Docs**: Planned
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: 
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/add-user-defined-paths/
-- Blog: docs/blog/posts/...md
+- Issue: #227
+- PR: 
+- Spec: `openspec/changes/add-user-defined-paths/`
+- Blog: 
+

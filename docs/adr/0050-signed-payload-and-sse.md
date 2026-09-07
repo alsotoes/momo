@@ -41,10 +41,11 @@ None documented.
 - **Code**: Partial
 - **Tests**: Partial
 - **Docs**: Done
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/039-signed-payload-sse-s3.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/signed-payload-and-sse/
-- Blog: docs/blog/posts/...md
+- Issue: #776
+- PR: 
+- Spec: `openspec/changes/signed-payload-and-sse/`
+- Blog: docs/blog/posts/039-signed-payload-sse-s3.md
+

@@ -27,10 +27,11 @@ None documented.
 - **Code**: Planned
 - **Tests**: Done
 - **Docs**: Done
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/027-governance-ai-review-spec-first.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/steering-rule-73-spec-first/
-- Blog: docs/blog/posts/...md
+- Issue: #908
+- PR: #909
+- Spec: `openspec/changes/steering-rule-73-spec-first/`
+- Blog: docs/blog/posts/027-governance-ai-review-spec-first.md
+

@@ -28,10 +28,11 @@ None documented.
 - **Code**: Done
 - **Tests**: Done
 - **Docs**: Done
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/020-r2-degraded-read-self-heal.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/r2-self-heal-rebuild/
-- Blog: docs/blog/posts/...md
+- Issue: #930
+- PR: #953
+- Spec: `openspec/changes/r2-self-heal-rebuild/`
+- Blog: docs/blog/posts/020-r2-degraded-read-self-heal.md
+

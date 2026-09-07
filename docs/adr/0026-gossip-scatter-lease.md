@@ -7,7 +7,7 @@ Proposed
 Low
 
 ## Context
-
+This specification implements decentralized Peer-to-Peer (P2P) scalability for Momo. It defines the operational requirements for background Gossip membership, parallel Scatter-Gather queries, and Lease-based transaction consensus to ensure Momo operates as a highly available, consistent, and resilient decentralized cluster.
 
 ## Decision
 - Gossip Membership & Heartbeats (Resolves #248): The system SHALL maintain active node membership and liveness dynamically using background Gossip dissemination.
@@ -24,10 +24,11 @@ None documented.
 - **Code**: Planned
 - **Tests**: Planned
 - **Docs**: Planned
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/017-scatter-gather-lease-quorum.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/gossip-scatter-lease/
-- Blog: docs/blog/posts/...md
+- Issue: #248
+- PR: 
+- Spec: `openspec/changes/gossip-scatter-lease/`
+- Blog: docs/blog/posts/017-scatter-gather-lease-quorum.md
+

@@ -34,10 +34,11 @@ None documented.
 - **Code**: Done
 - **Tests**: Partial
 - **Docs**: Planned
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/031-core-integrity-verification.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/core-integrity-verification/
-- Blog: docs/blog/posts/...md
+- Issue: #903
+- PR: #911
+- Spec: `openspec/changes/core-integrity-verification/`
+- Blog: docs/blog/posts/031-core-integrity-verification.md
+

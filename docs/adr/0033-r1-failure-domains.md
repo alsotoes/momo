@@ -26,10 +26,11 @@ None documented.
 - **Code**: Done
 - **Tests**: Done
 - **Docs**: Done
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/019-r1-failure-domain-placement.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/r1-failure-domains/
-- Blog: docs/blog/posts/...md
+- Issue: #929
+- PR: #952
+- Spec: `openspec/changes/r1-failure-domains/`
+- Blog: docs/blog/posts/019-r1-failure-domain-placement.md
+

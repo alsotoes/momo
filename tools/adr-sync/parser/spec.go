@@ -21,6 +21,7 @@ func ParseSpec(content string) model.SpecDoc {
 
 	spec.Consequences = extractSection(content, []string{"Consequences", "Impact", "Trade-offs"})
 	spec.Alternatives = parseAlternatives(content)
+	spec.Purpose = extractSection(content, []string{"Purpose", "Overview"})
 
 	return spec
 }

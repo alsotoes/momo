@@ -30,10 +30,11 @@ None documented.
 - **Code**: Planned
 - **Tests**: Planned
 - **Docs**: Planned
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/030-external-s3-client-replication-downgrade.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/add-external-client-replication/
-- Blog: docs/blog/posts/...md
+- Issue: #258
+- PR: 
+- Spec: `openspec/changes/add-external-client-replication/`
+- Blog: docs/blog/posts/030-external-s3-client-replication-downgrade.md
+

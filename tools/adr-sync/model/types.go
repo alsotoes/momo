@@ -20,6 +20,7 @@ type SpecDoc struct {
 	Requirements []Requirement
 	Consequences string
 	Alternatives []Alternative
+	Purpose      string
 }
 
 type Requirement struct {

@@ -7,7 +7,21 @@ Accepted
 High
 
 ## Context
+Momo authenticates every connection via a challenge-response HMAC handshake
+(`src/common/auth.go`). On failure, `ChallengeResponseServerPeer` returns an
+`EACCES` error and the connection handler simply closes the socket. There is
+**no throttling**: an attacker (or a misbehaving peer) that knows they will fail
+authentication can hammer the listener with an arbitrary number of handshake
+attempts per second. Each attempt costs the server:
 
+- two `crypto/rand` reads,
+- an HMAC-SHA256 verification, and
+- a connection-handler goroutine with associated logging.
+
+Because the auth token is fixed and shared cluster-wide, an online brute-force
+against the HMAC response space, or more realistically a forged/short-token
+probe, is currently un-metered. This is an online brute-force and resource
+abuse (slow, but unbounded probe-rate) exposure.
 
 ## Decision
 - Adaptive Per-Source Backoff: The authentication limiter SHALL track consecutive failed authentication attempts per source address and reject further attempts from that source for a growing delay computed as `min(baseDelay * factor^failures, maxDelay)`. Successful authentication SHALL reset the source's state.
@@ -27,10 +41,11 @@ None documented.
 - **Code**: Done
 - **Tests**: Done
 - **Docs**: Planned
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/014-confidential-dedup-oprf.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/add-adaptive-auth-backoff/
-- Blog: docs/blog/posts/...md
+- Issue: #821
+- PR: #819
+- Spec: `openspec/changes/add-adaptive-auth-backoff/`
+- Blog: docs/blog/posts/014-confidential-dedup-oprf.md
+

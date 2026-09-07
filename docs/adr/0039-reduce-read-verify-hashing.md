@@ -40,10 +40,11 @@ None documented.
 - **Code**: Planned
 - **Tests**: Partial
 - **Docs**: Planned
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/043-reduce-read-verify-hashing.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/reduce-read-verify-hashing/
-- Blog: docs/blog/posts/...md
+- Issue: #950
+- PR: #951
+- Spec: `openspec/changes/reduce-read-verify-hashing/`
+- Blog: docs/blog/posts/043-reduce-read-verify-hashing.md
+

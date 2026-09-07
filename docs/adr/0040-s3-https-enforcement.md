@@ -23,10 +23,11 @@ None documented.
 - **Code**: Partial
 - **Tests**: Partial
 - **Docs**: Done
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/011-s3-https-tls-enforcement.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/s3-https-enforcement/
-- Blog: docs/blog/posts/...md
+- Issue: #774
+- PR: 
+- Spec: `openspec/changes/s3-https-enforcement/`
+- Blog: docs/blog/posts/011-s3-https-tls-enforcement.md
+

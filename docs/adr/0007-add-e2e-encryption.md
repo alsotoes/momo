@@ -7,7 +7,14 @@ Proposed
 Medium
 
 ## Context
+All network traffic in `momo`, including file metadata, content, and authentication
+tokens, is transmitted in plaintext over TCP connections. This is CVE-009 — a
+critical security vulnerability that exposes data to eavesdropping,
+man-in-the-middle (MitM) attacks, and token replay attacks. The system is
+unsuitable for any environment that is not physically secured.
 
+Additionally, storage nodes have full visibility into file contents, filenames,
+and content hashes — there is zero server-side confidentiality.
 
 ## Decision
 - Transport TLS Encryption (Phase 1, Resolves CVE-009 #546): All TCP-based wire protocols (`momo-tcp`, `s3-tcp`) SHALL support TLS 1.2/1.3 when `tls_cert` and `tls_key` are configured. QUIC protocols (`momo-quic`, `s3-quic`) already use TLS 1.3 via QUIC but SHALL default `InsecureSkipVerify` to `false`, requiring either a CA certificate (`ca_cert`) or explicit opt-in (`tls_insecure = true`).
@@ -30,10 +37,11 @@ None documented.
 - **Code**: Partial
 - **Tests**: Partial
 - **Docs**: Partial
-- **Blog post**: docs/blog/posts/...md
+- **Blog post**: docs/blog/posts/013-e2ee-envelope-encryption.md
 
 ## References
-- Issue: #...
-- PR: #...
-- Spec: openspec/changes/add-e2e-encryption/
-- Blog: docs/blog/posts/...md
+- Issue: #152
+- PR: #779
+- Spec: `openspec/changes/add-e2e-encryption/`
+- Blog: docs/blog/posts/013-e2ee-envelope-encryption.md
+
