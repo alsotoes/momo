@@ -148,7 +148,7 @@
 **Learning:** While the primary HTTP boundary (e.g. S3 communicators and network `getMetadata` connections) validates against CRLF injection, internally serialized metadata lists passed over trusted peer networks were not validated for CRLF upon deserialization. Defense-in-depth dictates that all data deserialized from network boundaries (even peer-to-peer internal traffic) must be sanitized.
 **Prevention:** Always perform strict validation for CRLF characters (`strings.ContainsAny(val, "\r\n")`) on all boundary inputs directly in the decoding handlers (e.g., `DecodeFileMetadataList`), even if the data originates from a supposedly trusted internal cluster node.
 
-## 2024-05-24 - Validate network buffers before sanitization
-**Vulnerability:** Path traversal checks were being performed on network buffers *after* they had been passed through `common.SanitizeLog()`.
-**Learning:** Sanitization functions (like `common.SanitizeLog()`) alter or remove control characters (including null bytes) and potentially path traversal sequences. If the raw input contained path traversal sequences, `SanitizeLog` might alter them, allowing the subsequent path traversal check to pass and admitting a malicious (but altered) payload.
-**Prevention:** Always perform validation checks (like `HasPathTraversalChars`) on the raw, unsanitized input *before* passing it to logging or sanitization functions.
+## 2026-09-02 - Path Traversal Bypass via Sanitization in ReceiveMetadata
+**Vulnerability:** In `ReceiveMetadata` for `MomoTCPCommunicator` and `MomoQUICCommunicator`, `common.HasPathTraversalChars` was executed *after* passing the input to `common.SanitizeLog`. Because `SanitizeLog` alters the string, a crafted payload could bypass traversal detection.
+**Learning:** Security validation functions must be executed on the raw extracted string before passing it through any sanitization functions that might mutate or normalize characters.
+**Prevention:** Perform `common.HasPathTraversalChars` directly on `rawHash` immediately after extracting it from the wire buffer and before `common.SanitizeLog`.

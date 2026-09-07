@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="title-08 desc-08">
+  <title id="title-08">At-Rest Storage Integrity Pipeline</title>
+  <desc id="desc-08">Dual-layer integrity verification: synchronous stream hashing on read and asynchronous periodic disk scrubbing.</desc>
+
+  <defs>
+    <marker id="arrow-int" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#769267"/>
+    </marker>
+    <style>
+      .bg { fill: #FAFAFA; }
+      .title { font-family: system-ui, -apple-system, sans-serif; font-size: 16px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
+      .subtitle { font-family: system-ui, -apple-system, sans-serif; font-size: 12px; fill: #6B6B6B; text-anchor: middle; }
+      .panel { fill: #FFFFFF; stroke: #E0E0E0; stroke-width: 1.5; rx: 8; ry: 8; }
+      .head { font-family: system-ui, -apple-system, sans-serif; font-size: 13px; font-weight: 700; text-anchor: middle; }
+      .code { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; }
+      .sub { font-family: system-ui, -apple-system, sans-serif; font-size: 11px; fill: #6B6B6B; }
+      .flow { fill: none; stroke: #769267; stroke-width: 2; stroke-linecap: round; marker-end: url(#arrow-int); }
+    </style>
+  </defs>
+
+  <rect width="640" height="360" class="bg"/>
+
+  <text x="320" y="32" class="title">Dual-Layer Storage Integrity Architecture</text>
+  <text x="320" y="52" class="subtitle">Real-time verify-on-read combined with autonomous background disk scrubbing</text>
+
+  <!-- Left: In-Band Verify-on-Read -->
+  <g transform="translate(30, 75)">
+    <rect x="0" y="0" width="275" height="175" class="panel" stroke="#769267"/>
+    <text x="137" y="26" class="head" fill="#769267">Layer 1: Verify-on-Read</text>
+    
+    <g transform="translate(15, 45)">
+      <text y="15" class="code" fill="#769267">vr = verifyingReader(stream)</text>
+      <text y="35" class="sub">• Streams bytes directly to socket</text>
+      <text y="55" class="sub">• Pumps bytes through SHA-256</text>
+      <text y="80" class="code" fill="#563A10">At EOF: Digest == Hash?</text>
+      <text y="105" class="sub" fill="#769267">✓ Match: Clean io.EOF returned</text>
+      <text y="125" class="sub" fill="#dc2626">✗ Mismatch: Returns syscall.EBADMSG</text>
+    </g>
+  </g>
+
+  <!-- Right: Out-of-Band Background Scrub -->
+  <g transform="translate(335, 75)">
+    <rect x="0" y="0" width="275" height="175" class="panel" stroke="#F47983"/>
+    <text x="137" y="26" class="head" fill="#F47983">Layer 2: Background Scrub</text>
+    
+    <g transform="translate(15, 45)">
+      <text y="15" class="code" fill="#F47983">StartScrub(Interval: 1 hour)</text>
+      <text y="35" class="sub">• Audits cold unread disk blocks</text>
+      <text y="55" class="sub">• Scans Bbolt bucketObjects</text>
+      <text y="80" class="code" fill="#563A10">On Corruption Detected:</text>
+      <text y="105" class="sub" fill="#dc2626">• Move key to bucketQuarantine</text>
+      <text y="125" class="sub" fill="#769267">• Signal R2 Self-Heal Rebuild</text>
+    </g>
+  </g>
+
+  <!-- Bottom Invariant Banner -->
+  <g transform="translate(30, 265)">
+    <rect x="0" y="0" width="580" height="70" rx="8" ry="8" fill="#FEFEF9" stroke="#E8DFD8" stroke-width="1.5"/>
+    <text x="20" y="24" style="font-family:system-ui,sans-serif;font-size:12px;font-weight:700;fill:#563A10;">🛡 Sentinel Invariant: Zero Silent Corruption</text>
+    <text x="20" y="44" style="font-family:system-ui,sans-serif;font-size:11px;fill:#2D2D2D;">Corrupted data can never conclude with a clean EOF. The network connection is torn down,</text>
+    <text x="20" y="58" style="font-family:system-ui,sans-serif;font-size:11px;fill:#2D2D2D;">preventing bad bytes from ever reaching client application memory.</text>
+  </g>
+</svg>

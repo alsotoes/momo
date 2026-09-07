@@ -2,6 +2,7 @@
 title: "External S3 Client Replication Downgrade: When aws-cli Can't Fan Out"
 date: 2026-07-01T23:36:39Z
 draft: false
+post_type: issue
 tags: [s3, replication, bolt, sentinel]
 categories: [s3]
 summary: "External S3 clients like aws-cli don't send momo headers — the server detects this and downgrades client-side replication modes to server-side alternatives, ensuring replication never silently drops."
@@ -13,8 +14,6 @@ related:
   - 018-adaptive-scaling-peer-quality
   - 041-architecture-decision-records
 ---
-# External S3 Client Replication Downgrade
-
 External S3 clients (aws-cli, rclone, boto3, etc.) don't speak momo's private handshake protocol — they don't send `X-Momo-Requested-Mode` or `X-Momo-Timestamp` headers. The server previously treated missing headers as forwarded peer connections (valid timestamp ≠ `DummyEpoch`) and applied `ReplicationNone` — **no replication occurred**. Even worse, `primary-splay` (mode 3) requires the *client* to fan out to replicas, which external S3 clients fundamentally cannot do.
 
 ## The Problem
@@ -57,7 +56,7 @@ When an external S3 client connects:
 
 ## Standards
 
-Per [docs/STANDARDS.md](../STANDARDS.md), this follows ⚡ **Bolt** (zero-alloc CSV parsing, single config key) and 🛡 **Sentinel** (fail-closed: missing header = external client, never silent `ReplicationNone`).
+Per [docs/STANDARDS.md](../../STANDARDS.md), this follows ⚡ **Bolt** (zero-alloc CSV parsing, single config key) and 🛡 **Sentinel** (fail-closed: missing header = external client, never silent `ReplicationNone`).
 
 ## Follow-ups
 

@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="title-02a desc-02a">
+  <title id="title-02a">Replication Topologies: Splay vs Chain</title>
+  <desc id="desc-02a">Comparison of Splay (parallel server fan-out) and Chain (pipelined daisy-chain) replication strategies in momo.</desc>
+
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#F47983"/>
+    </marker>
+    <marker id="arrow-chain" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#769267"/>
+    </marker>
+    <style>
+      .bg { fill: #FAFAFA; }
+      .title { font-family: system-ui, -apple-system, sans-serif; font-size: 16px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
+      .subtitle { font-family: system-ui, -apple-system, sans-serif; font-size: 12px; fill: #6B6B6B; text-anchor: middle; }
+      .panel-title { font-family: system-ui, -apple-system, sans-serif; font-size: 14px; font-weight: 700; text-anchor: middle; }
+      .node-rect { fill: #FFFFFF; stroke: #E0E0E0; stroke-width: 1.5; rx: 8; ry: 8; }
+      .node-text { font-family: system-ui, -apple-system, sans-serif; font-size: 12px; font-weight: 600; fill: #2D2D2D; text-anchor: middle; }
+      .node-sub { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; fill: #6B6B6B; text-anchor: middle; }
+      .stat-text { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; fill: #563A10; }
+      .flow-splay { fill: none; stroke: #F47983; stroke-width: 2; stroke-linecap: round; marker-end: url(#arrow); }
+      .flow-chain { fill: none; stroke: #769267; stroke-width: 2; stroke-linecap: round; marker-end: url(#arrow-chain); }
+    </style>
+  </defs>
+
+  <rect width="640" height="360" class="bg"/>
+
+  <!-- Title Header -->
+  <text x="320" y="32" class="title">Replication Strategies: Splay vs. Chain</text>
+  <text x="320" y="52" class="subtitle">Comparing concurrent server fan-out against pipelined sequential forwarding</text>
+
+  <!-- PANEL 1: SPLAY REPLICATION (Left) -->
+  <g transform="translate(30, 70)">
+    <rect x="0" y="0" width="275" height="260" rx="10" ry="10" fill="#FFFFFF" stroke="#F47983" stroke-width="1.5"/>
+    <text x="137" y="25" class="panel-title" fill="#F47983">SPLAY (Server Fan-Out)</text>
+
+    <!-- Client -->
+    <rect x="88" y="42" width="100" height="34" class="node-rect" stroke="#F47983"/>
+    <text x="138" y="63" class="node-text">Client</text>
+
+    <!-- Flow: Client -> Primary -->
+    <path d="M138, 76 V100" class="flow-splay"/>
+
+    <!-- Primary Node N0 -->
+    <rect x="78" y="105" width="120" height="40" class="node-rect" stroke="#F47983" stroke-width="2"/>
+    <text x="138" y="123" class="node-text">Node 0 (Primary)</text>
+    <text x="138" y="137" class="node-sub">Local CAS Put</text>
+
+    <!-- Fan-out flows -->
+    <path d="M108, 145 L65, 178" class="flow-splay"/>
+    <path d="M168, 145 L210, 178" class="flow-splay"/>
+
+    <!-- Secondary Nodes N1, N2 -->
+    <rect x="20" y="182" width="95" height="34" class="node-rect" stroke="#FCC9B9"/>
+    <text x="67" y="199" class="node-text">Node 1</text>
+    <text x="67" y="211" class="node-sub">Replica</text>
+
+    <rect x="160" y="182" width="95" height="34" class="node-rect" stroke="#FCC9B9"/>
+    <text x="207" y="199" class="node-text">Node 2</text>
+    <text x="207" y="211" class="node-sub">Replica</text>
+
+    <!-- Tradeoffs Box -->
+    <rect x="15" y="224" width="245" height="26" rx="4" fill="#FEFEF9" stroke="#E8DFD8"/>
+    <text x="25" y="241" class="stat-text">Latency: O(1) hop | Egress: (R-1)x</text>
+  </g>
+
+  <!-- PANEL 2: CHAIN REPLICATION (Right) -->
+  <g transform="translate(335, 70)">
+    <rect x="0" y="0" width="275" height="260" rx="10" ry="10" fill="#FFFFFF" stroke="#769267" stroke-width="1.5"/>
+    <text x="137" y="25" class="panel-title" fill="#769267">CHAIN (Pipelined Relay)</text>
+
+    <!-- Client -->
+    <rect x="88" y="42" width="100" height="34" class="node-rect" stroke="#769267"/>
+    <text x="138" y="63" class="node-text">Client</text>
+
+    <!-- Flow: Client -> N0 -->
+    <path d="M138, 76 V95" class="flow-chain"/>
+
+    <!-- Node N0 -->
+    <rect x="78" y="98" width="120" height="34" class="node-rect" stroke="#769267"/>
+    <text x="138" y="115" class="node-text">Node 0 (Head)</text>
+    <text x="138" y="127" class="node-sub">1x Egress</text>
+
+    <!-- Flow: N0 -> N1 -->
+    <path d="M138, 132 V148" class="flow-chain"/>
+
+    <!-- Node N1 -->
+    <rect x="78" y="152" width="120" height="34" class="node-rect" stroke="#8AB87A"/>
+    <text x="138" y="169" class="node-text">Node 1 (Relay)</text>
+    <text x="138" y="181" class="node-sub">1x Egress</text>
+
+    <!-- Flow: N1 -> N2 -->
+    <path d="M138, 186 V202" class="flow-chain"/>
+
+    <!-- Node N2 -->
+    <rect x="78" y="206" width="120" height="34" class="node-rect" stroke="#8AB87A"/>
+    <text x="138" y="223" class="node-text">Node 2 (Tail)</text>
+    <text x="138" y="235" class="node-sub">Terminal ACK</text>
+
+    <!-- Tradeoffs Box -->
+    <rect x="15" y="244" width="245" height="12" fill="none"/>
+  </g>
+</svg>

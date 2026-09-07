@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="title-13 desc-13">
+  <title id="title-13">S3 In-Band Integrity Checksums Flow</title>
+  <desc id="desc-13">End-to-end streaming verification of x-amz-checksum-* headers in momo's S3 gateway.</desc>
+
+  <defs>
+    <marker id="arrow-cs" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#F47983"/>
+    </marker>
+    <style>
+      .bg { fill: #FAFAFA; }
+      .title { font-family: system-ui, -apple-system, sans-serif; font-size: 16px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
+      .subtitle { font-family: system-ui, -apple-system, sans-serif; font-size: 12px; fill: #6B6B6B; text-anchor: middle; }
+      .card { fill: #FFFFFF; stroke: #E0E0E0; stroke-width: 1.5; rx: 8; ry: 8; }
+      .head { font-family: system-ui, -apple-system, sans-serif; font-size: 13px; font-weight: 700; text-anchor: middle; }
+      .code { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; text-anchor: middle; }
+      .sub { font-family: system-ui, -apple-system, sans-serif; font-size: 11px; fill: #6B6B6B; text-anchor: middle; }
+      .flow { fill: none; stroke: #F47983; stroke-width: 2; stroke-linecap: round; marker-end: url(#arrow-cs); }
+    </style>
+  </defs>
+
+  <rect width="640" height="360" class="bg"/>
+
+  <text x="320" y="32" class="title">S3 In-Band Integrity Checksums</text>
+  <text x="320" y="52" class="subtitle">End-to-end streaming digest validation with zero intermediate disk buffering</text>
+
+  <!-- Step 1: Client Upload with Header -->
+  <g transform="translate(30, 75)">
+    <rect x="0" y="0" width="165" height="175" class="card" stroke="#563A10"/>
+    <text x="82" y="28" class="head" fill="#563A10">1. Client Request</text>
+    <text x="82" y="52" class="code" fill="#F47983">x-amz-checksum-*</text>
+    <text x="82" y="78" class="sub">• CRC32 / CRC32C</text>
+    <text x="82" y="98" class="sub">• SHA-1 / SHA-256</text>
+    <text x="82" y="118" class="sub">• Base64 encoded digest</text>
+    <rect x="15" y="135" width="135" height="26" rx="4" fill="#FEFEF9" stroke="#E0E0E0"/>
+    <text x="82" y="152" class="code" fill="#563A10">Additive Contract</text>
+  </g>
+
+  <!-- Flow 1 -> 2 -->
+  <path d="M195, 155 H235" class="flow"/>
+
+  <!-- Step 2: Core Streaming Verification -->
+  <g transform="translate(238, 75)">
+    <rect x="0" y="0" width="165" height="175" class="card" stroke="#F47983" stroke-width="2"/>
+    <text x="82" y="28" class="head" fill="#F47983">2. Core Ingest</text>
+    <text x="82" y="52" class="code" fill="#F47983">io.TeeReader</text>
+    <text x="82" y="78" class="sub">• Stream to Hasher</text>
+    <text x="82" y="98" class="sub">• Stream to CAS Store</text>
+    <text x="82" y="118" class="sub">• 0 memory copying</text>
+    <rect x="15" y="135" width="135" height="26" rx="4" fill="rgba(244,121,131,0.12)"/>
+    <text x="82" y="152" class="code" fill="#F47983">ChecksumProvider</text>
+  </g>
+
+  <!-- Flow 2 -> 3 -->
+  <path d="M403, 155 H443" class="flow"/>
+
+  <!-- Step 3: Enforcement & Echo -->
+  <g transform="translate(445, 75)">
+    <rect x="0" y="0" width="165" height="175" class="card" stroke="#769267" stroke-width="2"/>
+    <text x="82" y="28" class="head" fill="#769267">3. Enforcement</text>
+    <text x="82" y="52" class="code" fill="#769267">400 BadDigest</text>
+    <text x="82" y="78" class="sub">• Mismatch -> Purge blob</text>
+    <text x="82" y="98" class="sub">• Match -> Commit bbolt</text>
+    <text x="82" y="118" class="sub">• Echo on GET (200/206)</text>
+    <rect x="15" y="135" width="135" height="26" rx="4" fill="rgba(118,146,103,0.15)"/>
+    <text x="82" y="152" class="code" fill="#769267">Replication Echo</text>
+  </g>
+
+  <!-- Bottom Invariant Banner -->
+  <g transform="translate(30, 265)">
+    <rect x="0" y="0" width="580" height="70" rx="8" ry="8" fill="#FEFEF9" stroke="#E8DFD8" stroke-width="1.5"/>
+    <text x="20" y="24" style="font-family:system-ui,sans-serif;font-size:12px;font-weight:700;fill:#563A10;">🛡 Commodity Protocol Principle</text>
+    <text x="20" y="44" style="font-family:ui-monospace,monospace;font-size:11px;fill:#2D2D2D;">Checksum verification lives in the storage core — S3 error translation happens in the adapter.</text>
+    <text x="20" y="58" style="font-family:ui-monospace,monospace;font-size:11px;fill:#6B6B6B;">Secondary replicas re-verify expected digests before committing forwarded data (#903).</text>
+  </g>
+</svg>

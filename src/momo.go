@@ -1,6 +1,7 @@
 package main
 
 import (
+	"compress/gzip"
 	"context"
 	"encoding/hex"
 	"encoding/json"
@@ -10,6 +11,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -43,7 +45,7 @@ func main() {
 //	-config: Path to the configuration file (default: "conf/momo.conf").
 //	-mode: Replication mode code for "repl" impersonation.
 func Run() {
-	impersonationPtr := flag.String("imp", "client", "Server, client, metric server or replication changer (repl) impersonation")
+	impersonationPtr := flag.String("imp", "client", "Server, client, metric server, replication changer (repl), backup, or restore impersonation")
 	serverIdPtr := flag.Int("id", -1, "Server daemon id")
 	filePathPtr := flag.String("file", "/tmp/momo", "File path to upload")
 	configPathPtr := flag.String("config", "conf/momo.conf", "Path to the configuration file")
@@ -54,6 +56,10 @@ func Run() {
 	outPathPtr := flag.String("out", "", "Output path for -imp s3enc / s3dec")
 	mountPointPtr := flag.String("fs-mount", "", "Mount point for -imp fs (momofs FUSE)")
 	fsDataPtr := flag.String("fs-data", "", "Optional data directory override for -imp fs (default: daemon data dir from config)")
+	backupOutputPtr := flag.String("backup-output", "", "Output file path for -imp backup")
+	backupCompressPtr := flag.Bool("backup-compress", false, "Compress backup with gzip")
+	restoreInputPtr := flag.String("restore-input", "", "Input backup file path for -imp restore")
+	restoreForcePtr := flag.Bool("restore-force", false, "Overwrite existing database when restoring")
 	flag.Parse()
 
 	cfg, err := common.GetConfig(*configPathPtr)
@@ -160,6 +166,20 @@ func Run() {
 		if err := runFuseMount(cfg, *serverIdPtr, *mountPointPtr, *fsDataPtr); err != nil {
 			log.Fatalf("momofs mount error: %v", common.SanitizeLog(err.Error()))
 		}
+	case "backup":
+		if *backupOutputPtr == "" {
+			log.Fatalf("-backup-output is required for -imp backup: %v", syscall.EINVAL)
+		}
+		if err := runBackup(cfg, *backupOutputPtr, *backupCompressPtr); err != nil {
+			log.Fatalf("Backup failed: %v", common.SanitizeLog(err.Error()))
+		}
+	case "restore":
+		if *restoreInputPtr == "" {
+			log.Fatalf("-restore-input is required for -imp restore: %v", syscall.EINVAL)
+		}
+		if err := runRestore(*restoreInputPtr, *restoreForcePtr); err != nil {
+			log.Fatalf("Restore failed: %v", common.SanitizeLog(err.Error()))
+		}
 	default:
 		log.Fatalf("*** ERROR: Option unknown: %s", common.SanitizeLog(*impersonationPtr))
 	}
@@ -265,6 +285,113 @@ func runS3Envelope(mode, filePath, outPath, e2eeKey, keyID string) error {
 			return fmt.Errorf("failed to sync %s: %w", outPath, err)
 		}
 	}
+	return nil
+}
+
+// runBackup creates a consistent backup of the metadata database.
+func runBackup(cfg common.Configuration, outputPath string, compress bool) error {
+	// Determine the data directory from the first daemon (for single-node backup)
+	if len(cfg.Daemons) == 0 {
+		return fmt.Errorf("no daemons configured: %w", syscall.EINVAL)
+	}
+
+	daemon := *cfg.Daemons[0]
+	encKeyHex := ""
+	if cfg.Global.EncryptionEnabled {
+		masterKey, decErr := hex.DecodeString(cfg.Global.EncryptionKey)
+		if decErr != nil {
+			return fmt.Errorf("failed to decode encryption key: %v: %w", decErr, syscall.EINVAL)
+		}
+		atRestKey, kErr := momocrypto.DeriveKey(masterKey, cfg.Global.EncryptionTenant, momocrypto.DomainAtRest)
+		if kErr != nil {
+			return fmt.Errorf("failed to derive at-rest key: %w", kErr)
+		}
+		encKeyHex = hex.EncodeToString(atRestKey)
+	}
+
+	store, err := storage.NewStore(cfg.Storage, &daemon, encKeyHex)
+	if err != nil {
+		return fmt.Errorf("failed to initialize storage: %w", err)
+	}
+	defer store.Close()
+
+	// Cast to CASStore to access Backup method
+	casStore, ok := store.(*storage.CASStore)
+	if !ok {
+		return fmt.Errorf("backup requires CASStore backend: %w", syscall.EINVAL)
+	}
+
+	// Open output file
+	var out *os.File
+	if compress {
+		out, err = os.Create(outputPath + ".gz")
+		if err != nil {
+			return fmt.Errorf("failed to create output file: %w", err)
+		}
+		defer out.Close()
+		gz := gzip.NewWriter(out)
+		defer gz.Close()
+		log.Printf("Creating compressed backup to %s.gz", outputPath)
+		if err := casStore.Backup(gz); err != nil {
+			return fmt.Errorf("backup failed: %w", err)
+		}
+		if err := gz.Close(); err != nil {
+			return fmt.Errorf("failed to close gzip writer: %w", err)
+		}
+	} else {
+		out, err = os.Create(outputPath)
+		if err != nil {
+			return fmt.Errorf("failed to create output file: %w", err)
+		}
+		defer out.Close()
+		log.Printf("Creating backup to %s", outputPath)
+		if err := casStore.Backup(out); err != nil {
+			return fmt.Errorf("backup failed: %w", err)
+		}
+	}
+	if err := out.Sync(); err != nil {
+		return fmt.Errorf("failed to sync backup file: %w", err)
+	}
+	log.Printf("Backup completed successfully")
+	return nil
+}
+
+// runRestore restores the metadata database from a backup file.
+func runRestore(inputPath string, force bool) error {
+	// Handle .gz files
+	if strings.HasSuffix(inputPath, ".gz") {
+		f, err := os.Open(inputPath)
+		if err != nil {
+			return fmt.Errorf("failed to open compressed backup: %w", err)
+		}
+		defer f.Close()
+		gz, err := gzip.NewReader(f)
+		if err != nil {
+			return fmt.Errorf("failed to create gzip reader: %w", err)
+		}
+		defer gz.Close()
+
+		// Decompress to a temporary file
+		tmpFile, err := os.CreateTemp("", "momo-restore-*.db")
+		if err != nil {
+			return fmt.Errorf("failed to create temp file: %w", err)
+		}
+		defer os.Remove(tmpFile.Name())
+		defer tmpFile.Close()
+
+		if _, err := io.Copy(tmpFile, gz); err != nil {
+			return fmt.Errorf("failed to decompress backup: %w", err)
+		}
+		if err := tmpFile.Close(); err != nil {
+			return fmt.Errorf("failed to close temp file: %w", err)
+		}
+		inputPath = tmpFile.Name()
+	}
+
+	if err := storage.Restore(inputPath, "momo.db", force); err != nil {
+		return fmt.Errorf("restore failed: %w", err)
+	}
+	log.Printf("Restore completed successfully")
 	return nil
 }
 

@@ -3,10 +3,14 @@ package p2p
 import (
 	"encoding/json"
 	"log"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/storage"
 )
 
 const (
@@ -55,6 +59,7 @@ type ResolveMetadataReply struct {
 	VectorClock      []uint64
 	Checksum         uint32
 	Error            string
+	ModTime          int64
 }
 
 // ReplicateMetadataArgs is the payload for a ReplicateMetadata RPC request.
@@ -67,6 +72,24 @@ type ReplicateMetadataArgs struct {
 type ReplicateMetadataReply struct {
 	Success bool
 	Error   string
+}
+
+// ListShardArgs is the payload for a ListShard RPC request.
+type ListShardArgs struct {
+	ShardKey          string
+	Prefix            string
+	Delimiter         string
+	MaxKeys           int
+	ContinuationToken string
+	FetchOwner        bool
+}
+
+// ListShardReply is the payload for a ListShard RPC response.
+type ListShardReply struct {
+	Files                 []common.FileMetadata
+	CommonPrefixes        []string
+	NextContinuationToken string
+	Error                 string
 }
 
 // Encode/Decode functions for the payloads.
@@ -132,12 +155,32 @@ func DecodeReplicateMetadataReply(data []byte) (*ReplicateMetadataReply, error) 
 	return &reply, err
 }
 
+func EncodeListShardArgs(args *ListShardArgs) ([]byte, error) {
+	return json.Marshal(args)
+}
+
+func DecodeListShardArgs(data []byte) (*ListShardArgs, error) {
+	var args ListShardArgs
+	err := json.Unmarshal(data, &args)
+	return &args, err
+}
+
+func EncodeListShardReply(reply *ListShardReply) ([]byte, error) {
+	return json.Marshal(reply)
+}
+
+func DecodeListShardReply(data []byte) (*ListShardReply, error) {
+	var reply ListShardReply
+	err := json.Unmarshal(data, &reply)
+	return &reply, err
+}
+
 // MetadataRPCProvider handles distributed metadata RPCs.
 type MetadataRPCProvider struct {
 	localID   int32
 	transport Transport
 	ring      *Ring
-	store     interface{} // Store interface; avoided circular import
+	store     *storage.CASStore
 
 	nextRequestID atomic.Uint64
 	pendingMu     sync.Mutex
@@ -158,7 +201,7 @@ type MetadataResponse struct {
 }
 
 // NewMetadataRPCProvider creates a new MetadataRPCProvider.
-func NewMetadataRPCProvider(localID int32, transport Transport, ring *Ring, store interface{}) *MetadataRPCProvider {
+func NewMetadataRPCProvider(localID int32, transport Transport, ring *Ring, store *storage.CASStore) *MetadataRPCProvider {
 	return &MetadataRPCProvider{
 		localID:   localID,
 		transport: transport,
@@ -188,20 +231,36 @@ func (m *MetadataRPCProvider) HandleRPC(rpc *RPC) {
 		m.handleReplicateMetadata(rpc)
 	case MsgReplicateMetadataResponse:
 		m.handleReplicateMetadataResponse(rpc)
+	case MsgListShard:
+		m.handleListShard(rpc)
+	case MsgListShardResponse:
+		m.handleListShardResponse(rpc)
 	}
 }
 
 // handlePutMetadata processes an incoming PutMetadata request.
 func (m *MetadataRPCProvider) handlePutMetadata(rpc *RPC) {
-	_, err := DecodePutMetadataArgs(rpc.Payload)
+	args, err := DecodePutMetadataArgs(rpc.Payload)
 	if err != nil {
 		log.Printf("MetadataRPC: failed to decode PutMetadata from peer %d: %v (errno=%d)", rpc.From, err, syscall.EBADMSG)
 		return
 	}
 
-	// TODO: Implement actual storage write when CASStore is wired
-	// For now, return success to unblock Phase 1 compilation
-	reply := &PutMetadataReply{Success: true}
+	// Write metadata with distributed fields
+	err = m.store.PutWithMetadata(
+		args.Name,
+		args.Hash,
+		args.Size,
+		args.RemotePath,
+		nil, // content is nil for metadata-only RPC; blob written separately
+		args.VectorClock,
+		args.ShardKey,
+		args.MetadataReplicas,
+	)
+	reply := &PutMetadataReply{Success: err == nil}
+	if err != nil {
+		reply.Error = err.Error()
+	}
 	payload, _ := EncodePutMetadataReply(reply)
 	m.transport.Send(rpc.From, &RPC{
 		Type:    MsgPutMetadataResponse,
@@ -221,14 +280,29 @@ func (m *MetadataRPCProvider) handlePutMetadataResponse(rpc *RPC) {
 
 // handleResolveMetadata processes an incoming ResolveMetadata request.
 func (m *MetadataRPCProvider) handleResolveMetadata(rpc *RPC) {
-	_, err := DecodeResolveMetadataArgs(rpc.Payload)
+	args, err := DecodeResolveMetadataArgs(rpc.Payload)
 	if err != nil {
 		log.Printf("MetadataRPC: failed to decode ResolveMetadata from peer %d: %v (errno=%d)", rpc.From, err, syscall.EBADMSG)
 		return
 	}
 
-	// TODO: Implement actual metadata lookup when CASStore is wired
-	reply := &ResolveMetadataReply{Error: "not implemented"}
+	// Read metadata from local store
+	meta, err := m.store.GetMeta(args.Name)
+	reply := &ResolveMetadataReply{}
+	if err != nil {
+		if err == syscall.ENOENT {
+			reply.Error = "not found"
+		} else {
+			reply.Error = err.Error()
+		}
+	} else {
+		reply.Hash = meta.Hash
+		reply.Size = meta.Size
+		reply.RemotePath = meta.RemotePath
+		reply.S3Headers = meta.S3Headers
+		// ModTime needs to be converted
+		reply.ModTime = meta.ModTime
+	}
 	payload, _ := EncodeResolveMetadataReply(reply)
 	m.transport.Send(rpc.From, &RPC{
 		Type:    MsgResolveMetadataResponse,
@@ -248,14 +322,68 @@ func (m *MetadataRPCProvider) handleResolveMetadataResponse(rpc *RPC) {
 
 // handleReplicateMetadata processes an incoming ReplicateMetadata request.
 func (m *MetadataRPCProvider) handleReplicateMetadata(rpc *RPC) {
-	_, err := DecodeReplicateMetadataArgs(rpc.Payload)
+	args, err := DecodeReplicateMetadataArgs(rpc.Payload)
 	if err != nil {
 		log.Printf("MetadataRPC: failed to decode ReplicateMetadata from peer %d: %v (errno=%d)", rpc.From, err, syscall.EBADMSG)
 		return
 	}
 
-	// TODO: Implement actual replication write when CASStore is wired
-	reply := &ReplicateMetadataReply{Success: true}
+	// Decode the ObjectMeta from the args.Meta map
+	// For now, we'll use the simpler approach of writing the metadata directly
+	// The args.Meta should contain the fields from PutMetadataArgs
+	var name, hash, shardKey, remotePath string
+	var size int64
+	var vectorClock []uint64
+	var metadataReplicas []int32
+
+	if args.Meta != nil {
+		if v, ok := args.Meta["Name"].(string); ok {
+			name = v
+		}
+		if v, ok := args.Meta["Hash"].(string); ok {
+			hash = v
+		}
+		if v, ok := args.Meta["Size"].(float64); ok {
+			size = int64(v)
+		}
+		if v, ok := args.Meta["RemotePath"].(string); ok {
+			remotePath = v
+		}
+		if v, ok := args.Meta["ShardKey"].(string); ok {
+			shardKey = v
+		}
+		if v, ok := args.Meta["VectorClock"].([]interface{}); ok {
+			vectorClock = make([]uint64, len(v))
+			for i, val := range v {
+				if f, ok := val.(float64); ok {
+					vectorClock[i] = uint64(f)
+				}
+			}
+		}
+		if v, ok := args.Meta["MetadataReplicas"].([]interface{}); ok {
+			metadataReplicas = make([]int32, len(v))
+			for i, val := range v {
+				if f, ok := val.(float64); ok {
+					metadataReplicas[i] = int32(f)
+				}
+			}
+		}
+	}
+
+	err = m.store.PutWithMetadata(
+		name,
+		hash,
+		size,
+		remotePath,
+		nil,
+		vectorClock,
+		shardKey,
+		metadataReplicas,
+	)
+	reply := &ReplicateMetadataReply{Success: err == nil}
+	if err != nil {
+		reply.Error = err.Error()
+	}
 	payload, _ := EncodeReplicateMetadataReply(reply)
 	m.transport.Send(rpc.From, &RPC{
 		Type:    MsgReplicateMetadataResponse,
@@ -268,6 +396,67 @@ func (m *MetadataRPCProvider) handleReplicateMetadataResponse(rpc *RPC) {
 	reply, err := DecodeReplicateMetadataReply(rpc.Payload)
 	if err != nil {
 		log.Printf("MetadataRPC: failed to decode ReplicateMetadataResponse from peer %d: %v (errno=%d)", rpc.From, err, syscall.EBADMSG)
+		return
+	}
+	m.completePending(rpc.From, reply, err)
+}
+
+// handleListShard processes an incoming ListShard request.
+func (m *MetadataRPCProvider) handleListShard(rpc *RPC) {
+	args, err := DecodeListShardArgs(rpc.Payload)
+	if err != nil {
+		log.Printf("MetadataRPC: failed to decode ListShard from peer %d: %v (errno=%d)", rpc.From, err, syscall.EBADMSG)
+		return
+	}
+
+	// List files in the local store with the given prefix
+	files, err := m.store.List()
+	if err != nil {
+		reply := &ListShardReply{Error: err.Error()}
+		payload, _ := EncodeListShardReply(reply)
+		m.transport.Send(rpc.From, &RPC{
+			Type:    MsgListShardResponse,
+			Payload: payload,
+		})
+		return
+	}
+
+	// Filter by shard key and prefix
+	var filtered []common.FileMetadata
+	for _, f := range files {
+		if !strings.HasPrefix(f.Name, args.Prefix) {
+			continue
+		}
+		// Check if this file belongs to the requested shard
+		if args.ShardKey != "" {
+			fileShardKey := ShardKey(f.Name)
+			if fileShardKey != args.ShardKey {
+				continue
+			}
+		}
+		filtered = append(filtered, f)
+	}
+
+	// Simple pagination - just return up to MaxKeys
+	if args.MaxKeys > 0 && len(filtered) > args.MaxKeys {
+		filtered = filtered[:args.MaxKeys]
+	}
+
+	reply := &ListShardReply{
+		Files: filtered,
+	}
+	payload, _ := EncodeListShardReply(reply)
+	m.transport.Send(rpc.From, &RPC{
+		Type:    MsgListShardResponse,
+		Payload: payload,
+	})
+}
+
+// handleListShardResponse processes a response to our ListShard request.
+func (m *MetadataRPCProvider) handleListShardResponse(rpc *RPC) {
+	reply, err := DecodeListShardReply(rpc.Payload)
+	if err != nil {
+		log.Printf("MetadataRPC: failed to decode ListShardResponse from peer %d: %v (errno=%d)", rpc.From, err, syscall.EBADMSG)
 		return
 	}
 	m.completePending(rpc.From, reply, err)
@@ -302,4 +491,11 @@ func (m *MetadataRPCProvider) ResolveMetadata(args *ResolveMetadataArgs) (*Resol
 func (m *MetadataRPCProvider) ReplicateMetadata(args *ReplicateMetadataArgs) (*ReplicateMetadataReply, error) {
 	// Phase 1: just compile; Phase 2 will implement replication
 	return &ReplicateMetadataReply{Success: true}, nil
+}
+
+// ListShard calls ListShard on the shard owner or replicas.
+// This is the Phase 4 shard-aware list path.
+func (m *MetadataRPCProvider) ListShard(args *ListShardArgs) (*ListShardReply, error) {
+	// Phase 4: implement shard-aware listing
+	return &ListShardReply{Error: "not implemented"}, nil
 }

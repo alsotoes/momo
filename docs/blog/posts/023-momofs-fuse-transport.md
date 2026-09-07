@@ -2,6 +2,7 @@
 title: 'R4: momofs FUSE Transport — Mounting Momo as a Filesystem'
 date: 2026-08-28 15:57:34+00:00
 draft: false
+post_type: architecture
 tags:
 - go
 - momofs
@@ -31,6 +32,8 @@ Issue #962 → PR #963: `momo -imp fs` exposes the CAS-store-backed POSIX core
 `bazil.org/fuse` binding (v0.0.0-20230120002735).
 
 ## What shipped
+
+{{< diagram src="/diagrams/09-fuse-mount-stack.svg" alt="momofs FUSE transport stack" caption="Figure 1: Architectural layers bridging POSIX filesystem calls to the immutable CAS store" >}}
 
 - **Mount entrypoint**: `momo -imp fs` + `-fs-mount`/`-fs-data`, mounted via
   `ServeFUSE` with a ctx-cancellable connection, `UnmountFUSE` on shutdown

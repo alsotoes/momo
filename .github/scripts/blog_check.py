@@ -33,6 +33,7 @@ VALID_CATEGORIES = {
     "encryption", "momofs", "performance", "governance", "metrics", "roadmap",
 }
 FRONT_MATTER_RE = re.compile(r"^---\r?\n(.*?)\r?\n---\r?\n", re.DOTALL)
+FILENAME_PATTERN = re.compile(r"^\d{3}-.+\.md$")
 
 
 def parse_front_matter(path: Path) -> tuple[dict, str]:
@@ -48,6 +49,11 @@ def parse_front_matter(path: Path) -> tuple[dict, str]:
 
 
 def check_post(path: Path, now: dt.datetime, errors: list[str]) -> None:
+    if not FILENAME_PATTERN.match(path.name):
+        errors.append(
+            f"{path.relative_to(ROOT)}: filename must match NNN-slug.md pattern (e.g., 001-origin-and-genesis.md)"
+        )
+
     fm, _ = parse_front_matter(path)
     if not fm:
         errors.append(f"{path.relative_to(ROOT)}: missing YAML front matter")

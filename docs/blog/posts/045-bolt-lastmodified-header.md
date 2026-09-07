@@ -2,6 +2,7 @@
 title: '⚡ Bolt: Zero-Allocation Last-Modified Headers'
 date: 2026-09-01 11:19:08+00:00
 draft: false
+post_type: issue
 tags:
 - go
 - bolt
@@ -26,7 +27,7 @@ related:
 - 024-bolt-performance-engineering
 - 036-s3-listxml-appendformat-optimization
 - 012-s3-integrity-checksums
-- bolt-s3-copyresult-time-alloc
+- 047-bolt-s3-copyresult-time-alloc
 ---
 
 ## One allocation per request, invisible until it isn't
@@ -39,7 +40,7 @@ all headed straight for the garbage collector.
 
 The fix is the same standard-library idiom we already shipped for XML
 LastModified rendering in
-[`bolt-s3-copyresult-time-alloc`](042-s3-listxml-appendformat.md): stop asking
+[`047-bolt-s3-copyresult-time-alloc`](047-bolt-s3-copyresult-time-alloc.md): stop asking
 `time.Format` for a string and write **directly into the response buffer**
 instead.
 
@@ -83,4 +84,4 @@ to a single idiom for header time rendering.
 
 Transport patterns: [003](003-transport-tcp-to-quic.md). Measurement:
 [025](025-benchmark-benchstat-gate.md). Allocation hunting:
-[042](042-s3-listxml-appendformat.md). Bolt mindset: [024](024-bolt-performance-engineering.md).
+[047](047-bolt-s3-copyresult-time-alloc.md). Bolt mindset: [024](024-bolt-performance-engineering.md).

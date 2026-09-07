@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="title-01 desc-01">
+  <title id="title-01">CRUSH-lite: Deterministic Weighted Placement Overview</title>
+  <desc id="desc-01">Four-step deterministic placement: Input Hash, Weighted Scoring, Stable Sort, and Failure Domain Filter.</desc>
+
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#F47983"/>
+    </marker>
+    <style>
+      .bg { fill: #FAFAFA; }
+      .title { font-family: system-ui, -apple-system, sans-serif; font-size: 16px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
+      .subtitle { font-family: system-ui, -apple-system, sans-serif; font-size: 12px; fill: #6B6B6B; text-anchor: middle; }
+      .step-box { fill: #FFFFFF; stroke: #E0E0E0; stroke-width: 1.5; rx: 8; ry: 8; }
+      .step-num { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 16px; font-weight: 700; text-anchor: middle; }
+      .step-title { font-family: system-ui, -apple-system, sans-serif; font-size: 13px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
+      .step-desc { font-family: system-ui, -apple-system, sans-serif; font-size: 11px; fill: #6B6B6B; text-anchor: middle; }
+      .flow-arrow { fill: none; stroke: #F47983; stroke-width: 2; stroke-linecap: round; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect width="640" height="360" class="bg"/>
+
+  <text x="320" y="32" class="title">CRUSH-lite: Deterministic Placement Flow</text>
+  <text x="320" y="52" class="subtitle">Zero coordination — all nodes calculate identical replica targets from the object hash</text>
+
+  <!-- 4 Step Boxes Horizontally -->
+  <!-- Step 1 -->
+  <g transform="translate(30, 80)">
+    <rect x="0" y="0" width="125" height="150" class="step-box" stroke="#F47983"/>
+    <circle cx="62" cy="30" r="15" fill="rgba(244,121,131,0.15)"/>
+    <text x="62" y="36" class="step-num" fill="#F47983">1</text>
+    <text x="62" y="70" class="step-title">INPUT</text>
+    <text x="62" y="95" class="step-desc">SHA-256 Hash</text>
+    <text x="62" y="115" class="step-desc">Placement Key</text>
+  </g>
+
+  <path d="M155, 155 H175" class="flow-arrow"/>
+
+  <!-- Step 2 -->
+  <g transform="translate(180, 80)">
+    <rect x="0" y="0" width="125" height="150" class="step-box" stroke="#FCC9B9"/>
+    <circle cx="62" cy="30" r="15" fill="rgba(252,201,185,0.25)"/>
+    <text x="62" y="36" class="step-num" fill="#563A10">2</text>
+    <text x="62" y="70" class="step-title">SCORE</text>
+    <text x="62" y="95" class="step-desc">hash(key ⊗ id)</text>
+    <text x="62" y="115" class="step-desc">x node.Weight</text>
+  </g>
+
+  <path d="M305, 155 H325" class="flow-arrow"/>
+
+  <!-- Step 3 -->
+  <g transform="translate(330, 80)">
+    <rect x="0" y="0" width="125" height="150" class="step-box" stroke="#FFA6A6"/>
+    <circle cx="62" cy="30" r="15" fill="rgba(255,166,166,0.25)"/>
+    <text x="62" y="36" class="step-num" fill="#F47983">3</text>
+    <text x="62" y="70" class="step-title">SORT</text>
+    <text x="62" y="95" class="step-desc">sort.SliceStable</text>
+    <text x="62" y="115" class="step-desc">52-bit mantissa</text>
+  </g>
+
+  <path d="M455, 155 H475" class="flow-arrow"/>
+
+  <!-- Step 4 -->
+  <g transform="translate(480, 80)">
+    <rect x="0" y="0" width="130" height="150" class="step-box" stroke="#769267" stroke-width="2"/>
+    <circle cx="65" cy="30" r="15" fill="rgba(118,146,103,0.2)"/>
+    <text x="65" y="36" class="step-num" fill="#769267">4</text>
+    <text x="65" y="70" class="step-title" fill="#769267">OUTPUT</text>
+    <text x="65" y="95" class="step-desc">Top-R Replicas</text>
+    <text x="65" y="115" class="step-desc">R1 Domain Filter</text>
+  </g>
+
+  <!-- Bottom Banner -->
+  <g transform="translate(30, 255)">
+    <rect x="0" y="0" width="580" height="75" rx="8" ry="8" fill="#FEFEF9" stroke="#E8DFD8" stroke-width="1.5"/>
+    <text x="20" y="25" style="font-family:system-ui,sans-serif;font-size:12px;font-weight:700;fill:#563A10;">Key Invariants:</text>
+    <text x="20" y="46" style="font-family:system-ui,sans-serif;font-size:11px;fill:#2D2D2D;">• Deterministic: Identical placement across all nodes with zero network round-trips.</text>
+    <text x="20" y="64" style="font-family:system-ui,sans-serif;font-size:11px;fill:#2D2D2D;">• R1 Failure Domains: Replicas placed in distinct racks/zones to prevent correlated loss.</text>
+  </g>
+</svg>

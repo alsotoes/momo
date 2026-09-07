@@ -1,0 +1,17 @@
+{{- $dest := .Destination -}}
+{{- if (or (strings.HasPrefix $dest "http://") (strings.HasPrefix $dest "https://") (strings.HasPrefix $dest "mailto:") (strings.HasPrefix $dest "#")) -}}
+  <a href="{{ $dest | safeURL }}"{{ with .Title }} title="{{ . }}"{{ end }}>{{ .Text | safeHTML }}</a>
+{{- else if (strings.HasSuffix $dest ".md") -}}
+  {{- /* Sibling post link: e.g. 002-slug.md or posts/002-slug.md */ -}}
+  {{- $base := path.Base $dest -}}
+  {{- if (and (strings.HasPrefix $dest "..") (not (strings.Contains $dest "posts/"))) -}}
+    {{- /* Link to a repo doc: e.g. ../../STANDARDS.md or ../EXTERNAL_CLIENT_REPLICATION.md */ -}}
+    {{- $clean := strings.TrimPrefix "../" (strings.TrimPrefix "../" $dest) -}}
+    <a href="https://github.com/alsotoes/momo/blob/master/docs/{{ $clean }}"{{ with .Title }} title="{{ . }}"{{ end }}>{{ .Text | safeHTML }}</a>
+  {{- else -}}
+    {{- $slug := strings.TrimSuffix ".md" $base -}}
+    <a href="/posts/{{ $slug }}/"{{ with .Title }} title="{{ . }}"{{ end }}>{{ .Text | safeHTML }}</a>
+  {{- end -}}
+{{- else -}}
+  <a href="{{ $dest | safeURL }}"{{ with .Title }} title="{{ . }}"{{ end }}>{{ .Text | safeHTML }}</a>
+{{- end -}}

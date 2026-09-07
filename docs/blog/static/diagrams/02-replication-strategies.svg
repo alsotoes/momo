@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="title-02 desc-02">
+  <title id="title-02">Momo Replication Strategies Overview</title>
+  <desc id="desc-02">Overview of the four replication strategies in momo: None, Chain, Splay, and Primary-Splay.</desc>
+
+  <defs>
+    <style>
+      .bg { fill: #FAFAFA; }
+      .title { font-family: system-ui, -apple-system, sans-serif; font-size: 16px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
+      .subtitle { font-family: system-ui, -apple-system, sans-serif; font-size: 12px; fill: #6B6B6B; text-anchor: middle; }
+      .card { fill: #FFFFFF; stroke: #E0E0E0; stroke-width: 1.5; rx: 8; ry: 8; }
+      .card-title { font-family: system-ui, -apple-system, sans-serif; font-size: 13px; font-weight: 700; text-anchor: middle; }
+      .card-desc { font-family: system-ui, -apple-system, sans-serif; font-size: 11px; fill: #6B6B6B; text-anchor: middle; }
+      .badge-text { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; font-weight: 600; text-anchor: middle; }
+    </style>
+  </defs>
+
+  <rect width="640" height="360" class="bg"/>
+
+  <text x="320" y="32" class="title">Replication Strategies &amp; Polymorphic Engine</text>
+  <text x="320" y="52" class="subtitle">Four distinct topologies adapted dynamically at runtime based on network and load</text>
+
+  <!-- 4 Grid Cards -->
+  <!-- 1. NONE -->
+  <g transform="translate(30, 75)">
+    <rect x="0" y="0" width="275" height="110" class="card"/>
+    <text x="137" y="28" class="card-title" fill="#563A10">1. NONE (Local Only)</text>
+    <text x="137" y="48" class="card-desc">No network replication</text>
+    <text x="137" y="66" class="card-desc">Local single-node or test clusters</text>
+    <rect x="77" y="78" width="120" height="20" rx="4" fill="#FEFEF9" stroke="#E0E0E0"/>
+    <text x="137" y="92" class="badge-text" fill="#563A10">Latency: 0 hops</text>
+  </g>
+
+  <!-- 2. SPLAY -->
+  <g transform="translate(335, 75)">
+    <rect x="0" y="0" width="275" height="110" class="card" stroke="#F47983"/>
+    <text x="137" y="28" class="card-title" fill="#F47983">2. SPLAY (Server Fan-Out)</text>
+    <text x="137" y="48" class="card-desc">Primary concurrently relays to replicas</text>
+    <text x="137" y="66" class="card-desc">Standard high-speed LAN clusters</text>
+    <rect x="77" y="78" width="120" height="20" rx="4" fill="#FEFEF9" stroke="#F47983"/>
+    <text x="137" y="92" class="badge-text" fill="#F47983">Latency: 1 hop</text>
+  </g>
+
+  <!-- 3. CHAIN -->
+  <g transform="translate(30, 200)">
+    <rect x="0" y="0" width="275" height="110" class="card" stroke="#769267"/>
+    <text x="137" y="28" class="card-title" fill="#769267">3. CHAIN (Daisy-Chain)</text>
+    <text x="137" y="48" class="card-desc">Pipelined relay: N0 -> N1 -> N2</text>
+    <text x="137" y="66" class="card-desc">Bandwidth-constrained environments</text>
+    <rect x="77" y="78" width="120" height="20" rx="4" fill="#FEFEF9" stroke="#769267"/>
+    <text x="137" y="92" class="badge-text" fill="#769267">Latency: R hops</text>
+  </g>
+
+  <!-- 4. PRIMARY-SPLAY -->
+  <g transform="translate(335, 200)">
+    <rect x="0" y="0" width="275" height="110" class="card" stroke="#8AB87A"/>
+    <text x="137" y="28" class="card-title" fill="#8AB87A">4. PRIMARY-SPLAY (Client Fan-Out)</text>
+    <text x="137" y="48" class="card-desc">Client streams to all replicas in parallel</text>
+    <text x="137" y="66" class="card-desc">Zero server-to-server relay bandwidth</text>
+    <rect x="77" y="78" width="120" height="20" rx="4" fill="#FEFEF9" stroke="#8AB87A"/>
+    <text x="137" y="92" class="badge-text" fill="#8AB87A">Server Egress: 0x</text>
+  </g>
+
+  <!-- Badges -->
+  <g transform="translate(475, 12)">
+    <rect x="0" y="0" width="65" height="18" rx="9" fill="rgba(244,121,131,0.12)" stroke="#F47983" stroke-width="1"/>
+    <text x="32.5" y="13" text-anchor="middle" style="font-family:ui-monospace,monospace;font-size: 11px;font-weight:700;fill:#F47983;">⚡ BOLT</text>
+  </g>
+  <g transform="translate(548, 12)">
+    <rect x="0" y="0" width="75" height="18" rx="9" fill="rgba(118,146,103,0.12)" stroke="#769267" stroke-width="1"/>
+    <text x="37.5" y="13" text-anchor="middle" style="font-family:ui-monospace,monospace;font-size: 11px;font-weight:700;fill:#769267;">🛡 SENTINEL</text>
+  </g>
+</svg>

@@ -10,6 +10,13 @@ on:
         required: true
         type: string
 
+# Rule 90: prevent parallel reviewer runs for the same PR. Each push cancels
+# any in-progress review so only the latest commit is reviewed (prevents
+# duplicate auto-trace issue creation when pushes race).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.inputs.pr_number }}
+  cancel-in-progress: true
+
 jobs:
   review:
     runs-on: ubuntu-latest

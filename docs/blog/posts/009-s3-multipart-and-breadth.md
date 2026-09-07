@@ -2,6 +2,7 @@
 title: "S3 Multipart and Protocol Breadth: 501 Discipline"
 date: 2026-08-13T06:02:26Z
 draft: false
+post_type: architecture
 tags: [go, s3, multipart, protocol, sentinel]
 categories: [s3]
 summary: "Multipart upload support plus a rigorous 501 strategy for unsupported S3 subresources — honest breadths over silent misbehavior."
@@ -17,13 +18,13 @@ related:
   - 012-s3-integrity-checksums
   - 033-s3-501-discipline-bucket-config
 ---
-# S3 Multipart and Protocol Breadth: 501 Discipline
-
 Two directions grew the S3 surface: **adding** multipart, and **brutally
 honest** `501 Not Implemented` responses for what momo deliberately doesn't do
 yet.
 
 ## Multipart upload (#801)
+
+{{< diagram src="/diagrams/11-s3-multipart.svg" alt="S3 multipart upload flow" caption="S3 multipart upload flow" >}}
 
 `CreateMultipartUpload` → `UploadPart` → `CompleteMultipartUpload` / `Abort`,
 with the parts assembling at completion into one CAS blob. This is what

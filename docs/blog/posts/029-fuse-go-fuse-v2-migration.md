@@ -2,6 +2,7 @@
 title: "FUSE Transport: Migrating to go-fuse/v2"
 date: 2026-09-01T18:40:07Z
 draft: false
+post_type: architecture
 tags: [go, fuse, momofs, bolt]
 categories: [momofs]
 summary: "The momofs FUSE mount traded its hand-rolled bazil.org/fuse adapter for the go-fuse/v2 high-level fs API, mapped all 22 node callbacks to go-fuse interfaces, and deprecated consistency=cached."
@@ -13,8 +14,6 @@ related:
   - 004-cas-content-addressable-store
   - 028-roadmap-and-research
 ---
-# FUSE Transport: Migrating to go-fuse/v2
-
 The momofs FUSE mount started as a thin bazil.org/fuse adapter over the CAS
 store: directories are content-addressed JSON manifests, files are CAS blobs,
 and the kernel's byte-range model is reconciled by buffering handle writes and
@@ -74,7 +73,7 @@ and Phase-5 load measurements.
 
 ## Standards
 
-Per [docs/STANDARDS.md](../STANDARDS.md), the transport layers follow the ⚡ Bolt
+Per [docs/STANDARDS.md](../../STANDARDS.md), the transport layers follow the ⚡ Bolt
 (performance, minimize syscalls/copies) and 🛡 Sentinel (fail-closed, honest
 error semantics) mindsets; the go-fuse/v2 migration keeps the momofs core
 protocol-agnostic so no momofs wire format is locked to the transport.

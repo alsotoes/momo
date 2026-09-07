@@ -2,6 +2,7 @@
 title: "Signed Payloads and Server-Sent Events for S3"
 date: 2026-08-11T05:14:24Z
 draft: false
+post_type: architecture
 tags: [s3, streaming, sigv4, sentinel]
 categories: [s3]
 summary: "SigV4 signed payload verification for S3 PUT/POST and Server-Sent Events for async operation notifications."
@@ -13,8 +14,6 @@ related:
   - 008-s3-gateway-core
   - 040-aws-chunked-streaming
 ---
-# Signed Payloads and Server-Sent Events for S3
-
 Two complementary additions round out S3 compatibility: **SigV4 signed payload verification** (integrity of request bodies) and **Server-Sent Events** (async operation notifications).
 
 ## Signed Payloads
@@ -47,7 +46,7 @@ Long-running async operations (e.g., large multipart completes, batch deletes) c
 
 ## Standards
 
-Per [docs/STANDARDS.md](../STANDARDS.md): 🛡 **Sentinel** (verify what you sign — no trust gaps, honest mismatch errors).
+Per [docs/STANDARDS.md](../../STANDARDS.md): 🛡 **Sentinel** (verify what you sign — no trust gaps, honest mismatch errors).
 
 ## Artifacts
 

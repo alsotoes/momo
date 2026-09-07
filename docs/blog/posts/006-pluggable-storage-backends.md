@@ -2,6 +2,7 @@
 title: "Pluggable Storage Backends: local, nfs, s3, raw"
 date: 2026-07-26T14:33:59Z
 draft: false
+post_type: architecture
 tags: [go, storage, s3, bolt]
 categories: [storage]
 summary: "The `[storage] backend` seam swaps blob storage (local, nfs, s3, raw) behind one Store interface, keeping CAS metadata local."
@@ -13,8 +14,6 @@ related:
   - 008-s3-gateway-core
   - 013-e2ee-envelope-encryption
 ---
-# Pluggable Storage Backends: local, nfs, s3, raw
-
 The storage layer exposes one **`Store` interface** and a `[storage] backend`
 config switch: `local` (default), `nfs`, `s3` (zero-dep SigV4 client), and
 `raw` (direct block I/O). Local bbolt metadata stays per-node; only the blob
@@ -33,6 +32,8 @@ implements it with its own guarantees:
 | `nfs` | shared filesystem volume |
 | `s3` | remote object store over SigV4, TLS-gated (see [011](011-s3-https-tls-enforcement.md)) |
 | `raw` | block-device direct I/O |
+
+{{< diagram src="/diagrams/04-storage-backends.svg" alt="Pluggable storage backends architecture" caption="Pluggable storage backends architecture" >}}
 
 ## The trap this avoids
 

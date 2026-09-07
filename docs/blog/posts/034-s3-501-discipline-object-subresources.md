@@ -2,6 +2,7 @@
 title: "S3 501 Discipline: Object-Level Subresources (tagging, acl, versionId, retention, legal-hold)"
 date: 2026-08-24T21:13:07Z
 draft: false
+post_type: issue
 tags: [s3, compatibility, sentinel]
 categories: [s3]
 summary: "5 object-level query parameters now return honest 501 NotImplemented instead of silently falling into GetObject/PutObject/DeleteObject."
@@ -13,8 +14,6 @@ related:
   - 035-s3-501-discipline-remaining-ops
   - 008-s3-gateway-core
 ---
-# S3 501 Discipline: Object Subresources
-
 Object-level query parameters (`?tagging`, `?acl`, `?versionId`, `?retention`, `?legal-hold`) on `GET/PUT/DELETE /bucket/key` were silently ignored — falling into `GetObject`/`PutObject`/`DeleteObject`.
 
 ## The Problem
@@ -62,7 +61,7 @@ Also fixed orphaned `extractS3BucketAndKey` doc comment left by P3.
 
 ## Standards
 
-Per [docs/STANDARDS.md](../STANDARDS.md): 🛡 **Sentinel** (honest error semantics, no silent misrouting).
+Per [docs/STANDARDS.md](../../STANDARDS.md): 🛡 **Sentinel** (honest error semantics, no silent misrouting).
 
 ## Follow-ups
 

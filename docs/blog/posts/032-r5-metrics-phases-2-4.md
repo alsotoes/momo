@@ -2,6 +2,7 @@
 title: "R5 Metrics Phases 2-4: Storage, P2P, and Latency Histograms"
 date: 2026-08-25T03:25:22Z
 draft: false
+post_type: architecture
 tags: [metrics, observability, prometheus, bolt, sentinel]
 categories: [metrics]
 summary: "R5 Phases 2-4 shipped: storage metrics (disk, CAS, GC), P2P metrics (SWIM, leases, scatter-gather), and opt-in latency histograms — all with <1% overhead via sync/atomic counters."
@@ -14,8 +15,6 @@ related:
   - 017-scatter-gather-lease-quorum
   - 024-bolt-performance-engineering
 ---
-# R5 Metrics Phases 2-4
-
 Phase 1 wired the exporter; Phases 2-4 complete the observability picture with storage internals, P2P cluster health, and opt-in latency histograms — all with strict <1% overhead guarantees.
 
 ## Phase 2: Storage Metrics (Scrape-Time Only)
@@ -84,7 +83,7 @@ When **enabled**: `momo_request_latency_seconds{operation="upload|download|delet
 
 ## Standards
 
-Per [docs/STANDARDS.md](../STANDARDS.md): ⚡ **Bolt** (atomic counters, zero allocations, scrape-time batching), 🛡 **Sentinel** (no external deps, bounded memory, fail-closed).
+Per [docs/STANDARDS.md](../../STANDARDS.md): ⚡ **Bolt** (atomic counters, zero allocations, scrape-time batching), 🛡 **Sentinel** (no external deps, bounded memory, fail-closed).
 
 ## Follow-ups
 

@@ -2,6 +2,7 @@
 title: "Forward: Production Roadmap (R5–R11) and the Research Guide"
 date: 2026-08-25T03:24:12Z
 draft: false
+post_type: architecture
 tags: [go, roadmap, research, production]
 categories: [roadmap]
 summary: "After R1–R4: the P0 hardening done, the P1/P2 tracks (metrics, HA metadata, auth, secrets, S3 breadth) and the research reading guide that seeded it all."
@@ -17,13 +18,13 @@ related:
   - 029-fuse-go-fuse-v2-migration
   - 041-architecture-decision-records
 ---
-# Forward: Production Roadmap (R5–R11) and the Research Guide
-
 Issue #928 ratified the **production-readiness roadmap** (`prod-ready-roadmap`);
 `docs/ROADMAP.md` gates production behind phased deliverables. This post is the
 forward look — and the nod to the research that seeded the ideas.
 
 ## Where the arc stands
+
+{{< diagram src="/diagrams/15-roadmap-timeline.svg" alt="Momo roadmap R1-R6" caption="Momo roadmap R1-R6" >}}
 
 The **P0 correctness/durability track is done**: R1 failure domains
 ([019](019-r1-failure-domain-placement.md)) → R2 degraded-read + self-heal

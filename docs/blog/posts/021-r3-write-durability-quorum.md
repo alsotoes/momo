@@ -2,6 +2,7 @@
 title: 'R3: Write Durability — fsync-Before-Ack, Survivor Quorum'
 date: 2026-08-27 19:24:05+00:00
 draft: false
+post_type: architecture
 tags:
 - go
 - durability
@@ -35,6 +36,8 @@ R1/R2 answer "what happens when data dies"; R3 answers the write-side question:
 before-ack, a survivor quorum, and group-commit batching.
 
 ## The guarantee
+
+{{< diagram src="/diagrams/10-durability-barrier.svg" alt="R3 Write durability barrier" caption="R3 Write durability barrier" >}}
 
 - **fsync-before-ack**: a write is acknowledged only after the blob has *durably
   hit disk* (not just page cache) on the surviving replicas. No more "ACK then

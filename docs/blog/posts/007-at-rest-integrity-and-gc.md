@@ -2,6 +2,7 @@
 title: 'At-Rest Integrity: Verify-on-Read, Checksums, and GC'
 date: 2026-08-24 19:36:43+00:00
 draft: false
+post_type: architecture
 tags:
 - go
 - integrity
@@ -38,6 +39,8 @@ the stored key **is** the checksum — so read-path integrity is structurally
 free. This arc turned that property into explicit machinery.
 
 ## What landed
+
+{{< diagram src="/diagrams/08-integrity-pipeline.svg" alt="At-rest integrity pipeline" caption="At-rest integrity pipeline" >}}
 
 - **Central integrity verification** in the storage layer (#911): one
   validate→verify path shared by all readers, instead of ad-hoc checks spread

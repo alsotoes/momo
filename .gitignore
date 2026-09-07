@@ -46,6 +46,7 @@ src/src
 # Temporary local review body text files
 body*.txt
 .github/scripts/__pycache__/
+**/__pycache__/
 
 # Pentest generated artifacts (regenerable)
 pentest/server-logs/
@@ -66,12 +67,16 @@ package-lock.json
 package.json
 
 
-# MemPalace per-project files (issue #185)
-mempalace.yaml
-entities.json
-
 # Generated godoc HTML exports (make doc)
 docs/html/
 
 # cortexkit (Magic Context) local state
 .cortexkit/
+
+# AI agent local transient artifacts (Rule 45)
+skills-lock.json
+**/skills-lock.json
+.kiro/
+**/.kiro/
+plan.md
+**/plan.md

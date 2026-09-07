@@ -1,0 +1,89 @@
+/* Accessibility & UI/UX enhancements per docs/blog/.agents/skills/ */
+
+/* 1. Visible Focus Indicator (WCAG 2.4.7 Focus Visible, Level AA) */
+:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 3px;
+    border-radius: 4px;
+}
+
+/* 2. Skip to Content link (WCAG 2.4.1 Bypass Blocks, Level A) */
+.skip-link {
+    position: absolute;
+    top: -200px;
+    left: 1rem;
+    background: var(--primary);
+    color: var(--theme);
+    padding: 0.6rem 1.2rem;
+    z-index: 10000;
+    border-radius: var(--radius);
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 0.875rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    transition: top 0.15s ease-in-out;
+}
+
+.skip-link:focus-visible {
+    top: 1rem;
+    outline: 2px solid var(--theme);
+    outline-offset: 2px;
+}
+
+/* 3. Respect Reduced Motion preferences (WCAG 2.3.3 Animation from Interactions, Level AAA) */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+/* 4. Touch target sizes (WCAG 2.5.8 Target Size Minimum 24x24 / UI-UX rule 44x44px) */
+.theme-toggle,
+.top-link,
+.pagination a,
+.post-tags a,
+.share-buttons a {
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.menu li a {
+    padding: 10px 14px;
+    display: inline-flex;
+    align-items: center;
+}
+
+/* 5. Typography & Readability (WCAG 1.4.12 Text Spacing, UI-UX Designer rule) */
+.post-content {
+    line-height: 1.7;
+    letter-spacing: 0.01em;
+}
+
+.post-content p {
+    margin-bottom: 1.25rem;
+}
+
+.post-content h2,
+.post-content h3,
+.post-content h4 {
+    scroll-margin-top: 5rem;
+}
+
+/* 6. Code block readability & contrast */
+.post-content pre {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+
+.post-content code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 0.9em;
+}

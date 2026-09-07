@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="title-10 desc-10">
+  <title id="title-10">R3: Write Durability Barrier Modes</title>
+  <desc id="desc-10">Comparing the three write durability barrier modes in momo: fsync-before-ack, group-commit batching, and none.</desc>
+
+  <defs>
+    <style>
+      .bg { fill: #FAFAFA; }
+      .title { font-family: system-ui, -apple-system, sans-serif; font-size: 16px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
+      .subtitle { font-family: system-ui, -apple-system, sans-serif; font-size: 12px; fill: #6B6B6B; text-anchor: middle; }
+      .card { fill: #FFFFFF; stroke: #E0E0E0; stroke-width: 1.5; rx: 8; ry: 8; }
+      .head { font-family: system-ui, -apple-system, sans-serif; font-size: 13px; font-weight: 700; text-anchor: middle; }
+      .code { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; text-anchor: middle; }
+      .sub { font-family: system-ui, -apple-system, sans-serif; font-size: 11px; fill: #6B6B6B; text-anchor: middle; }
+      .badge { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; font-weight: 700; text-anchor: middle; }
+    </style>
+  </defs>
+
+  <rect width="640" height="360" class="bg"/>
+
+  <text x="320" y="32" class="title">R3 Write Durability Barriers</text>
+  <text x="320" y="52" class="subtitle">Configurable persistence boundary — trading disk latency for durability guarantees</text>
+
+  <!-- Mode 1: fsync (Default) -->
+  <g transform="translate(30, 75)">
+    <rect x="0" y="0" width="180" height="175" class="card" stroke="#769267" stroke-width="2"/>
+    <text x="90" y="28" class="head" fill="#769267">1. FSYNC (Default)</text>
+    <text x="90" y="52" class="code" fill="#563A10">file.Sync()</text>
+    <text x="90" y="75" class="sub">• Synchronous barrier</text>
+    <text x="90" y="95" class="sub">• Fsync before client ACK</text>
+    <text x="90" y="115" class="sub">• Survives host power loss</text>
+    <rect x="20" y="130" width="140" height="30" rx="4" fill="rgba(118,146,103,0.15)"/>
+    <text x="90" y="150" class="badge" fill="#769267">MAX DURABILITY</text>
+  </g>
+
+  <!-- Mode 2: group-commit -->
+  <g transform="translate(230, 75)">
+    <rect x="0" y="0" width="180" height="175" class="card" stroke="#F47983" stroke-width="1.5"/>
+    <text x="90" y="28" class="head" fill="#F47983">2. GROUP-COMMIT</text>
+    <text x="90" y="52" class="code" fill="#F47983">dir.Sync() Batch</text>
+    <text x="90" y="75" class="sub">• Amortized sync pass</text>
+    <text x="90" y="95" class="sub">• Batches concurrent writes</text>
+    <text x="90" y="115" class="sub">• High throughput under load</text>
+    <rect x="20" y="130" width="140" height="30" rx="4" fill="rgba(244,121,131,0.12)"/>
+    <text x="90" y="150" class="badge" fill="#F47983">BALANCED PERF</text>
+  </g>
+
+  <!-- Mode 3: none -->
+  <g transform="translate(430, 75)">
+    <rect x="0" y="0" width="180" height="175" class="card" stroke="#563A10" stroke-width="1.5"/>
+    <text x="90" y="28" class="head" fill="#563A10">3. NONE</text>
+    <text x="90" y="52" class="code" fill="#563A10">Page Cache Only</text>
+    <text x="90" y="75" class="sub">• No fsync barrier</text>
+    <text x="90" y="95" class="sub">• Acknowledges RAM buffer</text>
+    <text x="90" y="115" class="sub">• Transient test use only</text>
+    <rect x="20" y="130" width="140" height="30" rx="4" fill="rgba(86,58,16,0.1)"/>
+    <text x="90" y="150" class="badge" fill="#563A10">NON-DURABLE</text>
+  </g>
+
+  <!-- Bottom Quorum Banner -->
+  <g transform="translate(30, 265)">
+    <rect x="0" y="0" width="580" height="70" rx="8" ry="8" fill="#FEFEF9" stroke="#E8DFD8" stroke-width="1.5"/>
+    <text x="20" y="24" style="font-family:system-ui,sans-serif;font-size:12px;font-weight:700;fill:#563A10;">Survivor Quorum &amp; Consistency Contract</text>
+    <text x="20" y="44" style="font-family:ui-monospace,monospace;font-size:11px;fill:#2D2D2D;">write_quorum ensures write is confirmed on W durable replicas before client ACK.</text>
+    <text x="20" y="58" style="font-family:ui-monospace,monospace;font-size:11px;fill:#6B6B6B;">Read-Your-Writes (RYW) and Last-Write-Wins (LWW) guaranteed via atomic per-object lock order.</text>
+  </g>
+</svg>

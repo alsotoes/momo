@@ -2,6 +2,7 @@
 title: "P2P: Gossip, SWIM, and Membership"
 date: 2026-03-11T14:34:18Z
 draft: false
+post_type: architecture
 tags: [go, p2p, gossip, swim]
 categories: [p2p]
 summary: "A scaleless-gossip ring: SWIM-style failure detection, discovered-peer dialing, and ALIVE/OFFLINE restoration — momo's nervous system."
@@ -17,14 +18,14 @@ related:
   - 030-external-s3-client-replication-downgrade
   - 032-r5-metrics-phases-2-4
 ---
-# P2P: Gossip, SWIM, and Membership
-
 Momo's cluster layer (`docs/P2P.md`) is a **masterless ring**: gossip for
 metadata, SWIM failure detection, scatter-gather for list, and lease consensus
 for its mutable metadata. This post covers the gossip/SWIM core; the lease/quorum
 side is [017](017-scatter-gather-lease-quorum.md).
 
 ## SWIM: the failure-detection ring
+
+{{< diagram src="/diagrams/06-gossip-swim.svg" alt="P2P Gossip and SWIM" caption="P2P Gossip and SWIM" >}}
 
 - Nodes exchange **lifeheartbeat/ping/ack**, marking peers ALIVE/OFFLINE.
 - **Discovered peers actually get connected** — an early audit (issue #598)

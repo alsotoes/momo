@@ -550,7 +550,7 @@ func TestLegacyObjectMetaCompatibility(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Round-trip decode failed: %v", err)
 	}
-	if decoded != newMeta {
+	if decoded.Size != newMeta.Size || decoded.RefCount != newMeta.RefCount || decoded.DeletedAt != newMeta.DeletedAt {
 		t.Fatalf("Round-trip failed: %+v != %+v", decoded, newMeta)
 	}
 

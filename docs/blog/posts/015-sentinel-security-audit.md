@@ -2,6 +2,7 @@
 title: 'The Sentinel Sweep: An Audit-Driven Security Journey'
 date: 2026-08-04 00:47:24+00:00
 draft: false
+post_type: issue
 tags:
 - go
 - security
@@ -29,6 +30,7 @@ related:
 - 010-s3-auth-presigned-sigv4
 - 007-at-rest-integrity-and-gc
 - 014-confidential-dedup-oprf
+- 046-auto-trace-dedup
 - 017-scatter-gather-lease-quorum
 - 026-metrics-observability
 - 037-zero-crash-hardening-patterns

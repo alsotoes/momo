@@ -2,6 +2,7 @@
 title: 'Scatter-Gather and Lease Consensus: Quorum Math'
 date: 2026-08-13 07:58:21+00:00
 draft: false
+post_type: architecture
 tags:
 - go
 - p2p
@@ -35,6 +36,8 @@ owners. `GlobalList` and metadata writes use **scatter-gather**, and mutable
 leases use a **majority quorum**. Both required the audit treatment.
 
 ## Scatter-gather listing
+
+{{< diagram src="/diagrams/03-scatter-gather-lease.svg" alt="Scatter-gather and lease quorum" caption="Scatter-gather and lease quorum" >}}
 
 `ListObjectsV2`/`GlobalList` fans out to shard owners, merges metadata lists,
 dedups by content hash (dropping alternate names), paginates. The momofs

@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="title-12 desc-12">
+  <title id="title-12">Bolt Performance Engineering: Three Pillars</title>
+  <desc id="desc-12">The three core pillars of Bolt performance engineering in momo: zero-escape stack buffers, deadline amortization, and combined metadata reads.</desc>
+
+  <defs>
+    <style>
+      .bg { fill: #FAFAFA; }
+      .title { font-family: system-ui, -apple-system, sans-serif; font-size: 16px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
+      .subtitle { font-family: system-ui, -apple-system, sans-serif; font-size: 12px; fill: #6B6B6B; text-anchor: middle; }
+      .col-card { fill: #FFFFFF; stroke: #E0E0E0; stroke-width: 1.5; rx: 8; ry: 8; }
+      .col-head { font-family: system-ui, -apple-system, sans-serif; font-size: 12px; font-weight: 700; text-anchor: middle; }
+      .col-body { font-family: system-ui, -apple-system, sans-serif; font-size: 11px; fill: #2D2D2D; text-anchor: middle; }
+      .col-stat { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; font-weight: 700; text-anchor: middle; }
+    </style>
+  </defs>
+
+  <rect width="640" height="360" class="bg"/>
+
+  <text x="320" y="32" class="title">⚡ Bolt Performance Engineering: Core Pillars</text>
+  <text x="320" y="52" class="subtitle">Allocation is latency in hot paths — three architectural patterns that eliminated CPU waste</text>
+
+  <!-- Pillar 1: Zero Escape -->
+  <g transform="translate(30, 75)">
+    <rect x="0" y="0" width="180" height="180" class="col-card" stroke="#F47983"/>
+    <text x="90" y="28" class="col-head" fill="#F47983">1. Stack Buffers</text>
+    <text x="90" y="52" class="col-body">Zero-escape hashing</text>
+    <text x="90" y="70" class="col-body">Fixed-size stack arrays</text>
+    <text x="90" y="88" class="col-body">Bypasses heap GC</text>
+    
+    <rect x="20" y="115" width="140" height="45" rx="6" fill="#FEFEF9" stroke="#F47983"/>
+    <text x="90" y="133" class="col-stat" fill="#F47983">0 B/op</text>
+    <text x="90" y="148" class="col-stat" fill="#563A10">Zero GC pauses</text>
+  </g>
+
+  <!-- Pillar 2: Deadline Amortization -->
+  <g transform="translate(230, 75)">
+    <rect x="0" y="0" width="180" height="180" class="col-card" stroke="#769267"/>
+    <text x="90" y="28" class="col-head" fill="#769267">2. Deadlines</text>
+    <text x="90" y="52" class="col-body">Phased boundaries</text>
+    <text x="90" y="70" class="col-body">Cut per-op SetDeadline</text>
+    <text x="90" y="88" class="col-body">Low syscall tax</text>
+
+    <rect x="20" y="115" width="140" height="45" rx="6" fill="#FEFEF9" stroke="#769267"/>
+    <text x="90" y="133" class="col-stat" fill="#769267">-98% Syscalls</text>
+    <text x="90" y="148" class="col-stat" fill="#563A10">200 -> 3 /sec</text>
+  </g>
+
+  <!-- Pillar 3: Combined Views -->
+  <g transform="translate(430, 75)">
+    <rect x="0" y="0" width="180" height="180" class="col-card" stroke="#FCC9B9"/>
+    <text x="90" y="28" class="col-head" fill="#563A10">3. Combined Reads</text>
+    <text x="90" y="52" class="col-body">Single Bbolt tx view</text>
+    <text x="90" y="70" class="col-body">Collapse 3 buckets</text>
+    <text x="90" y="88" class="col-body">Zero lock contention</text>
+
+    <rect x="20" y="115" width="140" height="45" rx="6" fill="#FEFEF9" stroke="#FCC9B9"/>
+    <text x="90" y="133" class="col-stat" fill="#563A10">-64% Latency</text>
+    <text x="90" y="148" class="col-stat" fill="#563A10">1 tx vs 3</text>
+  </g>
+
+  <!-- Bottom Quote -->
+  <g transform="translate(30, 275)">
+    <rect x="0" y="0" width="580" height="60" rx="8" ry="8" fill="#FEFEF9" stroke="#E8DFD8" stroke-width="1.5"/>
+    <text x="290" y="26" style="font-family:system-ui,sans-serif;font-size:12px;font-style:italic;fill:#563A10;text-anchor:middle;">"In high-throughput Go systems, avoiding allocations beats optimizing GC every time."</text>
+    <text x="290" y="44" style="font-family:ui-monospace,monospace;font-size: 11px;fill:#6B6B6B;text-anchor:middle;">— Momo Engineering Standard Rule 24 (Bolt Lens)</text>
+  </g>
+</svg>

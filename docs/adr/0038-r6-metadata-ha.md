@@ -4,7 +4,7 @@
 Proposed
 
 ## Confidence
-Low
+Medium
 
 ## Context
 Current MomoFS stores metadata (namespace→hash, object metadata, S3 headers) in a **per-node bbolt database** with no cross-node visibility. This creates three production-readiness gaps:
@@ -34,7 +34,7 @@ None documented.
 ## Implementation Status
 - **Code**: Partial
 - **Tests**: Partial
-- **Docs**: Planned
+- **Docs**: Partial
 - **Blog post**: docs/blog/posts/...md
 
 ## References

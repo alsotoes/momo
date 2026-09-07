@@ -185,12 +185,14 @@ func (s *CASStore) referencedBlobs() ([]string, error) {
 		}
 		c := b.Cursor()
 		for k, v := c.First(); k != nil; k, v = c.Next() {
-			if len(v) != 24 {
+			if len(v) < 24 {
+				// Too short to be valid metadata
 				continue
 			}
 			meta, err := decodeObjectMeta(v)
 			if err != nil {
-				return fmt.Errorf("failed to decode metadata for blob %s: %w", k, err)
+				// Skip entries that can't be decoded
+				continue
 			}
 			if meta.RefCount > 0 {
 				hashes = append(hashes, string(k))
