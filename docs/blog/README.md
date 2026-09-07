@@ -53,6 +53,20 @@ Body in GitHub-flavored markdown.
 - Operational momofs docs (`MOUNT_USER_GUIDE.md`, `IMPLEMENTATION.md §2.3`) are
   usable when ratified by `src/momofs` code.
 
+## Educational Writing Standard (NEW)
+
+Posts must be **teachable narratives** — see [`WRITING_GUIDE.md`](WRITING_GUIDE.md).
+Every post MUST include:
+1. **The Real Problem** — human context, pain point, "aha!" moment
+2. **Why Obvious Solutions Failed** — trade-offs, dead ends considered
+3. **Solution with Annotated Code** — inline *why*, not just *what*
+4. **Principle Callout** — reusable pattern with applicability boundaries
+5. **Verification** — benchmarks, profiles, production metrics
+6. **Failure Modes** — what could go wrong, how it's guarded
+7. **When NOT to Use** — explicit boundaries to prevent cargo-culting
+
+Tone: human ("we", "our"), admits uncertainty, shows dead ends.
+
 ## Cross-linking
 
 `related` establishes the corpus graph. Add both directions when you author a

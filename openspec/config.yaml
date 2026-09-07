@@ -181,3 +181,32 @@ context: |
      - **`rtk`**: Preferred git wrapper (alias for `git` with repo-aware defaults); use over raw `git` for status/commit/push.
      - **Order**: `ctx_search`/`ctx_memory` → `mempalace search` → targeted tools (`glob`/`grep`/`read`) → `repomix` (only if targeted + mempalace insufficient).
      - **Principle**: Fastest tool for the job. Never dump entire repo when a grep answers it.
+
+  92. **Educational Blog Posts — Teach, Don't Just Record**: (Mandatory) Every blog post under `docs/blog/posts/` MUST be a teachable narrative, not just a changelog. Posts MUST include:
+     - **The Real Problem**: Concrete pain point (production incident, profiling surprise, design dead-end). Human context: "We hit..." / "During load testing..." / "The GC paused for 12ms..."
+     - **Why Obvious Solutions Failed**: Show dead ends and trade-offs. Example:
+       ```go
+       // First attempt: sync.Pool of formatted strings
+       // REJECTED: pool mutex overhead + GC pressure from pooled objects > allocation cost
+       var timePool = sync.Pool{New: func() any { return new(string) }}
+       ```
+     - **Solution with Annotated Code**: Inline comments explain WHY, not WHAT:
+       ```go
+       // Stack buffer: 32 bytes fits RFC3339Nano (20 chars) + padding
+       // Zero heap allocation — lives on stack, dies with function
+       var timeBuf [32]byte
+       
+       // AppendFormat writes directly into buffer, returns extended slice
+       // No intermediate string allocation (unlike time.Format)
+       buf.Write(t.AppendFormat(timeBuf[:0], time.RFC3339Nano))
+       ```
+     - **Principle Callout**: Extract reusable pattern with applicability boundaries:
+       > **Pattern: Stack-Buffer Time Formatting**
+       > Use `time.AppendFormat` + stack `byte` array in hot paths. Eliminates heap allocation per call.
+       > **Applies when**: high-frequency timestamp rendering (HTTP headers, XML/JSON, log lines)
+       > **Doesn't apply**: one-off formatting, human-readable output where allocation is negligible
+     - **Verification**: Benchmarks, profiles, production metrics with numbers: "32 B/op → 0 B/op", "p99 -15%"
+     - **Failure Modes**: Buffer too small? Timezone edge cases? Thread safety? How code guards against them.
+     - **When NOT to Use**: Explicit boundaries to prevent cargo-culting.
+     - **Tone**: Human ("we", "our", "I"), admits uncertainty, shows dead ends, not institutional.
+     - See `docs/blog/WRITING_GUIDE.md` for full template and examples.
