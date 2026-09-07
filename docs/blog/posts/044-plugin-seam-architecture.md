@@ -12,6 +12,7 @@ artifacts:
 related:
   - 042-perf-profiling-baseline
   - 018-adaptive-scaling-peer-quality
+  - 020-r2-degraded-read-self-heal
   - 043-reduce-read-verify-hashing
 ---
 "Should everything be a plugin?" — the question comes up whenever a codebase
