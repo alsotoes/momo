@@ -2,7 +2,6 @@
 title: "AWS Chunked Streaming: Signed Payloads Without Buffering"
 date: 2026-08-11T04:52:58Z
 draft: false
-post_type: architecture
 tags: [s3, streaming, sigv4, bolt, sentinel]
 categories: [s3, performance]
 summary: "aws-chunked payload encoding streams large S3 uploads in signed chunks — no full-body buffering, per-chunk SigV4 integrity."
@@ -14,6 +13,8 @@ related:
   - 039-signed-payload-sse-s3
   - 008-s3-gateway-core
 ---
+# AWS Chunked Streaming
+
 Large S3 uploads can't be buffered whole for signing — memory explodes and latency spikes. `aws-chunked` payload encoding solves this by streaming the body as a sequence of individually-signed chunks.
 
 ## The Problem
@@ -52,7 +53,7 @@ body:   [chunk-size][chunk-signature][chunk-data]...
 
 ## Standards
 
-Per [docs/STANDARDS.md](../../STANDARDS.md): ⚡ **Bolt** (bounded memory, streaming, no buffering), 🛡 **Sentinel** (per-chunk integrity, honest mismatch errors).
+Per [docs/STANDARDS.md](../STANDARDS.md): ⚡ **Bolt** (bounded memory, streaming, no buffering), 🛡 **Sentinel** (per-chunk integrity, honest mismatch errors).
 
 ## Artifacts
 

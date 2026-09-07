@@ -2,7 +2,6 @@
 title: 'S3 and Inbound TLS: HTTPS-by-Default Enforcement'
 date: 2026-08-12 07:23:29+00:00
 draft: false
-post_type: architecture
 tags:
 - go
 - s3

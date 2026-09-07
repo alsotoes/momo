@@ -2,7 +2,6 @@
 title: "⚡ Bolt: 1000 → 16 Allocations in S3 ListObjectsV2 XML"
 date: 2026-08-24T11:24:01Z
 draft: false
-post_type: issue
 tags: [s3, performance, bolt]
 categories: [performance, s3]
 summary: "S3 ListObjectsV2 XML serialization dropped from ~1000 allocations to 16 per op via inlined time formatting and a pre-allocated escape buffer."
@@ -15,6 +14,8 @@ related:
   - 042-perf-profiling-baseline
   - 045-bolt-lastmodified-header
 ---
+# ⚡ Bolt: S3 ListXML AppendFormat
+
 The S3 `ListObjectsV2` XML response was formatting timestamps through a helper that allocated heavily — roughly **1000 allocations per op**. A focused fix brought it to **16** with ~60% less CPU.
 
 ## The Hot Path
@@ -55,7 +56,7 @@ b = t.AppendFormat(b, time.RFC3339Nano, e.LastModified)
 
 ## Standards
 
-Per [docs/STANDARDS.md](../../STANDARDS.md): ⚡ **Bolt** (zero-allocation hot path, stack buffers, pre-allocated reuse).
+Per [docs/STANDARDS.md](../STANDARDS.md): ⚡ **Bolt** (zero-allocation hot path, stack buffers, pre-allocated reuse).
 
 ## Artifacts
 

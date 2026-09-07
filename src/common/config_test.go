@@ -6,7 +6,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 )
 
 const validConfig = `
@@ -1073,41 +1072,31 @@ fallback_interval = 30
 // TestGetConfig_MomofsConsistencyDeprecation verifies the [momofs] section:
 // consistency=cached is accepted (and ignored with an AUDIT log), unknown
 // values are rejected, and the field defaults empty when the section is absent.
-func TestGetConfig_MomofsConfig(t *testing.T) {
+func TestGetConfig_MomofsConsistencyDeprecation(t *testing.T) {
 	base := "[global]\ndebug = true\nauth_token = " + strings.Repeat("a", 64) + "\nreplication_order = 1\npolymorphic_system = true\n\n" +
 		"[metrics]\ninterval = 10\nmin_threshold = 0.1\nmax_threshold = 0.9\nfallback_interval = 30\n\n"
 
-	// Absent section -> disabled by default.
+	// Absent section -> default empty.
 	cfgNo, err := GetConfig(writeConf(t, base+"[daemon.0]\nhost = h0\ndrive = d0\nchange_replication = c0\ndata = d0\n"))
 	if err != nil {
 		t.Fatalf("config without [momofs] failed: %v", err)
 	}
-	if cfgNo.Momofs.Enabled {
-		t.Fatalf("expected Enabled=false without [momofs], got true")
+	if cfgNo.Momofs.Consistency != "" {
+		t.Fatalf("expected empty Consistency without [momofs], got %q", cfgNo.Momofs.Consistency)
 	}
 
-	// enabled=true accepted with P2P.
-	cfgEnabled := base + "[daemon.0]\nhost = h0\ndrive = d0\nchange_replication = c0\ndata = d0\n\n" +
-		"[p2p]\nenabled = true\n\n" +
-		"[momofs]\nenabled = true\nmetadata_replication = 1\n"
-	cfg, err := GetConfig(writeConf(t, cfgEnabled))
+	// consistency=cached accepted.
+	cfgCached := base + "[daemon.0]\nhost = h0\ndrive = d0\nchange_replication = c0\ndata = d0\n\n" +
+		"[momofs]\nconsistency = cached\n"
+	cfg, err := GetConfig(writeConf(t, cfgCached))
 	if err != nil {
-		t.Fatalf("config with enabled=true failed: %v", err)
+		t.Fatalf("config with consistency=cached failed: %v", err)
 	}
-	if !cfg.Momofs.Enabled {
-		t.Fatalf("expected Enabled=true, got false")
-	}
-	if cfg.Momofs.MetadataReplication != 1 {
-		t.Fatalf("expected MetadataReplication=1, got %d", cfg.Momofs.MetadataReplication)
-	}
-	if cfg.Momofs.MetadataQuorum != 0 {
-		t.Fatalf("expected MetadataQuorum=0 default, got %d", cfg.Momofs.MetadataQuorum)
-	}
-	if cfg.Momofs.MetadataTTL != 60*time.Second {
-		t.Fatalf("expected MetadataTTL=60s default, got %v", cfg.Momofs.MetadataTTL)
+	if cfg.Momofs.Consistency != "cached" {
+		t.Fatalf("expected Consistency=cached, got %q", cfg.Momofs.Consistency)
 	}
 
-	// Unknown consistency value rejected (deprecated key).
+	// Unknown consistency value rejected.
 	cfgBad := base + "[daemon.0]\nhost = h0\ndrive = d0\nchange_replication = c0\ndata = d0\n\n" +
 		"[momofs]\nconsistency = full\n"
 	if _, err := GetConfig(writeConf(t, cfgBad)); err == nil {

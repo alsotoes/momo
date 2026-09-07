@@ -2,7 +2,6 @@
 title: "S3 501 Discipline: Remaining Ops — SelectObjectContent, UploadPartCopy, Analytics, Inventory, Metrics, Intelligent-Tiering"
 date: 2026-08-24T21:44:12Z
 draft: false
-post_type: issue
 tags: [s3, compatibility, sentinel]
 categories: [s3]
 summary: "Final 501 sweep: SelectObjectContent, UploadPartCopy, analytics, inventory, metrics, intelligent-tiering now return honest 501 NotImplemented."
@@ -14,6 +13,8 @@ related:
   - 034-s3-501-discipline-object-subresources
   - 008-s3-gateway-core
 ---
+# S3 501 Discipline: Remaining Operations
+
 The final sweep of unsupported S3 operations now return honest `501 NotImplemented` instead of misrouting.
 
 ## The Problem
@@ -62,7 +63,7 @@ Extended both reject maps + `UploadPartCopy` intercept in PUT dispatch:
 
 ## Standards
 
-Per [docs/STANDARDS.md](../../STANDARDS.md): 🛡 **Sentinel** (complete honest 501 coverage, no silent misrouting).
+Per [docs/STANDARDS.md](../STANDARDS.md): 🛡 **Sentinel** (complete honest 501 coverage, no silent misrouting).
 
 ## Follow-ups
 

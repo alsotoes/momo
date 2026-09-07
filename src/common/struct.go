@@ -1,7 +1,5 @@
 package common
 
-import "time"
-
 // FileMetadata stores the metadata for a file.
 type FileMetadata struct {
 	// Name is the name of the file.
@@ -152,23 +150,6 @@ type ConfigurationGlobal struct {
 	AuthBackoffDelay int
 }
 
-// ConfigurationMomofs holds the momofs distributed metadata configuration (R6, #934).
-type ConfigurationMomofs struct {
-	// Enabled controls whether the distributed metadata catalog is active.
-	// When false (default), momo operates in legacy local-only mode with no
-	// distributed metadata, full backward compatibility.
-	Enabled bool
-	// MetadataReplication is the number of metadata replicas per shard (M).
-	// Default 3. Valid range: 1..=cluster_size.
-	MetadataReplication int
-	// MetadataQuorum is the write quorum (W) for metadata writes.
-	// Default (M/2)+1. Valid range: 1..=MetadataReplication.
-	MetadataQuorum int
-	// MetadataTTL is the TTL for the local metadata cache (Phase 3).
-	// Default 60s. A value of 0 disables caching.
-	MetadataTTL time.Duration
-}
-
 // ConfigurationMetrics holds the metrics configuration for the application.
 type ConfigurationMetrics struct {
 	// Interval is the interval at which to collect metrics.
@@ -294,4 +275,12 @@ type Configuration struct {
 	Storage ConfigurationStorage
 	// Momofs is the optional [momofs] FUSE configuration.
 	Momofs ConfigurationMomofs
+}
+
+// ConfigurationMomofs is the optional [momofs] section configuration.
+type ConfigurationMomofs struct {
+	// Consistency is the deprecated momofs consistency mode. The only
+	// accepted value is "cached", which is redundant with kernel-level
+	// consistency and is ignored with an AUDIT log (issue #980).
+	Consistency string
 }

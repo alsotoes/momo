@@ -747,6 +747,9 @@ func (m *MomoQUICCommunicator) ReceiveMetadata() (meta common.FileMetadata, err 
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Recovered from panic in ReceiveMetadata: %v", r)
+			if m != nil {
+				m.Close() // Explicitly close the connection to prevent zombie sockets (Rule 43)
+			}
 			err = fmt.Errorf("panic in ReceiveMetadata: %v: %w", r, syscall.EIO)
 		}
 	}()
@@ -769,11 +772,12 @@ func (m *MomoQUICCommunicator) ReceiveMetadata() (meta common.FileMetadata, err 
 	if strings.ContainsAny(rawHash, "\r\n") {
 		return common.FileMetadata{}, fmt.Errorf("invalid hash: contains CRLF: %w", syscall.EBADMSG)
 	}
-	metadata.Hash = common.SanitizeLog(rawHash)
-	// 🛡️ Sentinel: Sanitize hash immediately to prevent path traversal in all downstream consumers.
-	if metadata.Hash == "" || common.HasPathTraversalChars(metadata.Hash) {
-		return common.FileMetadata{}, fmt.Errorf("invalid hash: %s: %w", metadata.Hash, syscall.EBADMSG)
+	// 🛡️ Sentinel: Validate hash immediately to prevent path traversal in all downstream consumers.
+	// We perform this on the raw extracted string before passing it to sanitization functions.
+	if rawHash == "" || common.HasPathTraversalChars(rawHash) {
+		return common.FileMetadata{}, fmt.Errorf("invalid hash: %s: %w", rawHash, syscall.EBADMSG)
 	}
+	metadata.Hash = common.SanitizeLog(rawHash)
 	// ⚡ Bolt: Use common.TrimNullBytesString to eliminate string allocation overhead
 	metadata.Name = common.TrimNullBytesString(buffer[hashLength : hashLength+common.FileInfoLength])
 	// 🛡️ Sentinel: Reject carriage returns or line feeds to prevent downstream Protocol Injection.

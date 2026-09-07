@@ -15,6 +15,3 @@ target/
 .env*
 *-lock.json
 *.lock
-
-# Vendor directory
-vendor/

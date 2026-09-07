@@ -2,7 +2,6 @@
 title: "🛡 Zero-Crash Hardening: Defensive Patterns for a Networked Object Store"
 date: 2026-06-03T06:03:39Z
 draft: false
-post_type: issue
 tags: [security, robustness, sentinel, bolt]
 categories: [governance]
 summary: "Systematic defensive coding: nil-safety, numeric overflow guards, resource lifecycle discipline, panic recovery at every boundary, and concurrency safety under -race."
@@ -10,9 +9,12 @@ artifacts:
   - {type: spec, path: openspec/changes/zero-crash-hardening}
   - {type: issue, id: "135"}
 related:
+  - 046-sentinel-path-traversal-fix
   - 015-sentinel-security-audit
   - 004-cas-content-addressable-store
 ---
+# 🛡 Zero-Crash Hardening
+
 A networked object store can't afford to crash on malformed input, race under concurrency, or leak resources on error paths. This post documents the defensive patterns applied across the codebase.
 
 ## The Problem
@@ -75,7 +77,7 @@ Production services face:
 
 ## Standards
 
-Per [docs/STANDARDS.md](../../STANDARDS.md): 🛡 **Sentinel** (fail-closed, panic→error, no silent corruption), ⚡ **Bolt** (bounded allocations, zero-copy defensive patterns).
+Per [docs/STANDARDS.md](../STANDARDS.md): 🛡 **Sentinel** (fail-closed, panic→error, no silent corruption), ⚡ **Bolt** (bounded allocations, zero-copy defensive patterns).
 
 ## Artifacts
 

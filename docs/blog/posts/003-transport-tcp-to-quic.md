@@ -2,7 +2,6 @@
 title: "Transport Evolution: TCP, QUIC, and the Wire Protocol"
 date: 2026-08-11T04:02:50Z
 draft: false
-post_type: architecture
 tags: [go, transport, quic, tcp, bolt]
 categories: [transport]
 summary: "Momo's transport layer grew from TCP to a QUIC/TLS 1.3 fan-out — fixing handshake, ACK framing, deadlines, and TLS identity along the way."
@@ -16,14 +15,14 @@ related:
   - 011-s3-https-tls-enforcement
   - 024-bolt-performance-engineering
 ---
+# Transport Evolution: TCP, QUIC, and the Wire Protocol
+
 Momo ships two transports over one logical wire protocol (`docs/PROTOCOL.md`):
 legacy **TCP** (`momo-tcp`) and **QUIC/TLS 1.3** (`momo-quic`). The split was
 an explicitly measured bet: TCP for high-bandwidth LAN chains, QUIC for
 lossy/WAN fan-out where it avoids head-of-line blocking and gives 0-RTT.
 
 ## What the transport had to get right
-
-{{< diagram src="/diagrams/07-transport-tcp-quic.svg" alt="Transport evolution: TCP vs QUIC" caption="Transport evolution: TCP vs QUIC" >}}
 
 A decade of fixes concentrated on correctness at the socket boundary:
 

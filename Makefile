@@ -138,10 +138,6 @@ blog-check:
 	@echo "Validating docs/blog posts (Rule 76)..."
 	python3 .github/scripts/blog_check.py
 
-diagram-check:
-	@echo "Validating docs/blog SVG diagrams..."
-	python3 .github/scripts/validate_diagrams.py
-
 adr-sync:
 	@go run ./tools/adr-sync
 
