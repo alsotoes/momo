@@ -30,15 +30,15 @@
 
     <style>
       .step-box { filter: url(#shadow); }
-      .code-block { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #F47983; }
-      .code-comment { font-family: 'JetBrains Mono', monospace; font-size: 8px; fill: #6B6B6B; }
-      .label { font-family: 'Outfit', sans-serif; font-size: 10px; font-weight: 600; fill: #2D2D2D; }
-      .desc { font-family: 'Outfit', sans-serif; font-size: 9px; fill: #6B6B6B; }
-      .title-text { font-family: 'Outfit', sans-serif; font-size: 15px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
-      .subtitle { font-family: 'Outfit', sans-serif; font-size: 9px; fill: #6B6B6B; text-anchor: middle; }
+      .code-block { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #F47983; }
+      .code-comment { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #6B6B6B; }
+      .label { font-family: 'Outfit', system-ui, -apple-system, sans-serif', sans-serif; font-size: 10px; font-weight: 600; fill: #2D2D2D; }
+      .desc { font-family: 'Outfit', system-ui, -apple-system, sans-serif', sans-serif; font-size: 10px; fill: #6B6B6B; }
+      .title-text { font-family: 'Outfit', system-ui, -apple-system, sans-serif', sans-serif; font-size: 15px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
+      .subtitle { font-family: 'Outfit', system-ui, -apple-system, sans-serif', sans-serif; font-size: 10px; fill: #6B6B6B; text-anchor: middle; }
       .flow-arrow { fill: none; stroke: #F47983; stroke-width: 2; stroke-linecap: round; marker-end: url(#arrow); }
       .step-box { filter: url(#shadow); }
-      .label { font-family: 'Outfit', sans-serif; font-size: 10px; font-weight: 600; fill: #2D2D2D; }
+      .label { font-family: 'Outfit', system-ui, -apple-system, sans-serif', sans-serif; font-size: 10px; font-weight: 600; fill: #2D2D2D; }
     </style>
   </defs>
 
@@ -50,9 +50,9 @@
   <!-- Input: Object Hash -->
   <g transform="translate(30, 55)">
     <rect x="0" y="0" width="180" height="60" rx="8" ry="8" fill="#FFF0F1" stroke="#F47983" stroke-width="1.5"/>
-    <text x="90" y="18" text-anchor="middle" style="font-family:'Outfit',sans-serif;font-size:10px;font-weight:600;fill:#F47983;">INPUT: Object Hash</text>
-    <text x="90" y="34" text-anchor="middle" style="font-family:'JetBrains Mono',monospace;font-size:8px;fill:#F47983;">placementKey = SHA-256(blob)</text>
-    <text x="90" y="46" text-anchor="middle" style="font-family:'JetBrains Mono',monospace;font-size:7px;fill:#6B6B6B;">32 bytes, already computed</text>
+    <text x="90" y="18" text-anchor="middle" style="font-family: 'Outfit', system-ui, -apple-system, sans-serif',sans-serif;font-size:10px;font-weight:600;fill:#F47983;">INPUT: Object Hash</text>
+    <text x="90" y="34" text-anchor="middle" style="font-family: 'JetBrains Mono', ui-monospace, monospace',monospace;font-size: 10px;fill:#F47983;">placementKey = SHA-256(blob)</text>
+    <text x="90" y="46" text-anchor="middle" style="font-family: 'JetBrains Mono', ui-monospace, monospace',monospace;font-size: 10px;fill:#6B6B6B;">32 bytes, already computed</text>
   </g>
 
   <!-- Arrow down -->
@@ -63,16 +63,16 @@
     <!-- Hash Computation -->
     <g class="step-box" transform="translate(0, 0)">
       <rect x="0" y="0" width="210" height="130" rx="8" ry="8" fill="url(#grad-hash)" stroke="#F47983" stroke-width="2"/>
-      <text x="105" y="18" text-anchor="middle" style="font-family:'Outfit',sans-serif;font-size:10px;font-weight:600;fill:#F47983;">HASH COMPUTATION</text>
+      <text x="105" y="18" text-anchor="middle" style="font-family: 'Outfit', system-ui, -apple-system, sans-serif',sans-serif;font-size:10px;font-weight:600;fill:#F47983;">HASH COMPUTATION</text>
       
       <g transform="translate(15, 30)">
-        <text x="0" y="0" style="font-family:'JetBrains Mono',monospace;font-size:8px;fill:#F47983;">hash_input = key ⊗ node.id</text>
-        <text x="0" y="16" style="font-family:'JetBrains Mono',monospace;font-size:7px;fill:#6B6B6B;">// XOR: combines content hash with node ID</text>
-        <text x="0" y="30" style="font-family:'JetBrains Mono',monospace;font-size:8px;fill:#F47983;">raw = hash(hash_input)</text>
-        <text x="0" y="44" style="font-family:'JetBrains Mono',monospace;font-size:7px;fill:#6B6B6B;">// Uniform distribution over [0, 2^64)</text>
-        <text x="0" y="58" style="font-family:'JetBrains Mono',monospace;font-size:8px;fill:#F47983;">raw = fold52(raw)</text>
-        <text x="0" y="72" style="font-family:'JetBrains Mono',monospace;font-size:7px;fill:#6B6B6B;">// 52-bit mantissa — avoids float64 precision loss (#873)</text>
-        <text x="0" y="86" style="font-family:'JetBrains Mono',monospace;font-size:8px;fill:#F47983;">score = raw</text>
+        <text x="0" y="0" style="font-family: 'JetBrains Mono', ui-monospace, monospace',monospace;font-size: 10px;fill:#F47983;">hash_input = key ⊗ node.id</text>
+        <text x="0" y="16" style="font-family: 'JetBrains Mono', ui-monospace, monospace',monospace;font-size: 10px;fill:#6B6B6B;">// XOR: combines content hash with node ID</text>
+        <text x="0" y="30" style="font-family: 'JetBrains Mono', ui-monospace, monospace',monospace;font-size: 10px;fill:#F47983;">raw = hash(hash_input)</text>
+        <text x="0" y="44" style="font-family: 'JetBrains Mono', ui-monospace, monospace',monospace;font-size: 10px;fill:#6B6B6B;">// Uniform distribution over [0, 2^64)</text>
+        <text x="0" y="58" style="font-family: 'JetBrains Mono', ui-monospace, monospace',monospace;font-size: 10px;fill:#F47983;">raw = fold52(raw)</text>
+        <text x="0" y="72" style="font-family: 'JetBrains Mono', ui-monospace, monospace',monospace;font-size: 10px;fill:#6B6B6B;">// 52-bit mantissa — avoids float64 precision loss (#873)</text>
+        <text x="0" y="86" style="font-family: 'JetBrains Mono', ui-monospace, monospace',monospace;font-size: 10px;fill:#F47983;">score = raw</text>
       </g>
     </g>
 
@@ -82,15 +82,15 @@
     <!-- Weight Application -->
     <g class="step-box" transform="translate(240, 0)">
       <rect x="0" y="0" width="210" height="130" rx="8" ry="8" fill="url(#grad-weight)" stroke="#FCC9B9" stroke-width="2"/>
-      <text x="105" y="18" text-anchor="middle" style="font-family:'Outfit',sans-serif;font-size:10px;font-weight:600;fill:#FCC9B9;">WEIGHT APPLICATION</text>
+      <text x="105" y="18" text-anchor="middle" style="font-family: 'Outfit', system-ui, -apple-system, sans-serif',sans-serif;font-size:10px;font-weight:600;fill:#FCC9B9;">WEIGHT APPLICATION</text>
       
       <g transform="translate(15, 30)">
-        <text x="0" y="0" style="font-family:'JetBrains Mono',monospace;font-size:8px;fill:#FCC9B9;">score = raw * node.weight</text>
-        <text x="0" y="16" style="font-family:'JetBrains Mono',monospace;font-size:7px;fill:#6B6B6B;">// Weight scales score by node capacity</text>
-        <text x="0" y="30" style="font-family:'JetBrains Mono',monospace;font-size:7px;fill:#6B6B6B;">// weight > 1 → more replicas</text>
-        <text x="0" y="44" style="font-family:'JetBrains Mono',monospace;font-size:7px;fill:#6B6B6B;">// weight = 0 → excluded</text>
-        <text x="0" y="58" style="font-family:'JetBrains Mono',monospace;font-size:8px;fill:#FCC9B9;">final = fold52(score)</text>
-        <text x="0" y="72" style="font-family:'JetBrains Mono',monospace;font-size:7px;fill:#6B6B6B;">// 2nd fold52 for consistency</text>
+        <text x="0" y="0" style="font-family: 'JetBrains Mono', ui-monospace, monospace',monospace;font-size: 10px;fill:#FCC9B9;">score = raw * node.weight</text>
+        <text x="0" y="16" style="font-family: 'JetBrains Mono', ui-monospace, monospace',monospace;font-size: 10px;fill:#6B6B6B;">// Weight scales score by node capacity</text>
+        <text x="0" y="30" style="font-family: 'JetBrains Mono', ui-monospace, monospace',monospace;font-size: 10px;fill:#6B6B6B;">// weight > 1 → more replicas</text>
+        <text x="0" y="44" style="font-family: 'JetBrains Mono', ui-monospace, monospace',monospace;font-size: 10px;fill:#6B6B6B;">// weight = 0 → excluded</text>
+        <text x="0" y="58" style="font-family: 'JetBrains Mono', ui-monospace, monospace',monospace;font-size: 10px;fill:#FCC9B9;">final = fold52(score)</text>
+        <text x="0" y="72" style="font-family: 'JetBrains Mono', ui-monospace, monospace',monospace;font-size: 10px;fill:#6B6B6B;">// 2nd fold52 for consistency</text>
       </g>
     </g>
 
@@ -100,15 +100,15 @@
     <!-- Sort &amp; Output -->
     <g class="step-box" transform="translate(480, 0)">
       <rect x="0" y="0" width="220" height="130" rx="8" ry="8" fill="url(#grad-result)" stroke="#769267" stroke-width="2"/>
-      <text x="110" y="18" text-anchor="middle" style="font-family:'Outfit',sans-serif;font-size:10px;font-weight:600;fill:#769267;">SORT &amp; OUTPUT</text>
+      <text x="110" y="18" text-anchor="middle" style="font-family: 'Outfit', system-ui, -apple-system, sans-serif',sans-serif;font-size:10px;font-weight:600;fill:#769267;">SORT &amp; OUTPUT</text>
       
       <g transform="translate(15, 30)">
-        <text x="0" y="0" style="font-family:'JetBrains Mono',monospace;font-size:8px;fill:#FFA6A6;">candidates.sort(key=score)</text>
-        <text x="0" y="16" style="font-family:'JetBrains Mono',monospace;font-size:7px;fill:#6B6B6B;">// Stable sort — ties never flip (#872)</text>
-        <text x="0" y="30" style="font-family:'JetBrains Mono',monospace;font-size:8px;fill:#FFA6A6;">replicas = sorted[:N]</text>
-        <text x="0" y="44" style="font-family:'JetBrains Mono',monospace;font-size:7px;fill:#6B6B6B;">// Top-N replicas selected</text>
-        <text x="0" y="58" style="font-family:'JetBrains Mono',monospace;font-size:8px;fill:#769267;">filter_failure_domains()</text>
-        <text x="0" y="72" style="font-family:'JetBrains Mono',monospace;font-size:7px;fill:#6B6B6B;">// R1: ensure rack/zone/DC diversity</text>
+        <text x="0" y="0" style="font-family: 'JetBrains Mono', ui-monospace, monospace',monospace;font-size: 10px;fill:#FFA6A6;">candidates.sort(key=score)</text>
+        <text x="0" y="16" style="font-family: 'JetBrains Mono', ui-monospace, monospace',monospace;font-size: 10px;fill:#6B6B6B;">// Stable sort — ties never flip (#872)</text>
+        <text x="0" y="30" style="font-family: 'JetBrains Mono', ui-monospace, monospace',monospace;font-size: 10px;fill:#FFA6A6;">replicas = sorted[:N]</text>
+        <text x="0" y="44" style="font-family: 'JetBrains Mono', ui-monospace, monospace',monospace;font-size: 10px;fill:#6B6B6B;">// Top-N replicas selected</text>
+        <text x="0" y="58" style="font-family: 'JetBrains Mono', ui-monospace, monospace',monospace;font-size: 10px;fill:#769267;">filter_failure_domains()</text>
+        <text x="0" y="72" style="font-family: 'JetBrains Mono', ui-monospace, monospace',monospace;font-size: 10px;fill:#6B6B6B;">// R1: ensure rack/zone/DC diversity</text>
       </g>
     </g>
   </g>
@@ -116,15 +116,15 @@
   <!-- Key Insight Box -->
   <g transform="translate(30, 300)">
     <rect x="0" y="0" width="660" height="50" rx="8" ry="8" fill="#FFF0F1" stroke="#F47983" stroke-width="1.5"/>
-    <text x="20" y="16" style="font-family:'Outfit',sans-serif;font-size:10px;font-weight:600;fill:#F47983;">⚡ Bolt Insight</text>
-    <text x="20" y="32" style="font-family:'Outfit',sans-serif;font-size:8px;fill:#6B6B6B;">Zero-allocation stack buffers; fold52 eliminates float64 drift; stable sort prevents silent replica reordering</text>
+    <text x="20" y="16" style="font-family: 'Outfit', system-ui, -apple-system, sans-serif',sans-serif;font-size:10px;font-weight:600;fill:#F47983;">⚡ Bolt Insight</text>
+    <text x="20" y="32" style="font-family: 'Outfit', system-ui, -apple-system, sans-serif',sans-serif;font-size: 10px;fill:#6B6B6B;">Zero-allocation stack buffers; fold52 eliminates float64 drift; stable sort prevents silent replica reordering</text>
   </g>
 
   <!-- Legend -->
   <g transform="translate(30, 360)">
     <rect x="0" y="0" width="660" height="28" rx="6" ry="6" fill="#FAFAFA" stroke="#E8DFD8"/>
     <g transform="translate(15, 6)">
-      <rect x="0" y="0" width="12" height="12" rx="3" fill="#F47983"/><text x="16" y="9" style="font-family:'Outfit',sans-serif;font-size:8px;fill:#6B6B6B;">Hash (SHA-256)</text>
+      <rect x="0" y="0" width="12" height="12" rx="3" fill="#F47983"/><text x="16" y="9" style="font-family: 'Outfit', system-ui, -apple-system, sans-serif',sans-serif;font-size: 10px;fill:#6B6B6B;">Hash (SHA-256)</text>
     </g>
     <g transform="translate(200, 6)">
       <rect x="0" y="0" width="12" height="12" rx="3" fill="#FCC9B9"/><text x="16" y="9" class="legend-text">Weight × Score</text>
@@ -140,11 +140,11 @@
   <!-- Bolt/Sentinel badges -->
   <g transform="translate(580, 8)">
     <rect x="0" y="0" width="65" height="18" rx="9" fill="rgba(244,121,131,0.12)" stroke="#F47983" stroke-width="1"/>
-    <text x="32.5" y="12" text-anchor="middle" style="font-family:'JetBrains Mono',monospace;font-size:7px;font-weight:700;fill:#F47983;">⚡ BOLT</text>
+    <text x="32.5" y="12" text-anchor="middle" style="font-family: 'JetBrains Mono', ui-monospace, monospace',monospace;font-size: 10px;font-weight:700;fill:#F47983;">⚡ BOLT</text>
   </g>
   <g transform="translate(650, 8)">
     <rect x="0" y="0" width="65" height="18" rx="9" fill="rgba(118,146,103,0.12)" stroke="#769267" stroke-width="1"/>
-    <text x="32.5" y="12" text-anchor="middle" style="font-family:'JetBrains Mono',monospace;font-size:7px;font-weight:700;fill:#769267;">🛡 SENTINEL</text>
+    <text x="32.5" y="12" text-anchor="middle" style="font-family: 'JetBrains Mono', ui-monospace, monospace',monospace;font-size: 10px;font-weight:700;fill:#769267;">🛡 SENTINEL</text>
   </g>
 
   <defs>
@@ -174,15 +174,15 @@
 
     <style>
       .step-box { filter: url(#shadow); }
-      .code-block { font-family: 'JetBrains Mono', monospace; font-size: 8px; fill: #F47983; }
-      .code-comment { font-family: 'JetBrains Mono', monospace; font-size: 7px; fill: #6B6B6B; }
-      .label { font-family: 'Outfit', sans-serif; font-size: 10px; font-weight: 600; fill: #2D2D2D; }
-      .desc { font-family: 'Outfit', sans-serif; font-size: 9px; fill: #6B6B6B; }
-      .title-text { font-family: 'Outfit', sans-serif; font-size: 15px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
-      .subtitle { font-family: 'Outfit', sans-serif; font-size: 9px; fill: #6B6B6B; text-anchor: middle; }
+      .code-block { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #F47983; }
+      .code-comment { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #6B6B6B; }
+      .label { font-family: 'Outfit', system-ui, -apple-system, sans-serif', sans-serif; font-size: 10px; font-weight: 600; fill: #2D2D2D; }
+      .desc { font-family: 'Outfit', system-ui, -apple-system, sans-serif', sans-serif; font-size: 10px; fill: #6B6B6B; }
+      .title-text { font-family: 'Outfit', system-ui, -apple-system, sans-serif', sans-serif; font-size: 15px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
+      .subtitle { font-family: 'Outfit', system-ui, -apple-system, sans-serif', sans-serif; font-size: 10px; fill: #6B6B6B; text-anchor: middle; }
       .flow-arrow { fill: none; stroke: #F47983; stroke-width: 2; stroke-linecap: round; marker-end: url(#arrow); }
       .step-box { filter: url(#shadow); }
-      .label { font-family: 'Outfit', sans-serif; font-size: 10px; font-weight: 600; fill: #2D2D2D; }
+      .label { font-family: 'Outfit', system-ui, -apple-system, sans-serif', sans-serif; font-size: 10px; font-weight: 600; fill: #2D2D2D; }
     </style>
   </defs>
 </svg>

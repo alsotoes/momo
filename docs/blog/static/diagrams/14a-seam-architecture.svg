@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="title-14a desc-14a">
+  <title id="title-14a">Rule 74: Seam-Over-Plugins Architecture</title>
+  <desc id="desc-14a">Architectural contrast between compile-time interface seams and external dynamic RPC plugins in momo.</desc>
+
+  <defs>
+    <style>
+      .bg { fill: #FAFAFA; }
+      .title { font-family: system-ui, -apple-system, sans-serif; font-size: 16px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
+      .subtitle { font-family: system-ui, -apple-system, sans-serif; font-size: 12px; fill: #6B6B6B; text-anchor: middle; }
+      .card-plugin { fill: #FFFFFF; stroke: #dc2626; stroke-width: 1.5; rx: 8; ry: 8; }
+      .card-seam { fill: #FFFFFF; stroke: #769267; stroke-width: 2; rx: 8; ry: 8; }
+      .head-bad { font-family: system-ui, -apple-system, sans-serif; font-size: 13px; font-weight: 700; fill: #dc2626; text-anchor: middle; }
+      .head-good { font-family: system-ui, -apple-system, sans-serif; font-size: 13px; font-weight: 700; fill: #769267; text-anchor: middle; }
+      .text-body { font-family: system-ui, -apple-system, sans-serif; font-size: 11px; fill: #2D2D2D; }
+      .text-code { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10px; fill: #769267; }
+    </style>
+  </defs>
+
+  <rect width="640" height="360" class="bg"/>
+
+  <text x="320" y="32" class="title">Rule 74: Seams Over Dynamic Plugins</text>
+  <text x="320" y="52" class="subtitle">Preserving concrete fast-paths and zero-allocation execution boundaries</text>
+
+  <!-- Left: Dynamic Plugins (Anti-Pattern) -->
+  <g transform="translate(30, 75)">
+    <rect x="0" y="0" width="275" height="175" class="card-plugin"/>
+    <text x="137" y="26" class="head-bad">❌ DYNAMIC RPC PLUGINS</text>
+    
+    <g transform="translate(15, 45)">
+      <text y="15" class="text-body">• Out-of-process gRPC / IPC socket</text>
+      <text y="35" class="text-body">• Protobuf serialization tax on every I/O</text>
+      <text y="55" class="text-body">• Kernel boundary context switching</text>
+      <text y="75" class="text-body">• Unverified code runs in data path</text>
+      <text y="95" class="text-body">• Trojan horse / integrity breach risk</text>
+      <text y="115" class="text-body">• High tail latency under load</text>
+    </g>
+  </g>
+
+  <!-- Right: Compile-Time Seams (Accepted) -->
+  <g transform="translate(335, 75)">
+    <rect x="0" y="0" width="275" height="175" class="card-seam"/>
+    <text x="137" y="26" class="head-good">✅ COMPILE-TIME SEAMS (Rule 74)</text>
+    
+    <g transform="translate(15, 45)">
+      <text y="15" class="text-body">• In-process Go interface dispatch</text>
+      <text y="35" class="text-body">• Single pointer jump ($&lt;2\text{ ns}$)</text>
+      <text y="55" class="text-body">• Zero memory copies or marshaling</text>
+      <text y="75" class="text-body">• Static compilation and code audit</text>
+      <text y="95" class="text-body">• Trust core invariants stay immutable</text>
+      <text y="115" class="text-body">• Config-driven declarative injection</text>
+    </g>
+  </g>
+
+  <!-- Bottom Banner -->
+  <g transform="translate(30, 265)">
+    <rect x="0" y="0" width="580" height="70" rx="8" ry="8" fill="#FEFEF9" stroke="#E8DFD8" stroke-width="1.5"/>
+    <text x="20" y="24" style="font-family:system-ui,sans-serif;font-size:12px;font-weight:700;fill:#563A10;">🛡 Rule 74 Architectural Mandate</text>
+    <text x="20" y="44" style="font-family:system-ui,sans-serif;font-size:11px;fill:#2D2D2D;">Core storage (CAS, SHA-256, Bbolt, Verify-on-Read) remains concrete and auditable.</text>
+    <text x="20" y="58" style="font-family:system-ui,sans-serif;font-size:11px;fill:#2D2D2D;">Seams exist only where behaviors legitimately diverge: BlobStore, DurabilityBarrier, ReadVerifier.</text>
+  </g>
+</svg>

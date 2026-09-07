@@ -78,9 +78,11 @@ hex.Encode(dst, src)  // still allocates dst
 
 ## Core Patterns — With Annotated Code
 
-![Bolt performance patterns](/diagrams/12-bolt-patterns.svg)
+{{< diagram src="/diagrams/12-bolt-patterns.svg" alt="Bolt performance patterns overview" caption="Figure 1: The three core pillars of Bolt performance engineering in momo" >}}
 
 ### 1. Zero-Escape SHA-256 / Hex Encoding
+
+{{< diagram src="/diagrams/12a-zero-escape.svg" alt="Zero-escape stack buffers" caption="Figure 2: Stack arrays vs heap pooling — eliminating garbage collector pauses" >}}
 
 ```go
 // Stack-allocated hash buffer (SHA-256 = 32 bytes)
@@ -102,6 +104,8 @@ hex.Encode(hexBuf[:0], hash)
 **Why this works**: `hashBuf[:0]` and `hexBuf[:0]` create slices with capacity but length 0, backed by stack arrays. `Sum` and `Encode` append into that capacity. Result slices point into stack memory — no heap escape.
 
 ### 2. Deadline Amortization — Cut SetDeadline ~98%
+
+{{< diagram src="/diagrams/12b-deadline-amortization.svg" alt="Phased deadline amortization" caption="Figure 3: Phased deadlines cut kernel syscalls from 200/sec to 3/sec" >}}
 
 ```go
 // BEFORE: SetDeadline on every read/write (2 syscalls per chunk)
@@ -128,6 +132,8 @@ conn.SetDeadline(deadline)
 **Result**: From 200 SetDeadline/sec/connection → 3/sec. Syscall overhead eliminated.
 
 ### 3. Combined Metadata Reads
+
+{{< diagram src="/diagrams/12c-combined-reads.svg" alt="Combined Bbolt metadata views" caption="Figure 4: Collapsing three separate Bbolt transactions into a single atomic read view" >}}
 
 ```go
 // BEFORE: 3 separate bbolt views per write

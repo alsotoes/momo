@@ -854,8 +854,50 @@ details.toc a:hover {
 }
 
 .type-issue {
-    background: rgba(244, 121, 131, 0.15);
-    color: var(--accent);
-    border: 1px solid rgba(244, 121, 131, 0.3);
+    background: rgba(245, 158, 11, 0.12);
+    color: #fbbf24;
+    border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+/* 17. Responsive SVG Diagrams */
+.diagram-figure {
+    margin: 2.25rem 0;
+    text-align: center;
+    width: 100%;
+}
+
+.diagram-wrapper {
+    display: inline-block;
+    width: 100%;
+    max-width: 720px;
+    background: #FAFAFA;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.75rem;
+    box-shadow: 0 4px 16px -2px rgba(86, 58, 16, 0.06);
+    overflow: hidden;
+}
+
+.diagram-img {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 480px;
+    margin: 0 auto;
+    object-fit: contain;
+}
+
+.diagram-caption {
+    margin-top: 0.65rem;
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 0.825rem;
+    color: var(--secondary);
+    line-height: 1.4;
+}
+
+.diagram-caption code {
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+    font-size: 0.78rem;
+    padding: 0.1rem 0.35rem;
 }
 

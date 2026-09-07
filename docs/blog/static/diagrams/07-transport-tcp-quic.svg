@@ -33,14 +33,14 @@
       .node:hover { transform: scale(1.03); }
       .tcp-box { fill: url(#tcp-grad); stroke: #563A10; stroke-width: 2; }
       .quic-box { fill: url(#quic-grad); stroke: #FFA6A6; stroke-width: 2; }
-      .title-text { font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
-      .section-title { font-family: 'Outfit', sans-serif; font-size: 13px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
-      .label-text { font-family: 'JetBrains Mono', monospace; font-size: 10px; fill: #2D2D2D; text-anchor: middle; }
-      .label-small { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #6B6B6B; text-anchor: middle; }
-      .code-text { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #F47983; }
-      .code-success { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #769267; }
-      .code-quic { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #FFA6A6; }
-      .code-tcp { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #563A10; }
+      .title-text { font-family: 'Outfit', system-ui, -apple-system, sans-serif', sans-serif; font-size: 18px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
+      .section-title { font-family: 'Outfit', system-ui, -apple-system, sans-serif', sans-serif; font-size: 13px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
+      .label-text { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #2D2D2D; text-anchor: middle; }
+      .label-small { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #6B6B6B; text-anchor: middle; }
+      .code-text { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #F47983; }
+      .code-success { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #769267; }
+      .code-quic { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #FFA6A6; }
+      .code-tcp { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #563A10; }
       .flow-arrow { fill: none; stroke: #F47983; stroke-width: 2; stroke-linecap: round; marker-end: url(#arrow); }
       .flow-quic { stroke: #FFA6A6; stroke-width: 2; marker-end: url(#arrow-quic); }
       .flow-tcp { stroke: #563A10; stroke-width: 2; marker-end: url(#arrow); }
@@ -196,10 +196,10 @@
   <!-- Bolt/Sentinel badges -->
   <g transform="translate(620, 15)">
     <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(244,121,131,0.15)" stroke="#F47983" stroke-width="1"/>
-    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="#F47983">⚡ BOLT</text>
+    <text x="42.5" y="16" text-anchor="middle" font-family="'JetBrains Mono', ui-monospace, monospace" font-size="10px" font-weight="700" fill="#F47983">⚡ BOLT</text>
   </g>
   <g transform="translate(710, 15)">
     <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(118,146,103,0.15)" stroke="#769267" stroke-width="1"/>
-    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="#769267">🛡 SENTINEL</text>
+    <text x="42.5" y="16" text-anchor="middle" font-family="'JetBrains Mono', ui-monospace, monospace" font-size="10px" font-weight="700" fill="#769267">🛡 SENTINEL</text>
   </g>
 </svg>

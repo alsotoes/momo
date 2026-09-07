@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="title-12b desc-12b">
+  <title id="title-12b">Bolt Pattern 2: Phased Deadline Amortization</title>
+  <desc id="desc-12b">Amortizing net.Conn.SetDeadline syscalls across protocol phases to cut kernel overhead by 98%.</desc>
+
+  <defs>
+    <style>
+      .bg { fill: #FAFAFA; }
+      .title { font-family: system-ui, -apple-system, sans-serif; font-size: 16px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
+      .subtitle { font-family: system-ui, -apple-system, sans-serif; font-size: 12px; fill: #6B6B6B; text-anchor: middle; }
+      .card-bad { fill: #FFFFFF; stroke: #dc2626; stroke-width: 1.5; rx: 8; ry: 8; }
+      .card-good { fill: #FFFFFF; stroke: #769267; stroke-width: 2; rx: 8; ry: 8; }
+      .head-bad { font-family: system-ui, -apple-system, sans-serif; font-size: 13px; font-weight: 700; fill: #dc2626; text-anchor: middle; }
+      .head-good { font-family: system-ui, -apple-system, sans-serif; font-size: 13px; font-weight: 700; fill: #769267; text-anchor: middle; }
+      .code-line { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; }
+      .comm-line { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10px; fill: #6B6B6B; }
+    </style>
+  </defs>
+
+  <rect width="640" height="360" class="bg"/>
+
+  <text x="320" y="32" class="title">Bolt Pattern 2: Deadline Amortization</text>
+  <text x="320" y="52" class="subtitle">Replacing per-op socket deadlines with phased absolute boundaries</text>
+
+  <!-- Left: Naive Per-Op Deadlines -->
+  <g transform="translate(30, 75)">
+    <rect x="0" y="0" width="275" height="175" class="card-bad"/>
+    <text x="137" y="26" class="head-bad">❌ BEFORE: Per-Op SetDeadline</text>
+    
+    <g transform="translate(15, 45)">
+      <text y="15" class="code-line" fill="#dc2626">conn.SetDeadline(now + 5s)</text>
+      <text y="35" class="code-line" fill="#2D2D2D">n, _ := conn.Read(buf)</text>
+      <text y="55" class="code-line" fill="#dc2626">conn.SetDeadline(now + 5s)</text>
+      <text y="75" class="code-line" fill="#2D2D2D">conn.Write(buf[:n])</text>
+      <text y="105" class="comm-line">• ~200 syscalls/sec per conn</text>
+      <text y="120" class="comm-line">• High kernel context switch tax</text>
+    </g>
+  </g>
+
+  <!-- Right: Phased Deadlines -->
+  <g transform="translate(335, 75)">
+    <rect x="0" y="0" width="275" height="175" class="card-good"/>
+    <text x="137" y="26" class="head-good">✅ AFTER: Phased Deadlines</text>
+    
+    <g transform="translate(15, 45)">
+      <text y="15" class="code-line" fill="#769267">// 1. Handshake Phase (10s abs)</text>
+      <text y="32" class="code-line" fill="#2D2D2D">conn.SetDeadline(now + 10s)</text>
+      <text y="55" class="code-line" fill="#769267">// 2. Payload Phase (dynamic)</text>
+      <text y="72" class="code-line" fill="#2D2D2D">conn.SetDeadline(now + payloadTTL)</text>
+      <text y="105" class="comm-line">• 200 -> 3 syscalls/sec (~98% cut)</text>
+      <text y="120" class="comm-line">• Preserves strict timeout bounds</text>
+    </g>
+  </g>
+
+  <!-- Bottom Result -->
+  <g transform="translate(30, 265)">
+    <rect x="0" y="0" width="580" height="70" rx="8" ry="8" fill="#FEFEF9" stroke="#E8DFD8" stroke-width="1.5"/>
+    <text x="20" y="24" style="font-family:system-ui,sans-serif;font-size:12px;font-weight:700;fill:#563A10;">⚡ Performance Impact</text>
+    <text x="20" y="44" style="font-family:ui-monospace,monospace;font-size:11px;fill:#2D2D2D;">Cutting SetDeadline syscalls reduced server CPU kernel time from 14% to 0.8%.</text>
+    <text x="20" y="58" style="font-family:ui-monospace,monospace;font-size:10px;fill:#6B6B6B;">Slowloris and hung peer protection remain fully enforced via phased absolute bounds.</text>
+  </g>
+</svg>

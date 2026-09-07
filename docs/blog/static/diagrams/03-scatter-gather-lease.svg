@@ -27,14 +27,14 @@
       .node { filter: url(#drop-shadow); transition: transform 0.2s ease; }
       .node:hover { transform: scale(1.03); }
       .shard-box { fill: url(#shard-grad); stroke: #F47983; stroke-width: 1.5; }
-      .title-text { font-family: 'Outfit', sans-serif; font-size: 16px; font-weight: 700; fill: #2D2D2D; }
-      .section-title { font-family: 'Outfit', sans-serif; font-size: 13px; font-weight: 700; fill: #2D2D2D; }
-      .label-text { font-family: 'JetBrains Mono', monospace; font-size: 10px; fill: #2D2D2D; text-anchor: middle; }
-      .label-small { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #6B6B6B; text-anchor: middle; }
-      .code-text { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #F47983; }
-      .code-success { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #769267; }
-      .code-fail { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #dc2626; }
-      .math-text { font-family: 'JetBrains Mono', monospace; font-size: 11px; fill: #563A10; }
+      .title-text { font-family: 'Outfit', system-ui, -apple-system, sans-serif', sans-serif; font-size: 16px; font-weight: 700; fill: #2D2D2D; }
+      .section-title { font-family: 'Outfit', system-ui, -apple-system, sans-serif', sans-serif; font-size: 13px; font-weight: 700; fill: #2D2D2D; }
+      .label-text { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #2D2D2D; text-anchor: middle; }
+      .label-small { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #6B6B6B; text-anchor: middle; }
+      .code-text { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #F47983; }
+      .code-success { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #769267; }
+      .code-fail { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #dc2626; }
+      .math-text { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 11px; fill: #563A10; }
       .flow-arrow { fill: none; stroke: #F47983; stroke-width: 1.5; stroke-linecap: round; marker-end: url(#arrow); }
       .flow-success { stroke: #769267; marker-end: url(#arrow-success); }
       .flow-fail { stroke: #dc2626; marker-end: url(#arrow-fail); stroke-dasharray: 4,3; }
@@ -157,7 +157,7 @@
   
   <g class="node" transform="translate(400, 445)">
     <rect x="-80" y="-20" width="160" height="40" rx="8" fill="rgba(118,146,103,0.15)" stroke="#769267" stroke-width="2"/>
-    <text y="6" text-anchor="middle" font-family="Outfit" font-size="12px" font-weight="600" fill="#769267">✓ PAGINATED RESULT</text>
+    <text y="6" text-anchor="middle" font-family="'Outfit', system-ui, -apple-system, sans-serif" font-size="12px" font-weight="600" fill="#769267">✓ PAGINATED RESULT</text>
   </g>
   
   <!-- Return to client -->
@@ -184,13 +184,13 @@
       <text y="0" text-anchor="start" class="code-success">3 peers → votes > 1.5 → 2 votes ✓</text>
     </g>
     <g transform="translate(100, 55)">
-      <text y="0" text-anchor="start" class="code-fail" style="font-size:9px;">BUG #806: > peers/2 sometimes resolved to 1</text>
+      <text y="0" text-anchor="start" class="code-fail" style="font-size: 10px;">BUG #806: > peers/2 sometimes resolved to 1</text>
     </g>
     <g transform="translate(-160, 72)">
       <text y="0" text-anchor="start" class="code-success">5 peers → votes > 2.5 → 3 votes ✓</text>
     </g>
     <g transform="translate(100, 72)">
-      <text y="0" text-anchor="start" class="code-text" style="font-size:9px;">Even N: votes > N/2 (strict majority)</text>
+      <text y="0" text-anchor="start" class="code-text" style="font-size: 10px;">Even N: votes > N/2 (strict majority)</text>
     </g>
   </g>
   
@@ -204,27 +204,27 @@
     <g transform="translate(-180, 50)">
       <rect x="0" y="0" width="180" height="50" rx="6" fill="rgba(220,38,38,0.15)" stroke="#dc2626" stroke-width="1.5"/>
       <text x="90" y="18" text-anchor="middle" class="code-fail" style="font-size:10px;">Partition A: 2 nodes</text>
-      <text x="90" y="33" text-anchor="middle" class="code-fail" style="font-size:9px;">votes=2, peers=3 → 2 > 1.5 ✓</text>
+      <text x="90" y="33" text-anchor="middle" class="code-fail" style="font-size: 10px;">votes=2, peers=3 → 2 > 1.5 ✓</text>
       <text x="90" y="44" text-anchor="middle" class="label-small" fill="#dc2626">LEASE GRANTED</text>
     </g>
     <g transform="translate(20, 50)">
       <rect x="0" y="0" width="160" height="50" rx="6" fill="rgba(220,38,38,0.15)" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="4,3"/>
       <text x="80" y="18" text-anchor="middle" class="code-fail" style="font-size:10px;">Partition B: 1 node</text>
-      <text x="80" y="33" text-anchor="middle" class="code-fail" style="font-size:9px;">votes=1, peers=3 → 1 ≯ 1.5 ✗</text>
+      <text x="80" y="33" text-anchor="middle" class="code-fail" style="font-size: 10px;">votes=1, peers=3 → 1 ≯ 1.5 ✗</text>
       <text x="80" y="44" text-anchor="middle" class="label-small" fill="#dc2626">LEASE DENIED</text>
     </g>
     <g transform="translate(-180, 70)">
-      <text y="0" text-anchor="start" class="code-success" style="font-size:9px;">✓ #810 Fix: fail closed — no quorum = no lease</text>
+      <text y="0" text-anchor="start" class="code-success" style="font-size: 10px;">✓ #810 Fix: fail closed — no quorum = no lease</text>
     </g>
   </g>
   
   <!-- Bolt/Sentinel badges -->
   <g transform="translate(620, 15)">
     <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(244,121,131,0.15)" stroke="#F47983" stroke-width="1"/>
-    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="#F47983">⚡ BOLT</text>
+    <text x="42.5" y="16" text-anchor="middle" font-family="'JetBrains Mono', ui-monospace, monospace" font-size="10px" font-weight="700" fill="#F47983">⚡ BOLT</text>
   </g>
   <g transform="translate(710, 15)">
     <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(118,146,103,0.15)" stroke="#769267" stroke-width="1"/>
-    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="#769267">🛡 SENTINEL</text>
+    <text x="42.5" y="16" text-anchor="middle" font-family="'JetBrains Mono', ui-monospace, monospace" font-size="10px" font-weight="700" fill="#769267">🛡 SENTINEL</text>
   </g>
 </svg>

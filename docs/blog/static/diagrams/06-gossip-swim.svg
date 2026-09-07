@@ -24,12 +24,12 @@
       .alive { fill: rgba(118,146,103,0.2); stroke: #769267; stroke-width: 2; }
       .offline { fill: rgba(220,38,38,0.15); stroke: #dc2626; stroke-width: 2; stroke-dasharray: 4,3; }
       .suspect { fill: rgba(245,158,11,0.2); stroke: #f59e0b; stroke-width: 2; }
-      .title-text { font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
-      .section-title { font-family: 'Outfit', sans-serif; font-size: 13px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
-      .label-text { font-family: 'JetBrains Mono', monospace; font-size: 10px; fill: #2D2D2D; text-anchor: middle; }
-      .label-small { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #6B6B6B; text-anchor: middle; }
-      .code-text { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #F47983; }
-      .code-success { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #769267; }
+      .title-text { font-family: 'Outfit', system-ui, -apple-system, sans-serif', sans-serif; font-size: 18px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
+      .section-title { font-family: 'Outfit', system-ui, -apple-system, sans-serif', sans-serif; font-size: 13px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
+      .label-text { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #2D2D2D; text-anchor: middle; }
+      .label-small { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #6B6B6B; text-anchor: middle; }
+      .code-text { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #F47983; }
+      .code-success { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #769267; }
       .flow-arrow { fill: none; stroke: #F47983; stroke-width: 1.5; stroke-linecap: round; marker-end: url(#arrow); }
       .flow-success { stroke: #769267; marker-end: url(#arrow-success); }
       .flow-bidir { stroke: #FCC9B9; marker-end: url(#arrow-bidir); stroke-dasharray: 3,3; }
@@ -58,7 +58,7 @@
         <circle cx="0" cy="0" r="32"/>
         <text y="-18" text-anchor="middle" class="label-text">N0</text>
         <text y="0" text-anchor="middle" class="label-small">ALIVE</text>
-        <text y="16" text-anchor="middle" class="code-success" style="font-size:8px;">incumbent</text>
+        <text y="16" text-anchor="middle" class="code-success" style="font-size: 10px;">incumbent</text>
       </g>
       
       <!-- N1 top-right -->
@@ -66,7 +66,7 @@
         <circle cx="0" cy="0" r="32"/>
         <text y="-18" text-anchor="middle" class="label-text">N1</text>
         <text y="0" text-anchor="middle" class="label-small">ALIVE</text>
-        <text y="16" text-anchor="middle" class="code-text" style="font-size:8px;">peer</text>
+        <text y="16" text-anchor="middle" class="code-text" style="font-size: 10px;">peer</text>
       </g>
       
       <!-- N2 bottom-right -->
@@ -74,7 +74,7 @@
         <circle cx="0" cy="0" r="32"/>
         <text y="-18" text-anchor="middle" class="label-text">N2</text>
         <text y="0" text-anchor="middle" class="label-small">ALIVE</text>
-        <text y="16" text-anchor="middle" class="code-text" style="font-size:8px;">peer</text>
+        <text y="16" text-anchor="middle" class="code-text" style="font-size: 10px;">peer</text>
       </g>
       
       <!-- N3 bottom-left -->
@@ -82,7 +82,7 @@
         <circle cx="0" cy="0" r="32"/>
         <text y="-18" text-anchor="middle" class="label-text">N3</text>
         <text y="0" text-anchor="middle" class="label-small">ALIVE</text>
-        <text y="16" text-anchor="middle" class="code-text" style="font-size:8px;">peer</text>
+        <text y="16" text-anchor="middle" class="code-text" style="font-size: 10px;">peer</text>
       </g>
       
       <!-- N4 top-left -->
@@ -90,7 +90,7 @@
         <circle cx="0" cy="0" r="32"/>
         <text y="-18" text-anchor="middle" class="label-text">N4</text>
         <text y="0" text-anchor="middle" class="label-small">ALIVE</text>
-        <text y="16" text-anchor="middle" class="code-text" style="font-size:8px;">peer</text>
+        <text y="16" text-anchor="middle" class="code-text" style="font-size: 10px;">peer</text>
       </g>
     </g>
     
@@ -173,7 +173,7 @@
       <text x="75" y="18" text-anchor="middle" class="section-title" fill="#F47983">DISCOVERY</text>
       <text x="75" y="38" text-anchor="middle" class="label-small">Gossip reveals</text>
       <text x="75" y="52" text-anchor="middle" class="label-small">new peer addr</text>
-      <text x="75" y="66" text-anchor="middle" class="code-text" style="font-size:8px;">peer = gossip.PeerMeta</text>
+      <text x="75" y="66" text-anchor="middle" class="code-text" style="font-size: 10px;">peer = gossip.PeerMeta</text>
     </g>
     
     <path d="M170,40 H220" class="flow-arrow" marker-end="url(#arrow)"/>
@@ -183,7 +183,7 @@
       <text x="75" y="18" text-anchor="middle" class="section-title" fill="#769267">DIAL</text>
       <text x="75" y="38" text-anchor="middle" class="label-small">TCP/QUIC connect</text>
       <text x="75" y="52" text-anchor="middle" class="label-small">Verify identity</text>
-      <text x="75" y="66" text-anchor="middle" class="code-success" style="font-size:8px;">conn, err = dial()</text>
+      <text x="75" y="66" text-anchor="middle" class="code-success" style="font-size: 10px;">conn, err = dial()</text>
     </g>
     
     <path d="M380,40 H430" class="flow-success" marker-end="url(#arrow-success)"/>
@@ -193,19 +193,19 @@
       <text x="75" y="18" text-anchor="middle" class="section-title" fill="#769267">PEER MAP</text>
       <text x="75" y="38" text-anchor="middle" class="label-small">Add to PeerMap</text>
       <text x="75" y="52" text-anchor="middle" class="label-small">Update CRUSH weights</text>
-      <text x="75" y="66" text-anchor="middle" class="code-success" style="font-size:8px;">PeerMap.Add(peer)</text>
+      <text x="75" y="66" text-anchor="middle" class="code-success" style="font-size: 10px;">PeerMap.Add(peer)</text>
     </g>
     
-    <text x="230" y="110" text-anchor="middle" class="code-fail" style="font-size:9px;">BUG #598: Discovered peers never dialed — membership simply didn't work</text>
+    <text x="230" y="110" text-anchor="middle" class="code-fail" style="font-size: 10px;">BUG #598: Discovered peers never dialed — membership simply didn't work</text>
   </g>
   
   <!-- Bolt/Sentinel badges -->
   <g transform="translate(620, 15)">
     <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(244,121,131,0.15)" stroke="#F47983" stroke-width="1"/>
-    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="#F47983">⚡ BOLT</text>
+    <text x="42.5" y="16" text-anchor="middle" font-family="'JetBrains Mono', ui-monospace, monospace" font-size="10px" font-weight="700" fill="#F47983">⚡ BOLT</text>
   </g>
   <g transform="translate(710, 15)">
     <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(118,146,103,0.15)" stroke="#769267" stroke-width="1"/>
-    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="#769267">🛡 SENTINEL</text>
+    <text x="42.5" y="16" text-anchor="middle" font-family="'JetBrains Mono', ui-monospace, monospace" font-size="10px" font-weight="700" fill="#769267">🛡 SENTINEL</text>
   </g>
 </svg>

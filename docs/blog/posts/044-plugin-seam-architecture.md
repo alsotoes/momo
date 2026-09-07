@@ -26,12 +26,14 @@ distinction matters**:
 | Trust | Executing unreviewed code | Compile-time auditable |
 | Versioning | Pinning hell | Single binary |
 
-![Compile-time seam architecture](/diagrams/14-plugin-seam.svg)
+{{< diagram src="/diagrams/14-plugin-seam.svg" alt="Compile-time seam architecture" caption="Figure 1: Core storage invariants remain concrete while seams provide clean decision points" >}}
 
 The constraint that decided it: momo's data path is performance-critical and
 security-critical. An RPC hop per decision kills the byte flow; loading
 unreviewed code onto a zero-knowledge storage node is a Trojan surface. **Seam
 over the changeable, keep the fast path concrete.**
+
+{{< diagram src="/diagrams/14a-seam-architecture.svg" alt="Seams vs Dynamic Plugins" caption="Figure 2: In-process interface dispatch vs out-of-process dynamic RPC plugins" >}}
 
 ## Rule 74
 
@@ -48,6 +50,8 @@ Codified in `openspec/config.yaml` Rule 74 and ratified by
 - **Declarative policy** selects behavior — an `atomic.Pointer` to a policy
   struct, swapped at runtime, never code mutation
 - **Fail closed**: unknown/absent strategy → default safe behavior
+
+{{< diagram src="/diagrams/14b-seam-vs-plugin.svg" alt="Seams vs Plugins Tradeoff Matrix" caption="Figure 3: Comprehensive tradeoff comparison between seams and dynamic plugins" >}}
 
 ## Examples already in the tree
 

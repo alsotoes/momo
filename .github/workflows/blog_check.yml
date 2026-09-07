@@ -26,3 +26,5 @@ jobs:
         run: pip install pyyaml
       - name: Validate blog posts (Rule 76)
         run: python .github/scripts/blog_check.py
+      - name: Validate blog SVG diagrams
+        run: python .github/scripts/validate_diagrams.py

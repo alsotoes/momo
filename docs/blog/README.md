@@ -90,6 +90,10 @@ post that depends on or explains another (e.g. CRUSH post ↔ CAS post, P2P post
 required fields, RFC3339 `date` not in the future, `related` targets exist, and
 `artifacts: spec` paths resolve under `openspec/changes/`.
 
+`make diagram-check` (wraps `.github/scripts/validate_diagrams.py`) verifies all SVG diagrams:
+valid XML, `<title>`/`<desc>` accessibility tags, responsive `viewBox` (standardized `0 0 640 360`),
+safe margin boundaries, system font fallbacks, and minimum legible font sizes ($\ge 10\text{px}$).
+
 ## UI/UX Architecture & Skills (`docs/blog/.agents/skills/`)
 
 The blog interface is styled following the **Swiss Modernism 2.0 / Technical Editorial** design system, enforcing rules from `.agents/skills/`:
