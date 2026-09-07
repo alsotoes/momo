@@ -1,249 +1,180 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="800" height="600" role="img" aria-labelledby="crush-title crush-desc">
-  <!-- Momo Engineering Blog - CRUSH-lite Placement Diagram -->
-  <title id="crush-title">CRUSH-lite Placement Algorithm Flow</title>
-  <desc id="crush-desc">Flow diagram showing CRUSH-lite deterministic weighted placement: object hash input → weighted rendezvous hashing scores each node → sort by score → stable replica list → failure domain filter → final placement</desc>
-  
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 480" width="720" height="480" role="img" aria-labelledby="crush-title crush-desc">
+  <!-- CRUSH-lite Placement Algorithm - Overview Diagram -->
+  <title id="crush-title">CRUSH-lite: Deterministic Weighted Placement Overview</title>
+  <desc id="crush-desc">Four-step flow: Object Hash Input → Weighted Scoring → Deterministic Sort → Replica List with Failure Domain Filter</desc>
+
   <defs>
-    <!-- Arrow marker -->
     <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
       <path d="M0,0 L10,3.5 L0,7 Z" fill="#F47983"/>
     </marker>
     <marker id="arrow-success" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
       <path d="M0,0 L10,3.5 L0,7 Z" fill="#769267"/>
     </marker>
-    <marker id="arrow-structure" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <path d="M0,0 L10,3.5 L0,7 Z" fill="#563A10"/>
-    </marker>
-    
-    <!-- Gradient for primary flow -->
-    <linearGradient id="grad-primary" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" style="stop-color:#F47983"/>
-      <stop offset="100%" style="stop-color:#FCC9B9"/>
+
+    <!-- Gradients -->
+    <linearGradient id="grad-input" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#F47983"/>
+      <stop offset="100%" stop-color="#FCC9B9"/>
     </linearGradient>
-    
+    <linearGradient id="grad-process" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FCC9B9"/>
+      <stop offset="100%" stop-color="#FFA6A6"/>
+    </linearGradient>
+    <linearGradient id="grad-output" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#769267"/>
+      <stop offset="100%" stop-color="#8AB87A"/>
+    </linearGradient>
+
     <!-- Drop shadow -->
-    <filter id="drop-shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="#563A10" flood-opacity="0.15"/>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="1" dy="2" stdDeviation="2" flood-color="#563A10" flood-opacity="0.12"/>
     </filter>
-    
-    <!-- Node style classes -->
+
+    <!-- Styles -->
     <style>
-      .step-box { filter: url(#drop-shadow); }
-      .step-box:hover { filter: url(#drop-shadow) brightness(1.1); }
-      .flow-text { font-family: 'JetBrains Mono', monospace; font-size: 10px; fill: #6B6B6B; }
-      .step-title { font-family: 'Outfit', sans-serif; font-size: 13px; font-weight: 700; fill: #2D2D2D; }
-      .step-desc { font-family: 'Outfit', sans-serif; font-size: 10px; fill: #6B6B6B; }
-      .code-snippet { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #F47983; }
-      .legend-text { font-family: 'Outfit', sans-serif; font-size: 11px; fill: #2D2D2D; }
-      .legend-label { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #6B6B6B; }
+      .step-box { filter: url(#shadow); }
+      .step-box:hover { filter: url(#shadow) brightness(1.05); }
+      .node-label { font-family: 'Outfit', sans-serif; font-size: 14px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
+      .node-desc { font-family: 'Outfit', sans-serif; font-size: 11px; fill: #6B6B6B; text-anchor: middle; }
+      .step-num { font-family: 'JetBrains Mono', monospace; font-size: 24px; font-weight: 700; fill: #FAFAFA; text-anchor: middle; }
+      .step-title { font-family: 'Outfit', sans-serif; font-size: 13px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
+      .step-desc { font-family: 'Outfit', sans-serif; font-size: 10px; fill: #6B6B6B; text-anchor: middle; }
+      .flow-arrow { fill: none; stroke: #F47983; stroke-width: 2; stroke-linecap: round; marker-end: url(#arrow); }
+      .detail-link { cursor: pointer; }
+      .detail-link:hover .step-desc { fill: #F47983; }
     </style>
   </defs>
-  
+
   <!-- Background -->
-  <rect width="800" height="600" fill="#FAFAFA"/>
-  
+  <rect width="720" height="480" fill="#FAFAFA"/>
+
   <!-- Title -->
-  <text x="400" y="35" class="diagram-title" id="main-title">CRUSH-lite: Deterministic Weighted Placement</text>
-  <text x="400" y="55" class="diagram-subtitle">Weighted rendezvous hashing → stable replica list → failure domain awareness</text>
-  
-  <!-- Step 1: Input -->
-  <g class="step-box" transform="translate(40, 90)">
-    <rect x="0" y="0" width="160" height="100" rx="8" ry="8" class="diagram-node" stroke="#F47983"/>
-    <text x="80" y="25" class="step-title" text-anchor="middle">1. INPUT</text>
-    <text x="80" y="45" class="step-desc" text-anchor="middle">Object Hash (SHA-256)</text>
-    <text x="80" y="62" class="code-snippet" text-anchor="middle">placementKey = blobID</text>
-    <text x="80" y="78" class="step-desc" text-anchor="middle">Already computed on ingest</text>
-    <text x="80" y="93" class="flow-text" text-anchor="middle">(content-addressed)</text>
-  </g>
-  
-  <!-- Arrow 1→2 -->
-  <path d="M200,140 H280" class="diagram-flow" marker-end="url(#arrow)"/>
-  
-  <!-- Step 2: Scoring -->
-  <g class="step-box" transform="translate(290, 70)">
-    <rect x="0" y="0" width="220" height="140" rx="8" ry="8" class="diagram-node" stroke="#F47983"/>
-    <text x="110" y="25" class="step-title" text-anchor="middle">2. SCORE CANDIDATES</text>
-    <text x="110" y="45" class="step-desc" text-anchor="middle">Weighted Rendezvous Hashing</text>
-    <g transform="translate(10, 55)">
-      <text x="0" y="0" class="code-snippet">for node in candidates:</text>
-      <text x="0" y="16" class="code-snippet">  score = hash(key ⊗ node.id)</text>
-      <text x="0" y="32" class="code-snippet">  score *= node.weight  // weighted</text>
-      <text x="0" y="48" class="code-snippet">  score = fold52(score)  // float64 safe</text>
+  <text x="360" y="30" class="node-label" style="font-size:18px;">CRUSH-lite: Deterministic Weighted Placement</text>
+  <text x="360" y="50" class="node-desc">Weighted rendezvous hashing → stable replica list → failure domain awareness</text>
+
+  <!-- Main Flow: 4 Steps Horizontal -->
+  <g transform="translate(30, 80)">
+    <!-- Step 1: Input -->
+    <g class="step-box detail-link" transform="translate(0, 0)">
+      <rect x="0" y="0" width="150" height="120" rx="10" ry="10" fill="url(#grad-input)" stroke="#F47983" stroke-width="2"/>
+      <circle cx="75" cy="25" r="18" fill="#F47983"/>
+      <text x="75" y="30" class="step-num">1</text>
+      <text x="75" y="60" class="step-title">INPUT</text>
+      <text x="75" y="78" class="step-desc">Object Hash</text>
+      <text x="75" y="94" class="step-desc" style="font-size:9px;">SHA-256 (content-addressed)</text>
+      <text x="75" y="108" class="step-desc" style="font-size:9px;">placementKey = blobID</text>
     </g>
-  </g>
-  
-  <!-- Arrow 2→3 -->
-  <path d="M510,140 H590" class="diagram-flow" marker-end="url(#arrow)"/>
-  
-  <!-- Step 3: Sort -->
-  <g class="step-box" transform="translate(600, 90)">
-    <rect x="0" y="0" width="160" height="100" rx="8" ry="8" class="diagram-node" stroke="#FCC9B9"/>
-    <text x="80" y="25" class="step-title" text-anchor="middle">3. SORT</text>
-    <text x="80" y="45" class="step-desc" text-anchor="middle">Deterministic Order</text>
-    <text x="80" y="62" class="code-snippet" text-anchor="middle">sort.Stable(byScore)</text>
-    <text x="80" y="78" class="step-desc" text-anchor="middle">Ties never flip (#872)</text>
-    <text x="80" y="93" class="flow-text" text-anchor="middle">52-bit mantissa (#873)</text>
-  </g>
-  
-  <!-- Arrow 3→4 -->
-  <path d="M470,190 V250" class="diagram-flow" marker-end="url(#arrow)"/>
-  <path d="M510,190 V250" class="diagram-flow" marker-end="url(#arrow)"/>
-  
-  <!-- Step 4: Replica List -->
-  <g class="step-box" transform="translate(400, 260)">
-    <rect x="0" y="0" width="200" height="100" rx="8" ry="8" class="diagram-node" stroke="#FFA6A6"/>
-    <text x="100" y="25" class="step-title" text-anchor="middle">4. REPLICA LIST</text>
-    <text x="100" y="45" class="step-desc" text-anchor="middle">Top-N by Score</text>
-    <g transform="translate(10, 55)">
-      <text x="0" y="0" class="code-snippet">replicas = sorted[:N]</text>
-      <text x="0" y="16" class="code-snippet">// e.g., [N3, N1, N7]</text>
-      <text x="0" y="32" class="flow-text">No central allocator</text>
-      <text x="0" y="46" class="flow-text">Every node computes same</text>
-    </g>
-  </g>
-  
-  <!-- Arrow 4→5 -->
-  <path d="M500,360 V420" class="diagram-flow" marker-end="url(#arrow)"/>
-  
-  <!-- Step 5: Failure Domain Filter -->
-  <g class="step-box" transform="translate(370, 430)">
-    <rect x="0" y="0" width="260" height="120" rx="8" ry="8" class="diagram-node" stroke="#769267"/>
-    <text x="130" y="25" class="step-title" text-anchor="middle">5. FAILURE DOMAIN FILTER (R1)</text>
-    <text x="130" y="45" class="step-desc" text-anchor="middle">Constrain replicas across rack/zone/DC</text>
-    <g transform="translate(10, 55)">
-      <text x="0" y="0" class="code-snippet">for replica in replicas:</text>
-      <text x="0" y="16" class="code-snippet">  if replica.domain in used:</text>
-      <text x="0" y="32" class="code-snippet">    replica = nextBest()</text>
-      <text x="0" y="48" class="code-snippet">  used.add(replica.domain)</text>
-      <text x="0" y="64" class="flow-text">Rack → Zone → DC hierarchy</text>
-      <text x="0" y="78" class="flow-text">Replicas never share domain</text>
-    </g>
-  </g>
-  
-  <!-- Arrow 5→6 -->
-  <path d="M500,550 V570" class="diagram-flow-success" marker-end="url(#arrow-success)"/>
-  
-  <!-- Step 6: Final Placement -->
-  <g class="step-box" transform="translate(400, 570)">
-    <rect x="0" y="0" width="200" height="30" rx="8" ry="8" class="diagram-node" stroke="#769267" fill="rgba(118,146,103,0.1)"/>
-    <text x="100" y="20" class="step-title" text-anchor="middle">✓ FINAL PLACEMENT</text>
-  </g>
-  
-  <!-- Visual: Node ring with scores -->
-  <g transform="translate(60, 260)">
-    <text x="100" y="-10" class="step-title" text-anchor="middle">Score Computation Visualization</text>
-    
-    <!-- Nodes in a ring -->
-    <g id="node-ring">
-      <!-- Node 1 -->
-      <g class="diagram-element" transform="translate(80, 120)">
-        <circle cx="0" cy="0" r="35" class="diagram-node" stroke="#F47983"/>
-        <text y="-12" text-anchor="middle" class="step-title" font-size="12px">N1 (w=1.0)</text>
-        <text y="4" text-anchor="middle" class="code-snippet">score: 0.847</text>
-        <text y="20" text-anchor="middle" class="step-desc">Rack A, Zone 1</text>
-      </g>
-      
-      <!-- Node 2 -->
-      <g class="diagram-element" transform="translate(220, 40)">
-        <circle cx="0" cy="0" r="35" class="diagram-node" stroke="#FCC9B9"/>
-        <text y="-12" text-anchor="middle" class="step-title" font-size="12px">N2 (w=1.5)</text>
-        <text y="4" text-anchor="middle" class="code-snippet">score: 0.923</text>
-        <text y="20" text-anchor="middle" class="step-desc">Rack B, Zone 1</text>
-      </g>
-      
-      <!-- Node 3 -->
-      <g class="diagram-element" transform="translate(360, 120)">
-        <circle cx="0" cy="0" r="35" class="diagram-node" stroke="#FFA6A6"/>
-        <text y="-12" text-anchor="middle" class="step-title" font-size="12px">N3 (w=1.0)</text>
-        <text y="4" text-anchor="middle" class="code-snippet">score: 0.756</text>
-        <text y="20" text-anchor="middle" class="step-desc">Rack A, Zone 2</text>
-      </g>
-      
-      <!-- Node 4 -->
-      <g class="diagram-element" transform="translate(220, 200)">
-        <circle cx="0" cy="0" r="35" class="diagram-node" stroke="#769267"/>
-        <text y="-12" text-anchor="middle" class="step-title" font-size="12px">N4 (w=2.0)</text>
-        <text y="4" text-anchor="middle" class="code-snippet">score: 0.981</text>
-        <text y="20" text-anchor="middle" class="step-desc">Rack C, Zone 2</text>
-      </g>
-      
-      <!-- Node 5 -->
-      <g class="diagram-element" transform="translate(80, 200)">
-        <circle cx="0" cy="0" r="35" class="diagram-node" stroke="#FDEDAD"/>
-        <text y="-12" text-anchor="middle" class="step-title" font-size="12px">N5 (w=1.0)</text>
-        <text y="4" text-anchor="middle" class="code-snippet">score: 0.634</text>
-        <text y="20" text-anchor="middle" class="step-desc">Rack B, Zone 2</text>
+
+    <!-- Arrow 1→2 -->
+    <path d="M150,60 H175" class="flow-arrow" marker-end="url(#arrow)"/>
+
+    <!-- Step 2: Score -->
+    <g class="step-box detail-link" transform="translate(185, 0)">
+      <rect x="0" y="0" width="150" height="120" rx="10" ry="10" fill="url(#grad-process)" stroke="#FCC9B9" stroke-width="2"/>
+      <circle cx="75" cy="25" r="18" fill="#FCC9B9"/>
+      <text x="75" y="30" class="step-num" style="fill:#FAFAFA;">2</text>
+      <text x="75" y="60" class="step-title">SCORE</text>
+      <text x="75" y="78" class="step-desc">Weighted Hash</text>
+      <g transform="translate(10, 88)">
+        <text x="0" y="0" style="font-family:'JetBrains Mono',monospace;font-size:8px;fill:#F47983;text-anchor:start;">score = hash(key ⊗ id)</text>
+        <text x="0" y="14" style="font-family:'JetBrains Mono',monospace;font-size:8px;fill:#F47983;text-anchor:start;">score *= weight</text>
+        <text x="0" y="28" style="font-family:'JetBrains Mono',monospace;font-size:8px;fill:#F47983;text-anchor:start;">fold52(score)</text>
       </g>
     </g>
-    
-    <!-- Sorted order indicator -->
-    <g transform="translate(520, 160)">
-      <text x="0" y="0" class="step-title" text-anchor="start">Sorted Order (N=3):</text>
-      <g transform="translate(0, 25)">
-        <rect x="0" y="0" width="120" height="28" rx="4" ry="4" fill="rgba(244,121,131,0.15)" stroke="#F47983" stroke-width="1.5"/>
-        <text x="60" y="19" text-anchor="middle" class="step-title" font-size="12px" fill="#F47983">1. N4 (0.981) ✓</text>
-      </g>
-      <g transform="translate(0, 60)">
-        <rect x="0" y="0" width="120" height="28" rx="4" ry="4" fill="rgba(252,201,185,0.15)" stroke="#FCC9B9" stroke-width="1.5"/>
-        <text x="60" y="19" text-anchor="middle" class="step-title" font-size="12px" fill="#FCC9B9">2. N2 (0.923) ✓</text>
-      </g>
-      <g transform="translate(0, 95)">
-        <rect x="0" y="0" width="120" height="28" rx="4" ry="4" fill="rgba(244,121,131,0.15)" stroke="#F47983" stroke-width="1.5"/>
-        <text x="60" y="19" text-anchor="middle" class="step-title" font-size="12px" fill="#F47983">3. N1 (0.847) ✓</text>
-      </g>
-      <g transform="translate(0, 130)">
-        <rect x="0" y="0" width="120" height="28" rx="4" ry="4" fill="#F0F0F0" stroke="#E0E0E0"/>
-        <text x="60" y="19" text-anchor="middle" class="step-desc" font-size="12px">N3 (0.756)</text>
-      </g>
-      <g transform="translate(0, 165)">
-        <rect x="0" y="0" width="120" height="28" rx="4" ry="4" fill="#F0F0F0" stroke="#E0E0E0"/>
-        <text x="60" y="19" text-anchor="middle" class="step-desc" font-size="12px">N5 (0.634)</text>
-      </g>
+
+    <!-- Arrow 2→3 -->
+    <path d="M335,60 H360" class="flow-arrow" marker-end="url(#arrow)"/>
+
+    <!-- Step 3: Sort -->
+    <g class="step-box detail-link" transform="translate(370, 0)">
+      <rect x="0" y="0" width="150" height="120" rx="10" ry="10" fill="url(#grad-process)" stroke="#FFA6A6" stroke-width="2"/>
+      <circle cx="75" cy="25" r="18" fill="#FFA6A6"/>
+      <text x="75" y="30" class="step-num" style="fill:#FAFAFA;">3</text>
+      <text x="75" y="60" class="step-title">SORT</text>
+      <text x="75" y="78" class="step-desc">Deterministic</text>
+      <text x="75" y="94" class="step-desc" style="font-size:9px;">Stable sort by score</text>
+      <text x="75" y="108" class="step-desc" style="font-size:9px;">52-bit mantissa (#873)</text>
+    </g>
+
+    <!-- Arrow 3→4 -->
+    <path d="M520,60 H545" class="flow-arrow" marker-end="url(#arrow)"/>
+
+    <!-- Step 4: Replica List -->
+    <g class="step-box detail-link" transform="translate(555, 0)">
+      <rect x="0" y="0" width="150" height="120" rx="10" ry="10" fill="url(#grad-output)" stroke="#769267" stroke-width="2"/>
+      <circle cx="75" cy="25" r="18" fill="#769267"/>
+      <text x="75" y="30" class="step-num" style="fill:#FAFAFA;">4</text>
+      <text x="75" y="60" class="step-title">OUTPUT</text>
+      <text x="75" y="78" class="step-desc">Replica List</text>
+      <text x="75" y="94" class="step-desc" style="font-size:9px;">Top-N by score</text>
+      <text x="75" y="108" class="step-desc" style="font-size:9px;">Failure domain filter (R1)</text>
     </g>
   </g>
-  
+
+  <!-- Key Principles (Bottom) -->
+  <g transform="translate(30, 230)">
+    <rect x="0" y="0" width="660" height="160" rx="12" ry="12" fill="#FEFEF9" stroke="#E8DFD8" stroke-width="1"/>
+    <text x="330" y="25" class="node-label" style="font-size:14px;fill:#563A10;">Key Principles</text>
+
+    <!-- Principle 1 -->
+    <g transform="translate(20, 40)">
+      <circle cx="15" cy="15" r="12" fill="#F47983"/>
+      <text x="15" y="19" style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;fill:white;text-anchor:middle;">1</text>
+      <text x="40" y="15" style="font-family:'Outfit',sans-serif;font-size:12px;font-weight:700;fill:#2D2D2D;">Content-Hash as Placement Key</text>
+      <text x="40" y="32" style="font-family:'Outfit',sans-serif;font-size:10px;fill:#6B6B6B;">SHA-256 digest directly determines placement — no separate index needed</text>
+    </g>
+
+    <!-- Principle 2 -->
+    <g transform="translate(20, 75)">
+      <circle cx="15" cy="15" r="12" fill="#FCC9B9"/>
+      <text x="15" y="19" style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;fill:white;text-anchor:middle;">2</text>
+      <text x="40" y="15" style="font-family:'Outfit',sans-serif;font-size:12px;font-weight:700;fill:#2D2D2D;">Weighted Rendezvous Hashing</text>
+      <text x="40" y="32" style="font-family:'Outfit',sans-serif;font-size:10px;fill:#6B6B6B;">Score = hash(key ⊗ node.id) × weight — deterministic, peer-equal</text>
+    </g>
+
+    <!-- Principle 3 -->
+    <g transform="translate(350, 40)">
+      <circle cx="15" cy="15" r="12" fill="#FFA6A6"/>
+      <text x="15" y="19" style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;fill:white;text-anchor:middle;">3</text>
+      <text x="40" y="15" style="font-family:'Outfit',sans-serif;font-size:12px;font-weight:700;fill:#2D2D2D;">Deterministic Stable Sort</text>
+      <text x="40" y="32" style="font-family:'Outfit',sans-serif;font-size:10px;fill:#6B6B6B;">sort.Stable prevents replica order flips (#872) — 52-bit mantissa avoids float drift (#873)</text>
+    </g>
+
+    <!-- Principle 4 -->
+    <g transform="translate(350, 75)">
+      <circle cx="15" cy="15" r="12" fill="#769267"/>
+      <text x="15" y="19" style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;fill:white;text-anchor:middle;">4</text>
+      <text x="40" y="15" style="font-family:'Outfit',sans-serif;font-size:12px;font-weight:700;fill:#2D2D2D;">Failure Domain Filtering (R1)</text>
+      <text x="40" y="32" style="font-family:'Outfit',sans-serif;font-size:10px;fill:#6B6B6B;">Replicas constrained across rack/zone/DC — no shared failure domain</text>
+    </g>
+  </g>
+
   <!-- Legend -->
-  <g transform="translate(50, 520)">
-    <rect x="0" y="0" width="700" height="60" rx="6" ry="6" fill="#FAFAFA" stroke="#E0E0E0"/>
-    <text x="10" y="20" class="legend-text">Momo Palette Legend:</text>
-    <g transform="translate(10, 35)">
-      <g transform="translate(0, 0)">
-        <rect x="0" y="0" width="16" height="16" rx="3" fill="#F47983"/>
-        <text x="22" y="12" class="legend-label">Momo-iro — Primary flow, scoring</text>
-      </g>
-      <g transform="translate(220, 0)">
-        <rect x="0" y="0" width="16" height="16" rx="3" fill="#FCC9B9"/>
-        <text x="22" y="12" class="legend-label">Sakura-iro — Sort, architecture</text>
-      </g>
-      <g transform="translate(440, 0)">
-        <rect x="0" y="0" width="16" height="16" rx="3" fill="#FFA6A6"/>
-        <text x="22" y="12" class="legend-label">Peach — Replica list, data</text>
-      </g>
+  <g transform="translate(30, 410)">
+    <rect x="0" y="0" width="660" height="40" rx="6" ry="6" fill="#FAFAFA" stroke="#E8DFD8"/>
+    <text x="20" y="22" class="node-label" style="font-size:11px;">Step Colors:</text>
+    <g transform="translate(150, 8)">
+      <rect x="0" y="0" width="14" height="14" rx="3" fill="#F47983"/><text x="20" y="11" style="font-family:'Outfit',sans-serif;font-size:9px;fill:#6B6B6B;">Input — SHA-256 hash</text>
     </g>
-    <g transform="translate(10, 55)">
-      <g transform="translate(0, 0)">
-        <rect x="0" y="0" width="16" height="16" rx="3" fill="#769267"/>
-        <text x="22" y="12" class="legend-label">Leaf — Verify, success, R1 filter</text>
-      </g>
-      <g transform="translate(220, 0)">
-        <rect x="0" y="0" width="16" height="16" rx="3" fill="#563A10"/>
-        <text x="22" y="12" class="legend-label">Bark — Structure, keys, anchors</text>
-      </g>
-      <g transform="translate(440, 0)">
-        <rect x="0" y="0" width="16" height="16" rx="3" fill="#FDEDAD"/>
-        <text x="22" y="12" class="legend-label">Cream — Highlights, client-side</text>
-      </g>
+    <g transform="translate(300, 8)">
+      <rect x="0" y="0" width="14" height="14" rx="3" fill="#FCC9B9"/><text x="20" y="11" style="font-family:'Outfit',sans-serif;font-size:9px;fill:#6B6B6B;">Score — Weighted hash</text>
+    </g>
+    <g transform="translate(460, 8)">
+      <rect x="0" y="0" width="14" height="14" rx="3" fill="#FFA6A6"/><text x="20" y="11" style="font-family:'Outfit',sans-serif;font-size:9px;fill:#6B6B6B;">Sort — Stable order</text>
+    </g>
+    <g transform="translate(600, 8)">
+      <rect x="0" y="0" width="14" height="14" rx="3" fill="#769267"/><text x="20" y="11" style="font-family:'Outfit',sans-serif;font-size:9px;fill:#6B6B6B;">Output — Replica list + R1 filter</text>
     </g>
   </g>
-  
+
   <!-- Bolt/Sentinel badges -->
-  <g transform="translate(600, 20)">
-    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(244,121,131,0.15)" stroke="#F47983" stroke-width="1"/>
-    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="#F47983">⚡ BOLT</text>
+  <g transform="translate(580, 10)">
+    <rect x="0" y="0" width="65" height="20" rx="10" fill="rgba(244,121,131,0.12)" stroke="#F47983" stroke-width="1"/>
+    <text x="32.5" y="14" text-anchor="middle" style="font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;fill:#F47983;">⚡ BOLT</text>
   </g>
-  <g transform="translate(695, 20)">
-    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(118,146,103,0.15)" stroke="#769267" stroke-width="1"/>
-    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="#769267">🛡 SENTINEL</text>
+  <g transform="translate(650, 10)">
+    <rect x="0" y="0" width="65" height="20" rx="10" fill="rgba(118,146,103,0.12)" stroke="#769267" stroke-width="1"/>
+    <text x="32.5" y="14" text-anchor="middle" style="font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;fill:#769267;">🛡 SENTINEL</text>
   </g>
 </svg>

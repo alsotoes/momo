@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 400" width="720" height="400" role="img" aria-labelledby="crush-score-title crush-score-desc">
+  <!-- CRUSH-lite Scoring Detail - Weighted Rendezvous Hashing -->
+  <title id="crush-score-title">CRUSH-lite: Weighted Rendezvous Hashing Detail</title>
+  <desc id="crush-score-desc">Step 2 Detail: How each candidate node is scored using hash(key ⊗ node.id) × weight, with 52-bit mantissa folding to avoid float64 precision loss</desc>
+
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="#F47983"/>
+    </marker>
+
+    <linearGradient id="grad-hash" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#F47983"/>
+      <stop offset="100%" stop-color="#FCC9B9"/>
+    </linearGradient>
+    <linearGradient id="grad-weight" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FCC9B9"/>
+      <stop offset="100%" stop-color="#FFA6A6"/>
+    </linearGradient>
+    <linearGradient id="grad-result" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#769267"/>
+      <stop offset="100%" stop-color="#8AB87A"/>
+    </linearGradient>
+
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="1" dy="2" stdDeviation="2" flood-color="#563A10" flood-opacity="0.12"/>
+    </filter>
+
+    <style>
+      .step-box { filter: url(#shadow); }
+      .code-block { font-family: 'JetBrains Mono', monospace; font-size: 10px; fill: #F47983; }
+      .code-comment { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #6B6B6B; }
+      .label { font-family: 'Outfit', sans-serif; font-size: 11px; font-weight: 600; fill: #2D2D2D; }
+      .desc { font-family: 'Outfit', sans-serif; font-size: 10px; fill: #6B6B6B; }
+      .title-text { font-family: 'Outfit', sans-serif; font-size: 16px; font-weight: 700; fill: #2D2D2D; }
+      .subtitle { font-family: 'Outfit', sans-serif; font-size: 11px; fill: #6B6B6B; }
+      .flow-arrow { fill: none; stroke: #F47983; stroke-width: 2; stroke-linecap: round; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect width="720" height="400" fill="#FAFAFA"/>
+
+  <!-- Title -->
+  <text x="360" y="25" style="font-family:'Outfit',sans-serif;font-size:16px;font-weight:700;fill:#2D2D2D;text-anchor:middle;">Step 2: Weighted Rendezvous Hashing — Scoring Detail</text>
+  <text x="360" y="42" style="font-family:'Outfit',sans-serif;font-size:10px;fill:#6B6B6B;text-anchor:middle;">Each candidate node scored: hash(key ⊗ node.id) × weight → fold52(score) → stable sort</text>
+
+  <!-- Input: Object Hash -->
+  <g transform="translate(30, 70)">
+    <rect x="0" y="0" width="180" height="70" rx="8" ry="8" fill="#FFF0F1" stroke="#F47983" stroke-width="1.5"/>
+    <text x="120" y="20" style="font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;fill:#F47983;text-anchor:middle;">INPUT: Object Hash</text>
+    <text x="120" y="38" style="font-family:'JetBrains Mono',monospace;font-size:9px;fill:#F47983;text-anchor:middle;">placementKey = SHA-256(blob)</text>
+    <text x="120" y="54" style="font-family:'JetBrains Mono',monospace;font-size:8px;fill:#6B6B6B;text-anchor:middle;">e.g., a1b2c3d4... (32 bytes)</text>
+  </g>
+
+  <!-- Arrow down -->
+  <path d="M360,140 V170" style="fill:none;stroke:#F47983;stroke-width:2;stroke-linecap:round;marker-end:url(#arrow);"/>
+
+  <!-- Core Algorithm: Hash + Weight -->
+  <g transform="translate(60, 180)">
+    <!-- Hash Computation -->
+    <g class="step-box" transform="translate(0, 0)">
+      <rect x="0" y="0" width="220" height="140" rx="10" ry="10" fill="url(#grad-hash)" stroke="#F47983" stroke-width="2"/>
+      <text x="110" y="20" style="font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;fill:#F47983;text-anchor:middle;">HASH COMPUTATION</text>
+      
+      <!-- Formula visualization -->
+      <g transform="translate(15, 35)">
+        <text x="0" y="0" class="code-block">hash_input = placementKey ⊗ node.id</text>
+        <text x="0" y="20" class="code-comment">// XOR combines content hash with node identity</text>
+        <text x="0" y="40" class="code-block">raw_score = hash(hash_input)</text>
+        <text x="0" y="60" class="code-comment">// Uniform distribution across [0, 2^64)</text>
+        <text x="0" y="80" class="code-block">raw_score = fold52(raw_score)</text>
+        <text x="0" y="100" class="code-comment">// Fold to 52-bit mantissa — avoids float64 precision loss (#873)</text>
+      </g>
+    </g>
+
+    <!-- Arrow -->
+    <path d="M220,70 H240" style="fill:none;stroke:#FCC9B9;stroke-width:2;stroke-linecap:round;marker-end:url(#arrow);"/>
+
+    <!-- Weight Application -->
+    <g class="step-box" transform="translate(250, 0)">
+      <rect x="0" y="0" width="220" height="140" rx="10" ry="10" fill="url(#grad-weight)" stroke="#FCC9B9" stroke-width="2"/>
+      <text x="110" y="20" style="font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;fill:#FCC9B9;text-anchor:middle;">WEIGHT APPLICATION</text>
+      
+      <g transform="translate(15, 35)">
+        <text x="0" y="0" class="code-block">score = raw_score * node.weight</text>
+        <text x="0" y="20" class="code-comment">// Weight scales score by node capacity</text>
+        <text x="0" y="40" class="code-comment">// weight > 1 → more replicas; weight = 0 → excluded</text>
+        <text x="0" y="60" class="code-block">final_score = score</text>
+        <text x="0" y="80" class="code-comment">// Final score used for sorting</text>
+        <text x="0" y="100" class="code-block">score = fold52(final_score)</text>
+        <text x="0" y="100" class="code-comment">// Second fold52 for consistency</text>
+      </g>
+    </g>
+
+    <!-- Arrow -->
+    <path d="M470,70 H490" style="fill:none;stroke:#FFA6A6;stroke-width:2;stroke-linecap:round;marker-end:url(#arrow);"/>
+
+    <!-- Sort &amp; Output -->
+    <g class="step-box" transform="translate(500, 0)">
+      <rect x="0" y="0" width="200" height="140" rx="10" ry="10" fill="url(#grad-result)" stroke="#769267" stroke-width="2"/>
+      <text x="100" y="20" style="font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;fill:#769267;text-anchor:middle;">SORT &amp; OUTPUT</text>
+      
+      <g transform="translate(15, 35)">
+        <text x="0" y="0" class="code-block">candidates.sort(key=score)</text>
+        <text x="0" y="20" class="code-comment">// Stable sort — ties never flip (#872)</text>
+        <text x="0" y="40" class="code-block">replicas = sorted[:N]</text>
+        <text x="0" y="60" class="code-comment">// Top-N replicas selected</text>
+        <text x="0" y="80" class="code-block">filter_failure_domains(replicas)</text>
+        <text x="0" y="100" class="code-comment">// R1: ensure rack/zone/DC diversity</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- Key Insight Box -->
+  <g transform="translate(30, 340)">
+    <rect x="0" y="0" width="660" height="50" rx="8" ry="8" fill="#FFF0F1" stroke="#F47983" stroke-width="1.5"/>
+    <text x="20" y="18" style="font-family:'Outfit',sans-serif;font-size:11px;font-weight:600;fill:#F47983;">⚡ Bolt Insight</text>
+    <text x="20" y="36" style="font-family:'Outfit',sans-serif;font-size:9px;fill:#6B6B6B;">Zero-allocation stack buffers for hash computation; fold52 eliminates float64 drift; stable sort prevents silent replica reordering</text>
+  </g>
+
+  <!-- Legend -->
+  <g transform="translate(30, 360)">
+    <rect x="0" y="0" width="660" height="30" rx="6" ry="6" fill="#FAFAFA" stroke="#E8DFD8"/>
+    <g transform="translate(20, 8)">
+      <rect x="0" y="0" width="14" height="14" rx="3" fill="#F47983"/><text x="20" y="11" style="font-family:'Outfit',sans-serif;font-size:9px;fill:#6B6B6B;">Hash (SHA-256)</text>
+    </g>
+    <g transform="translate(200, 8)">
+      <rect x="0" y="0" width="14" height="14" rx="3" fill="#FCC9B9"/><text x="20" y="11" style="font-family:'Outfit',sans-serif;font-size:9px;fill:#6B6B6B;">Weight × Score</text>
+    </g>
+    <g transform="translate(330, 8)">
+      <rect x="0" y="0" width="14" height="14" rx="3" fill="#FFA6A6"/><text x="20" y="11" style="font-family:'Outfit',sans-serif;font-size:9px;fill:#6B6B6B;">Stable Sort</text>
+    </g>
+    <g transform="translate(470, 8)">
+      <rect x="0" y="0" width="14" height="14" rx="3" fill="#769267"/><text x="20" y="11" style="font-family:'Outfit',sans-serif;font-size:9px;fill:#6B6B6B;">Failure Domain Filter (R1)</text>
+    </g>
+  </g>
+
+  <!-- Bolt/Sentinel badges -->
+  <g transform="translate(580, 10)">
+    <rect x="0" y="0" width="65" height="20" rx="10" fill="rgba(244,121,131,0.12)" stroke="#F47983" stroke-width="1"/>
+    <text x="32.5" y="14" text-anchor="middle" style="font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;fill:#F47983;">⚡ BOLT</text>
+  </g>
+  <g transform="translate(650, 10)">
+    <rect x="0" y="0" width="65" height="20" rx="10" fill="rgba(118,146,103,0.12)" stroke="#769267" stroke-width="1"/>
+    <text x="32.5" y="14" text-anchor="middle" style="font-family:'JetBrains Mono',monospace;font-size:8px;font-weight:700;fill:#769267;">🛡 SENTINEL</text>
+  </g>
+</svg>
