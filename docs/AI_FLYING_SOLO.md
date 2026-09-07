@@ -333,6 +333,7 @@ When the **3-push circuit breaker** trips (an automated agent has pushed 3 times
    go test ./...
    make adr-sync-check   # Rule 78: ADRs match specs
    make blog-check       # Rule 76: posts valid + related graph + Accepted-ADR coverage
+   make diagram-check    # SVG diagram validation: viewBox, legibility, accessibility
    ```
 
 6. **Fix any remaining issues directly** (see "Handling Pre-Existing CI Failures" below).
