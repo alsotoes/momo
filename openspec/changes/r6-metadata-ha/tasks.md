@@ -15,38 +15,36 @@
 - [x] Unit tests: `metadata_ring_test.go` (ownership stability, replica distribution)
 
 ## Phase 2 — Quorum Writes + Vector Clocks
-- [x] Extend `ObjectMeta` in `src/storage/storage.go` with `VectorClock`, `ShardKey`, `MetadataReplicas`
-- [x] Implement `PutMetadata` RPC handler on shard owner:
+- [ ] Extend `ObjectMeta` in `src/storage/storage.go` with `VectorClock`, `ShardKey`, `MetadataReplicas`
+- [ ] Implement `PutMetadata` RPC handler on shard owner:
   - Write to local BoltDB (with extended ObjectMeta)
+  - Async `ReplicateMetadata` to M-1 replicas
+  - Wait for W=(M/2)+1 acks (default 2) with timeout
   - Increment local vector clock entry on each write
-- [x] Implement `ReplicateMetadata` handler on replicas:
+- [ ] Implement `ReplicateMetadata` handler on replicas:
   - Write received ObjectMeta to local BoltDB
   - Return ack
-- [x] Add `PutWithMetadata` to `CASStore` for distributed metadata writes
-  - Accepts VectorClock, ShardKey, MetadataReplicas
-  - Preserves backward compatibility with existing `Put` calls
-- [x] Update `metadata_rpc.go` to call `store.PutWithMetadata`
-- [x] Vector clock handling in ObjectMeta encode/decode with backward compatibility
-- [x] Config: `[momofs] metadata_replication`, `metadata_quorum`, `enabled` (parsing in config.go not yet done)
-- [ ] Quorum write protocol: async replicate to M-1, wait for W=(M/2)+1 acks
-- [ ] Vector clock conflict detection on read
+- [ ] Modify `CASStore.Put` to route metadata via `PutMetadata` RPC (when `momofs.enabled=true`)
+  - Determine shard key: `ring.Lookup(name)`
+  - Call `PutMetadata` on shard owner
+  - Wait for quorum response before returning to client
+- [ ] Vector clock conflict detection on read:
+  - `GetMeta` compares VectorClock across replicas if needed
+  - Log concurrent writes for scrub review
+- [ ] Config: `[momofs] metadata_replication`, `metadata_quorum`, `enabled`
 - [ ] Integration tests: 3-node cluster, concurrent writes → conflict detection, quorum with 1 replica down
 
 ## Phase 3 — Read Path + Repair
-- [x] Implement `ResolveMetadata` RPC handler in `metadata_rpc.go`:
+- [ ] Implement `ResolveMetadata` RPC handler:
   - Look up local BoltDB by name → return ObjectMeta
-  - Added ModTime field to ResolveMetadataReply
-- [x] Implement metadata cache in `CASStore`:
+- [ ] Implement metadata cache in `CASStore` (or separate `MetadataCache`):
   - TTL=60s (configurable `metadata_ttl`)
-  - LRU eviction with max entries (10k)
-  - Methods: `getCachedMeta`, `setCachedMeta`, `invalidateCache`
-- [x] Modify `CASStore.GetMeta` / server read path:
-  - Added `getCachedMeta`, `setCachedMeta`, `invalidateCache` methods
-  - Added `GetMetaWithCache` for distributed reads with cache
-  - Added `resolveMetadataViaRPC` stub for future RPC integration
-- [x] Cache invalidation on writes:
-  - `PutWithMetadata` calls `invalidateCache(name)`
-  - `Delete` calls `invalidateCache(name)`
+  - LRU eviction with max entries
+  - Per-shard cache partition (optional)
+- [ ] Modify `CASStore.GetMeta` / server read path:
+  - Check cache first → HIT: return cached
+  - MISS: determine shard owner → `ResolveMetadata` RPC
+  - Cache result on success
 - [ ] Read repair:
   - On cache miss, if multiple replicas queried and versions differ
   - Compare VectorClocks → propagate winning version to stale replicas
@@ -57,39 +55,36 @@
 - [ ] Integration tests: owner down → fallback to replica; cache hit after 2 reads; read repair on stale replica
 
 ## Phase 4 — ListObjects + Config + Backward Compat
-- [x] Implement shard-aware `ListShard` RPC:
+- [ ] Implement shard-aware `ListShard` RPC:
   - Args: `ShardKey`, `Prefix`, `Delimiter`, `MaxKeys`, `ContinuationToken`
   - Reply: `FileMetadata[]`, `CommonPrefixes[]`, `NextContinuationToken`
-- [x] Modify S3 ListObjectsV2 handler (`s3_communicator.go`):
+- [ ] Modify S3 ListObjectsV2 handler (`s3_communicator.go`):
   - When `momofs.enabled=true`: determine shard owners for prefix
   - Fan-out `ListShard` RPC to shard owners only
   - Merge responses → return to client
-- [x] Add config keys: `metadata_ttl`, `[global] metadata_snapshot_interval`, `metadata_backup_retention`
-- [x] Backward compat: `momofs.enabled=false` → skip all distributed logic, use local `CASStore.List()`
-- [x] Update `docs/CONFIGURATION.md`, `conf/momo.conf` with new keys
-- [x] Integration tests: ListObjectsV2 with prefix on 10-node cluster → O(M) RPCs verified
+- [ ] Add config keys: `metadata_ttl`, `[global] metadata_snapshot_interval`, `metadata_backup_retention`
+- [ ] Backward compat: `momofs.enabled=false` → skip all distributed logic, use local `CASStore.List()`
+- [ ] Update `docs/CONFIGURATION.md`, `conf/momo.conf` with new keys
+- [ ] Integration tests: ListObjectsV2 with prefix on 10-node cluster → O(M) RPCs verified
 
 ## Phase 5 — Backup/Recovery (R6a)
-- [x] Implement `momo backup` CLI in `src/momo.go`:
+- [ ] Implement `momo backup` CLI in `src/momo.go`:
   - `backupCmd` with flags `--output`, `--compress`
-  - Stream bbolt pages using `bbolt.Tx.WriteTo()` (online, non-blocking)
+  - Stream bbolt pages using `bbolt.Tx.Page()` (online, non-blocking)
   - Write to file(s) with optional gzip compression
   - Include metadata: timestamp, node ID, DB version
-- [x] Implement `momo restore` CLI:
+- [ ] Implement `momo restore` CLI:
   - `restoreCmd` with flags `--input`, `--force`
   - Validate backup header + checksum
   - `--force` required to overwrite existing DB
   - Restore pages to new DB file
-- [x] Automated periodic snapshots:
+- [ ] Automated periodic snapshots:
   - Background goroutine in `CASStore` (or server) triggered by `metadata_snapshot_interval`
   - Write to configured directory with rotation (daily/weekly)
   - Retention policy: 7 daily + 4 weekly (`metadata_backup_retention`)
-- [x] Point-in-time recovery documentation:
+- [ ] Point-in-time recovery documentation:
   - `docs/BACKUP_RECOVERY.md`: stop node → restore → verify → restart
   - Integrity verification: re-hash all blobs vs `ObjectMeta.Checksum`
-- [x] Update `docs/CONFIGURATION.md`, `conf/momo.conf` with backup keys
-- [x] Integration test: write data → backup → corrupt DB → restore → verify all data intact + checksums match
-- [x] Update `docs/ARCHITECTURE.md` with backup/recovery section
 - [ ] Integration test: write data → backup → corrupt DB → restore → verify all data intact + checksums match
 - [ ] Update `docs/ARCHITECTURE.md` § with backup/recovery section
 

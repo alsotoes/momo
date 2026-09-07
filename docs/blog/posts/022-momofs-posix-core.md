@@ -2,7 +2,6 @@
 title: "R4: momofs — POSIX Core Over the CAS Store"
 date: 2026-08-27T22:40:31Z
 draft: false
-post_type: architecture
 tags: [go, momofs, posix, cas, storage]
 categories: [momofs]
 summary: "The R4 POSIX core: inodes as content-addressed manifests, files as blobs, atomic rename, hardlinks, permission enforcement — a filesystem on momo."
@@ -16,6 +15,8 @@ related:
   - 023-momofs-fuse-transport
   - 005-crush-placement
 ---
+# R4: momofs — POSIX Core Over the CAS Store
+
 The biggest architecture bet yet: make momo a **filesystem**, not just an
 object store. R4 ships the POSIX core (#957), tracked by issue #932.
 

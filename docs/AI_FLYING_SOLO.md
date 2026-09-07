@@ -34,8 +34,6 @@ This document is governed by the steering rules in [`openspec/config.yaml`](../o
 - **Rule 77**: ADR Mandate — every ratified feature/enhancement OpenSpec change MUST have an ADR in `docs/adr/NNNN-<change-id>.md` following `docs/adr/template.md`, linking spec + issue + PR + blog post; status `Proposed` → `Accepted` on merge; supersession = new ADR + `Deprecated` old (Fowler)
 - **Rule 78**: ADR-Spec Synchronization — ADRs are auto-generated from specs via `make adr-sync` (context ← proposal, decision ← requirement summaries, status ← tasks.md checkboxes, blog link ← issue match); `make adr-sync-check` validates parity and runs in CI; ADR status never hand-edited
 - **Rule 79**: No Direct Push to Master — all changes go through issue → branch → PR (`Resolves #ISSUE_ID`) → CI → reviewer → merge `--merge --delete-branch`. Doc-only / pre-commit-regen / trivial-refactor / CI-fix / emergency-hotfix exceptions may bypass, but must be tagged in the commit message
-- **Rule 89**: MemPalace Knowledge Grounding — run `mempalace mine .` from repo root + `npx repomix` to refresh context, then query `mempalace search "<topic>" --wing momo` BEFORE reading source files / re-investigating architecture. Reuse indexed project knowledge instead of re-loading files to cut token burn.
-- **Rule 90**: Auto-Trace Issue Deduplication — the AI reviewer MUST NEVER create duplicate auto-trace issues for the same PR: search existing OPEN auto-trace issues first and reuse the canonical, use the CURRENT PR body from the API (not the stale event payload), and rely on workflow `concurrency` (`cancel-in-progress: true`) to serialize pushes. Prevents the #1057 duplicate-issue incident.
 
 ## Pre-Flight Checklist
 
@@ -53,17 +51,8 @@ Before starting any autonomous work, verify:
    - If any run shows `failure`: **STOP**. Diagnose and fix the failure on `master` (per Rule 64) before starting new work.
    - Only proceed when all runs show `completed` with `success` conclusion.
    - **Rationale**: After merging a PR, GitHub Actions re-runs all workflows on `master`. Branching from mid-CI `master` risks branching from code that may fail or be reverted. This gate guarantees every new branch originates from a fully validated, stable `master`.
-6. **MemPalace knowledge base is current (Rule 89)**: Refresh the project knowledge base so prior decisions, specs, and architecture are queryable instead of re-derived (token efficiency):
-   ```bash
-   # Mine the repo into MemPalace (wing "momo")
-   mempalace mine . --wing momo
-   # Regenerate the codebase context map when the code has changed
-   npx repomix    # regenerates repomix-output.xml
-   ```
-   - Re-mine when significant code/spec/doc changes landed since the last session.
-   - After mining, **query MemPalace for grounding BEFORE reading source files** (see Step 1c).
 
-## Per-Task Cycle (18 Steps)
+## Per-Task Cycle (17 Steps)
 
 For each task (bug fix or feature), execute these steps strictly sequentially. Do NOT start the next task until the current one is merged.
 
@@ -72,30 +61,25 @@ For each task (bug fix or feature), execute these steps strictly sequentially. D
 **Before ANY work on an issue — whether newly created, pre-existing, or picked up from a batch — establish ownership and validate the issue's metadata.**
 
 ```bash
-# 1. Get current git user for assignee
-GIT_USER=$(git config user.name)
+# 1. Assign the issue to the maintainer
+gh issue edit ISSUE_N --add-assignee alsotoes
 
-# 2. Assign the issue to the maintainer
-gh issue edit ISSUE_N --add-assignee "$GIT_USER"
-
-# 3. Validate labels: category (bug|enhancement) + automation
+# 2. Validate labels: category (bug|enhancement) + automation
 gh issue view ISSUE_N --json assignees,labels
 
-# 4. Add any missing labels
+# 3. Add any missing labels
 gh issue edit ISSUE_N --add-label <bug|enhancement>
 gh issue edit ISSUE_N --add-label automation
 ```
 
-Only proceed to implementation (Step 2) once the issue is assigned to `$GIT_USER` and carries both the category label and the `automation` label. Issues lacking an assignee or the `automation` label are orphaned and MUST be remediated before work begins.
+Only proceed to implementation (Step 2) once the issue is assigned to `alsotoes` and carries both the category label and the `automation` label. Issues lacking an assignee or the `automation` label are orphaned and MUST be remediated before work begins.
 
 ### Step 1: Create GitHub Issue
 ```bash
-GIT_USER=$(git config user.name)
-
 gh issue create \
   --title "<type>: <description>" \
   --label "<bug|enhancement>" \
-  --assignee "$GIT_USER" \
+  --assignee "alsotoes" \
   --body "<issue documentation>"
 ```
 Record the issue number (`ISSUE_N`).
@@ -108,11 +92,7 @@ Record the issue number (`ISSUE_N`).
 
 **ADR Creation (Rules 77/78):** After the OpenSpec change is authored, run `make adr-sync` to auto-generate the ADR in `docs/adr/NNNN-<change-id>.md` from the spec (context ← proposal.md, decision ← spec requirement summaries, status ← tasks.md checkboxes). The ADR links spec + issue + PR + blog post. Never hand-edit an ADR — regenerate it. `make adr-sync-check` (CI) validates parity. ADR status `Proposed` → `Accepted` on merge; supersession = new ADR + `Deprecated` old (Fowler).
 
-**MemPalace knowledge store (Rule 89):** The project knowledge base lives in MemPalace under `wing: momo`. Refresh it with `mempalace mine . --wing momo` from the repo root, and regenerate the codebase map with `npx repomix` when the code changed. **Before reading source files or re-investigating architecture, query MemPalace first** — it is the durable memory layer reusing indexed specs, decisions, and code patterns across sessions, cutting token burn:
-```bash
-mempalace search "<topic>" --wing momo [--room <room>] [--results N]
-```
-Only fall back to full file reads / `repomix-output.xml` inspection when MemPalace search returns insufficient grounding. Keep it current by re-mining `src/`, `docs/`, `openspec/`, `conf/`, `tools/` after significant changes.
+**MemPalace knowledge store:** The project knowledge base lives in MemPalace under `wing: momo` (re-mined per release; `mempalace mine <dir> --wing momo`). Query it (`mempalace search "<topic>" --wing momo`) before starting work to ground decisions in prior context. Keep it current by re-mining `src/`, `docs/`, `openspec/`, `conf/`, `tools/` after significant changes.
 
 **Blog post (Rule 76):** Every feature PR MUST ship a matching blog post under `docs/blog/posts/NNN-<slug>.md` (front matter per `docs/blog/README.md`; `date` = anchor issue/PR `createdAt`), OR carry an explicit `no-blog` justification (ADR sibling `<adr>.no-blog.md` for internal-only changes). Coverage is enforced by `make blog-check` in CI, not just by the reviewer.
 
@@ -132,23 +112,6 @@ Create three files (mirror the existing `openspec/changes/*/` layout):
 - The feature PR (Step 7) MUST include the OpenSpec change files and its body MUST use `Resolves #ISSUE_N`.
 - Author the spec on the branch in this step; implement in Step 3; both ship in the same PR.
 - **Bug fixes / internal refactors with no behavioral surface are exempt** from a formal spec (Rule 73) but MUST still have a tracking issue from Step 1.
-
-### Step 1c: Ground via MemPalace (Rules 89, 91)
-
-Before implementing, select the RIGHT tool for the question — token efficiency = speed:
-
-| Question Type | First Tool (Fastest) | Fallback |
-|---------------|---------------------|----------|
-| "What did we decide about X?" / "Prior discussion on Y?" | `ctx_search "X"` or `ctx_memory get [ids]` | — |
-| "Where is symbol S defined?" / "Find all usages of S" | `grep -r "S" src/` / `glob "**/*S*.go"` | `mempalace search "S" --wing momo` |
-| "Where is file/pattern X?" | `glob "pattern"` / `grep "pattern"` | `mempalace search "X" --wing momo` |
-| "What does the spec/ADR say about Z?" | `mempalace search "Z" --wing momo --room specs` | `read openspec/changes/...` |
-| "Analyze entire architecture / cross-cutting concern" | `npx repomix` → read `repomix-output.xml` | — |
-| "Verify current code matches spec" | `read` target files + `mempalace search` spec ID | — |
-| "Token efficiency requested" | `caveman-compress` (inject output as session instructions) | — |
-| **Git operations** | `rtk git <cmd>` (preferred over raw `git`) | `bash "git <cmd>"` |
-
-**Rule**: Start with session memory (`ctx_search`/`ctx_memory`) → durable knowledge (`mempalace search`) → targeted tools (`grep`/`glob`/`read`). **Only** escalate to `repomix` for WHOLE-REPO questions. Never dump entire codebase when a grep answers it.
 
 ### Step 2: Create Branch
 ```bash
@@ -210,8 +173,7 @@ Record the PR number (`PR_N`).
 
 ### Step 8: Assign PR (Rule 51)
 ```bash
-GIT_USER=$(git config user.name)
-gh pr edit PR_N --add-assignee "$GIT_USER"
+gh pr edit PR_N --add-assignee alsotoes
 ```
 
 ### Step 9: Add Label (Rule 52)
@@ -255,11 +217,10 @@ If at ANY point you encounter something you don't know or understand:
 1. STOP work immediately
 2. Create a blocking issue:
    ```bash
-   GIT_USER=$(git config user.name)
    gh issue create \
      --title "[AIFS] <question or doubt>" \
      --label "bug" --label "automation" \
-     --assignee "$GIT_USER" \
+     --assignee "alsotoes" \
      --body "Blocked PR #PR_N pending resolution of this question.
 
    <context and specific question>"
@@ -333,7 +294,6 @@ When the **3-push circuit breaker** trips (an automated agent has pushed 3 times
    go test ./...
    make adr-sync-check   # Rule 78: ADRs match specs
    make blog-check       # Rule 76: posts valid + related graph + Accepted-ADR coverage
-   make diagram-check    # SVG diagram validation: viewBox, legibility, accessibility
    ```
 
 6. **Fix any remaining issues directly** (see "Handling Pre-Existing CI Failures" below).
@@ -465,168 +425,13 @@ Please address these and push updates."
 
 **Critical**: The `gh pr comment` command MUST be run from an authenticated `alsotoes` session (PAT), not from the `GITHUB_TOKEN` used by CI. Comments posted as `github-actions[bot]` will NOT be actioned by Jules.
 
-### Jules PR Takeover/Rebuild Protocol (Rule 79)
-
-When a Jules PR requires significant cleanup (rogue commits, wrong dates, bogus Resolves, regressions):
-
-1. **Analyze**: `gh pr view PR_N --json commits,files` — identify rogue changes.
-2. **Rebuild**:
-   ```bash
-   git checkout -b fix/<N>-<slug> origin/master
-   git cherry-pick <legitimate-fix-commit>
-   # Fix dates, drop rogue changes, gofmt
-   ```
-3. **Force-push to PR head**: `git push --force-with-lease origin fix/<N>-<slug>:<jules-branch>`
-4. **Update PR body**: Add `Resolves #<canonical>`, full reviewer summary (Rule 54).
-5. **Post STOP comment** if Jules pushed concurrently (Rule 66).
-6. **Monitor CI + reviewer** on new head.
-
-**Common Jules issues to fix**:
-- Rogue `go.mod`/`go.sum` reverts (bazil restore, breaking R4 FUSE migration)
-- Future-dated `.jules/` learning entries → correct to PR creation date
-- Bogus `Resolves #1` → replace with canonical auto-trace issue
-- Missing `jules`/`bug`/`enhancement`/`automation` labels
-
-### Auto-Trace Consolidation Protocol (Rule 80)
-
-When multiple auto-trace issues exist for one PR:
-1. Identify canonical (lowest number, OPEN).
-2. Close dups: `gh issue close <dup1> <dup2> --comment "Duplicate of #<canonical> (canonical tracker for PR #<N>). Closed per Rule 20."`
-3. Update PR body: `Resolves #<canonical>`.
-4. If new auto-trace created during takeover (stale reviewer read), close it immediately.
-
-**Prevention (Rule 90):** The reviewer script (`ai_reviewer.py`) must not CREATE duplicates: it searches existing OPEN auto-trace issues first (`find_existing_auto_trace`), reuses the canonical, and uses the CURRENT PR body from the API (`get_current_pr_body`) instead of the stale webhook payload. The `gemini_reviewer.yml` workflow carries `concurrency: cancel-in-progress: true` per PR so parallel pushes are serialized. If duplicates still appear, that is a Rule 90 bug — fix the script, don't just close the issues.
-
-### Phase-Based Implementation Pattern (Rule 81)
-
-For large features (estimated >1 PR):
-1. **One OpenSpec change**: `openspec/changes/<feature-id>/` with proposal.md, specs/<id>/spec.md, tasks.md.
-2. **tasks.md** lists ALL phases with checkboxes; link to GitHub issue.
-3. **Phase 0**: Author spec on branch, `make adr-sync`, PR with `Resolves #ISSUE_N` (spec-only, no code).
-4. **Phase N**: Separate branch `feature/<N>-<slug>-phaseN`, implement phase tasks, update tasks.md.
-5. **Each phase PR**: `Resolves #ISSUE_N` (same issue); `tasks.md` shows phase progress.
-6. **Issue stays OPEN** until final phase merges; auto-closes via `Resolves` on last phase.
-
-### Benchmark Flake Allowlist Pattern (Rule 82)
-
-When a benchmark flakes on CI:
-1. **Rerun failed job** — if passes, likely noise.
-2. **Local comparison**: run bench on HEAD^1 vs HEAD locally — if binary-identical code, it's noise.
-3. **Add to `.github/workflows/benchmark_compare.yml` allowlist** with rationale comment matching precedent.
-4. **Example entry**:
-   ```yaml
-   - name: LocalWrite
-     # Temp file I/O in /tmp on shared runners; known noise per #846, #955, #960
-   - name: S3PutSpool
-     # Temp file I/O (os.CreateTemp+io.Copy) in /tmp on shared runners; similar to LocalWrite
-   ```
-
-### PR Rejection Protocol (Rule 83)
-
-When a PR is fundamentally incorrect (regression, wrong fix):
-1. Post detailed rejection review on PR with code analysis + empirical proof.
-2. Close PR: `gh pr close PR_N --comment "<detailed rationale>"`
-3. Close auto-trace issues: `gh issue close <dups> --comment "Duplicate of rejection rationale for PR #<N>. Closed per Rule 20."`
-4. Delete branch: `gh api -X DELETE repos/.../git/refs/heads/<branch>`
-5. **Do NOT merge** — no salvage via partial fix; the approach is wrong.
-
-### Jules Learning File Date Fix (Rule 84)
-
-Jules `.jules/*.md` entries often have future/incorrect dates. During takeover:
-- Correct to PR creation date: `gh pr view PR_N --json createdAt --jq '.createdAt'` → extract date.
-- Existing pattern: `2026-08-*` / `2026-09-01` format.
-- Update entry date in `.jules/<file>.md` before commit.
-
-### Benchmark Hook Management (Rule 85)
-
-- **Implementation commits**: `git commit --no-verify` (skip hook bench regeneration).
-- **Benchmark addition commits**: Let hook run (adds new rows).
-- **Chore commits**: `chore: regenerate bench docs (pre-commit hook)` for hook output.
-
-### Direct-Master Doc Commits (Rule 86)
-
-Trivial doc fixes (typos, clarifications, link fixes) MAY commit directly to master:
-```bash
-git commit -m "docs: <description> (#ISSUE_N)" --no-verify
-```
-Criteria: No code changes, no behavioral surface, pure markdown/typos/links.
-
-### Reviewer Re-Evaluation Trigger (Rule 87)
-
-AI reviewer only re-evaluates on `synchronize` (push). To force re-eval:
-- `git commit --allow-empty -m "sync: trigger reviewer re-evaluation" && git push`
-- Or use PR "Update branch" button.
-
-## Tool Selection Cheat Sheet (Rule 91)
-
-### Memory & Context Tools (Zero File Reads)
-
-| Tool | Use When | Token Cost |
-|------|----------|------------|
-| `ctx_search "query"` | "Did we discuss X?" / "What was the error?" / "Find prior decision" | ~1KB |
-| `ctx_memory get [1,2,3]` | Retrieve known durable facts by ID | ~500B |
-| `ctx_memory write category="CONSTRAINTS" content="..."` | Save hard-won constraint for future sessions | — |
-| `mempalace search "topic" --wing momo` | Query indexed specs, decisions, code patterns from all sessions | ~2KB |
-| `mempalace mine . --wing momo` | Refresh knowledge base after significant changes | One-time |
-
-### Targeted Code Tools (Precision, Low Tokens)
-
-| Tool | Use When | Token Cost |
-|------|----------|------------|
-| `glob "pattern"` | Find files by name/pattern | ~1KB |
-| `grep "symbol" src/` | Find symbol usages, definitions | ~2KB |
-| `read file.md` | Read specific file (known path) | File size |
-| `edit file.go old new` | Surgical fix (known location) | Diff size |
-
-### Broad Analysis Tools (High Tokens — Use Sparingly)
-
-| Tool | Use When | Token Cost |
-|------|----------|------------|
-| `npx repomix` | Whole-repo architecture review, cross-cutting analysis | 500KB+ |
-| `task explore agent` | Multi-file exploration, unknown codebase areas | Variable |
-
-### Communication & Git Tools
-
-| Tool | Use When |
-|------|----------|
-| `caveman-compress` | User requests terse mode (`/caveman full`) — inject output as session instructions |
-| `rtk git status/commit/push` | All git operations (preferred over raw `git`) |
-| `bash "git <cmd>"` | When rtk unavailable or complex git ops |
-
-### Decision Flowchart
-
-```
-START: "I need to answer X"
-  │
-  ├─ Is it "what did we decide/discuss earlier?" → ctx_search / ctx_memory
-  │
-  ├─ Is it a SPECIFIC symbol/file/pattern? → glob / grep / read
-  │
-  ├─ Is it a PROJECT KNOWLEDGE question (specs, ADRs, patterns)? → mempalace search
-  │
-  ├─ Is it WHOLE-REPO architecture / cross-cutting? → npx repomix
-  │
-  └─ Token efficiency requested? → caveman-compress
-```
-
-### Anti-Patterns (Token Waste)
-
-| ❌ Don't | ✅ Do |
-|----------|-------|
-| `npx repomix` to find one function | `grep "funcName" src/` |
-| `read` entire directory to find a pattern | `glob "**/*pattern*.go"` |
-| Re-read files already in MemPalace | `mempalace search` first |
-| Forget `ctx_search` for session history | Check `ctx_search` before asking user |
-| Raw `git` when `rtk` available | `rtk git <cmd>` |
-
 ## Common Pitfalls & Solutions
 
 ### Forgetting Labels and Assignment (Rules 49, 51, 52)
 **Pitfall**: During manual intervention, it's easy to forget assigning the PR and adding labels.
 **Solution**: Always run these immediately after creating or taking over a PR:
 ```bash
-GIT_USER=$(git config user.name)
-gh pr edit PR_N --add-assignee "$GIT_USER"
+gh pr edit PR_N --add-assignee alsotoes
 gh pr edit PR_N --add-label bug        # for bug fixes
 gh pr edit PR_N --add-label enhancement # for features
 gh pr edit PR_N --add-label automation  # for AI-driven work
@@ -634,42 +439,7 @@ gh pr edit PR_N --add-label automation  # for AI-driven work
 
 ### Forgetting the Issue Ownership Gate (Rule 72)
 **Pitfall**: Starting implementation on a pre-existing or batch issue that is unassigned or missing the `automation` label (e.g., the #606–#623 batch, where all issues lacked an assignee).
-**Solution**: Before any work, run the Issue Ownership Gate (Step 0): assign the issue to `$GIT_USER` (from `git config user.name`) and validate/add the category + `automation` labels via `gh issue edit ISSUE_N`. Treat missing assignee/labels as a blocking condition.
-
-### Jules PR Comments Posted as Bot (Rule 69)
-**Pitfall**: Posting reviewer feedback or STOP comments as `github-actions[bot]` on a Jules-created PR. Jules only recognizes comments from `alsotoes` and will silently ignore bot comments, causing Jules to continue working or miss feedback.
-**Solution**: Before posting any comment on a PR, check for the `jules` label. If present, ensure the `gh pr comment` command runs from an authenticated `alsotoes` session (PAT), not the `GITHUB_TOKEN` used by CI:
-```bash
-# Check for jules label
-gh pr view PR_N --json labels --jq '.labels[].name'
-
-# If "jules" is present, comment as alsotoes (PAT session)
-gh pr comment PR_N --body "..."
-```
-
-### Forgetting to Update the Reviewer Script (Rule 70)
-**Pitfall**: Adding or modifying a steering rule that affects PR review, labeling, commenting, or merge behavior, but forgetting to update `.github/scripts/ai_reviewer.py` and `.github/workflows/gemini_reviewer.yml` to implement the new behavior. The rule exists on paper but is never enforced in code.
-**Solution**: Before merging a PR that adds or modifies rules in `openspec/config.yaml`, verify that the reviewer script implements the new rule. If the rule affects any of these areas, the PR MUST include corresponding changes to `ai_reviewer.py`:
-- PR detection logic (e.g., Jules detection per Rule 68)
-- Labeling (Rules 49, 52, 68)
-- Comment posting identity — bot vs PAT (Rules 48, 69)
-- Circuit breaker enforcement (Rules 14, 18)
-- Traceability checks (Rules 11, 20)
-- Merge gate conditions (Rule 55)
-
-If no script change is needed, add a PR comment explaining why.
-
-### Pre-Commit Hooks Updating Benchmark Docs
-**Pitfall**: The pre-commit hook regenerates `docs/PERFORMANCE.md` and `.github/data/benchmark_history.csv`, adding unexpected files to the commit.
-**Solution**: This is expected behavior. Include these files in the commit. Do NOT revert them. Per Rule 61, when rebasing, resolve these by taking the master version (`--theirs`) since they are regenerated.
-
-### Benchstat Check Timing & Frozen Check Status
-**Pitfall**: The `benchstat` CI check can take **7+ minutes** to complete, and `gh pr checks` may report a check (e.g., `benchstat`) as `pending` for 15+ minutes with a frozen `updatedAt` while the underlying job is actually `completed/success`.
-**Solution**: Budget at least 8 minutes for the final CI wait. Poll with `gh pr checks PR_N` until NO checks show `pending`. If a long-pending check has a frozen `updatedAt`, do NOT deadlock waiting — cross-check the actual job state via the API and read its steps' conclusions:
-```bash
-gh api repos/<owner>/<repo>/actions/runs/<run-id>/jobs \
-  --jq '.jobs[0] | {status, conclusion, steps:[.steps[]|{name,status,conclusion}]}'
-```
+**Solution**: Before any work, run the Issue Ownership Gate (Step 0): assign the issue to `alsotoes` and validate/add the category + `automation` labels via `gh issue edit ISSUE_N`. Treat missing assignee/labels as a blocking condition.
 
 ### Jules PR Comments Posted as Bot (Rule 69)
 **Pitfall**: Posting reviewer feedback or STOP comments as `github-actions[bot]` on a Jules-created PR. Jules only recognizes comments from `alsotoes` and will silently ignore bot comments, causing Jules to continue working or miss feedback.
@@ -729,48 +499,6 @@ gh run list --branch master --limit 5
 ```
 If any runs are `in_progress` or `queued`, wait. If any failed, fix `master` first. Only branch from a fully validated `master`.
 
-### Jules PR Takeover Without Rebuild (Rule 79)
-**Pitfall**: Taking over a Jules PR and pushing incremental fixes instead of a clean rebuild. Jules PRs often contain rogue commits (go.mod/go.sum reverts, bazil restore, future-dated learning entries, bogus Resolves). Incremental fixes compound the problems; the reviewer sees merge-inflated diffs and spurious violations.
-**Solution**: Always do a clean rebuild on current master: `git checkout -b fix/<N>-<slug> origin/master`, cherry-pick only the legitimate fix, fix dates, drop rogue changes, then force-push the clean rebuild to the PR head.
-
-### Auto-Trace Proliferation Without Consolidation (Rule 80)
-**Pitfall**: Multiple auto-trace issues created for the same PR (e.g., #982/#983 for #981, #977/#978/#979 for #976). Each auto-trace clutters the tracker and the PR body lacks a proper `Resolves`.
-**Solution**: Immediately consolidate to one canonical issue (lowest number, OPEN), close dups with `gh issue close <dups> --comment "Duplicate of #<canonical> (canonical tracker for PR #<N>). Closed per Rule 20."`, update PR body with `Resolves #<canonical>`. If new auto-trace appears during takeover (stale reviewer read), close it immediately.
-
-**Automated-duplicate variant (Rule 90):** When the AI reviewer itself creates 50+ duplicate auto-trace issues for one PR (e.g., #997–#1054 for PR #996), the root cause is the reviewer script — no dedup search, stale event payload, and no workflow concurrency. Fix `ai_reviewer.py` (`find_existing_auto_trace` + `get_current_pr_body`) and add `concurrency: cancel-in-progress: true` to `gemini_reviewer.yml`; then bulk-close the duplicates with the canonical message. Do NOT just close duplicates and leave the script broken — the next synchronize will re-create them.
-
-### Monolithic Feature in One PR (Rule 81)
-**Pitfall**: Attempting to implement a large feature (e.g., R6 metadata HA) in a single massive PR. The diff is unreadable, reviewer cannot verify, CI timeout risk, all-or-nothing merge risk.
-**Solution**: Split into phases with shared OpenSpec change. Phase 0 = spec authoring; Phase N = implementation + test. Each phase = separate PR with `Resolves #ISSUE_N` (same issue). tasks.md tracks phase progress. Issue auto-closes on final phase merge.
-
-### Benchmark Flake Ignored (Rule 82)
-**Pitfall**: A benchmark flakes on CI (e.g., `LocalWrite/64MiB`, `S3PutSpool/64MiB`) and the agent either blocks the PR or merges with a false regression. The benchmark involves temp file I/O on shared runners — it's noise, not regression.
-**Solution**: Rerun failed job. If passes, confirm noise via local HEAD^1 vs HEAD comparison (binary-identical code). Add to `.github/workflows/benchmark_compare.yml` allowlist with rationale comment matching precedent. Allowlisted benches exceed 5% alloc without failing CI.
-
-### Merging a Regression Instead of Rejecting (Rule 83)
-**Pitfall**: A PR introduces a regression (e.g., #985 breaks hierarchical S3 keys) but the agent merges it because tests pass (tests don't cover the regressed case). The "fix" is fundamentally wrong.
-**Solution**: Post detailed rejection review with code analysis + empirical proof. Close PR with rationale. Close auto-trace issues. Delete branch. **Do NOT merge** — no salvage via partial fix; the approach is wrong.
-
-### Jules Learning File Future Date (Rule 84)
-**Pitfall**: Jules `.jules/*.md` entries use future dates (e.g., `2026-09-10` when today is `2026-09-01`). The learning file is a knowledge base, not a prediction log.
-**Solution**: During takeover, correct date to PR creation date: `gh pr view PR_N --json createdAt --jq '.createdAt'` → extract date. Existing pattern: `2026-08-*` / `2026-09-01` format.
-
-### Benchmark Hook Churn in Implementation Commit (Rule 85)
-**Pitfall**: An implementation commit includes the pre-commit hook's benchmark regeneration (200+ lines of `PERFORMANCE.md` + `benchmark_history.csv` churn), bloating the diff and hiding the actual change.
-**Solution**: For implementation commits, use `git commit --no-verify` to skip the hook. Let the hook run on benchmark-addition commits. For pure implementation commits, `--no-verify` keeps diff clean.
-
-### Trivial Doc Fix via PR Instead of Direct Master (Rule 86)
-**Pitfall**: Opening a PR for a typo fix or link correction. Wastes CI time and review slots.
-**Solution**: For pure doc fixes (typos, links, clarifications, zero code/behavior): `git commit -m "docs: <description> (#ISSUE_N)" --no-verify` directly on master. Criteria: no code changes, no behavioral surface.
-
-### Reviewer Stale Verdict on Force-Push (Rule 87)
-**Pitfall**: After force-pushing a clean rebuild to a PR, the agent assumes the old reviewer verdict (on the old head) is still valid. The reviewer must re-evaluate on the new head.
-**Solution**: Force-push triggers `synchronize` → reviewer re-runs. Verify `gh pr checks PR_N` shows `review` as `pass` on the new head. If stuck, push empty sync commit: `git commit --allow-empty -m "sync: trigger reviewer re-evaluation" && git push`.
-
-### Skipping MemPalace Grounding (Rule 89)
-**Pitfall**: Starting a task by reading source files / `repomix-output.xml` from scratch, or relying on model training knowledge, instead of querying the project knowledge base. Re-reads the same files, specs, and decisions every session — wasted tokens and possible drift from the actual codebase state.
-**Solution**: Before implementation, run `mempalace search "<topic>" --wing momo` (refresh first with `mempalace mine . --wing momo` + `npx repomix` if the code changed). Ground in indexed prior specs/decisions/code patterns first; read files only when MemPalace returns insufficient context. Re-mine after significant changes so the base stays current.
-
 ## Key Principles
 
 ### Never Assume (Rule 59)
@@ -806,19 +534,16 @@ When manual intervention is happening, automated agents MUST be told to STOP. No
    │      └─ Master CI still running? → WAIT and poll until all complete
    │         Master CI failed? → STOP, diagnose and fix on master (Rule 64)
    │
-   ├─ 0.6 MemPalace refresh (Rule 89): mempalace mine . --wing momo + npx repomix
+   ├─ 0.5 Issue Ownership Gate (Rule 72): assign issue to alsotoes + validate labels (bug|enhancement, automation)
    │
-├─ 0.5 Issue Ownership Gate (Rule 72): assign issue to $GIT_USER + validate labels (bug|enhancement, automation)
-    │
-    ├─ 1. Create issue (label: bug|enhancement, assignee: $GIT_USER)
-   ├─ 1c. Ground via MemPalace (Rule 89): mempalace search "<topic>" --wing momo BEFORE reading files
+   ├─ 1. Create issue (label: bug|enhancement, assignee: alsotoes)
    ├─ 2. Create branch off master (fix/ or feature/)
   ├─ 3. Implement + tests
   ├─ 4. Commit (fix: or feat:)
   ├─ 5. Validate branch (Rule 58)
   ├─ 6. Push
   ├─ 7. Create PR (Resolves #NNN)
-  ├─ 8. Assign PR to $GIT_USER (Rule 51)
+  ├─ 8. Assign PR to alsotoes (Rule 51)
   ├─ 9. Add label bug|enhancement (Rule 52)
   ├─ 10. Wait for CI + reviewer
   │      │

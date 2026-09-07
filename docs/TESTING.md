@@ -21,7 +21,7 @@ This document describes every test suite and validation step that runs in the Mo
 | External Client Replication | `external_client_test.yml` | push to master, PRs (path-filtered) | External S3 client replication mode downgrade |
 | Encryption Smoke | `encryption_smoke_test.yml` | push to master, PRs | E2E encryption across TCP/QUIC/S3 transports (`make smoke-encryption-*`) |
 | MomoFS FUSE E2E | `momofs_fuse_test.yml` | push to master, PRs (path-filtered) | FUSE mount round-trip (`TestFuseE2E_MountRoundTrip`) |
-| Blog Check | `blog_check.yml` | PRs, push to master | Validates docs/blog posts (Rule 76) and SVG diagrams (`make diagram-check`) |
+| Blog Check | `blog_check.yml` | PRs, push to master | Validates docs/blog posts (Rule 76) |
 | Pentest | `pentest.yml` | push to master, PRs, manual dispatch | DotDotPwn fuzzing + Python exploit toolkit (10 CVEs found) |
 
 ---

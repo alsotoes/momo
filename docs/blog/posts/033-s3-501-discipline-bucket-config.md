@@ -2,7 +2,6 @@
 title: "S3 501 Discipline: Honest 'Not Implemented' for 16 Bucket Config Subresources"
 date: 2026-08-24T20:00:50Z
 draft: false
-post_type: issue
 tags: [s3, compatibility, sentinel]
 categories: [s3]
 summary: "16 bucket config subresources (versioning, ACL, policy, CORS, lifecycle, etc.) now return honest 501 NotImplemented instead of silently misrouting to ListObjects/GetObject."
@@ -16,6 +15,8 @@ related:
   - 034-s3-501-discipline-object-subresources
   - 035-s3-501-discipline-remaining-ops
 ---
+# S3 501 Discipline: Bucket Config Subresources
+
 Previously, unsupported bucket-level query parameters (`?versioning`, `?policy`, `?cors`, etc.) silently fell through to `ListObjectsV2`/`GetObject` — a silent misrouting bug. Now: **honest 501 NotImplemented**.
 
 ## The Problem
@@ -67,7 +68,7 @@ Added `unsupportedBucketConfigSubresources` map (16 entries) + detector at `Hand
 
 ## Standards
 
-Per [docs/STANDARDS.md](../../STANDARDS.md): 🛡 **Sentinel** (honest error semantics, no silent misrouting, fail-closed).
+Per [docs/STANDARDS.md](../STANDARDS.md): 🛡 **Sentinel** (honest error semantics, no silent misrouting, fail-closed).
 
 ## Follow-ups
 

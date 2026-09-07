@@ -1,8 +1,0 @@
-<figure class="diagram-figure">
-  <div class="diagram-wrapper">
-    <img src="{{ .Get "src" }}" alt="{{ .Get "alt" | default (.Get "caption") | default "Architecture diagram" }}" class="diagram-img" loading="lazy" />
-  </div>
-  {{- with .Get "caption" }}
-  <figcaption class="diagram-caption">{{ . | markdownify }}</figcaption>
-  {{- end }}
-</figure>

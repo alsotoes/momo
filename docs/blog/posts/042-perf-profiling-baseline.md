@@ -2,7 +2,6 @@
 title: "Perf Profiling Baseline: Measure Before You Optimize — and Keep pprof Off the Wire"
 date: 2026-08-26T17:46:56Z
 draft: false
-post_type: architecture
 tags: [performance, profiling, bolt, sentinel]
 categories: [performance]
 summary: "Phase-0 profiling harness via go test -cpuprofile/-memprofile; Rule 75 forbids networked pprof on unauthenticated listeners. The baseline proved stdlib SHA-256 already uses AVX2."
@@ -16,6 +15,8 @@ related:
   - 043-reduce-read-verify-hashing
   - 044-plugin-seam-architecture
 ---
+# Perf Profiling Baseline
+
 You can't optimize what you can't measure. Phase-0 of the performance work
 built the measurement harness — and proved a hard security rule along the way.
 

@@ -91,7 +91,7 @@ def add_jules_label(pr_number):
         print(f"Failed to add jules label: {e}", file=sys.stderr)
 
 def sync_pr_labels_and_assignee(pr_number, pr_title, pr_body):
-    """Sync labels from linked issues to the PR and assign the git user.
+    """Sync labels from linked issues to the PR and assign alsotoes.
 
     This runs BEFORE any review work, ensuring every PR has correct
     labels and an assignee from the moment it's opened.
@@ -99,17 +99,11 @@ def sync_pr_labels_and_assignee(pr_number, pr_title, pr_body):
     1. Parse 'Closes #NNN' / 'Fixes #NNN' / 'Resolves #NNN' from PR body.
     2. Fetch labels from each linked issue.
     3. Add those labels to the PR (deduplicated by gh).
-    4. Assign git user (from git config user.name) to the PR.
+    4. Assign alsotoes to the PR.
     5. Add 'bug' label if the PR title starts with 'fix('.
     """
     if not pr_number:
         return
-
-    # Get git user for assignee
-    try:
-        git_user = subprocess.run(["git", "config", "user.name"], capture_output=True, text=True, check=True).stdout.strip()
-    except Exception:
-        git_user = "alsotoes"
 
     labels_to_add = set()
 
@@ -142,13 +136,13 @@ def sync_pr_labels_and_assignee(pr_number, pr_title, pr_body):
         except Exception as e:
             print(f"Failed to sync labels: {e}", file=sys.stderr)
 
-    # Assign git user to every PR
+    # Assign alsotoes to every PR
     try:
-        subprocess.run(["gh", "pr", "edit", pr_number, "--add-assignee", git_user],
+        subprocess.run(["gh", "pr", "edit", pr_number, "--add-assignee", "alsotoes"],
                        capture_output=True, text=True, check=True)
-        print(f"Assigned {git_user} to PR #{pr_number}")
+        print(f"Assigned alsotoes to PR #{pr_number}")
     except Exception as e:
-        print(f"Failed to assign {git_user}: {e}", file=sys.stderr)
+        print(f"Failed to assign alsotoes: {e}", file=sys.stderr)
 
 def pr_has_label(pr_number, label):
     """Return True if the PR carries the given label (e.g. 'enhancement')."""
@@ -159,55 +153,6 @@ def pr_has_label(pr_number, label):
         return any(l.get("name") == label for l in data.get("labels", []))
     except Exception:
         return False
-
-
-def get_current_pr_body(pr_number):
-    """Rule 90: Fetch the CURRENT PR body from the GitHub API instead of relying
-    on the (possibly stale) webhook event payload. The event payload reflects the
-    body at event time; after create_missing_issue appends 'Resolves <url>' via
-    gh pr edit, subsequent synchronize events may still carry the old body,
-    causing duplicate auto-trace issues. Fetching live avoids that."""
-    if not pr_number:
-        return ""
-    try:
-        cmd = ["gh", "pr", "view", str(pr_number), "--json", "body", "--jq", ".body"]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        return result.stdout.strip()
-    except Exception:
-        return ""
-
-
-def find_existing_auto_trace(pr_number, pr_title):
-    """Rule 90: Search for an existing OPEN auto-trace issue already tracking this
-    PR (title pattern '[Auto-Trace] <PR title>' or body mentioning 'for PR #<n>').
-    Returns the canonical issue number, or None. This prevents the reviewer from
-    creating a new auto-trace issue on every synchronize event when the PR body
-    never gained a 'Resolves #N' link."""
-    if not pr_title or not pr_number:
-        return None
-    expected_title = f"[Auto-Trace] {pr_title}"
-    try:
-        cmd = ["gh", "issue", "list", "--state", "open", "--limit", "50",
-               "--search", f'"[Auto-Trace] {pr_title}" in:title',
-               "--json", "number,title"]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        issues = json.loads(result.stdout)
-        for issue in issues:
-            if issue.get("title") == expected_title:
-                return issue["number"]
-            # Fallback: body references this PR by number
-        # Secondary scan: issues mentioning 'for PR #<n>' in body
-        cmd = ["gh", "issue", "list", "--state", "open", "--limit", "50",
-               "--search", f'for PR #{pr_number} in:body',
-               "--json", "number,title"]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        issues = json.loads(result.stdout)
-        for issue in issues:
-            if f"for PR #{pr_number}" in issue.get("title", ""):
-                return issue["number"]
-    except Exception as e:
-        print(f"Failed to search for existing auto-trace issue: {e}", file=sys.stderr)
-    return None
 
 
 def has_openspec_change():
@@ -231,34 +176,14 @@ def has_blog_post():
 
 
 def create_missing_issue(pr_number, pr_title, pr_body):
-    # Rule 90: Deduplicate — never create a second auto-trace issue for a PR
-    # that already has one. Reuse the canonical issue and ensure the PR body
-    # carries 'Resolves #<canonical>' so future runs short-circuit.
     try:
-        existing = find_existing_auto_trace(pr_number, pr_title)
-        if existing is not None:
-            print(f"Rule 90: Reusing existing auto-trace issue #{existing} for PR #{pr_number} (no duplicate created)")
-            # Ensure the PR body links the canonical issue
-            if f"Resolves #{existing}" not in pr_body and f"resolves #{existing}" not in pr_body.lower():
-                try:
-                    subprocess.run(["gh", "pr", "edit", str(pr_number),
-                                    "--body", f"{pr_body}\n\nResolves #{existing}"], check=True)
-                    print(f"Linked existing issue #{existing} to PR #{pr_number}")
-                except Exception as e:
-                    print(f"Failed to link existing issue: {e}", file=sys.stderr)
-            return True
-
         print(f"Rule 11 Violation detected. Autonomously creating tracking issue for PR #{pr_number}...")
         
         issue_title = f"[Auto-Trace] {pr_title}"
         issue_body = f"This issue was created autonomously to satisfy Rule 11 (Traceability) for PR #{pr_number}.\n\n### Original PR Description:\n{pr_body}"
         
-        # Create the issue (assignee from git config)
-        try:
-            git_user = subprocess.run(["git", "config", "user.name"], capture_output=True, text=True, check=True).stdout.strip()
-        except Exception:
-            git_user = "alsotoes"
-        cmd = ["gh", "issue", "create", "--title", issue_title, "--body", issue_body, "--label", "enhancement", "--label", "automation", "--assignee", git_user]
+        # Create the issue
+        cmd = ["gh", "issue", "create", "--title", issue_title, "--body", issue_body, "--label", "enhancement", "--label", "automation", "--assignee", "alsotoes"]
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         issue_url = result.stdout.strip()
         
@@ -307,14 +232,6 @@ def main():
     pr_body = os.environ.get("PR_BODY", "")
     pr_title = os.environ.get("PR_TITLE", "")
     pr_number = os.environ.get("PR_NUMBER", "")
-
-    # Rule 90: Use the CURRENT PR body from the API, not the (stale) webhook
-    # event payload. The event payload reflects the body at event time; after a
-    # previous run appended 'Resolves <url>' via gh pr edit, later synchronize
-    # events can still carry the old body, causing duplicate auto-trace issues.
-    current_body = get_current_pr_body(pr_number) if pr_number else ""
-    if current_body:
-        pr_body = current_body
 
     # ⚡ First: Sync labels from linked issues and assign alsotoes.
     # This ensures every PR has correct labels and an assignee before

@@ -2,7 +2,6 @@
 title: "Metrics and Observability: Per-Node Bind, Prometheus Export"
 date: 2026-08-25T06:12:59Z
 draft: false
-post_type: architecture
 tags: [go, metrics, prometheus, observability, bolt]
 categories: [metrics]
 summary: "Prometheus metrics export with a per-node metrics_host/metrics_port bind — observability that scales past the 'just scrape node 0' era."
@@ -18,6 +17,8 @@ related:
   - 015-sentinel-security-audit
   - 032-r5-metrics-phases-2-4
 ---
+# Metrics and Observability: Per-Node Bind, Prometheus Export
+
 Momo was born "the metrics-driven controller" ([002](002-replication-strategies-polymorphic.md))
 — so its own observability had to be first-class. The metrics exporter
 (add-metrics-exporter) makes Prometheus endpoints real; **per-node binding**

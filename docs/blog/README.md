@@ -37,7 +37,6 @@ Body in GitHub-flavored markdown.
 | `title` | yes | Human-readable title |
 | `date` | yes | `createdAt` of anchor issue/PR (`gh issue/pr view <N> --json createdAt`) or earliest code/plan commit date when no issue exists. Never future-dated (spec §date) |
 | `draft` | yes | `false` for published posts |
-| `post_type` | optional | `architecture` for design decisions/ADRs/specs, or `issue` for bug fixes/incident resolutions/hardening (defaults to `architecture`) |
 | `tags` | yes | Include `bolt` and/or `sentinel` when perf/security drove the design (spec §bolt-sentinel) |
 | `categories` | yes | One of: `origin`, `transport`, `storage`, `s3`, `p2p`, `durability`, `encryption`, `momofs`, `performance`, `governance`, `metrics`, `roadmap` |
 | `summary` | yes | ≤ 200 chars |
@@ -52,20 +51,6 @@ Body in GitHub-flavored markdown.
   unless the matching code exists in `src/momofs`. Tag such items `planned`.
 - Operational momofs docs (`MOUNT_USER_GUIDE.md`, `IMPLEMENTATION.md §2.3`) are
   usable when ratified by `src/momofs` code.
-
-## Educational Writing Standard (NEW)
-
-Posts must be **teachable narratives** — see [`WRITING_GUIDE.md`](WRITING_GUIDE.md).
-Every post MUST include:
-1. **The Real Problem** — human context, pain point, "aha!" moment
-2. **Why Obvious Solutions Failed** — trade-offs, dead ends considered
-3. **Solution with Annotated Code** — inline *why*, not just *what*
-4. **Principle Callout** — reusable pattern with applicability boundaries
-5. **Verification** — benchmarks, profiles, production metrics
-6. **Failure Modes** — what could go wrong, how it's guarded
-7. **When NOT to Use** — explicit boundaries to prevent cargo-culting
-
-Tone: human ("we", "our"), admits uncertainty, shows dead ends.
 
 ## Cross-linking
 
@@ -89,66 +74,3 @@ post that depends on or explains another (e.g. CRUSH post ↔ CAS post, P2P post
 `make blog-check` (wraps `.github/scripts/blog_check.py`) verifies every post:
 required fields, RFC3339 `date` not in the future, `related` targets exist, and
 `artifacts: spec` paths resolve under `openspec/changes/`.
-
-`make diagram-check` (wraps `.github/scripts/validate_diagrams.py`) verifies all SVG diagrams:
-valid XML, `<title>`/`<desc>` accessibility tags, responsive `viewBox` (standardized `0 0 640 360`),
-safe margin boundaries, system font fallbacks, and minimum legible font sizes ($\ge 10\text{px}$).
-
-## UI/UX Architecture & Skills (`docs/blog/.agents/skills/`)
-
-The blog interface is styled following the **Swiss Modernism 2.0 / Technical Editorial** design system, enforcing rules from `.agents/skills/`:
-
-1. **Accessibility (`accessibility/`)**:
-   - WCAG 2.4.1 keyboard skip-to-content link (`layouts/baseof.html`)
-   - WCAG 2.4.7 visible focus indicator rings (`:focus-visible`)
-   - WCAG 2.3.3 reduced motion overrides (`@media (prefers-reduced-motion: reduce)`)
-   - WCAG 2.5.8 touch target scaling (min 44×44px for buttons, pagination, menu)
-   - Real-time reading progress bar (`#reading-progress`)
-
-2. **Frontend Design & Typography (`frontend-design/`, `uiux-designer/`)**:
-   - Distinctive typography: `Outfit` for editorial headings and body, `JetBrains Mono` for code, labels, and metadata
-   - Architectural dot grid background texture (`radial-gradient`)
-   - Navigation menu sections: Dedicated streams for **Architecture Decisions** (`/architecture/`), **Issues & Fixes** (`/issues/`), and **All Posts** (`/posts/`)
-   - Technical hero banner (`layouts/partials/home_info.html`): live status bar, pulsing green LED, dual section navigation cards (🏛 Architecture Decisions vs 🐞 Issues & Bug Fixes), and clickable pillar chips (⚡ Bolt, 🛡 Sentinel, CAS, S3, FUSE)
-   - Card enhancements: left accent border on hover, entrance fade-slide animation, post type badges (`🏛 ARCHITECTURE`, `🐞 ISSUE FIX`), and category pills (`cat-storage`, `cat-transport`, etc.)
-   - Code block readability: dark obsidian background with copy button hover feedback
-   - Global keyboard navigation: press `/` from any page to jump directly to search
-
-3. **Search (`/search/`)**:
-   - Client-side Fuse.js search (`content/search.md`) indexing all 46 posts via `index.json` output
-   - Enhanced search box with focus rings and instant card previews
-
-4. **Cross-Link Resolution**:
-   - Custom Hugo render hook (`layouts/_default/_markup/render-link.html`) converts sibling `.md` links to `/posts/<slug>/` and doc links (`../../STANDARDS.md`) to canonical GitHub URLs.
-
-## Cloudflare Pages Deployment
-
-The blog is deployed to Cloudflare Pages via GitHub Actions (`.github/workflows/cloudflare-pages-deploy.yml`).
-
-### Prerequisites
-
-1. **Cloudflare account** with Pages project created (e.g. `momo-app`)
-2. **GitHub repository configuration**:
-   - Secret `CLOUDFLARE_API_TOKEN` — API token with Pages edit permissions
-   - Secret `CLOUDFLARE_ACCOUNT_ID` — Cloudflare account ID
-   - Variable `CLOUDFLARE_PAGES_PROJECT` — Cloudflare Pages project name (`momo-app`)
-
-### Deployment trigger
-
-The workflow runs on:
-- Push to `master` branch with changes in `docs/blog/**`
-- Manual `workflow_dispatch`
-
-### Local preview
-
-```bash
-cd docs/blog
-hugo server --buildDrafts --buildFuture
-# Visit http://localhost:1313
-```
-
-### Production URL
-
-The site is deployed to Cloudflare Pages at:
-- **Production**: https://momo-app-2r2.pages.dev
-- **Preview deployments**: Available on PR preview URLs (e.g. `https://<hash>.momo-app-2r2.pages.dev`)

@@ -2,7 +2,6 @@
 title: "S3 Auth: SigV4, Presigned URLs, and Key Decoupling"
 date: 2026-08-11T23:11:16Z
 draft: false
-post_type: architecture
 tags: [go, s3, sigv4, auth, sentinel]
 categories: [s3]
 summary: "Query-string SigV4 for presigned URLs, mandatory X-Amz-Date freshness, and decoupling gateway access/secret keys from the native auth token."
@@ -18,6 +17,8 @@ related:
   - 039-signed-payload-sse-s3
   - 040-aws-chunked-streaming
 ---
+# S3 Auth: SigV4, Presigned URLs, and Key Decoupling
+
 SigV4 isn't just "an auth scheme" — done wrong it's a replay machine. This
 post covers how the gateway made signing correct, honest, and separate from
 momo-native auth.
