@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="800" height="600" role="img" aria-labelledby="transport-title transport-desc">
+  <title id="transport-title">Transport Evolution: TCP vs QUIC</title>
+  <desc id="transport-desc">Side-by-side comparison: TCP (momo-tcp) vs QUIC (momo-quic). Handshake, ACK framing, deadline amortization, TLS identity. TCP for LAN chains, QUIC for WAN/lossy with 0-RTT and no HOL blocking.</desc>
+  
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="var(--momo)"/>
+    </marker>
+    <marker id="arrow-success" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="var(--leaf)"/>
+    </marker>
+    <marker id="arrow-quic" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="var(--peach)"/>
+    </marker>
+    
+    <filter id="drop-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="var(--bark)" flood-opacity="0.15"/>
+    </filter>
+    
+    <linearGradient id="tcp-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:rgba(86,58,16,0.1)"/>
+      <stop offset="100%" style="stop-color:rgba(86,58,16,0.05)"/>
+    </linearGradient>
+    
+    <linearGradient id="quic-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:rgba(255,166,166,0.1)"/>
+      <stop offset="100%" style="stop-color:rgba(252,201,185,0.05)"/>
+    </linearGradient>
+    
+    <style>
+      .node { filter: url(#drop-shadow); transition: transform 0.2s ease; }
+      .node:hover { transform: scale(1.03); }
+      .tcp-box { fill: url(#tcp-grad); stroke: var(--bark); stroke-width: 2; }
+      .quic-box { fill: url(#quic-grad); stroke: var(--peach); stroke-width: 2; }
+      .title-text { font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; fill: var(--diagram-text); text-anchor: middle; }
+      .section-title { font-family: 'Outfit', sans-serif; font-size: 13px; font-weight: 700; fill: var(--diagram-text); text-anchor: middle; }
+      .label-text { font-family: 'JetBrains Mono', monospace; font-size: 10px; fill: var(--diagram-text); text-anchor: middle; }
+      .label-small { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--diagram-text-muted); text-anchor: middle; }
+      .code-text { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--momo); }
+      .code-success { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--leaf); }
+      .code-quic { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--peach); }
+      .code-tcp { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--bark); }
+      .flow-arrow { fill: none; stroke: var(--momo); stroke-width: 2; stroke-linecap: round; marker-end: url(#arrow); }
+      .flow-quic { stroke: var(--peach); stroke-width: 2; marker-end: url(#arrow-quic); }
+      .flow-tcp { stroke: var(--bark); stroke-width: 2; marker-end: url(#arrow); }
+      .step-box { fill: var(--diagram-bg); stroke: var(--diagram-border); stroke-width: 1.5; rx: 6; ry: 6; }
+    </style>
+  </defs>
+  
+  <rect width="800" height="600" fill="var(--diagram-bg)"/>
+  
+  <!-- Title -->
+  <text x="400" y="30" class="title-text">Transport Evolution: momo-tcp vs momo-quic</text>
+  <text x="400" y="52" class="diagram-subtitle">Two transports, one wire protocol — TCP for LAN chains, QUIC for WAN/lossy with 0-RTT & no HOL blocking</text>
+  
+  <!-- ============ TRANSPORT COMPARISON TABLE ============ -->
+  <text x="400" y="75" class="section-title">⚖️ SIDE-BY-SIDE COMPARISON</text>
+  
+  <!-- TCP Column -->
+  <g class="node tcp-box" transform="translate(30, 90)">
+    <rect x="0" y="0" width="360" height="480" rx="12" ry="12"/>
+    <text x="180" y="28" text-anchor="middle" class="section-title" fill="var(--bark)">📡 momo-tcp (TCP)</text>
+    <text x="180" y="46" text-anchor="middle" class="label-small">High-bandwidth LAN chains</text>
+    
+    <!-- Handshake -->
+    <g transform="translate(15, 60)">
+      <rect x="0" y="0" width="330" height="80" class="step-box" style="stroke:var(--bark);"/>
+      <text x="165" y="16" text-anchor="middle" class="section-title" fill="var(--bark)"><tspan x="165" dy="0">🤝 HANDSHAKE</tspan></text>
+      <g transform="translate(10, 25)">
+        <text y="0" text-anchor="start" class="code-tcp">1. Client → 19-byte timestamp + mode + metadata</text>
+        <text y="16" text-anchor="start" class="code-tcp">2. Server validates freshness (timestamp check)</text>
+        <text y="32" text-anchor="start" class="code-tcp">3. Challenge-response auth (pre-padded token)</text>
+        <text y="48" text-anchor="start" class="code-tcp">4. Response: ACK + server timestamp</text>
+      </g>
+    </g>
+    
+    <!-- ACK Framing -->
+    <g transform="translate(15, 150)">
+      <rect x="0" y="0" width="330" height="70" class="step-box" style="stroke:var(--bark);"/>
+      <text x="165" y="16" text-anchor="middle" class="section-title" fill="var(--bark)"><tspan x="165" dy="0">✅ ACK FRAMING</tspan></text>
+      <g transform="translate(10, 25)">
+        <text y="0" text-anchor="start" class="code-tcp">BEFORE: 5ms timeout ACK → partial reads desync stream</text>
+        <text y="16" text-anchor="start" class="code-success">AFTER: Fixed 4-byte ACK (uint32 length prefix)</text>
+        <text y="32" text-anchor="start" class="code-tcp">ReadUint32() → read exact payload → no desync</text>
+      </g>
+    </g>
+    
+    <!-- Deadline Amortization -->
+    <g transform="translate(15, 230)">
+      <rect x="0" y="0" width="330" height="100" class="step-box" style="stroke:var(--leaf);"/>
+      <text x="165" y="16" text-anchor="middle" class="section-title" fill="var(--leaf)">⚡ DEADLINE AMORTIZATION (Bolt)</text>
+      <g transform="translate(10, 25)">
+        <text y="0" text-anchor="start" class="code-tcp">BEFORE: SetDeadline per read/write (2 syscalls/chunk)</text>
+        <text y="16" text-anchor="start" class="code-success">AFTER: Phased absolute deadlines</text>
+        <text y="32" text-anchor="start" class="code-tcp">  Handshake: 10s absolute (1 SetDeadline)</text>
+        <text y="44" text-anchor="start" class="code-tcp">  Metadata: 60s absolute (reuse same)</text>
+        <text y="56" text-anchor="start" class="code-tcp">  Data: dynamic deadline (1 SetDeadline)</text>
+        <text y="72" text-anchor="start" class="code-success">Result: 200→3 SetDeadline/sec/conn (~98% cut)</text>
+      </g>
+    </g>
+    
+    <!-- TLS Identity -->
+    <g transform="translate(15, 345)">
+      <rect x="0" y="0" width="330" height="70" class="step-box" style="stroke:var(--sakura);"/>
+      <text x="165" y="16" text-anchor="middle" class="section-title" fill="var(--sakura)"><tspan x="165" dy="0">🔐 TLS IDENTITY</tspan></text>
+      <g transform="translate(10, 25)">
+        <text y="0" text-anchor="start" class="code-tcp">momo-quic: binds configured cert + CA pool (#763)</text>
+        <text y="16" text-anchor="start" class="code-tcp">momo-tcp: plaintext (no TLS currently)</text>
+        <text y="32" text-anchor="start" class="code-tcp">Idempotent Close() → sync.Once (#818)</text>
+      </g>
+    </g>
+    
+    <!-- Transport label -->
+    <text x="180" y="425" text-anchor="middle" class="label-small" fill="var(--bark)">Best for: Chain/Splay replication on LAN</text>
+  </g>
+  
+  <!-- QUIC Column -->
+  <g class="node quic-box" transform="translate(410, 90)">
+    <rect x="0" y="0" width="360" height="480" rx="12" ry="12"/>
+    <text x="180" y="28" text-anchor="middle" class="section-title" fill="var(--peach)">🚀 momo-quic (QUIC/TLS 1.3)</text>
+    <text x="180" y="46" text-anchor="middle" class="label-small">Lossy/WAN, 0-RTT, no HOL blocking</text>
+    
+    <!-- Handshake -->
+    <g transform="translate(15, 60)">
+      <rect x="0" y="0" width="330" height="80" class="step-box" style="stroke:var(--peach);"/>
+      <text x="165" y="16" text-anchor="middle" class="section-title" fill="var(--peach)"><tspan x="165" dy="0">🤝 HANDSHAKE (0-RTT)</tspan></text>
+      <g transform="translate(10, 25)">
+        <text y="0" text-anchor="start" class="code-quic">1. QUIC 1-RTT (or 0-RTT with session ticket)</text>
+        <text y="16" text-anchor="start" class="code-quic">2. TLS 1.3 handshake integrated</text>
+        <text y="32" text-anchor="start" class="code-quic">3. Connection migration (IP change = no reconnect)</text>
+        <text y="48" text-anchor="start" class="code-quic">4. Server config: cert + CA pool (bound)</text>
+      </g>
+    </g>
+    
+    <!-- Streams & No HOL -->
+    <g transform="translate(15, 150)">
+      <rect x="0" y="0" width="330" height="90" class="step-box" style="stroke:var(--leaf);"/>
+      <text x="165" y="16" text-anchor="middle" class="section-title" fill="var(--leaf)"><tspan x="165" dy="0">🌊 STREAMS & NO HOL BLOCKING</tspan></text>
+      <g transform="translate(10, 25)">
+        <text y="0" text-anchor="start" class="code-quic">• Multiple independent streams per connection</text>
+        <text y="16" text-anchor="start" class="code-quic">• Packet loss on stream N ≠ blocks stream M</text>
+        <text y="32" text-anchor="start" class="code-quic">• Critical for Primary-Splay (concurrent replicas)</text>
+        <text y="48" text-anchor="start" class="code-quic">• Each replica on own stream — no HOL blocking</text>
+        <text y="64" text-anchor="start" class="code-success">Chain replication → TCP | Primary-Splay → QUIC</text>
+      </g>
+    </g>
+    
+    <!-- Deadline Amortization (same principle) -->
+    <g transform="translate(15, 250)">
+      <rect x="0" y="0" width="330" height="80" class="step-box" style="stroke:var(--leaf);"/>
+      <text x="165" y="16" text-anchor="middle" class="section-title" fill="var(--leaf)"><tspan x="165" dy="0">⚡ DEADLINE AMORTIZATION</tspan></text>
+      <g transform="translate(10, 25)">
+        <text y="0" text-anchor="start" class="code-quic">Same phased absolute deadline pattern</text>
+        <text y="16" text-anchor="start" class="code-quic">QUIC idle_timeout handles connection-level</text>
+        <text y="32" text-anchor="start" class="code-quic">SetDeadline only at phase boundaries</text>
+        <text y="48" text-anchor="start" class="code-success">~98% syscall reduction (same as TCP)</text>
+      </g>
+    </g>
+    
+    <!-- Connection Migration -->
+    <g transform="translate(15, 340)">
+      <rect x="0" y="0" width="330" height="70" class="step-box" style="stroke:var(--sakura);"/>
+      <text x="165" y="16" text-anchor="middle" class="section-title" fill="var(--sakura)"><tspan x="165" dy="0">🔄 CONNECTION MIGRATION</tspan></text>
+      <g transform="translate(10, 25)">
+        <text y="0" text-anchor="start" class="code-quic">Client IP change → no reconnection</text>
+        <text y="16" text-anchor="start" class="code-quic">Connection ID survives network switch</text>
+        <text y="32" text-anchor="start" class="code-quic">Critical for mobile/edge clients</text>
+      </g>
+    </g>
+    
+    <!-- Idempotent Close -->
+    <g transform="translate(15, 420)">
+      <rect x="0" y="0" width="330" height="60" class="step-box" style="stroke:var(--bark);"/>
+      <text x="165" y="16" text-anchor="middle" class="section-title" fill="var(--bark)"><tspan x="165" dy="0">🛡 IDEMPOTENT CLOSE (Sentinel #818)</tspan></text>
+      <g transform="translate(10, 25)">
+        <text y="0" text-anchor="start" class="code-quic">sync.Once Close() — no fire-and-forget goroutine</text>
+        <text y="16" text-anchor="start" class="code-quic">No magic delay, no double-close race</text>
+      </g>
+    </g>
+    
+    <text x="180" y="425" text-anchor="middle" class="label-small" fill="var(--peach)">Best for: Primary-Splay on WAN/lossy</text>
+  </g>
+  
+  <!-- ============ WIRE PROTOCOL UNITY ============ -->
+  <g transform="translate(30, 550)">
+    <rect x="0" y="0" width="740" height="40" rx="8" fill="rgba(244,121,131,0.1)" stroke="var(--momo)" stroke-width="2"/>
+    <text x="370" y="24" text-anchor="middle" class="section-title" fill="var(--momo)">📋 ONE LOGICAL WIRE PROTOCOL (docs/PROTOCOL.md)</text>
+    <g transform="translate(20, 0)">
+      <text y="26" text-anchor="start" class="code-success">✓ Same handshake bytes (19-byte timestamp + mode + metadata)</text>
+      <text y="38" text-anchor="start" class="code-success">✓ Same replication modes (None/Chain/Splay/Primary-Splay)</text>
+      <text y="50" text-anchor="start" class="code-success">✓ Same CRUSH placement, same CAS verify-on-read</text>
+    </g>
+  </g>
+  
+  <!-- Bolt/Sentinel badges -->
+  <g transform="translate(620, 15)">
+    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(244,121,131,0.15)" stroke="var(--momo)" stroke-width="1"/>
+    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="var(--momo)">⚡ BOLT</text>
+  </g>
+  <g transform="translate(710, 15)">
+    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(118,146,103,0.15)" stroke="var(--leaf)" stroke-width="1"/>
+    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="var(--leaf)">🛡 SENTINEL</text>
+  </g>
+</svg>

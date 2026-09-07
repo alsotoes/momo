@@ -1,0 +1,226 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="800" height="600" role="img" aria-labelledby="road-title road-desc">
+  <title id="road-title">Momo Roadmap: R1-R6 Phases with Dependencies</title>
+  <desc id="road-desc">Production readiness roadmap: R1 Failure Domains → R2 Degraded Read/Self-Heal → R3 Write Durability → R4 momofs FUSE → R5 Metrics → R6 Metadata HA. Dependencies shown as arrows.</desc>
+  
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="var(--momo)"/>
+    </marker>
+    <marker id="arrow-success" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="var(--leaf)"/>
+    </marker>
+    <marker id="arrow-depends" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="var(--sakura)"/>
+    </marker>
+    
+    <filter id="drop-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="var(--bark)" flood-opacity="0.15"/>
+    </filter>
+    
+    <linearGradient id="done-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:rgba(118,146,103,0.2)"/>
+      <stop offset="100%" style="stop-color:rgba(118,146,103,0.1)"/>
+    </linearGradient>
+    
+    <linearGradient id="current-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:rgba(244,121,131,0.2)"/>
+      <stop offset="100%" style="stop-color:rgba(244,121,131,0.1)"/>
+    </linearGradient>
+    
+    <linearGradient id="planned-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:rgba(252,201,185,0.15)"/>
+      <stop offset="100%" style="stop-color:rgba(252,201,185,0.08)"/>
+    </linearGradient>
+    
+    <style>
+      .node { filter: url(#drop-shadow); transition: transform 0.2s ease; }
+      .title-text { font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; fill: var(--diagram-text); text-anchor: middle; }
+      .section-title { font-family: 'Outfit', sans-serif; font-size: 13px; font-weight: 700; fill: var(--diagram-text); text-anchor: middle; }
+      .label-text { font-family: 'JetBrains Mono', monospace; font-size: 10px; fill: var(--diagram-text); text-anchor: middle; }
+      .label-small { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--diagram-text-muted); text-anchor: middle; }
+      .code-text { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--momo); }
+      .code-success { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--leaf); }
+      .code-fail { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #dc2626; }
+      .flow-arrow { fill: none; stroke: var(--momo); stroke-width: 2; stroke-linecap: round; marker-end: url(#arrow); }
+      .flow-depends { fill: none; stroke: var(--sakura); stroke-width: 1.5; stroke-dasharray: 4,3; marker-end: url(#arrow-depends); }
+      .r-done { fill: url(#done-grad); stroke: var(--leaf); stroke-width: 2; }
+      .r-current { fill: url(#current-grad); stroke: var(--momo); stroke-width: 2; }
+      .r-planned { fill: url(#planned-grad); stroke: var(--sakura); stroke-width: 2; }
+      .status-badge { font-family: 'JetBrains Mono', monospace; font-size: 8px; font-weight: 700; rx: 4; ry: 4; }
+    </style>
+  </defs>
+  
+  <rect width="800" height="600" fill="var(--diagram-bg)"/>
+  
+  <!-- Title -->
+  <text x="400" y="30" class="title-text">Momo Roadmap: R1 → R6</text>
+  <text x="400" y="52" class="diagram-subtitle">Production readiness stack — each phase builds on the last, dependencies explicit</text>
+  
+  <!-- ============ TIMELINE ============ -->
+  <g transform="translate(400, 100)">
+    <!-- R1: Failure Domains -->
+    <g class="node r-done" transform="translate(-340, -50)">
+      <rect x="-120" y="-5" width="240" height="100" rx="8"/>
+      <text x="0" y="12" text-anchor="middle" class="section-title" fill="var(--leaf)">R1: FAILURE DOMAINS</text>
+      <text x="0" y="30" text-anchor="middle" class="label-small">Placement awareness: rack/zone/DC</text>
+      <text x="0" y="44" text-anchor="middle" class="label-small">Replicas never share domain</text>
+      <g transform="translate(-55, 65)">
+        <rect x="0" y="0" width="45" height="18" rx="3" fill="var(--leaf)"/>
+        <text x="22.5" y="13" text-anchor="middle" class="status-badge" fill="white">DONE</text>
+      </g>
+      <g transform="translate(10, 65)">
+        <rect x="0" y="0" width="110" height="18" rx="3" fill="var(--bark)"/>
+        <text x="55" y="13" text-anchor="middle" class="status-badge" fill="white">019, 020</text>
+      </g>
+    </g>
+    
+    <!-- Arrow R1 → R2 -->
+    <path d="M-100,0 H-30" class="flow-arrow" marker-end="url(#arrow)"/>
+    
+    <!-- R2: Degraded Read / Self-Heal -->
+    <g class="node r-done" transform="translate(-60, -50)">
+      <rect x="-120" y="-5" width="240" height="100" rx="8"/>
+      <text x="0" y="12" text-anchor="middle" class="section-title" fill="var(--leaf)">R2: DEGRADED READ / SELF-HEAL</text>
+      <text x="0" y="30" text-anchor="middle" class="label-small">Corruption detection → fetch healthy replica</text>
+      <text x="0" y="44" text-anchor="middle" class="label-small">Heal bad replica, surface loud</text>
+      <g transform="translate(-55, 65)">
+        <rect x="0" y="0" width="45" height="18" rx="3" fill="var(--leaf)"/>
+        <text x="22.5" y="13" text-anchor="middle" class="status-badge" fill="white">DONE</text>
+      </g>
+      <g transform="translate(10, 65)">
+        <rect x="0" y="0" width="110" height="18" rx="3" fill="var(--bark)"/>
+        <text x="55" y="13" text-anchor="middle" class="status-badge" fill="white">020, 021</text>
+      </g>
+    </g>
+    
+    <!-- Arrow R2 → R3 -->
+    <path d="M180,0 H250" class="flow-arrow" marker-end="url(#arrow)"/>
+    
+    <!-- R3: Write Durability -->
+    <g class="node r-current" transform="translate(250, -50)">
+      <rect x="-120" y="-5" width="240" height="100" rx="8"/>
+      <text x="0" y="12" text-anchor="middle" class="section-title" fill="var(--momo)">R3: WRITE DURABILITY</text>
+      <text x="0" y="30" text-anchor="middle" class="label-small">fsync-before-ack, survivor quorum</text>
+      <text x="0" y="44" text-anchor="middle" class="label-small">Group commit, read-your-writes</text>
+      <g transform="translate(-55, 65)">
+        <rect x="0" y="0" width="60" height="18" rx="3" fill="var(--momo)"/>
+        <text x="30" y="13" text-anchor="middle" class="status-badge" fill="white">CURRENT</text>
+      </g>
+      <g transform="translate(10, 65)">
+        <rect x="0" y="0" width="110" height="18" rx="3" fill="var(--bark)"/>
+        <text x="55" y="13" text-anchor="middle" class="status-badge" fill="white">021, 022</text>
+      </g>
+    </g>
+    
+    <!-- Arrow R3 → R4 -->
+    <path d="M490,0 H560" class="flow-arrow" marker-end="url(#arrow)"/>
+    
+    <!-- R4: momofs FUSE -->
+    <g class="node r-planned" transform="translate(560, -50)">
+      <rect x="-120" y="-5" width="240" height="100" rx="8"/>
+      <text x="0" y="12" text-anchor="middle" class="section-title" fill="var(--sakura)">R4: momofs FUSE</text>
+      <text x="0" y="30" text-anchor="middle" class="label-small">POSIX mount via FUSE (bazil.org/fuse)</text>
+      <text x="0" y="44" text-anchor="middle" class="label-small">Per-handle buffered writes, clean unmount</text>
+      <g transform="translate(-55, 65)">
+        <rect x="0" y="0" width="65" height="18" rx="3" fill="var(--sakura)"/>
+        <text x="32.5" y="13" text-anchor="middle" class="status-badge" fill="white">PLANNED</text>
+      </g>
+      <g transform="translate(10, 65)">
+        <rect x="0" y="0" width="110" height="18" rx="3" fill="var(--bark)"/>
+        <text x="55" y="13" text-anchor="middle" class="status-badge" fill="white">022, 023</text>
+      </g>
+    </g>
+    
+    <!-- Dependency arrows from R1/R2/R3 to R4 -->
+    <path d="M-100,-50 Q-100,-100 560,-50" class="flow-depends" marker-end="url(#arrow-depends)" style="opacity:0.5;"/>
+    <path d="M60,-50 Q60,-100 560,-50" class="flow-depends" marker-end="url(#arrow-depends)" style="opacity:0.5;"/>
+    <path d="M490,-50 Q490,-100 560,-50" class="flow-depends" marker-end="url(#arrow-depends)" style="opacity:0.5;"/>
+  </g>
+  
+  <!-- ============ PHASE 2: R5, R6 ============ -->
+  <g transform="translate(400, 300)">
+    <!-- R5: Metrics/Observability -->
+    <g class="node r-planned" transform="translate(-340, 0)">
+      <rect x="-120" y="-5" width="240" height="120" rx="8"/>
+      <text x="0" y="12" text-anchor="middle" class="section-title" fill="var(--sakura)">R5: METRICS / OBSERVABILITY</text>
+      <text x="0" y="30" text-anchor="middle" class="label-small">Prometheus /metrics, MetricsHook</text>
+      <text x="0" y="44" text-anchor="middle" class="label-small">Multi-window SLO burn-rate alerting</text>
+      <text x="0" y="58" text-anchor="middle" class="label-small">Continuous profiling (pprof file-based)</text>
+      <text x="0" y="72" text-anchor="middle" class="label-small">RUM events, CDP integration</text>
+      <g transform="translate(-55, 90)">
+        <rect x="0" y="0" width="65" height="18" rx="3" fill="var(--sakura)"/>
+        <text x="32.5" y="13" text-anchor="middle" class="status-badge" fill="white">PLANNED</text>
+      </g>
+      <g transform="translate(10, 90)">
+        <rect x="0" y="0" width="110" height="18" rx="3" fill="var(--bark)"/>
+        <text x="55" y="13" text-anchor="middle" class="status-badge" fill="white">025, 026, 032</text>
+      </g>
+    </g>
+    
+    <!-- Arrow R5 → R6 -->
+    <path d="M-100,50 H-30" class="flow-arrow" marker-end="url(#arrow)"/>
+    
+    <!-- R6: Metadata HA + Backup/Recovery -->
+    <g class="node r-planned" transform="translate(60, 0)">
+      <rect x="-120" y="-5" width="240" height="120" rx="8"/>
+      <text x="0" y="12" text-anchor="middle" class="section-title" fill="var(--peach)">R6: METADATA HA + BACKUP/RECOVERY</text>
+      <text x="0" y="30" text-anchor="middle" class="label-small">Distributed metadata catalog</text>
+      <text x="0" y="44" text-anchor="middle" class="label-small">Snapshot/restore, point-in-time recovery</text>
+      <text x="0" y="58" text-anchor="middle" class="label-small">Cross-region replication</text>
+      <text x="0" y="72" text-anchor="middle" class="label-small">Automated failover</text>
+      <g transform="translate(-55, 90)">
+        <rect x="0" y="0" width="65" height="18" rx="3" fill="var(--peach)"/>
+        <text x="32.5" y="13" text-anchor="middle" class="status-badge" fill="white">PLANNED</text>
+      </g>
+      <g transform="translate(10, 90)">
+        <rect x="0" y="0" width="110" height="18" rx="3" fill="var(--bark)"/>
+        <text x="55" y="13" text-anchor="middle" class="status-badge" fill="white">028, 034</text>
+      </g>
+    </g>
+    
+    <!-- Arrow R5 → R6 -->
+    <path d="M180,50 H250" class="flow-arrow" marker-end="url(#arrow)"/>
+    
+    <!-- R6 also depends on R3, R4 -->
+    <path d="M490,-50 Q490,0 60,0" class="flow-depends" marker-end="url(#arrow-depends)" style="opacity:0.4;"/>
+    <path d="M490,-50 Q490,0 60,0" class="flow-depends" marker-end="url(#arrow-depends)" style="opacity:0.4;"/>
+  </g>
+  
+  <!-- ============ DEPENDENCY MAP ============ -->
+  <g transform="translate(50, 480)">
+    <text x="0" y="0" class="section-title" fill="var(--diagram-text)" text-anchor="start">DEPENDENCY MAP</text>
+    <g transform="translate(0, 20)">
+      <text y="0" text-anchor="start" class="code-success" style="font-size:10px;">R1 (Failure Domains) ──► R2 (Self-Heal) ──► R3 (Durability) ──► R4 (FUSE) ──► R5 (Metrics) ──► R6 (Metadata HA)</text>
+      <text y="18" text-anchor="start" class="code-text" style="font-size:10px; fill:var(--sakura);">         │              │              │              │              │</text>
+      <text y="36" text-anchor="start" class="code-text" style="font-size:10px; fill:var(--sakura);">         └──────────────┴──────────────┴──────────────┴──────────────► R6 (also needs R3, R4, R5)</text>
+      <text y="54" text-anchor="start" class="code-text" style="font-size:10px; fill:var(--momo);">         R0: CAS, CRUSH, P2P, S3 Gateway, Encryption — Foundation (COMPLETE)</text>
+    </g>
+  </g>
+  
+  <!-- ============ STATUS LEGEND ============ -->
+  <g transform="translate(400, 550)">
+    <g transform="translate(-200, 0)">
+      <rect x="0" y="0" width="100" height="24" rx="4" fill="rgba(118,146,103,0.2)" stroke="var(--leaf)" stroke-width="2"/>
+      <text x="50" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="var(--leaf)">DONE</text>
+    </g>
+    <g transform="translate(-50, 0)">
+      <rect x="0" y="0" width="100" height="24" rx="4" fill="rgba(244,121,131,0.2)" stroke="var(--momo)" stroke-width="2"/>
+      <text x="50" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="var(--momo)">CURRENT</text>
+    </g>
+    <g transform="translate(100, 0)">
+      <rect x="0" y="0" width="100" height="24" rx="4" fill="rgba(252,201,185,0.15)" stroke="var(--sakura)" stroke-width="2"/>
+      <text x="50" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="var(--sakura)">PLANNED</text>
+    </g>
+  </g>
+  
+  <!-- Bolt/Sentinel badges -->
+  <g transform="translate(620, 15)">
+    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(244,121,131,0.15)" stroke="var(--momo)" stroke-width="1"/>
+    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="var(--momo)">⚡ BOLT</text>
+  </g>
+  <g transform="translate(710, 15)">
+    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(118,146,103,0.15)" stroke="var(--leaf)" stroke-width="1"/>
+    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="var(--leaf)">🛡 SENTINEL</text>
+  </g>
+</svg>

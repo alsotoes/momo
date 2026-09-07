@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" width="800" height="500" role="img" aria-labelledby="s3chk-title s3chk-desc">
+  <title id="s3chk-title">S3 Integrity Checksums: x-amz-checksum-* Flow</title>
+  <desc id="s3chk-desc">PUT/GET with x-amz-checksum-sha256/crc32. Client verifies end-to-end integrity. Server echoes checksum — client compares. Zero trust: client verifies without trusting server.</desc>
+  
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="var(--momo)"/>
+    </marker>
+    <marker id="arrow-success" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="var(--leaf)"/>
+    </marker>
+    
+    <filter id="drop-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="var(--bark)" flood-opacity="0.15"/>
+    </filter>
+    
+    <style>
+      .node { filter: url(#drop-shadow); transition: transform 0.2s ease; }
+      .title-text { font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; fill: var(--diagram-text); text-anchor: middle; }
+      .section-title { font-family: 'Outfit', sans-serif; font-size: 13px; font-weight: 700; fill: var(--diagram-text); text-anchor: middle; }
+      .label-text { font-family: 'JetBrains Mono', monospace; font-size: 10px; fill: var(--diagram-text); text-anchor: middle; }
+      .label-small { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--diagram-text-muted); text-anchor: middle; }
+      .code-text { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--momo); }
+      .code-success { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--leaf); }
+      .code-fail { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #dc2626; }
+      .flow-arrow { fill: none; stroke: var(--momo); stroke-width: 2; stroke-linecap: round; marker-end: url(#arrow); }
+      .flow-success { stroke: var(--leaf); stroke-width: 2; marker-end: url(#arrow-success); }
+      .step-box { fill: var(--diagram-bg); stroke: var(--diagram-border); stroke-width: 1.5; rx: 6; ry: 6; }
+      .header-box { fill: var(--diagram-bg); stroke: var(--diagram-border); stroke-width: 1; rx: 4; ry: 4; }
+    </style>
+  </defs>
+  
+  <rect width="800" height="500" fill="var(--diagram-bg)"/>
+  
+  <!-- Title -->
+  <text x="400" y="30" class="title-text">S3 Integrity Checksums: x-amz-checksum-*</text>
+  <text x="400" y="52" class="diagram-subtitle">Client-verifiable integrity contract — server echoes checksum, client compares, zero trust</text>
+  
+  <!-- ============ HEADER REFERENCE ============ -->
+  <text x="400" y="75" class="section-title">📋 SUPPORTED CHECKSUM HEADERS</text>
+  
+  <g transform="translate(400, 100)">
+    <g class="node header-box" transform="translate(-280, 0)">
+      <rect x="-100" y="-20" width="200" height="120" rx="6"/>
+      <text x="0" y="-10" text-anchor="middle" class="section-title" fill="var(--momo)">x-amz-checksum-sha256</text>
+      <text x="0" y="8" text-anchor="middle" class="label-small">SHA-256 (32 bytes)</text>
+      <text x="0" y="22" text-anchor="middle" class="label-small">Strong integrity</text>
+      <text x="0" y="36" text-anchor="middle" class="label-small">Default for E2EE</text>
+      <text x="0" y="50" text-anchor="middle" class="label-small">CAS hash = checksum</text>
+    </g>
+    
+    <g class="node header-box" transform="translate(0, 0)">
+      <rect x="-100" y="-20" width="200" height="120" rx="6"/>
+      <text x="0" y="-10" text-anchor="middle" class="section-title" fill="var(--sakura)">x-amz-checksum-crc32</text>
+      <text x="0" y="8" text-anchor="middle" class="label-small">CRC-32C (4 bytes)</text>
+      <text x="0" y="22" text-anchor="middle" class="label-small">Fast, hardware accel</text>
+      <text x="0" y="36" text-anchor="middle" class="label-small">Large objects</text>
+      <text x="0" y="50" text-anchor="middle" class="label-small">AWS SDK default</text>
+    </g>
+    
+    <g class="node header-box" transform="translate(280, 0)">
+      <rect x="-100" y="-20" width="200" height="120" rx="6"/>
+      <text x="0" y="-10" text-anchor="middle" class="section-title" fill="var(--peach)">x-amz-checksum-crc32c</text>
+      <text x="0" y="8" text-anchor="middle" class="label-small">CRC-32C (Castagnoli)</text>
+      <text x="0" y="22" text-anchor="middle" class="label-small">Better error detection</text>
+      <text x="0" y="36" text-anchor="middle" class="label-small">S3 multipart</text>
+      <text x="0" y="50" text-anchor="middle" class="label-small">Aggregated per part</text>
+    </g>
+  </g>
+  
+  <!-- ============ PUT FLOW ============ -->
+  <text x="400" y="250" class="section-title">📤 PUT FLOW: Client Provides or Requests Checksum</text>
+  
+  <g transform="translate(400, 275)">
+    <!-- Client -->
+    <g class="node" transform="translate(-320, 0)">
+      <rect x="-50" y="-25" width="100" height="50" rx="8" fill="var(--cream)" stroke="var(--cream)" stroke-width="2"/>
+      <text y="-6" text-anchor="middle" class="label-text">Client</text>
+      <text y="8" text-anchor="middle" class="label-small">PUT + x-amz-checksum-sha256</text>
+    </g>
+    
+    <!-- Arrow -->
+    <path d="M-270,0 H-180" class="flow-arrow" marker-end="url(#arrow)"/>
+    
+    <!-- Server Hashes on Ingest -->
+    <g class="node" transform="translate(-50, 0)">
+      <rect x="-100" y="-30" width="200" height="60" class="step-box" style="stroke:var(--momo);"/>
+      <text x="0" y="-10" text-anchor="middle" class="section-title" fill="var(--momo)">SERVER: Hash on Ingest</text>
+      <g transform="translate(-90, 0)">
+        <text y="0" text-anchor="start" class="code-success">hasher := sha256.New()</text>
+        <text y="16" text-anchor="start" class="code-success">tee := io.TeeReader(body, hasher)</text>
+        <text y="32" text-anchor="start" class="code-success">Store.Write(tee)  // CAS: hash = key</text>
+      </g>
+    </g>
+    
+    <!-- Arrow -->
+    <path d="M50,0 H120" class="flow-arrow" marker-end="url(#arrow)"/>
+    
+    <!-- Verify if Client Provided -->
+    <g class="node" transform="translate(220, 0)">
+      <rect x="-100" y="-30" width="200" height="60" class="step-box" style="stroke:var(--leaf);"/>
+      <text x="0" y="-10" text-anchor="middle" class="section-title" fill="var(--leaf)">VERIFY Client Checksum</text>
+      <g transform="translate(-90, 0)">
+        <text y="0" text-anchor="start" class="code-success">if clientHash != "" &&</text>
+        <text y="16" text-anchor="start" class="code-success">  clientHash != hasher.Sum() {</text>
+        <text y="32" text-anchor="start" class="code-fail">  return 400 Bad Request</text>
+        <text y="48" text-anchor="start" class="code-success">}</text>
+      </g>
+    </g>
+    
+    <!-- Arrow -->
+    <path d="M320,0 H390" class="flow-success" marker-end="url(#arrow-success)"/>
+    
+    <!-- Echo Back -->
+    <g class="node" transform="translate(490, 0)">
+      <rect x="-80" y="-25" width="160" height="50" class="step-box" style="stroke:var(--leaf); stroke-width:2;"/>
+      <text x="0" y="-5" text-anchor="middle" class="section-title" fill="var(--leaf)">ECHO: x-amz-checksum-sha256</text>
+      <text x="0" y="10" text-anchor="middle" class="code-success">Client verifies end-to-end</text>
+    </g>
+  </g>
+  
+  <!-- ============ GET FLOW ============ -->
+  <text x="400" y="370" class="section-title">📥 GET FLOW: Server Returns Cached Checksum (Zero Alloc)</text>
+  
+  <g transform="translate(400, 395)">
+    <!-- Client Request -->
+    <g class="node" transform="translate(-320, 0)">
+      <rect x="-50" y="-25" width="100" height="50" rx="8" fill="var(--cream)" stroke="var(--cream)" stroke-width="2"/>
+      <text y="-6" text-anchor="middle" class="label-text">Client</text>
+      <text y="8" text-anchor="middle" class="label-small">GET object</text>
+    </g>
+    
+    <!-- Arrow -->
+    <path d="M-270,0 H-180" class="flow-arrow" marker-end="url(#arrow)"/>
+    
+    <!-- Server Returns Cached Checksum -->
+    <g class="node" transform="translate(-50, 0)">
+      <rect x="-100" y="-25" width="200" height="50" class="step-box" style="stroke:var(--leaf); stroke-width:2;"/>
+      <text x="0" y="-5" text-anchor="middle" class="section-title" fill="var(--leaf)">SERVER: Return Cached Checksum</text>
+      <g transform="translate(-90, 8)">
+        <text y="0" text-anchor="start" class="code-success">w.Header().Set("x-amz-checksum-sha256",</text>
+        <text y="16" text-anchor="start" class="code-success">  meta.ChecksumSHA256)  // 0 B/op (cached)</text>
+      </g>
+    </g>
+    
+    <!-- Arrow -->
+    <path d="M50,0 H120" class="flow-success" marker-end="url(#arrow-success)"/>
+    
+    <!-- Client Verifies -->
+    <g class="node" transform="translate(220, 0)">
+      <rect x="-100" y="-25" width="200" height="50" class="step-box" style="stroke:var(--leaf);"/>
+      <text x="0" y="-5" text-anchor="middle" class="section-title" fill="var(--leaf)">CLIENT: Verify</text>
+      <g transform="translate(-90, 8)">
+        <text y="0" text-anchor="start" class="code-success">localHash := SHA256(body)</text>
+        <text y="16" text-anchor="start" class="code-success">assert localHash == header</text>
+      </g>
+    </g>
+  </g>
+  
+  <!-- ============ MULTIPART AGGREGATION ============ -->
+  <g transform="translate(400, 470)">
+    <rect x="-180" y="0" width="360" height="30" rx="6" fill="rgba(253,237,173,0.15)" stroke="var(--cream)" stroke-width="2"/>
+    <text x="0" y="18" text-anchor="middle" class="section-title" fill="var(--cream)" style="font-size:11px;">📦 MULTIPART: Aggregated checksum per part → composite on Complete</text>
+  </g>
+  
+  <!-- Bolt/Sentinel badges -->
+  <g transform="translate(620, 15)">
+    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(244,121,131,0.15)" stroke="var(--momo)" stroke-width="1"/>
+    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="var(--momo)">⚡ BOLT</text>
+  </g>
+  <g transform="translate(710, 15)">
+    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(118,146,103,0.15)" stroke="var(--leaf)" stroke-width="1"/>
+    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="var(--leaf)">🛡 SENTINEL</text>
+  </g>
+</svg>

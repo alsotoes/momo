@@ -25,6 +25,8 @@ distinction matters**:
 | Trust | Executing unreviewed code | Compile-time auditable |
 | Versioning | Pinning hell | Single binary |
 
+![Compile-time seam architecture](/assets/diagrams/14-plugin-seam.svg)
+
 The constraint that decided it: momo's data path is performance-critical and
 security-critical. An RPC hop per decision kills the byte flow; loading
 unreviewed code onto a zero-knowledge storage node is a Trojan surface. **Seam

@@ -1,0 +1,233 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="800" height="600" role="img" aria-labelledby="e2ee-title e2ee-desc">
+  <title id="e2ee-title">Client-Held E2EE: Envelope Encryption Flow</title>
+  <desc id="e2ee-desc">Envelope encryption: Client KEK wraps CEK → store ciphertext + wrapped CEK → unwrap on read. Server never sees KEK. Works across S3 and native transports. Losing KEK = ciphertext semantically dead.</desc>
+  
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="var(--momo)"/>
+    </marker>
+    <marker id="arrow-success" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="var(--leaf)"/>
+    </marker>
+    <marker id="arrow-client" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="var(--cream)"/>
+    </marker>
+    
+    <filter id="drop-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="var(--bark)" flood-opacity="0.15"/>
+    </filter>
+    
+    <linearGradient id="client-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:rgba(253,237,173,0.2)"/>
+      <stop offset="100%" style="stop-color:rgba(255,166,166,0.2)"/>
+    </linearGradient>
+    
+    <linearGradient id="server-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:rgba(252,201,185,0.15)"/>
+      <stop offset="100%" style="stop-color:rgba(244,121,131,0.15)"/>
+    </linearGradient>
+    
+    <style>
+      .client-zone { fill: url(#client-grad); stroke: var(--cream); stroke-width: 2; rx: 12; ry: 12; }
+      .server-zone { fill: url(#server-grad); stroke: var(--sakura); stroke-width: 2; rx: 12; ry: 12; }
+      .node { filter: url(#drop-shadow); transition: transform 0.2s ease; }
+      .node:hover { transform: scale(1.03); }
+      .title-text { font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; fill: var(--diagram-text); text-anchor: middle; }
+      .section-title { font-family: 'Outfit', sans-serif; font-size: 13px; font-weight: 700; fill: var(--diagram-text); text-anchor: middle; }
+      .label-text { font-family: 'JetBrains Mono', monospace; font-size: 10px; fill: var(--diagram-text); text-anchor: middle; }
+      .label-small { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--diagram-text-muted); text-anchor: middle; }
+      .code-text { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--momo); }
+      .code-success { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--leaf); }
+      .code-client { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--cream); }
+      .code-kek { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--bark); font-weight: 700; }
+      .flow-arrow { fill: none; stroke: var(--momo); stroke-width: 2; stroke-linecap: round; marker-end: url(#arrow); }
+      .flow-success { stroke: var(--leaf); stroke-width: 2; marker-end: url(#arrow-success); }
+      .flow-client { stroke: var(--cream); stroke-width: 2; marker-end: url(#arrow-client); }
+      .data-box { fill: var(--diagram-bg); stroke: var(--diagram-border); stroke-width: 1.5; rx: 6; ry: 6; }
+      .data-box-cipher { fill: rgba(255,166,166,0.15); stroke: var(--peach); stroke-width: 1.5; }
+      .data-box-plain { fill: rgba(118,146,103,0.1); stroke: var(--leaf); stroke-width: 1.5; }
+      .key-box { fill: rgba(86,58,16,0.1); stroke: var(--bark); stroke-width: 2; rx: 6; ry: 6; }
+    </style>
+  </defs>
+  
+  <rect width="800" height="600" fill="var(--diagram-bg)"/>
+  
+  <!-- Title -->
+  <text x="400" y="30" class="title-text">Client-Held E2EE: Envelope Encryption</text>
+  <text x="400" y="52" class="diagram-subtitle">CEK encrypts data, KEK (client-held) wraps CEK — server stores ciphertext + wrapped CEK, never sees KEK</text>
+  
+  <!-- ============ KEY DEFINITIONS ============ -->
+  <g transform="translate(50, 75)">
+    <text x="0" y="0" class="section-title" fill="var(--bark)" text-anchor="start">KEY DEFINITIONS</text>
+    <g transform="translate(0, 25)">
+      <!-- KEK Box -->
+      <rect x="0" y="0" width="160" height="70" class="key-box"/>
+      <text x="80" y="18" text-anchor="middle" class="section-title" fill="var(--bark)" style="font-size:11px;">KEK</text>
+      <text x="80" y="34" text-anchor="middle" class="code-kek" style="font-size:11px;">Key Encryption Key</text>
+      <text x="80" y="50" text-anchor="middle" class="label-small" style="font-size:9px;">Client-held ONLY</text>
+      <text x="80" y="62" text-anchor="middle" class="label-small" style="font-size:9px;">Never leaves client</text>
+    </g>
+    
+    <text x="200" y="25" style="font-size:24px; fill:var(--diagram-text-muted);">→</text>
+    
+    <!-- CEK Box -->
+    <rect x="230" y="0" width="160" height="70" class="key-box" style="stroke:var(--momo);"/>
+    <text x="310" y="18" text-anchor="middle" class="section-title" fill="var(--momo)" style="font-size:11px;">CEK</text>
+    <text x="310" y="34" text-anchor="middle" class="code-text" style="font-size:11px;">Content Encryption Key</text>
+    <text x="310" y="50" text-anchor="middle" class="label-small" style="font-size:9px;">Random per object</text>
+    <text x="310" y="62" text-anchor="middle" class="label-small" style="font-size:9px;">32 bytes (AES-256)</text>
+    <g transform="translate(260, 30)">
+      <text x="0" y="0" class="code-text">KEK.Encrypt(CEK)</text>
+      <text x="0" y="14" text-anchor="middle" class="code-text">→ wrappedCEK</text>
+    </g>
+    
+    <text x="430" y="25" style="font-size:24px; fill:var(--diagram-text-muted);">→</text>
+    
+    <!-- Wrapped CEK Box -->
+    <rect x="460" y="0" width="160" height="70" class="key-box" style="stroke:var(--peach);"/>
+    <text x="540" y="18" text-anchor="middle" class="section-title" fill="var(--peach)" style="font-size:11px;">WRAPPED CEK</text>
+    <text x="540" y="34" text-anchor="middle" class="code-text" style="font-size:11px;">KEK.Encrypt(CEK)</text>
+    <text x="540" y="50" text-anchor="middle" class="label-small" style="font-size:9px;">Stored with ciphertext</text>
+    <text x="540" y="62" text-anchor="middle" class="label-small" style="font-size:9px;">Server CAN see this</text>
+  </g>
+  
+  <!-- ============ PUT FLOW ============ -->
+  <g transform="translate(50, 165)">
+    <text x="0" y="0" class="section-title" fill="var(--momo)" text-anchor="start">📤 PUT FLOW: Client → Server</text>
+    
+    <!-- Client Zone -->
+    <g class="node client-zone" transform="translate(0, 30)">
+      <rect x="0" y="0" width="350" height="180" rx="12" ry="12"/>
+      <text x="175" y="25" text-anchor="middle" class="section-title" fill="var(--cream)">CLIENT SIDE (Trusted)</text>
+      
+      <!-- Step 1: Generate CEK -->
+      <g class="node" transform="translate(20, 40)">
+        <rect x="0" y="0" width="310" height="45" class="data-box" style="stroke:var(--cream);"/>
+        <text x="155" y="16" text-anchor="middle" class="code-client">1. CEK = random 32 bytes (AES-256)</text>
+        <text x="155" y="33" text-anchor="middle" class="label-small">crypto/rand → zero-allocation stack buffer</text>
+      </g>
+      
+      <!-- Step 2: Encrypt Data -->
+      <g class="node" transform="translate(20, 95)">
+        <rect x="0" y="0" width="310" height="45" class="data-box-plain"/>
+        <text x="155" y="16" text-anchor="middle" class="code-success">2. ciphertext = AES-GCM(CEK, plaintext)</text>
+        <text x="155" y="33" text-anchor="middle" class="label-small">Streaming encrypt — zero-copy io.TeeReader</text>
+      </g>
+      
+      <!-- Step 3: Wrap CEK -->
+      <g class="node" transform="translate(20, 150)">
+        <rect x="0" y="0" width="310" height="45" class="key-box" style="stroke:var(--cream);"/>
+        <text x="155" y="16" text-anchor="middle" class="code-client">3. wrappedCEK = KEK.Encrypt(CEK)</text>
+        <text x="155" y="33" text-anchor="middle" class="label-small">Client KEK never leaves this zone</text>
+      </g>
+    </g>
+    
+    <!-- Arrow to Server -->
+    <path d="M370,120 H430" class="flow-client" marker-end="url(#arrow)"/>
+    <text x="400" y="115" text-anchor="middle" class="label-small" fill="var(--cream)">Send: ciphertext + wrappedCEK</text>
+    
+    <!-- Server Zone -->
+    <g class="node server-zone" transform="translate(430, 30)">
+      <rect x="0" y="0" width="350" height="180" rx="12" ry="12"/>
+      <text x="175" y="25" text-anchor="middle" class="section-title" fill="var(--sakura)">SERVER SIDE (Untrusted)</text>
+      
+      <!-- Step 4: Store -->
+      <g class="node" transform="translate(20, 40)">
+        <rect x="0" y="0" width="310" height="45" class="data-box-cipher"/>
+        <text x="155" y="16" text-anchor="middle" class="code-text">4. Store: blobID, ciphertext, wrappedCEK</text>
+        <text x="155" y="33" text-anchor="middle" class="label-small">PutBlob(blobID, ciphertext) + meta.wrappedCEK = wrappedCEK</text>
+      </g>
+      
+      <!-- Step 5: Echo checksum -->
+      <g class="node" transform="translate(20, 95)">
+        <rect x="0" y="0" width="310" height="45" class="data-box" style="stroke:var(--leaf);"/>
+        <text x="155" y="16" text-anchor="middle" class="code-success">5. x-amz-checksum-sha256 = SHA256(ciphertext)</text>
+        <text x="155" y="33" text-anchor="middle" class="label-small">Client verifies end-to-end integrity</text>
+      </g>
+      
+      <!-- Step 6: Return -->
+      <g class="node" transform="translate(20, 150)">
+        <rect x="0" y="0" width="310" height="45" class="data-box" style="stroke:var(--cream);"/>
+        <text x="155" y="16" text-anchor="middle" class="code-client">6. Return: blobID + wrappedCEK + checksum</text>
+        <text x="155" y="33" text-anchor="middle" class="label-small">Client now has full verification</text>
+      </g>
+    </g>
+  </g>
+  
+  <!-- ============ GET FLOW ============ -->
+  <g transform="translate(50, 360)">
+    <text x="0" y="0" class="section-title" fill="var(--leaf)" text-anchor="start">📥 GET FLOW: Server → Client → Decrypt</text>
+    
+    <!-- Server Zone -->
+    <g class="node server-zone" transform="translate(0, 30)">
+      <rect x="0" y="0" width="350" height="120" rx="12" ry="12"/>
+      <text x="175" y="25" text-anchor="middle" class="section-title" fill="var(--sakura)">SERVER SIDE (Untrusted)</text>
+      
+      <g class="node" transform="translate(20, 40)">
+        <rect x="0" y="0" width="310" height="45" class="data-box-cipher"/>
+        <text x="155" y="16" text-anchor="middle" class="code-text">1. Fetch: ciphertext, wrappedCEK, metadata</text>
+        <text x="155" y="33" text-anchor="middle" class="label-small">GetBlob(blobID) + GetMeta(blobID).wrappedCEK</text>
+      </g>
+      
+      <g class="node" transform="translate(20, 95)">
+        <rect x="0" y="0" width="310" height="45" class="data-box" style="stroke:var(--leaf);"/>
+        <text x="155" y="16" text-anchor="middle" class="code-success">2. Verify-on-read: SHA256(ciphertext) == blobID</text>
+        <text x="155" y="33" text-anchor="middle" class="label-small">Sentinel: corruption detected → fail loud</text>
+      </g>
+    </g>
+    
+    <!-- Arrow -->
+    <path d="M370,85 H430" class="flow-success" marker-end="url(#arrow-success)"/>
+    <text x="400" y="80" text-anchor="middle" class="label-small" fill="var(--leaf)">Return: ciphertext + wrappedCEK</text>
+    
+    <!-- Client Zone -->
+    <g class="node client-zone" transform="translate(430, 30)">
+      <rect x="0" y="0" width="350" height="120" rx="12" ry="12"/>
+      <text x="175" y="25" text-anchor="middle" class="section-title" fill="var(--cream)">CLIENT SIDE (Trusted)</text>
+      
+      <g class="node" transform="translate(20, 40)">
+        <rect x="0" y="0" width="310" height="45" class="key-box" style="stroke:var(--bark);"/>
+        <text x="155" y="16" text-anchor="middle" class="code-kek">3. CEK = KEK.Decrypt(wrappedCEK)</text>
+        <text x="155" y="33" text-anchor="middle" class="label-small">Client KEK unwraps — only client can do this</text>
+      </g>
+      
+      <g class="node" transform="translate(20, 95)">
+        <rect x="0" y="0" width="310" height="45" class="data-box-plain"/>
+        <text x="155" y="16" text-anchor="middle" class="code-success">4. plaintext = AES-GCM.Decrypt(CEK, ciphertext)</text>
+        <text x="155" y="33" text-anchor="middle" class="label-small">Streaming decrypt — zero-copy, integrity footer</text>
+      </g>
+    </g>
+  </g>
+  
+  <!-- ============ PRINCIPLE CALLOUT ============ -->
+  <g transform="translate(50, 500)">
+    <rect x="0" y="0" width="700" height="80" rx="10" class="quorum-box"/>
+    <text x="350" y="22" text-anchor="middle" class="section-title" fill="var(--leaf)">PRINCIPLE: Client-Verifiable Envelope Encryption</text>
+    <g transform="translate(20, 38)">
+      <text y="0" text-anchor="start" class="code-success">✓ Server NEVER sees KEK → cannot decrypt (even if compromised)</text>
+      <text y="18" text-anchor="start" class="code-success">✓ Server stores wrapped CEK + ciphertext → honest posture, fail-loud</text>
+      <text y="36" text-anchor="start" class="code-success">✓ Client verifies: SHA256(ciphertext) == blobID + AES-GCM auth tag</text>
+      <text y="54" text-anchor="start" class="code-success">✓ Works identically across S3 gateway & native momo-tcp/quic (same Store)</text>
+    </g>
+  </g>
+  
+  <!-- ============ WHEN NOT TO USE ============ -->
+  <g transform="translate(50, 550)">
+    <rect x="0" y="0" width="700" height="40" rx="8" fill="rgba(253,237,173,0.15)" stroke="var(--cream)" stroke-width="1.5"/>
+    <text x="350" y="22" text-anchor="middle" class="section-title" fill="var(--cream)" style="font-size:11px;">⚠️ WHEN NOT TO USE</text>
+    <g transform="translate(20, 0)">
+      <text y="18" text-anchor="start" class="label-small" style="font-size:9px;">✗ Internal-only APIs where trust boundary is network (use mTLS instead)  |  ✗ Protocols without checksum semantics  |  ✗ When compute cost > value (large objects → CRC32C, small → SHA256)</text>
+    </g>
+  </g>
+  
+  <!-- Bolt/Sentinel badges -->
+  <g transform="translate(620, 15)">
+    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(244,121,131,0.15)" stroke="var(--momo)" stroke-width="1"/>
+    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="var(--momo)">⚡ BOLT</text>
+  </g>
+  <g transform="translate(710, 15)">
+    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(118,146,103,0.15)" stroke="var(--leaf)" stroke-width="1"/>
+    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="var(--leaf)">🛡 SENTINEL</text>
+  </g>
+</svg>

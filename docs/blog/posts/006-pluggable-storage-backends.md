@@ -33,6 +33,8 @@ implements it with its own guarantees:
 | `s3` | remote object store over SigV4, TLS-gated (see [011](011-s3-https-tls-enforcement.md)) |
 | `raw` | block-device direct I/O |
 
+![Pluggable storage backends architecture](/assets/diagrams/04-storage-backends.svg)
+
 ## The trap this avoids
 
 A single hard-coded `local` blob store was the original assumption. Once momo

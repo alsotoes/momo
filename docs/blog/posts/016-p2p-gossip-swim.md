@@ -25,6 +25,8 @@ side is [017](017-scatter-gather-lease-quorum.md).
 
 ## SWIM: the failure-detection ring
 
+![P2P Gossip and SWIM](/assets/diagrams/06-gossip-swim.svg)
+
 - Nodes exchange **lifeheartbeat/ping/ack**, marking peers ALIVE/OFFLINE.
 - **Discovered peers actually get connected** — an early audit (issue #598)
   caught that discovery produced peers nobody dialed (dynamic membership simply

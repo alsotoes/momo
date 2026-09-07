@@ -38,6 +38,8 @@ this live?"**.
 
 ## The core algorithm
 
+![CRUSH-lite placement algorithm](/assets/diagrams/01-crush-placement.svg)
+
 - Score each candidate replica by a hash of (placement-key ⊗ node-id).
 - **Weighted** scoring so racks/zones/nodes with more capacity host more
   replicas (nodes with `weight <= 0` were initially a gap — fixed).

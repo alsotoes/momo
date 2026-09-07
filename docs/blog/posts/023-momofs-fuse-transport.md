@@ -33,6 +33,8 @@ Issue #962 → PR #963: `momo -imp fs` exposes the CAS-store-backed POSIX core
 
 ## What shipped
 
+![momofs FUSE transport stack](/assets/diagrams/09-fuse-mount-stack.svg)
+
 - **Mount entrypoint**: `momo -imp fs` + `-fs-mount`/`-fs-data`, mounted via
   `ServeFUSE` with a ctx-cancellable connection, `UnmountFUSE` on shutdown
   (SIGINT/SIGTERM via `signal.NotifyContext`).

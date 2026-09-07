@@ -78,6 +78,8 @@ hex.Encode(dst, src)  // still allocates dst
 
 ## Core Patterns — With Annotated Code
 
+![Bolt performance patterns](/assets/diagrams/12-bolt-patterns.svg)
+
 ### 1. Zero-Escape SHA-256 / Hex Encoding
 
 ```go

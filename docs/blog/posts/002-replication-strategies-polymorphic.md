@@ -25,6 +25,8 @@ changes over a dedicated TCP control channel:
 | `Splay` | N0 → N1 **and** N2 | high-bandwidth LAN |
 | `Primary-Splay` | client → all nodes concurrently | lossy/WAN, QUIC |
 
+![Replication strategies](/assets/diagrams/02-replication-strategies.svg)
+
 The design document (`docs/REPLICATION_STRATEGIES.md`) formalizes when each
 applies and the downgrade rules the controller must respect — e.g. a
 client-side replication fallback when the primary path degrades, later codified

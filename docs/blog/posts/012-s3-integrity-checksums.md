@@ -65,6 +65,8 @@ w.Header().Set("ETag", `"`+hash+`"`)
 
 ## The Solution — S3 Native Checksum Headers
 
+![S3 integrity checksums flow](/assets/diagrams/13-s3-checksums.svg)
+
 S3 defines `x-amz-checksum-*` headers for exactly this. We implement them natively:
 
 ```go
