@@ -1,10 +1,10 @@
 # 0010-add-metrics-exporter
 
 ## Status
-Proposed
+Accepted
 
 ## Confidence
-Low
+High
 
 ## Context
 PR #365 introduced a Prometheus metrics exporter (`src/server/metrics_exporter.go`) with 14 metrics, but 4 of 9 counters are dead code — the `MetricsCollector` is a local variable in `Daemon()` that is never plumbed into the transport, storage, replication, or P2P layers. As a result, `momo_downloads_total`, `momo_deletes_total`, `momo_replication_total`, and `momo_bytes_downloaded_total` permanently report 0. Additionally, `IncErrors` only covers 2 of ~12 error paths, and several important metric categories (storage, CAS, P2P, replication latency) are entirely missing.
@@ -24,9 +24,9 @@ PR #365 introduced a Prometheus metrics exporter (`src/server/metrics_exporter.g
 None documented.
 
 ## Implementation Status
-- **Code**: Partial
-- **Tests**: Planned
-- **Docs**: Planned
+- **Code**: Done
+- **Tests**: Done
+- **Docs**: Done
 - **Blog post**: docs/blog/posts/026-metrics-observability.md
 
 ## References

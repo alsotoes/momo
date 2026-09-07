@@ -1,10 +1,10 @@
 # 0016-add-s3-protocol
 
 ## Status
-Proposed
+Accepted
 
 ## Confidence
-Low
+High
 
 ## Context
 As Momo moves towards cloud-native integration, providing an S3-compatible interface allows the cluster to interoperate with standard storage tools and SDKs. By implementing an S3 Protocol Handler, Momo can serve as a distributed, high-performance S3 gateway, utilizing its unique polymorphic replication modes (Chain, Splay) under the hood.
@@ -21,8 +21,8 @@ As Momo moves towards cloud-native integration, providing an S3-compatible inter
 None documented.
 
 ## Implementation Status
-- **Code**: Planned
-- **Tests**: Planned
+- **Code**: Done
+- **Tests**: Done
 - **Docs**: Planned
 - **Blog post**: docs/blog/posts/008-s3-gateway-core.md
 

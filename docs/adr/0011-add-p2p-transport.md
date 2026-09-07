@@ -1,10 +1,10 @@
 # 0011-add-p2p-transport
 
 ## Status
-Proposed
+Accepted
 
 ## Confidence
-Low
+High
 
 ## Context
 Momo's current architecture relies on a static configuration (`momo.conf`) to define the network topology. The logic for replication (especially in modes like Chain and Splay) involves direct, hardcoded connections between servers. Furthermore, the role of Server ID 0 as the central authority for metrics and mode changes creates a single point of failure (SPOF) and a potential performance bottleneck. If server 0 goes down, the system's dynamic capabilities are lost.
@@ -21,7 +21,7 @@ Momo's current architecture relies on a static configuration (`momo.conf`) to de
 None documented.
 
 ## Implementation Status
-- **Code**: Planned
+- **Code**: Done
 - **Tests**: Planned
 - **Docs**: Planned
 - **Blog post**: docs/blog/posts/016-p2p-gossip-swim.md

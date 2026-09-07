@@ -1,10 +1,10 @@
 # 0008-add-external-client-replication
 
 ## Status
-Proposed
+Accepted
 
 ## Confidence
-Low
+High
 
 ## Context
 When external S3 clients (e.g., aws-cli) connect to a Momo server, they do not
@@ -27,8 +27,8 @@ requires the *client* to fan out to replicas. External S3 clients cannot do this
 None documented.
 
 ## Implementation Status
-- **Code**: Planned
-- **Tests**: Planned
+- **Code**: Done
+- **Tests**: Done
 - **Docs**: Planned
 - **Blog post**: docs/blog/posts/030-external-s3-client-replication-downgrade.md
 
