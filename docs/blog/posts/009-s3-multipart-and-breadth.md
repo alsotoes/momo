@@ -24,7 +24,7 @@ yet.
 
 ## Multipart upload (#801)
 
-![S3 multipart upload flow](/assets/diagrams/11-s3-multipart.svg)
+![S3 multipart upload flow](/diagrams/11-s3-multipart.svg)
 
 `CreateMultipartUpload` → `UploadPart` → `CompleteMultipartUpload` / `Abort`,
 with the parts assembling at completion into one CAS blob. This is what

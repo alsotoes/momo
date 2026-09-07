@@ -23,7 +23,7 @@ lossy/WAN fan-out where it avoids head-of-line blocking and gives 0-RTT.
 
 ## What the transport had to get right
 
-![Transport evolution: TCP vs QUIC](/assets/diagrams/07-transport-tcp-quic.svg)
+![Transport evolution: TCP vs QUIC](/diagrams/07-transport-tcp-quic.svg)
 
 A decade of fixes concentrated on correctness at the socket boundary:
 

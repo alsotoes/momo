@@ -37,7 +37,7 @@ before-ack, a survivor quorum, and group-commit batching.
 
 ## The guarantee
 
-![R3 Write durability barrier](/assets/diagrams/10-durability-barrier.svg)
+![R3 Write durability barrier](/diagrams/10-durability-barrier.svg)
 
 - **fsync-before-ack**: a write is acknowledged only after the blob has *durably
   hit disk* (not just page cache) on the surviving replicas. No more "ACK then

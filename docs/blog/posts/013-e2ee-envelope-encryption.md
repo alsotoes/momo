@@ -21,7 +21,7 @@ Delivered twice in one day — once for S3 (#779), once for native transports
 
 ## Envelope encryption in one paragraph
 
-![Envelope encryption flow](/assets/diagrams/05-envelope-encryption.svg)
+![Envelope encryption flow](/diagrams/05-envelope-encryption.svg)
 
 A random **content key (CEK)** encrypts the object bytes; a wrapping
 **key-encryption key (KEK)**, held only by the client, encrypts the CEK. The
