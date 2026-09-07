@@ -7,60 +7,84 @@
 /* 1. Google Fonts: Outfit (Display & Body) + JetBrains Mono (Technical) */
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');
 
-/* 2. Theme Color Tokens & Architectural Variables */
+/* 2. Theme Color Tokens & Architectural Variables — Momo (Peach) Palette
+   Cultural Significance: momo (桃) = peach in Japanese. Sacred talisman against
+   malicious spirits; Momotarō "Peach Boy" hero embodies bravery, vitality, resilience.
+   Momoiro = traditional Japanese word for light pink (springtime pink).
+   https://en.wikipedia.org/wiki/Peaches_in_culture */
 :root {
     --theme: #ffffff;
-    --entry: #f8fafc;
-    --primary: #0f172a;
-    --secondary: #475569;
-    --tertiary: #e2e8f0;
-    --content: #1e293b;
-    --border: #e2e8f0;
-    --code-block-bg: #0f172a;
-    --code-bg: #f1f5f9;
+    --entry: #fefcf9;
+    --primary: #3d2f23;
+    --secondary: #6b5b4f;
+    --tertiary: #f5efe8;
+    --content: #4a3d33;
+    --border: #e8dfd8;
+    --code-block-bg: #2d1f18;
+    --code-bg: #fdf8f4;
     --radius: 12px;
 
-    /* Technical accent tokens */
-    --accent: #4f46e5;
-    --accent-hover: #4338ca;
-    --accent-glow: rgba(79, 70, 229, 0.14);
+    /* Momo (Peach) Color Palette — Japanese Traditional */
+    /* Momo-iro (Peach Flower): #F47983 — Classic soft pink of Japanese peach blossom */
+    /* Sakura-iro (Cherry Blossom): #FCC9B9 — Lighter warm pale pink counterpart */
+    /* Soft Peach Fruit: #FFA6A6 — Muted coral-pink of ripe peach skin */
+    /* Cream Bud: #FDEDAD — Soft pale yellow of nascent petal interiors */
+    /* Leaf Green: #769267 — Earthy muted green for foliage balance */
+    /* Tree Bark: #563a10 — Deep grounding brown of peach tree wood */
 
-    --bolt-accent: #d97706;
-    --bolt-bg: #fef3c7;
-    --bolt-border: #fde68a;
+    /* Technical accent tokens — derived from Momo palette */
+    --accent: #f47983;           /* Momo-iro — primary accent */
+    --accent-hover: #e85d6a;     /* Darker momo-iro */
+    --accent-glow: rgba(244, 121, 131, 0.18);
 
-    --sentinel-accent: #2563eb;
-    --sentinel-bg: #dbeafe;
-    --sentinel-border: #bfdbfe;
+    --accent-sakura: #fcc9b9;    /* Sakura-iro — secondary accent */
+    --accent-peach: #ffa6a6;     /* Soft Peach Fruit — tertiary accent */
+    --accent-cream: #fdedad;     /* Cream Bud — highlight/background */
+    --accent-leaf: #769267;      /* Leaf Green — success/positive states */
+    --accent-bark: #563a10;      /* Tree Bark — dark anchor */
 
-    --grid-dot: rgba(15, 23, 42, 0.06);
+    --bolt-accent: #f47983;      /* Momo-iro for Bolt (performance) */
+    --bolt-bg: #fff0f1;
+    --bolt-border: #ffd6d8;
+
+    --sentinel-accent: #769267;  /* Leaf Green for Sentinel (security) */
+    --sentinel-bg: #f0f4ef;
+    --sentinel-border: #d8e4d3;
+
+    --grid-dot: rgba(86, 58, 16, 0.05);  /* Tree Bark at 5% */
 }
 
 :root[data-theme="dark"] {
-    --theme: #090d16;
-    --entry: #111726;
-    --primary: #f8fafc;
-    --secondary: #94a3b8;
-    --tertiary: #1e293b;
-    --content: #e2e8f0;
-    --border: #1e293b;
-    --code-block-bg: #070a10;
-    --code-bg: #151d30;
+    --theme: #1a1411;
+    --entry: #231c18;
+    --primary: #fdf8f4;
+    --secondary: #c9b8ab;
+    --tertiary: #2d221c;
+    --content: #e8dfd8;
+    --border: #3d2f23;
+    --code-block-bg: #150e0a;
+    --code-bg: #2d1f18;
 
-    /* Dark mode accent tokens */
-    --accent: #818cf8;
-    --accent-hover: #a5b4fc;
-    --accent-glow: rgba(129, 140, 248, 0.18);
+    /* Dark mode Momo palette accents */
+    --accent: #f47983;            /* Momo-iro — primary accent */
+    --accent-hover: #ff8fa0;      /* Lighter momo-iro */
+    --accent-glow: rgba(244, 121, 131, 0.22);
 
-    --bolt-accent: #fbbf24;
-    --bolt-bg: rgba(251, 191, 36, 0.12);
-    --bolt-border: rgba(251, 191, 36, 0.25);
+    --accent-sakura: #fcc9b9;     /* Sakura-iro */
+    --accent-peach: #ffa6a6;      /* Soft Peach Fruit */
+    --accent-cream: #fdedad;      /* Cream Bud */
+    --accent-leaf: #8ab87a;       /* Leaf Green (lighter for dark) */
+    --accent-bark: #8b6914;       /* Tree Bark (lighter for dark) */
 
-    --sentinel-accent: #60a5fa;
-    --sentinel-bg: rgba(96, 165, 250, 0.12);
-    --sentinel-border: rgba(96, 165, 250, 0.25);
+    --bolt-accent: #f47983;
+    --bolt-bg: rgba(244, 121, 131, 0.12);
+    --bolt-border: rgba(244, 121, 131, 0.28);
 
-    --grid-dot: rgba(248, 250, 252, 0.04);
+    --sentinel-accent: #8ab87a;
+    --sentinel-bg: rgba(138, 184, 122, 0.12);
+    --sentinel-border: rgba(138, 184, 122, 0.28);
+
+    --grid-dot: rgba(253, 248, 244, 0.03);
 }
 
 /* 3. Global Typography & Background Texture */
@@ -81,7 +105,7 @@ body {
     left: 0;
     height: 3px;
     width: 0%;
-    background: linear-gradient(90deg, var(--accent), #06b6d4, #10b981);
+    background: linear-gradient(90deg, var(--accent), var(--accent-sakura), var(--accent-leaf));
     z-index: 10000;
     transition: width 0.08s ease-out;
 }
@@ -146,7 +170,7 @@ body {
     left: 0;
     right: 0;
     height: 3px;
-    background: linear-gradient(90deg, var(--accent), #06b6d4, #10b981);
+    background: linear-gradient(90deg, var(--accent), var(--accent-sakura), var(--accent-leaf));
 }
 
 /* Status Bar */
@@ -165,9 +189,9 @@ body {
     font-family: 'JetBrains Mono', monospace;
     font-size: 0.725rem;
     font-weight: 700;
-    color: #10b981;
-    background: rgba(16, 185, 129, 0.1);
-    border: 1px solid rgba(16, 185, 129, 0.25);
+    color: var(--accent-leaf);
+    background: rgba(118, 146, 103, 0.12);
+    border: 1px solid rgba(118, 146, 103, 0.3);
     padding: 0.2rem 0.6rem;
     border-radius: 9999px;
     letter-spacing: 0.05em;
@@ -177,8 +201,8 @@ body {
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: #10b981;
-    box-shadow: 0 0 8px #10b981;
+    background: var(--accent-leaf);
+    box-shadow: 0 0 8px var(--accent-leaf);
     animation: pulse-dot 2s infinite ease-in-out;
 }
 
@@ -366,7 +390,19 @@ body {
     gap: 0.6rem;
 }
 
-/* Category Badge in Post Meta */
+/* Category Badge in Post Meta — Momo Palette Mapping
+   storage → Leaf Green (growth/roots)
+   transport → Tree Bark (paths/branches)
+   performance → Momo-iro (energy/vitality)
+   encryption → Cream Bud (hidden/inner)
+   p2p → Sakura-iro (distributed/blossoming)
+   durability → Tree Bark (strength/endurance)
+   momofs → Soft Peach Fruit (the fruit)
+   governance → Tree Bark (structure)
+   s3 → Momo-iro (primary)
+   metrics → Leaf Green (growth tracking)
+   roadmap → Sakura-iro (future blooming)
+   origin → Tree Bark (roots) */
 .meta-category-badge {
     font-family: 'JetBrains Mono', monospace;
     font-size: 0.675rem;
@@ -381,14 +417,18 @@ body {
     align-items: center;
 }
 
-.meta-category-badge.cat-storage { color: #059669; border-color: rgba(5, 150, 105, 0.3); background: rgba(5, 150, 105, 0.08); }
-.meta-category-badge.cat-transport { color: #2563eb; border-color: rgba(37, 99, 235, 0.3); background: rgba(37, 99, 235, 0.08); }
-.meta-category-badge.cat-performance { color: #d97706; border-color: rgba(217, 119, 6, 0.3); background: rgba(217, 119, 6, 0.08); }
-.meta-category-badge.cat-encryption { color: #7c3aed; border-color: rgba(124, 58, 237, 0.3); background: rgba(124, 58, 237, 0.08); }
-.meta-category-badge.cat-p2p { color: #0284c7; border-color: rgba(2, 132, 199, 0.3); background: rgba(2, 132, 199, 0.08); }
-.meta-category-badge.cat-durability { color: #dc2626; border-color: rgba(220, 38, 38, 0.3); background: rgba(220, 38, 38, 0.08); }
-.meta-category-badge.cat-momofs { color: #0891b2; border-color: rgba(8, 145, 178, 0.3); background: rgba(8, 145, 178, 0.08); }
-.meta-category-badge.cat-governance { color: #4b5563; border-color: rgba(75, 85, 99, 0.3); background: rgba(75, 85, 99, 0.08); }
+.meta-category-badge.cat-storage { color: var(--accent-leaf); border-color: rgba(118, 146, 103, 0.3); background: rgba(118, 146, 103, 0.08); }
+.meta-category-badge.cat-transport { color: var(--accent-bark); border-color: rgba(86, 58, 16, 0.3); background: rgba(86, 58, 16, 0.08); }
+.meta-category-badge.cat-performance { color: var(--accent); border-color: rgba(244, 121, 131, 0.3); background: rgba(244, 121, 131, 0.08); }
+.meta-category-badge.cat-encryption { color: var(--accent-cream); border-color: rgba(253, 237, 173, 0.3); background: rgba(253, 237, 173, 0.08); }
+.meta-category-badge.cat-p2p { color: var(--accent-sakura); border-color: rgba(252, 201, 185, 0.3); background: rgba(252, 201, 185, 0.08); }
+.meta-category-badge.cat-durability { color: var(--accent-bark); border-color: rgba(86, 58, 16, 0.3); background: rgba(86, 58, 16, 0.08); }
+.meta-category-badge.cat-momofs { color: var(--accent-peach); border-color: rgba(255, 166, 166, 0.3); background: rgba(255, 166, 166, 0.08); }
+.meta-category-badge.cat-governance { color: var(--accent-bark); border-color: rgba(86, 58, 16, 0.3); background: rgba(86, 58, 16, 0.08); }
+.meta-category-badge.cat-s3 { color: var(--accent); border-color: rgba(244, 121, 131, 0.3); background: rgba(244, 121, 131, 0.08); }
+.meta-category-badge.cat-metrics { color: var(--accent-leaf); border-color: rgba(118, 146, 103, 0.3); background: rgba(118, 146, 103, 0.08); }
+.meta-category-badge.cat-roadmap { color: var(--accent-sakura); border-color: rgba(252, 201, 185, 0.3); background: rgba(252, 201, 185, 0.08); }
+.meta-category-badge.cat-origin { color: var(--accent-bark); border-color: rgba(86, 58, 16, 0.3); background: rgba(86, 58, 16, 0.08); }
 
 .meta-separator {
     color: var(--border);
@@ -692,11 +732,11 @@ details.toc a:hover {
 }
 
 .architecture-card::before {
-    background: #6366f1;
+    background: var(--accent-sakura);
 }
 
 .issues-card::before {
-    background: #f59e0b;
+    background: var(--accent);
 }
 
 .hero-section-card:hover {
@@ -748,7 +788,9 @@ details.toc a:hover {
     color: var(--accent);
 }
 
-/* Section Header Badges */
+/* Section Header Badges — Momo Palette
+   Architecture → Sakura-iro (design/structure)
+   Issues → Momo-iro (energy/fixes) */
 .section-badge-wrapper {
     margin-bottom: 0.75rem;
 }
@@ -766,31 +808,33 @@ details.toc a:hover {
 }
 
 .pill-architecture {
-    background: rgba(99, 102, 241, 0.12);
-    color: #818cf8;
-    border: 1px solid rgba(99, 102, 241, 0.3);
+    background: rgba(252, 201, 185, 0.15);
+    color: var(--accent-sakura);
+    border: 1px solid rgba(252, 201, 185, 0.35);
 }
 
 .pill-issues {
-    background: rgba(245, 158, 11, 0.12);
-    color: #fbbf24;
-    border: 1px solid rgba(245, 158, 11, 0.3);
+    background: rgba(244, 121, 131, 0.15);
+    color: var(--accent);
+    border: 1px solid rgba(244, 121, 131, 0.35);
 }
 
 .pill-dot {
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: #818cf8;
-    box-shadow: 0 0 6px #818cf8;
+    background: var(--accent-sakura);
+    box-shadow: 0 0 8px var(--accent-sakura);
 }
 
 .pill-dot-issues {
-    background: #fbbf24;
-    box-shadow: 0 0 6px #fbbf24;
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
 }
 
-/* Post Meta Type Badges */
+/* Post Meta Type Badges — Momo Palette
+   Architecture → Sakura-iro (design/structure)
+   Issue → Momo-iro (energy/fixes) */
 .meta-type-badge {
     display: inline-flex;
     align-items: center;
@@ -804,14 +848,14 @@ details.toc a:hover {
 }
 
 .type-architecture {
-    background: rgba(99, 102, 241, 0.12);
-    color: #818cf8;
-    border: 1px solid rgba(99, 102, 241, 0.25);
+    background: rgba(252, 201, 185, 0.15);
+    color: var(--accent-sakura);
+    border: 1px solid rgba(252, 201, 185, 0.3);
 }
 
 .type-issue {
-    background: rgba(245, 158, 11, 0.12);
-    color: #fbbf24;
-    border: 1px solid rgba(245, 158, 11, 0.25);
+    background: rgba(244, 121, 131, 0.15);
+    color: var(--accent);
+    border: 1px solid rgba(244, 121, 131, 0.3);
 }
 
