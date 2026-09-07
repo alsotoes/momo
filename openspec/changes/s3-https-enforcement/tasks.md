@@ -15,8 +15,8 @@
 - [x] 3.3 Create `openspec/changes/s3-https-enforcement/` (proposal, tasks) with `Resolves #774` links.
 
 ## 4. Validation
-- [ ] 4.1 Run `gofmt`, `go vet`, and the full per-module test suites (`src/root`, `common`, `transport` incl. `-race`, `client`, `server`, `storage`, `metrics`, `crypto`, `p2p`).
-- [ ] 4.2 Verify `go work vendor` produces no diff (Rule 25).
-- [ ] 4.3 Commit (pre-commit hook syncs `docs/PERFORMANCE.md` / `.github/data/benchmark_history.csv`), Rule 58 branch check, push.
-- [ ] 4.4 Open PR with `Resolves #774`, wait for checks, address the `github-actions` review, merge `--merge --delete-branch`, close the issue, run the Rule 71 master gate.
+- [x] 4.1 Run `gofmt`, `go vet`, and the full per-module test suites (`src/root`, `common`, `transport` incl. `-race`, `client`, `server`, `storage`, `metrics`, `crypto`, `p2p`).
+- [x] 4.2 Verify `go work vendor` produces no diff (Rule 25).
+- [x] 4.3 Commit (pre-commit hook syncs `docs/PERFORMANCE.md` / `.github/data/benchmark_history.csv`), Rule 58 branch check, push.
+- [x] 4.4 Open PR with `Resolves #774`, wait for checks, address the `github-actions` review, merge `--merge --delete-branch`, close the issue, run the Rule 71 master gate.
 

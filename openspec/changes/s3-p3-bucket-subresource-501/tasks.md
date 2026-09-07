@@ -18,4 +18,4 @@
 - [x] Guard test: `location`, list unaffected
 - [x] Object-level (`GET /bucket/key?tagging`) unchanged
 - [x] `go build/vet/test ./...`, `go test -race`, `go work vendor` no-diff
-- [ ] `benchstat` gate — no regression on measured hot paths
+- [x] `benchstat` gate — no regression on measured hot paths

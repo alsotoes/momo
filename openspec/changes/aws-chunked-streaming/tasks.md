@@ -26,9 +26,9 @@
 
 ## 4. Phase 4: End-to-end and replication verification
 - [x] 4.1 End-to-end test: streaming PUT → GET returns original bytes.
-- [ ] 4.2 Splay and chain replication with a streaming upload: replicated content matches the original decoded bytes.
-- [ ] 4.3 Verify dedup: two streaming uploads of identical content share one blob; hashes match `common.HashBytes`.
-- [ ] 4.4 Benchmark the de-framer (large payload) for the performance hook; record before/after ns/op and allocations.
+- [x] 4.2 Splay and chain replication with a streaming upload: replicated content matches the original decoded bytes.
+- [x] 4.3 Verify dedup: two streaming uploads of identical content share one blob; hashes match `common.HashBytes`.
+- [x] 4.4 Benchmark the de-framer (large payload) for the performance hook; record before/after ns/op and allocations.
 
 ## 5. Docs
 - [x] 5.1 Update `docs/PROTOCOL.md` (S3 section): streaming variants supported, de-framing at gateway boundary, chunk signature algorithm, unsigned-streaming security posture.
@@ -37,4 +37,4 @@
 ## 6. Validation
 - [x] 6.1 Run `go vet`, `gofmt`, and the full per-module test suites (`src/root`, `common`, `transport`, `client`, `server`, `storage`, `metrics`, `crypto`, `p2p`).
 - [x] 6.2 Run the performance hook and commit the `docs/PERFORMANCE.md` / `.github/data/benchmark_history.csv` updates (pre-commit hook syncs these).
-- [ ] 6.3 Open PR with `Resolves #773`, wait for checks, address the `github-actions` review, merge `--merge --delete-branch`, close the issue, run the Rule 71 master gate.
+- [x] 6.3 Open PR with `Resolves #773`, wait for checks, address the `github-actions` review, merge `--merge --delete-branch`, close the issue, run the Rule 71 master gate.

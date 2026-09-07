@@ -1,10 +1,10 @@
 # 0051-steering-rule-73-spec-first
 
 ## Status
-Proposed
+Accepted
 
 ## Confidence
-Medium
+High
 
 ## Context
 Feature/spec-driven work occasionally shipped with only a tracking issue and no
@@ -24,7 +24,7 @@ OpenSpec change linked to a GitHub issue before code lands.
 None documented.
 
 ## Implementation Status
-- **Code**: Planned
+- **Code**: Done
 - **Tests**: Done
 - **Docs**: Done
 - **Blog post**: docs/blog/posts/027-governance-ai-review-spec-first.md

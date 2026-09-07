@@ -23,12 +23,12 @@
 - [x] 3.3 All transport tests pass under `-race`.
 
 ## 4. Documentation
-- [ ] 4.1 Create `openspec/changes/s3-multipart-upload/` (proposal, tasks).
-- [ ] 4.2 Update `docs/PROTOCOL.md` — document multipart upload interception strategy.
+- [x] 4.1 Create `openspec/changes/s3-multipart-upload/` (proposal, tasks).
+- [x] 4.2 Update `docs/PROTOCOL.md` — document multipart upload interception strategy.
 
 ## 5. Validation
-- [ ] 5.1 `gofmt`, `go vet`, full per-module test suites.
-- [ ] 5.2 `go work vendor` produces no diff (Rule 25).
-- [ ] 5.3 Commit, Rule 58 branch check, push.
-- [ ] 5.4 Open PR with `Resolves #764`, wait for checks/approval, merge, close issue, Rule 71 gate.
+- [x] 5.1 `gofmt`, `go vet`, full per-module test suites.
+- [x] 5.2 `go work vendor` produces no diff (Rule 25).
+- [x] 5.3 Commit, Rule 58 branch check, push.
+- [x] 5.4 Open PR with `Resolves #764`, wait for checks/approval, merge, close issue, Rule 71 gate.
 

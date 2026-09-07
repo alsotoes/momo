@@ -1,10 +1,10 @@
 # 0019-aws-chunked-streaming
 
 ## Status
-Proposed
+Accepted
 
 ## Confidence
-Medium
+High
 
 ## Context
 AWS SDK Go v2, aws-sdk-java, aws-sdk-net, and boto3 upload single objects with
@@ -43,8 +43,8 @@ gateway is effectively unusable for them.
 None documented.
 
 ## Implementation Status
-- **Code**: Partial
-- **Tests**: Partial
+- **Code**: Done
+- **Tests**: Done
 - **Docs**: Done
 - **Blog post**: docs/blog/posts/040-aws-chunked-streaming.md
 

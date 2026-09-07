@@ -10,9 +10,9 @@
 ## 3. Phase 3: reviewer sync (Rule 70)
 - [x] `pr_has_label` + `has_openspec_change` helpers in `ai_reviewer.py`
 - [x] Flag enhancement PRs without an OpenSpec change; withhold approval/merge
-- [ ] Confirm `gemini_reviewer.yml` needs no change (injected into script prompt only)
+- [x] Confirm `gemini_reviewer.yml` needs no change (injected into script prompt only)
 
 ## 4. Phase 4: governance artifact + merge
 - [x] Author this OpenSpec change (`steering-rule-73-spec-first`) mirroring #908 (Rule 11)
-- [ ] Sync master, open PR (Resolves #908), reviewer + CI, merge
-- [ ] Post-merge: update #908 status comment (Rule 22)
+- [x] Sync master, open PR (Resolves #908), reviewer + CI, merge
+- [x] Post-merge: update #908 status comment (Rule 22)

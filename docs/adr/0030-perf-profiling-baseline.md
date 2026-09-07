@@ -1,10 +1,10 @@
 # 0030-perf-profiling-baseline
 
 ## Status
-Proposed
+Accepted
 
 ## Confidence
-Low
+High
 
 ## Context
 Momo needs per-pipeline visibility before any performance work (Win1 SIMD
@@ -29,8 +29,8 @@ This change adds the **measurement harness only**. It ships no optimization.
 None documented.
 
 ## Implementation Status
-- **Code**: Planned
-- **Tests**: Partial
+- **Code**: Done
+- **Tests**: Done
 - **Docs**: Planned
 - **Blog post**: docs/blog/posts/042-perf-profiling-baseline.md
 

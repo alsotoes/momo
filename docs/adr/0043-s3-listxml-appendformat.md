@@ -1,10 +1,10 @@
 # 0043-s3-listxml-appendformat
 
 ## Status
-Proposed
+Accepted
 
 ## Confidence
-Low
+High
 
 ## Context
 Eliminate per-element heap allocation in `FormatListObjectsV2XML` by rendering
@@ -22,9 +22,9 @@ call).
 None documented.
 
 ## Implementation Status
-- **Code**: Partial
-- **Tests**: Partial
-- **Docs**: Partial
+- **Code**: Done
+- **Tests**: Done
+- **Docs**: Done
 - **Blog post**: docs/blog/posts/036-s3-listxml-appendformat-optimization.md
 
 ## References

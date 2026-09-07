@@ -16,4 +16,4 @@
 - [x] Guard test: multipart (`uploadId`/`partNumber`) unaffected
 - [x] Guard test: bucket-root `?versioning` still 501
 - [x] `go build/vet/test ./...`, `go test -race`, `go work vendor` no-diff
-- [ ] `benchstat` gate — no regression on measured hot paths (CI)
+- [x] `benchstat` gate — no regression on measured hot paths (CI)

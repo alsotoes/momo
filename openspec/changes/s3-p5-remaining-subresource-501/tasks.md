@@ -16,4 +16,4 @@
       intelligent-tiering get, select post → 501 NotImplemented
 - [x] Guard test: plain UploadPart (no copy-source) still 404/200
 - [x] `go build/vet/test ./...`, `go test -race`, `go work vendor` no-diff
-- [ ] `benchstat` gate — no regression on measured hot paths (CI)
+- [x] `benchstat` gate — no regression on measured hot paths (CI)

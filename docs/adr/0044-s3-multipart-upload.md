@@ -1,10 +1,10 @@
 # 0044-s3-multipart-upload
 
 ## Status
-Proposed
+Accepted
 
 ## Confidence
-Medium
+High
 
 ## Context
 AWS S3 clients (aws-cli, aws-sdk-go-v2, boto3) automatically switch to multipart upload for objects above a size threshold (8 MB default). momo's S3 gateway implemented only monolithic `PUT /bucket/key`. Multipart operations were entirely unimplemented: any object uploaded over the SDK threshold failed. This broke large-file support — a core AWS S3 use case.
@@ -21,9 +21,9 @@ AWS S3 clients (aws-cli, aws-sdk-go-v2, boto3) automatically switch to multipart
 None documented.
 
 ## Implementation Status
-- **Code**: Partial
-- **Tests**: Partial
-- **Docs**: Planned
+- **Code**: Done
+- **Tests**: Done
+- **Docs**: Done
 - **Blog post**: docs/blog/posts/009-s3-multipart-and-breadth.md
 
 ## References

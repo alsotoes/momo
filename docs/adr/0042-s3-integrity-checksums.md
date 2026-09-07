@@ -1,10 +1,10 @@
 # 0042-s3-integrity-checksums
 
 ## Status
-Proposed
+Accepted
 
 ## Confidence
-Low
+High
 
 ## Context
 Momо's S3 gateway (s3-tcp/s3-quic, `S3Communicator`) expects only the SHA-256
@@ -28,8 +28,8 @@ slice of issue #820.
 None documented.
 
 ## Implementation Status
-- **Code**: Planned
-- **Tests**: Planned
+- **Code**: Done
+- **Tests**: Done
 - **Docs**: Planned
 - **Blog post**: docs/blog/posts/012-s3-integrity-checksums.md
 

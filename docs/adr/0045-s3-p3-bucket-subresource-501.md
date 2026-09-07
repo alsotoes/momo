@@ -1,7 +1,7 @@
 # 0045-s3-p3-bucket-subresource-501
 
 ## Status
-Proposed
+Accepted
 
 ## Confidence
 High
@@ -29,7 +29,7 @@ None documented.
 
 ## Implementation Status
 - **Code**: Done
-- **Tests**: Partial
+- **Tests**: Done
 - **Docs**: Planned
 - **Blog post**: docs/blog/posts/033-s3-501-discipline-bucket-config.md
 

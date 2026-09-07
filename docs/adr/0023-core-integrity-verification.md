@@ -1,7 +1,7 @@
 # 0023-core-integrity-verification
 
 ## Status
-Proposed
+Accepted
 
 ## Confidence
 High
@@ -32,7 +32,7 @@ None documented.
 
 ## Implementation Status
 - **Code**: Done
-- **Tests**: Partial
+- **Tests**: Done
 - **Docs**: Planned
 - **Blog post**: docs/blog/posts/031-core-integrity-verification.md
 

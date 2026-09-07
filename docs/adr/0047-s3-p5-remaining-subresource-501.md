@@ -1,10 +1,10 @@
 # 0047-s3-p5-remaining-subresource-501
 
 ## Status
-Proposed
+Accepted
 
 ## Confidence
-Medium
+High
 
 ## Context
 The honest `501 NotImplemented` posture from P3 (#912/#913), P4 (#914/#915) and
@@ -32,7 +32,7 @@ None documented.
 
 ## Implementation Status
 - **Code**: Done
-- **Tests**: Partial
+- **Tests**: Done
 - **Docs**: Planned
 - **Blog post**: docs/blog/posts/035-s3-501-discipline-remaining-ops.md
 

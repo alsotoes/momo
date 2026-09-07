@@ -1,10 +1,10 @@
 # 0041-s3-inbound-tls-enforcement
 
 ## Status
-Proposed
+Accepted
 
 ## Confidence
-Medium
+High
 
 ## Context
 The `s3-tcp` inbound gateway serves S3 REST requests over raw TCP. Without a configured TLS cert/key pair, the entire S3 exchange — object payload, SigV4 headers, credentials material — travels in cleartext. Only `s3-quic` is encrypted-by-default (TLS 1.3). For "real end-to-end encryption" the inbound S3 gateway must either require TLS or loudly refuse to serve sensitive traffic without it.
@@ -21,9 +21,9 @@ The `s3-tcp` inbound gateway serves S3 REST requests over raw TCP. Without a con
 None documented.
 
 ## Implementation Status
-- **Code**: Partial
-- **Tests**: Partial
-- **Docs**: Partial
+- **Code**: Done
+- **Tests**: Done
+- **Docs**: Done
 - **Blog post**: docs/blog/posts/011-s3-https-tls-enforcement.md
 
 ## References

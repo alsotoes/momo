@@ -1,7 +1,7 @@
 # 0046-s3-p4-object-subresource-501
 
 ## Status
-Proposed
+Accepted
 
 ## Confidence
 High
@@ -29,7 +29,7 @@ None documented.
 
 ## Implementation Status
 - **Code**: Done
-- **Tests**: Partial
+- **Tests**: Done
 - **Docs**: Planned
 - **Blog post**: docs/blog/posts/034-s3-501-discipline-object-subresources.md
 

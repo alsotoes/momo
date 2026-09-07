@@ -1,10 +1,10 @@
 # 0053-steering-three-dot-diff-gate
 
 ## Status
-Proposed
+Accepted
 
 ## Confidence
-Low
+High
 
 ## Context
 Manual takeover of PR #899 exposed three workflow gaps rooted in the difference
@@ -34,9 +34,9 @@ between **two-dot** and **three-dot** git diffs, plus a fragile merge gate:
 None documented.
 
 ## Implementation Status
-- **Code**: Planned
-- **Tests**: Partial
-- **Docs**: Planned
+- **Code**: Done
+- **Tests**: Done
+- **Docs**: Done
 - **Blog post**: docs/blog/posts/025-benchmark-benchstat-gate.md
 
 ## References

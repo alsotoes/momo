@@ -26,6 +26,6 @@
 - [x] 4.2 Update `docs/PROTOCOL.md` (S3 section): outbound SIGNED_PAYLOAD, inbound UNSIGNED tolerance, SSE negotiation matrix, checksum-algorithm posture.
 
 ## 5. Validation
-- [ ] 5.1 Run `gofmt`, `go vet`, and the full per-module test suites (`src/root`, `common`, `transport` incl. `-race`, `client`, `server`, `storage`, `metrics`, `crypto`, `p2p`).
-- [ ] 5.2 Commit (pre-commit hook syncs `docs/PERFORMANCE.md` / `.github/data/benchmark_history.csv`), Rule 58 branch check, push.
-- [ ] 5.3 Open PR with `Resolves #776`, wait for checks, address the `github-actions` review, merge `--merge --delete-branch`, close the issue, run the Rule 71 master gate.
+- [x] 5.1 Run `gofmt`, `go vet`, and the full per-module test suites (`src/root`, `common`, `transport` incl. `-race`, `client`, `server`, `storage`, `metrics`, `crypto`, `p2p`).
+- [x] 5.2 Commit (pre-commit hook syncs `docs/PERFORMANCE.md` / `.github/data/benchmark_history.csv`), Rule 58 branch check, push.
+- [x] 5.3 Open PR with `Resolves #776`, wait for checks, address the `github-actions` review, merge `--merge --delete-branch`, close the issue, run the Rule 71 master gate.

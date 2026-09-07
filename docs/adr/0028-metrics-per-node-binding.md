@@ -1,10 +1,10 @@
 # 0028-metrics-per-node-binding
 
 ## Status
-Proposed
+Accepted
 
 ## Confidence
-Low
+High
 
 ## Context
 The Prometheus `/metrics` endpoint is started by every server process
@@ -28,9 +28,9 @@ Two production gaps follow:
 None documented.
 
 ## Implementation Status
-- **Code**: Planned
-- **Tests**: Planned
-- **Docs**: Planned
+- **Code**: Done
+- **Tests**: Done
+- **Docs**: Done
 - **Blog post**: docs/blog/posts/026-metrics-observability.md
 
 ## References

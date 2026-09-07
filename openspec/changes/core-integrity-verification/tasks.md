@@ -21,4 +21,4 @@
 - [x] Tests: common `ChecksumSet`/`VerifyStream`, `CASStore.VerifyChecksum`,
       `ChecksumExpectations`, mismatch hook, single-part BadDigest (server), `go test ./...`
 - [x] `go build/vet/test ./...`, `go test -race`, `go work vendor` no-diff pending
-- [ ] `benchstat` gate — no regression on measured hot paths
+- [x] `benchstat` gate — no regression on measured hot paths
