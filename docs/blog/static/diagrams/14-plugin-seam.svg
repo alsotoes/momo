@@ -56,6 +56,6 @@
   <g transform="translate(30, 285)">
     <rect x="0" y="0" width="580" height="50" rx="6" ry="6" fill="#FEFEF9" stroke="#E8DFD8"/>
     <text x="290" y="24" style="font-family:system-ui,sans-serif;font-size:11px;font-weight:600;fill:#563A10;text-anchor:middle;">Rule 74: Never put dynamic out-of-process plugins on the storage fast path.</text>
-    <text x="290" y="40" style="font-family:ui-monospace,monospace;font-size:10px;fill:#6B6B6B;text-anchor:middle;">Compile-time interface injection guarantees 0 allocation overhead and complete auditability.</text>
+    <text x="290" y="40" style="font-family:ui-monospace,monospace;font-size: 11px;fill:#6B6B6B;text-anchor:middle;">Compile-time interface injection guarantees 0 allocation overhead and complete auditability.</text>
   </g>
 </svg>

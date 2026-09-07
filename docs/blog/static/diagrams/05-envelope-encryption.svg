@@ -17,7 +17,7 @@
       .head { font-family: system-ui, -apple-system, sans-serif; font-size: 13px; font-weight: 700; text-anchor: middle; }
       .sub { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; fill: #6B6B6B; text-anchor: middle; }
       .line { fill: none; stroke: #F47983; stroke-width: 2; stroke-linecap: round; marker-end: url(#arrow-flow); }
-      .pill { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10px; font-weight: 700; }
+      .pill { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; font-weight: 700; }
     </style>
   </defs>
 
@@ -41,10 +41,10 @@
 
   <!-- Flow Arrows -->
   <path d="M280, 130 H355" class="line"/>
-  <text x="320" y="122" style="font-family:ui-monospace,monospace;font-size:10px;fill:#F47983;text-anchor:middle;">PUT Stream</text>
+  <text x="320" y="122" style="font-family:ui-monospace,monospace;font-size: 11px;fill:#F47983;text-anchor:middle;">PUT Stream</text>
 
   <path d="M355, 180 H280" class="line" stroke="#769267"/>
-  <text x="320" y="196" style="font-family:ui-monospace,monospace;font-size:10px;fill:#769267;text-anchor:middle;">GET Stream</text>
+  <text x="320" y="196" style="font-family:ui-monospace,monospace;font-size: 11px;fill:#769267;text-anchor:middle;">GET Stream</text>
 
   <!-- Right: Server Untrusted Zone -->
   <g transform="translate(360, 75)">

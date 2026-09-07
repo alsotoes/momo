@@ -13,7 +13,7 @@
       .head-bad { font-family: system-ui, -apple-system, sans-serif; font-size: 13px; font-weight: 700; fill: #dc2626; text-anchor: middle; }
       .head-good { font-family: system-ui, -apple-system, sans-serif; font-size: 13px; font-weight: 700; fill: #769267; text-anchor: middle; }
       .code-line { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; }
-      .comm-line { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10px; fill: #6B6B6B; }
+      .comm-line { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; fill: #6B6B6B; }
     </style>
   </defs>
 
@@ -57,6 +57,6 @@
     <rect x="0" y="0" width="580" height="70" rx="8" ry="8" fill="#FEFEF9" stroke="#E8DFD8" stroke-width="1.5"/>
     <text x="20" y="24" style="font-family:system-ui,sans-serif;font-size:12px;font-weight:700;fill:#563A10;">⚡ Benchmark Impact</text>
     <text x="20" y="44" style="font-family:ui-monospace,monospace;font-size:11px;fill:#2D2D2D;">Metadata read latency dropped by 64% under 100 concurrent reader threads.</text>
-    <text x="20" y="58" style="font-family:ui-monospace,monospace;font-size:10px;fill:#6B6B6B;">Single view ensures read snapshot consistency across all three metadata buckets.</text>
+    <text x="20" y="58" style="font-family:ui-monospace,monospace;font-size: 11px;fill:#6B6B6B;">Single view ensures read snapshot consistency across all three metadata buckets.</text>
   </g>
 </svg>

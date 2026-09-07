@@ -16,7 +16,7 @@
       .zone-header { font-family: system-ui, -apple-system, sans-serif; font-size: 13px; font-weight: 700; text-anchor: middle; }
       .step-rect { fill: #FEFEF9; stroke: #E0E0E0; stroke-width: 1; rx: 6; ry: 6; }
       .step-text { font-family: system-ui, -apple-system, sans-serif; font-size: 11px; font-weight: 600; fill: #2D2D2D; }
-      .step-code { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10px; fill: #F47983; }
+      .step-code { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; fill: #F47983; }
       .flow-line { fill: none; stroke: #F47983; stroke-width: 2; stroke-linecap: round; marker-end: url(#arrow-flow); }
     </style>
   </defs>
@@ -46,13 +46,13 @@
     <text x="25" y="188" class="step-text">3. Wrap CEK with Master KEK</text>
     <text x="25" y="206" class="step-code">WrappedCEK = Seal(KEK, CEK)</text>
 
-    <text x="132" y="245" style="font-family:system-ui,sans-serif;font-size:10px;fill:#769267;text-anchor:middle;">KEK never leaves this zone</text>
+    <text x="132" y="245" style="font-family:system-ui,sans-serif;font-size: 11px;fill:#769267;text-anchor:middle;">KEK never leaves this zone</text>
   </g>
 
   <!-- Network Boundary (Center Arrow) -->
   <path d="M295, 195 H345" class="flow-line"/>
-  <text x="320" y="172" style="font-family:ui-monospace,monospace;font-size:10px;fill:#6B6B6B;text-anchor:middle;">PUT Stream</text>
-  <text x="320" y="186" style="font-family:ui-monospace,monospace;font-size:10px;fill:#F47983;text-anchor:middle;">+Envelope</text>
+  <text x="320" y="172" style="font-family:ui-monospace,monospace;font-size: 11px;fill:#6B6B6B;text-anchor:middle;">PUT Stream</text>
+  <text x="320" y="186" style="font-family:ui-monospace,monospace;font-size: 11px;fill:#F47983;text-anchor:middle;">+Envelope</text>
 
   <!-- Server Zone (Right) -->
   <g transform="translate(345, 65)">
@@ -74,6 +74,6 @@
     <text x="25" y="188" class="step-text">6. Record Wrapped Key in Bbolt</text>
     <text x="25" y="206" class="step-code">bucketS3Meta.Put(name, WrappedCEK)</text>
 
-    <text x="132" y="245" style="font-family:system-ui,sans-serif;font-size:10px;fill:#563A10;text-anchor:middle;">Server holds 0 plaintext keys</text>
+    <text x="132" y="245" style="font-family:system-ui,sans-serif;font-size: 11px;fill:#563A10;text-anchor:middle;">Server holds 0 plaintext keys</text>
   </g>
 </svg>

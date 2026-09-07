@@ -24,7 +24,7 @@ forward look — and the nod to the research that seeded the ideas.
 
 ## Where the arc stands
 
-![Momo roadmap R1-R6](/diagrams/15-roadmap-timeline.svg)
+{{< diagram src="/diagrams/15-roadmap-timeline.svg" alt="Momo roadmap R1-R6" caption="Momo roadmap R1-R6" >}}
 
 The **P0 correctness/durability track is done**: R1 failure domains
 ([019](019-r1-failure-domain-placement.md)) → R2 degraded-read + self-heal

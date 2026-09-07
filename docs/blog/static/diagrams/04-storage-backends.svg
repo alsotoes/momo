@@ -1,204 +1,77 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="800" height="600" role="img" aria-labelledby="storage-title storage-desc">
-  <title id="storage-title">Pluggable Storage Backends Architecture</title>
-  <desc id="storage-desc">Layered architecture: Store interface → backend selector (config) → local/nfs/s3/raw backends. CAS metadata (bbolt) stays local per-node; only blob bytes route through chosen backend. Encryption wrapper layer sits transparently under the store seam.</desc>
-  
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="title-04 desc-04">
+  <title id="title-04">Pluggable Storage Backends: Architecture Seam</title>
+  <desc id="desc-04">The BlobStore interface seam in momo abstracting local filesystem, NFS shares, remote S3 buckets, and raw block devices.</desc>
+
   <defs>
-    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <path d="M0,0 L10,3.5 L0,7 Z" fill="#F47983"/>
+    <marker id="arrow-be" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#F47983"/>
     </marker>
-    <marker id="arrow-success" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <path d="M0,0 L10,3.5 L0,7 Z" fill="#769267"/>
-    </marker>
-    
-    <filter id="drop-shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="#563A10" flood-opacity="0.15"/>
-    </filter>
-    
-    <linearGradient id="layer-grad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:rgba(244,121,131,0.08)"/>
-      <stop offset="100%" style="stop-color:rgba(252,201,185,0.08)"/>
-    </linearGradient>
-    
     <style>
-      .layer-box { fill: url(#layer-grad); stroke: #F47983; stroke-width: 1.5; rx: 10; ry: 10; }
-      .backend-box { fill: #FAFAFA; stroke: #E0E0E0; stroke-width: 1.5; rx: 8; ry: 8; filter: url(#drop-shadow); transition: transform 0.2s ease; }
-      .backend-box:hover { transform: translateY(-3px); filter: url(#drop-shadow) brightness(1.1); }
-      .title-text { font-family: 'Outfit', system-ui, -apple-system, sans-serif', sans-serif; font-size: 18px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
-      .section-title { font-family: 'Outfit', system-ui, -apple-system, sans-serif', sans-serif; font-size: 14px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
-      .label-text { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 11px; fill: #2D2D2D; text-anchor: middle; }
-      .label-small { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #6B6B6B; text-anchor: middle; }
-      .code-text { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #F47983; }
-      .code-success { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #769267; }
-      .config-text { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #563A10; }
-      .flow-arrow { fill: none; stroke: #F47983; stroke-width: 2; stroke-linecap: round; marker-end: url(#arrow); }
-      .flow-success { stroke: #769267; stroke-width: 2; marker-end: url(#arrow-success); }
-      .meta-box { fill: rgba(118,146,103,0.1); stroke: #769267; stroke-width: 2; }
-      .encryption-box { fill: rgba(253,237,173,0.15); stroke: #FDEDAD; stroke-width: 2; }
+      .bg { fill: #FAFAFA; }
+      .title { font-family: system-ui, -apple-system, sans-serif; font-size: 16px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
+      .subtitle { font-family: system-ui, -apple-system, sans-serif; font-size: 12px; fill: #6B6B6B; text-anchor: middle; }
+      .seam-box { fill: #FFFFFF; stroke: #F47983; stroke-width: 2; rx: 8; ry: 8; }
+      .be-card { fill: #FFFFFF; stroke: #E0E0E0; stroke-width: 1.5; rx: 8; ry: 8; }
+      .text-head { font-family: system-ui, -apple-system, sans-serif; font-size: 13px; font-weight: 700; text-anchor: middle; }
+      .text-code { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; text-anchor: middle; }
+      .text-sub { font-family: system-ui, -apple-system, sans-serif; font-size: 11px; fill: #6B6B6B; text-anchor: middle; }
+      .flow-be { fill: none; stroke: #F47983; stroke-width: 2; stroke-linecap: round; marker-end: url(#arrow-be); }
     </style>
   </defs>
-  
-  <rect width="800" height="600" fill="#FAFAFA"/>
-  
-  <!-- Title -->
-  <text x="400" y="30" class="title-text">Pluggable Storage Backends — Seam, Not Plugin</text>
-  <text x="400" y="52" class="diagram-subtitle">Single Store interface → config-selected backend → CAS metadata local, blobs remote (Rule 74: Seam-Over-Plugins)</text>
-  
-  <!-- ============ LAYER 1: HANDLERS ============ -->
-  <g transform="translate(40, 80)">
-    <rect x="0" y="0" width="720" height="70" class="layer-box"/>
-    <text x="360" y="25" text-anchor="middle" class="section-title" fill="#F47983">LAYER 1: S3 / NATIVE HANDLERS</text>
-    <text x="360" y="45" text-anchor="middle" class="label-small">PutObject / GetObject / DeleteObject / ListObjectsV2 → Store interface calls</text>
-    <text x="360" y="60" text-anchor="middle" class="code-text">type Store interface { PutBlob, GetBlob, DeleteBlob, StatBlob, ... }</text>
+
+  <rect width="640" height="360" class="bg"/>
+
+  <text x="320" y="32" class="title">Pluggable Storage Backends</text>
+  <text x="320" y="52" class="subtitle">Unified BlobStore interface decoupling CAS metadata from physical storage media</text>
+
+  <!-- Central Seam Interface Box -->
+  <g transform="translate(180, 75)">
+    <rect x="0" y="0" width="280" height="60" class="seam-box"/>
+    <text x="140" y="26" class="text-head" fill="#F47983">BlobStore Interface Seam</text>
+    <text x="140" y="44" class="text-code" fill="#563A10">PutBlob() | GetBlob() | DeleteBlob()</text>
   </g>
-  
-  <!-- Arrow down -->
-  <path d="M400,150 V170" class="flow-arrow" marker-end="url(#arrow)"/>
-  
-  <!-- ============ LAYER 2: ENCRYPTION WRAPPER (optional) ============ -->
-  <g class="node encryption-box" transform="translate(40, 180)">
-    <rect x="0" y="0" width="720" height="80" rx="10" ry="10"/>
-    <text x="360" y="25" text-anchor="middle" class="section-title" fill="#FDEDAD">LAYER 2: ENCRYPTION WRAPPER (Optional — E2EE)</text>
-    <g transform="translate(20, 40)">
-      <text y="0" text-anchor="start" class="code-success">EncryptedBlobStore wraps Store seam transparently</text>
-      <text y="18" text-anchor="start" class="code-success">PUT: Handler → EncryptBlobStore → (wrapped CEK, ciphertext) → Backend</text>
-      <text y="36" text-anchor="start" class="code-success">GET: Backend → (wrapped CEK, ciphertext) → Decrypt w/ client KEK</text>
-      <text y="54" text-anchor="start" class="label-small">Same Store interface, zero code changes to handlers (Rule 74: crypto in auditable core)</text>
-    </g>
+
+  <!-- Flow Arrows -->
+  <path d="M210, 135 L90, 180" class="flow-be"/>
+  <path d="M280, 135 L235, 180" class="flow-be"/>
+  <path d="M360, 135 L405, 180" class="flow-be"/>
+  <path d="M430, 135 L550, 180" class="flow-be"/>
+
+  <!-- 4 Backends -->
+  <g transform="translate(30, 185)">
+    <rect x="0" y="0" width="130" height="75" class="be-card" stroke="#769267"/>
+    <text x="65" y="24" class="text-head" fill="#769267">Local (Default)</text>
+    <text x="65" y="42" class="text-sub">Tiered fan-out</text>
+    <text x="65" y="60" class="text-code" fill="#563A10">blobs/ab/cd/ef/</text>
   </g>
-  
-  <!-- Arrow down -->
-  <path d="M400,260 V280" class="flow-arrow" marker-end="url(#arrow)"/>
-  
-  <!-- ============ LAYER 3: BACKEND SELECTOR ============ -->
-  <g class="node" transform="translate(40, 280)">
-    <rect x="0" y="0" width="720" height="70" rx="10" ry="10" fill="rgba(252,201,185,0.1)" stroke="#FCC9B9" stroke-width="2"/>
-    <text x="360" y="25" text-anchor="middle" class="section-title" fill="#FCC9B9">LAYER 3: BACKEND SELECTOR — Config-Driven (Rule 74)</text>
-    <g transform="translate(20, 40)">
-      <text y="0" text-anchor="start" class="config-text">[storage] backend = "local" | "nfs" | "s3" | "raw"</text>
-      <text y="18" text-anchor="start" class="config-text">Declarative config → compiled-in selection → zero .so, zero RPC</text>
-    </g>
+
+  <g transform="translate(175, 185)">
+    <rect x="0" y="0" width="130" height="75" class="be-card"/>
+    <text x="65" y="24" class="text-head">NFS</text>
+    <text x="65" y="42" class="text-sub">Shared mount</text>
+    <text x="65" y="60" class="text-code">POSIX locks</text>
   </g>
-  
-  <!-- Arrow down -->
-  <path d="M400,350 V370" class="flow-arrow" marker-end="url(#arrow)"/>
-  
-  <!-- ============ LAYER 4: BACKENDS (4 panels) ============ -->
-  <g transform="translate(40, 370)">
-    <text x="360" y="-10" text-anchor="middle" class="section-title">LAYER 4: PLUGGABLE BACKENDS</text>
-    
-    <!-- LOCAL -->
-    <g class="backend-box" transform="translate(0, 10)">
-      <rect x="0" y="0" width="170" height="190" rx="8" ry="8"/>
-      <text x="85" y="22" text-anchor="middle" class="section-title" fill="#F47983">LOCAL</text>
-      <text x="85" y="40" text-anchor="middle" class="label-small">Default backend</text>
-      
-      <g transform="translate(10, 55)">
-        <rect x="0" y="0" width="150" height="28" rx="4" fill="#FAFAFA" stroke="#F47983" stroke-width="1.5"/>
-        <text x="75" y="18" text-anchor="middle" class="label-text">filesystem path</text>
-      </g>
-      <g transform="translate(10, 90)">
-        <rect x="0" y="0" width="150" height="28" rx="4" fill="#FAFAFA" stroke="#E0E0E0"/>
-        <text x="75" y="18" text-anchor="middle" class="label-text">Direct I/O</text>
-      </g>
-      <g transform="translate(10, 125)">
-        <rect x="0" y="0" width="150" height="28" rx="4" fill="#FAFAFA" stroke="#E0E0E0"/>
-        <text x="75" y="18" text-anchor="middle" class="label-text">Zero network hop</text>
-      </g>
-      <g transform="translate(10, 160)">
-        <text x="75" y="0" text-anchor="middle" class="code-success">✓ Default, lowest latency</text>
-      </g>
-    </g>
-    
-    <!-- NFS -->
-    <g class="backend-box" transform="translate(180, 10)">
-      <rect x="0" y="0" width="170" height="190" rx="8" ry="8"/>
-      <text x="85" y="22" text-anchor="middle" class="section-title" fill="#FCC9B9">NFS</text>
-      <text x="85" y="40" text-anchor="middle" class="label-small">Shared volume</text>
-      
-      <g transform="translate(10, 55)">
-        <rect x="0" y="0" width="150" height="28" rx="4" fill="#FAFAFA" stroke="#FCC9B9" stroke-width="1.5"/>
-        <text x="75" y="18" text-anchor="middle" class="label-text">Mounted volume</text>
-      </g>
-      <g transform="translate(10, 90)">
-        <rect x="0" y="0" width="150" height="28" rx="4" fill="#FAFAFA" stroke="#E0E0E0"/>
-        <text x="75" y="18" text-anchor="middle" class="label-text">Multi-node access</text>
-      </g>
-      <g transform="translate(10, 125)">
-        <rect x="0" y="0" width="150" height="28" rx="4" fill="#FAFAFA" stroke="#E0E0E0"/>
-        <text x="75" y="18" text-anchor="middle" class="label-text">Shared storage</text>
-      </g>
-      <g transform="translate(10, 160)">
-        <text x="75" y="0" text-anchor="middle" class="code-text">~ Shared FS cluster</text>
-      </g>
-    </g>
-    
-    <!-- S3 -->
-    <g class="backend-box" transform="translate(360, 10)">
-      <rect x="0" y="0" width="170" height="190" rx="8" ry="8"/>
-      <text x="85" y="22" text-anchor="middle" class="section-title" fill="#FFA6A6">S3</text>
-      <text x="85" y="40" text-anchor="middle" class="label-small">Remote object store</text>
-      
-      <g transform="translate(10, 55)">
-        <rect x="0" y="0" width="150" height="28" rx="4" fill="#FAFAFA" stroke="#FFA6A6" stroke-width="1.5"/>
-        <text x="75" y="18" text-anchor="middle" class="label-text">SigV4 client</text>
-      </g>
-      <g transform="translate(10, 90)">
-        <rect x="0" y="0" width="150" height="28" rx="4" fill="#FAFAFA" stroke="#E0E0E0"/>
-        <text x="75" y="18" text-anchor="middle" class="label-text">TLS-gated (Rule 11)</text>
-      </g>
-      <g transform="translate(10, 125)">
-        <rect x="0" y="0" width="150" height="28" rx="4" fill="#FAFAFA" stroke="#E0E0E0"/>
-        <text x="75" y="18" text-anchor="middle" class="label-text">Zero-dep, zero-CGO</text>
-      </g>
-      <g transform="translate(10, 160)">
-        <text x="75" y="0" text-anchor="middle" class="code-text">~ Remote blob tier</text>
-      </g>
-    </g>
-    
-    <!-- RAW -->
-    <g class="backend-box" transform="translate(540, 10)">
-      <rect x="0" y="0" width="170" height="190" rx="8" ry="8"/>
-      <text x="85" y="22" text-anchor="middle" class="section-title" fill="#563A10">RAW</text>
-      <text x="85" y="40" text-anchor="middle" class="label-small">Block device</text>
-      
-      <g transform="translate(10, 55)">
-        <rect x="0" y="0" width="150" height="28" rx="4" fill="#FAFAFA" stroke="#563A10" stroke-width="1.5"/>
-        <text x="75" y="18" text-anchor="middle" class="label-text">Direct block I/O</text>
-      </g>
-      <g transform="translate(10, 90)">
-        <rect x="0" y="0" width="150" height="28" rx="4" fill="#FAFAFA" stroke="#E0E0E0"/>
-        <text x="75" y="18" text-anchor="middle" class="label-text">/dev/xxx</text>
-      </g>
-      <g transform="translate(10, 125)">
-        <rect x="0" y="0" width="150" height="28" rx="4" fill="#FAFAFA" stroke="#E0E0E0"/>
-        <text x="75" y="18" text-anchor="middle" class="label-text">No filesystem</text>
-      </g>
-      <g transform="translate(10, 160)">
-        <text x="75" y="0" text-anchor="middle" class="code-text">~ Bare metal perf</text>
-      </g>
-    </g>
+
+  <g transform="translate(320, 185)">
+    <rect x="0" y="0" width="130" height="75" class="be-card"/>
+    <text x="65" y="24" class="text-head">Remote S3</text>
+    <text x="65" y="42" class="text-sub">Cloud offload</text>
+    <text x="65" y="60" class="text-code">SigV4 Client</text>
   </g>
-  
-  <!-- ============ METADATA NOTE ============ -->
-  <g class="node meta-box" transform="translate(40, 575)">
-    <rect x="0" y="0" width="720" height="70" rx="10" ry="10"/>
-    <text x="360" y="22" text-anchor="middle" class="section-title" fill="#769267">📌 CAS METADATA ALWAYS LOCAL (bbolt)</text>
-    <g transform="translate(20, 40)">
-      <text y="0" text-anchor="start" class="code-success">• Blob metadata (hash → location, size, checksums) stored in per-node bbolt</text>
-      <text y="18" text-anchor="start" class="code-success">• Only BLOB BYTES route through backend — metadata never leaves node</text>
-      <text y="36" text-anchor="start" class="code-success">• Enables: CRUSH placement, verify-on-read, dedup, GC — all local</text>
-      <text y="52" text-anchor="start" class="label-small">Placement computes locally from hash + membership → no central allocator</text>
-    </g>
+
+  <g transform="translate(465, 185)">
+    <rect x="0" y="0" width="145" height="75" class="be-card"/>
+    <text x="72" y="24" class="text-head">Raw Block</text>
+    <text x="72" y="42" class="text-sub">Direct NVMe IOPS</text>
+    <text x="72" y="60" class="text-code">No page cache</text>
   </g>
-  
-  <!-- Bolt/Sentinel badges -->
-  <g transform="translate(620, 15)">
-    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(244,121,131,0.15)" stroke="#F47983" stroke-width="1"/>
-    <text x="42.5" y="16" text-anchor="middle" font-family="'JetBrains Mono', ui-monospace, monospace" font-size="10px" font-weight="700" fill="#F47983">⚡ BOLT</text>
-  </g>
-  <g transform="translate(710, 15)">
-    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(118,146,103,0.15)" stroke="#769267" stroke-width="1"/>
-    <text x="42.5" y="16" text-anchor="middle" font-family="'JetBrains Mono', ui-monospace, monospace" font-size="10px" font-weight="700" fill="#769267">🛡 SENTINEL</text>
+
+  <!-- Bottom Banner -->
+  <g transform="translate(30, 280)">
+    <rect x="0" y="0" width="580" height="55" rx="6" ry="6" fill="#FEFEF9" stroke="#E8DFD8"/>
+    <text x="20" y="24" style="font-family:system-ui,sans-serif;font-size:11px;font-weight:600;fill:#563A10;">Rule 74 Seam:</text>
+    <text x="110" y="24" style="font-family:system-ui,sans-serif;font-size:11px;fill:#2D2D2D;">Backends are statically compiled in Go — zero dynamic RPC taxes in the data path.</text>
+    <text x="20" y="40" style="font-family:system-ui,sans-serif;font-size:11px;fill:#6B6B6B;">Bbolt metadata (namespace, refcounts, tombstones) always stays stored on local disk.</text>
   </g>
 </svg>

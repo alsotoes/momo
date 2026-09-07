@@ -16,7 +16,7 @@
       .card-sub { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; fill: #F47983; text-anchor: middle; }
       .card-desc { font-family: system-ui, -apple-system, sans-serif; font-size: 11px; fill: #6B6B6B; text-anchor: middle; }
       .flow-arrow { fill: none; stroke: #563A10; stroke-width: 2; stroke-linecap: round; marker-end: url(#arrow-key); }
-      .pill { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10px; font-weight: 700; }
+      .pill { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; font-weight: 700; }
     </style>
   </defs>
 

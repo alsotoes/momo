@@ -40,7 +40,7 @@ free. This arc turned that property into explicit machinery.
 
 ## What landed
 
-![At-rest integrity pipeline](/diagrams/08-integrity-pipeline.svg)
+{{< diagram src="/diagrams/08-integrity-pipeline.svg" alt="At-rest integrity pipeline" caption="At-rest integrity pipeline" >}}
 
 - **Central integrity verification** in the storage layer (#911): one
   validate→verify path shared by all readers, instead of ad-hoc checks spread

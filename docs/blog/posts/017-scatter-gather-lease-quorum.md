@@ -37,7 +37,7 @@ leases use a **majority quorum**. Both required the audit treatment.
 
 ## Scatter-gather listing
 
-![Scatter-gather and lease quorum](/diagrams/03-scatter-gather-lease.svg)
+{{< diagram src="/diagrams/03-scatter-gather-lease.svg" alt="Scatter-gather and lease quorum" caption="Scatter-gather and lease quorum" >}}
 
 `ListObjectsV2`/`GlobalList` fans out to shard owners, merges metadata lists,
 dedups by content hash (dropping alternate names), paginates. The momofs

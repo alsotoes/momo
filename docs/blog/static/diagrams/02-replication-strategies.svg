@@ -11,7 +11,7 @@
       .card { fill: #FFFFFF; stroke: #E0E0E0; stroke-width: 1.5; rx: 8; ry: 8; }
       .card-title { font-family: system-ui, -apple-system, sans-serif; font-size: 13px; font-weight: 700; text-anchor: middle; }
       .card-desc { font-family: system-ui, -apple-system, sans-serif; font-size: 11px; fill: #6B6B6B; text-anchor: middle; }
-      .badge-text { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10px; font-weight: 600; text-anchor: middle; }
+      .badge-text { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; font-weight: 600; text-anchor: middle; }
     </style>
   </defs>
 
@@ -64,10 +64,10 @@
   <!-- Badges -->
   <g transform="translate(475, 12)">
     <rect x="0" y="0" width="65" height="18" rx="9" fill="rgba(244,121,131,0.12)" stroke="#F47983" stroke-width="1"/>
-    <text x="32.5" y="13" text-anchor="middle" style="font-family:ui-monospace,monospace;font-size:10px;font-weight:700;fill:#F47983;">⚡ BOLT</text>
+    <text x="32.5" y="13" text-anchor="middle" style="font-family:ui-monospace,monospace;font-size: 11px;font-weight:700;fill:#F47983;">⚡ BOLT</text>
   </g>
   <g transform="translate(548, 12)">
     <rect x="0" y="0" width="75" height="18" rx="9" fill="rgba(118,146,103,0.12)" stroke="#769267" stroke-width="1"/>
-    <text x="37.5" y="13" text-anchor="middle" style="font-family:ui-monospace,monospace;font-size:10px;font-weight:700;fill:#769267;">🛡 SENTINEL</text>
+    <text x="37.5" y="13" text-anchor="middle" style="font-family:ui-monospace,monospace;font-size: 11px;font-weight:700;fill:#769267;">🛡 SENTINEL</text>
   </g>
 </svg>

@@ -23,9 +23,11 @@ from xml.etree import ElementTree as ET
 ROOT = Path(__file__).resolve().parents[2]
 DIAGRAMS_DIR = ROOT / "docs" / "blog" / "static" / "diagrams"
 
-MIN_FONT_SIZE_PX = 10.0
-RECOMMENDED_BODY_FONT_SIZE_PX = 11.5
-MIN_SAFE_MARGIN_PX = 10.0
+MIN_FONT_SIZE_PX = 10.5
+MAX_WORD_COUNT = 130
+STANDARD_VIEWBOX = (0.0, 0.0, 640.0, 360.0)
+SAFE_MARGIN_X = 20.0
+SAFE_MARGIN_Y = 20.0
 
 FONT_SIZE_RE = re.compile(r"font-size\s*:\s*([0-9.]+)\s*(px)?", re.IGNORECASE)
 FONT_FAMILY_RE = re.compile(r"font-family\s*:\s*([^;]+)", re.IGNORECASE)
@@ -78,10 +80,17 @@ def validate_svg(path: Path) -> list[str]:
         min_x, min_y, vb_w, vb_h = 0.0, 0.0, 640.0, 360.0
     else:
         min_x, min_y, vb_w, vb_h = vb
-        if vb_w < 300 or vb_h < 200:
-            errors.append(f"viewBox dimensions too small ({vb_w}x{vb_h}); expected at least 320x200")
+        if (min_x, min_y, vb_w, vb_h) != STANDARD_VIEWBOX:
+            errors.append(f"viewBox '{vb_str}' does not match standard '0 0 640 360'")
 
-    # 3. Check font sizes & font families in elements and styles
+    # 3. Check text volume / word count (readability)
+    texts = [t for t in root.iter() if t.tag.split("}")[-1].lower() in ("text", "tspan")]
+    all_text = " ".join("".join(t.itertext()) for t in texts)
+    words = all_text.split()
+    if len(words) > MAX_WORD_COUNT:
+        errors.append(f"diagram has too much text ({len(words)} words, max is {MAX_WORD_COUNT}); split or simplify")
+
+    # 4. Check font sizes & font families in elements and styles
     for elem in root.iter():
         elem_tag = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
         

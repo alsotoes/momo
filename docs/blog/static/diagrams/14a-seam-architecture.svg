@@ -13,7 +13,7 @@
       .head-bad { font-family: system-ui, -apple-system, sans-serif; font-size: 13px; font-weight: 700; fill: #dc2626; text-anchor: middle; }
       .head-good { font-family: system-ui, -apple-system, sans-serif; font-size: 13px; font-weight: 700; fill: #769267; text-anchor: middle; }
       .text-body { font-family: system-ui, -apple-system, sans-serif; font-size: 11px; fill: #2D2D2D; }
-      .text-code { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10px; fill: #769267; }
+      .text-code { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; fill: #769267; }
     </style>
   </defs>
 

@@ -1,254 +1,64 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="800" height="600" role="img" aria-labelledby="integrity-title integrity-desc">
-  <title id="integrity-title">At-Rest Integrity Pipeline: Verify-on-Read, GC, Corruption Surfacing</title>
-  <desc id="integrity-desc">Write path → hash → verify-on-read → GC tombstone sweep → corruption surfacing. Single combined bbolt metadata read, zero-escape SHA-256, x-amz-checksum-* echo. CAS key IS the checksum.</desc>
-  
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="title-08 desc-08">
+  <title id="title-08">At-Rest Storage Integrity Pipeline</title>
+  <desc id="desc-08">Dual-layer integrity verification: synchronous stream hashing on read and asynchronous periodic disk scrubbing.</desc>
+
   <defs>
-    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <path d="M0,0 L10,3.5 L0,7 Z" fill="#F47983"/>
+    <marker id="arrow-int" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L8,3 L0,6 Z" fill="#769267"/>
     </marker>
-    <marker id="arrow-success" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <path d="M0,0 L10,3.5 L0,7 Z" fill="#769267"/>
-    </marker>
-    <marker id="arrow-fail" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <path d="M0,0 L10,3.5 L0,7 Z" fill="#dc2626"/>
-    </marker>
-    
-    <filter id="drop-shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="#563A10" flood-opacity="0.15"/>
-    </filter>
-    
     <style>
-      .node { filter: url(#drop-shadow); transition: transform 0.2s ease; }
-      .node:hover { transform: scale(1.03); }
-      .title-text { font-family: 'Outfit', system-ui, -apple-system, sans-serif', sans-serif; font-size: 18px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
-      .section-title { font-family: 'Outfit', system-ui, -apple-system, sans-serif', sans-serif; font-size: 13px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
-      .label-text { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #2D2D2D; text-anchor: middle; }
-      .label-small { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #6B6B6B; text-anchor: middle; }
-      .code-text { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #F47983; }
-      .code-success { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #769267; }
-      .code-fail { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #dc2626; }
-      .code-quic { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #FFA6A6; }
-      .flow-arrow { fill: none; stroke: #F47983; stroke-width: 2; stroke-linecap: round; marker-end: url(#arrow); }
-      .flow-success { stroke: #769267; stroke-width: 2; marker-end: url(#arrow-success); }
-      .flow-fail { stroke: #dc2626; stroke-width: 2; marker-end: url(#arrow-fail); }
-      .step-box { fill: #FAFAFA; stroke: #E0E0E0; stroke-width: 1.5; rx: 6; ry: 6; }
-      .verify-box { fill: rgba(118,146,103,0.1); stroke: #769267; stroke-width: 2; }
-      .corrupt-box { fill: rgba(220,38,38,0.1); stroke: #dc2626; stroke-width: 2; }
-      .gc-box { fill: rgba(253,237,173,0.15); stroke: #FDEDAD; stroke-width: 2; }
+      .bg { fill: #FAFAFA; }
+      .title { font-family: system-ui, -apple-system, sans-serif; font-size: 16px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
+      .subtitle { font-family: system-ui, -apple-system, sans-serif; font-size: 12px; fill: #6B6B6B; text-anchor: middle; }
+      .panel { fill: #FFFFFF; stroke: #E0E0E0; stroke-width: 1.5; rx: 8; ry: 8; }
+      .head { font-family: system-ui, -apple-system, sans-serif; font-size: 13px; font-weight: 700; text-anchor: middle; }
+      .code { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; }
+      .sub { font-family: system-ui, -apple-system, sans-serif; font-size: 11px; fill: #6B6B6B; }
+      .flow { fill: none; stroke: #769267; stroke-width: 2; stroke-linecap: round; marker-end: url(#arrow-int); }
     </style>
   </defs>
-  
-  <rect width="800" height="600" fill="#FAFAFA"/>
-  
-  <!-- Title -->
-  <text x="400" y="30" class="title-text">At-Rest Integrity Pipeline</text>
-  <text x="400" y="52" class="diagram-subtitle">CAS key IS the checksum → verify-on-read free by construction → GC reconciles metadata ↔ blobs → corruption surfaced loud</text>
-  
-  <!-- ============ WRITE PATH ============ -->
-  <text x="400" y="75" class="section-title">📝 WRITE PATH: Hash = Key = Checksum</text>
-  
-  <g transform="translate(400, 95)">
-    <!-- Client -->
-    <g class="node" transform="translate(-320, 0)">
-      <rect x="-50" y="-25" width="100" height="50" rx="8" fill="#FDEDAD" stroke="#FDEDAD" stroke-width="2"/>
-      <text y="-6" text-anchor="middle" class="label-text">Client</text>
-      <text y="8" text-anchor="middle" class="label-small">PUT data</text>
-    </g>
+
+  <rect width="640" height="360" class="bg"/>
+
+  <text x="320" y="32" class="title">Dual-Layer Storage Integrity Architecture</text>
+  <text x="320" y="52" class="subtitle">Real-time verify-on-read combined with autonomous background disk scrubbing</text>
+
+  <!-- Left: In-Band Verify-on-Read -->
+  <g transform="translate(30, 75)">
+    <rect x="0" y="0" width="275" height="175" class="panel" stroke="#769267"/>
+    <text x="137" y="26" class="head" fill="#769267">Layer 1: Verify-on-Read</text>
     
-    <!-- Arrow -->
-    <path d="M-270,0 H-80" class="flow-arrow" marker-end="url(#arrow)"/>
-    
-    <!-- Hash on Ingest -->
-    <g class="node" transform="translate(-15, 0)">
-      <rect x="-100" y="-35" width="200" height="70" class="step-box" style="stroke:#F47983;"/>
-      <text x="0" y="-18" text-anchor="middle" class="section-title" fill="#F47983">HASH ON INGEST (Zero-Escape)</text>
-      <g transform="translate(-90, 0)">
-        <text y="0" text-anchor="start" class="code-text">h := sha256.New()</text>
-        <text y="16" text-anchor="start" class="code-text">tee := io.TeeReader(data, h)</text>
-        <text y="32" text-anchor="start" class="code-success">blobID = h.Sum(hashBuf[:0])  // stack buffer</text>
-        <text y="48" text-anchor="start" class="code-success">hash IS the key — zero allocation</text>
-      </g>
-    </g>
-    
-    <!-- Arrow -->
-    <path d="M115,0 H180" class="flow-arrow" marker-end="url(#arrow)"/>
-    
-    <!-- CAS Write Chokepoint -->
-    <g class="node" transform="translate(280, 0)">
-      <rect x="-80" y="-35" width="160" height="70" class="step-box" style="stroke:#563A10;"/>
-      <text x="0" y="-18" text-anchor="middle" class="section-title" fill="#563A10">CAS WRITE CHOKEPOINT</text>
-      <g transform="translate(-70, 0)">
-        <text y="0" text-anchor="start" class="code-text">Validate(blobID, data)</text>
-        <text y="16" text-anchor="start" class="code-text">Backend.Put(blobID, data)</text>
-        <text y="32" text-anchor="start" class="code-text">Meta.Put(blobID, meta)</text>
-      </g>
-    </g>
-    
-    <!-- Arrow -->
-    <path d="M390,0 H430" class="flow-success" marker-end="url(#arrow-success)"/>
-    
-    <!-- Stored -->
-    <g class="node" transform="translate(470, 0)">
-      <rect x="-50" y="-25" width="100" height="50" rx="8" fill="rgba(118,146,103,0.2)" stroke="#769267" stroke-width="2"/>
-      <text y="-6" text-anchor="middle" class="label-text">BLOB</text>
-      <text y="8" text-anchor="middle" class="label-small">blobID = SHA-256</text>
+    <g transform="translate(15, 45)">
+      <text y="15" class="code" fill="#769267">vr = verifyingReader(stream)</text>
+      <text y="35" class="sub">• Streams bytes directly to socket</text>
+      <text y="55" class="sub">• Pumps bytes through SHA-256</text>
+      <text y="80" class="code" fill="#563A10">At EOF: Digest == Hash?</text>
+      <text y="105" class="sub" fill="#769267">✓ Match: Clean io.EOF returned</text>
+      <text y="125" class="sub" fill="#dc2626">✗ Mismatch: Returns syscall.EBADMSG</text>
     </g>
   </g>
-  
-  <!-- ============ VERIFY-ON-READ ============ -->
-  <text x="400" y="190" class="section-title">🔍 VERIFY-ON-READ: Every Read Hashes &amp; Compares</text>
-  
-  <g transform="translate(400, 220)">
-    <!-- Client Request -->
-    <g class="node" transform="translate(-320, 0)">
-      <rect x="-50" y="-25" width="100" height="50" rx="8" fill="#FDEDAD" stroke="#FDEDAD" stroke-width="2"/>
-      <text y="-6" text-anchor="middle" class="label-text">Client</text>
-      <text y="8" text-anchor="middle" class="label-small">GET blobID</text>
-    </g>
+
+  <!-- Right: Out-of-Band Background Scrub -->
+  <g transform="translate(335, 75)">
+    <rect x="0" y="0" width="275" height="175" class="panel" stroke="#F47983"/>
+    <text x="137" y="26" class="head" fill="#F47983">Layer 2: Background Scrub</text>
     
-    <!-- Arrow -->
-    <path d="M-270,0 H-180" class="flow-arrow" marker-end="url(#arrow)"/>
-    
-    <!-- Backend Fetch -->
-    <g class="node" transform="translate(-100, 0)">
-      <rect x="-70" y="-30" width="140" height="60" class="step-box" style="stroke:#FFA6A6;"/>
-      <text x="0" y="-12" text-anchor="middle" class="section-title" fill="#FFA6A6">BACKEND FETCH</text>
-      <g transform="translate(-60, 0)">
-        <text y="0" text-anchor="start" class="code-peach">data, err := Backend.Get(blobID)</text>
-        <text y="16" text-anchor="start" class="code-peach">// ciphertext or plaintext</text>
-      </g>
-    </g>
-    
-    <!-- Arrow -->
-    <path d="M-30,0 H30" class="flow-arrow" marker-end="url(#arrow)"/>
-    
-    <!-- Verify-on-Read (CENTRAL) -->
-    <g class="node verify-box" transform="translate(130, 0)">
-      <rect x="-100" y="-35" width="200" height="70" rx="8"/>
-      <text x="0" y="-18" text-anchor="middle" class="section-title" fill="#769267">VERIFY-ON-READ (Central)</text>
-      <g transform="translate(-90, 0)">
-        <text y="0" text-anchor="start" class="code-success">h := sha256.New()</text>
-        <text y="16" text-anchor="start" class="code-success">io.Copy(h, data)</text>
-        <text y="32" text-anchor="start" class="code-success">if BlobID(h.Sum(nil)) != blobID {</text>
-        <text y="48" text-anchor="start" class="code-fail">  return ErrCorruptionDetected  // 🛡 Sentinel</text>
-        <text y="56" text-anchor="start" class="code-success">}</text>
-      </g>
-    </g>
-    
-    <!-- Arrow -->
-    <path d="M230,0 H280" class="flow-success" marker-end="url(#arrow-success)"/>
-    
-    <!-- Checksum Echo (S3) -->
-    <g class="node" transform="translate(350, 0)">
-      <rect x="-70" y="-30" width="140" height="60" class="step-box" style="stroke:#769267;"/>
-      <text x="0" y="-12" text-anchor="middle" class="section-title" fill="#769267">S3 CHECKSUM ECHO</text>
-      <g transform="translate(-60, 0)">
-        <text y="0" text-anchor="start" class="code-success">w.Header().Set("x-amz-checksum-sha256",</text>
-        <text y="16" text-anchor="start" class="code-success">  meta.ChecksumSHA256)</text>
-      </g>
-    </g>
-    
-    <!-- Arrow -->
-    <path d="M420,0 H480" class="flow-success" marker-end="url(#arrow-success)"/>
-    
-    <!-- Client Verify -->
-    <g class="node" transform="translate(530, 0)">
-      <rect x="-50" y="-25" width="100" height="50" rx="8" fill="#FDEDAD" stroke="#FDEDAD" stroke-width="2"/>
-      <text y="-6" text-anchor="middle" class="label-text">Client</text>
-      <text y="8" text-anchor="middle" class="label-small">Verify hash</text>
+    <g transform="translate(15, 45)">
+      <text y="15" class="code" fill="#F47983">StartScrub(Interval: 1 hour)</text>
+      <text y="35" class="sub">• Audits cold unread disk blocks</text>
+      <text y="55" class="sub">• Scans Bbolt bucketObjects</text>
+      <text y="80" class="code" fill="#563A10">On Corruption Detected:</text>
+      <text y="105" class="sub" fill="#dc2626">• Move key to bucketQuarantine</text>
+      <text y="125" class="sub" fill="#769267">• Signal R2 Self-Heal Rebuild</text>
     </g>
   </g>
-  
-  <!-- ============ CORRUPTION PATH ============ -->
-  <text x="400" y="320" class="section-title">💥 CORRUPTION DETECTED → SURFACE LOUD (Sentinel)</text>
-  
-  <g transform="translate(400, 350)">
-    <g class="node corrupt-box" transform="translate(0, 0)">
-      <rect x="-180" y="-5" width="360" height="100" rx="10"/>
-      <text x="0" y="15" text-anchor="middle" class="section-title" fill="#dc2626">⚠️ HASH MISMATCH — CORRUPTION DETECTED</text>
-      <g transform="translate(-170, 30)">
-        <text y="0" text-anchor="start" class="code-fail">if BlobID(h.Sum(nil)) != blobID {</text>
-        <text y="16" text-anchor="start" class="code-fail">  log.Printf("CORRUPTION: blob %s mismatch", blobID)</text>
-        <text y="32" text-anchor="start" class="code-fail">  markReplicaSuspect(replica)  // → R2 degraded-read</text>
-        <text y="48" text-anchor="start" class="code-fail">  return ErrCorruptionDetected  // fail loud</text>
-        <text y="56" text-anchor="start" class="code-fail">}</text>
-      </g>
-    </g>
-    
-    <!-- Flow to R2 -->
-    <path d="M0,95 V130" class="flow-fail" marker-end="url(#arrow-fail)"/>
-    
-    <g class="node" transform="translate(0, 135)">
-      <rect x="-80" y="-20" width="160" height="40" rx="6" fill="rgba(220,38,38,0.15)" stroke="#dc2626" stroke-width="2"/>
-      <text x="0" y="5" text-anchor="middle" class="code-fail">→ R2: Degraded-Read Self-Heal</text>
-      <text x="0" y="15" text-anchor="middle" class="label-small">Fetch from healthy replica, heal bad one</text>
-    </g>
-  </g>
-  
-  <!-- ============ GC &amp; METADATA RECONCILIATION ============ -->
-  <text x="400" y="450" class="section-title">🗑 GC &amp; METADATA RECONCILIATION</text>
-  
-  <g transform="translate(400, 480)">
-    <!-- Tombstone -->
-    <g class="node" transform="translate(-250, 0)">
-      <rect x="-80" y="-30" width="160" height="60" class="step-box" style="stroke:#F47983;"/>
-      <text x="0" y="-12" text-anchor="middle" class="section-title" fill="#F47983">TOMBSTONE</text>
-      <g transform="translate(-70, 0)">
-        <text y="0" text-anchor="start" class="code-text">DeleteObject →</text>
-        <text y="16" text-anchor="start" class="code-text">meta.Tombstone = true</text>
-        <text y="32" text-anchor="start" class="code-text">refcount--</text>
-      </g>
-    </g>
-    
-    <!-- Arrow -->
-    <path d="M-170,0 H-30" class="flow-arrow" marker-end="url(#arrow)"/>
-    
-    <!-- Refcount Sweep -->
-    <g class="node gc-box" transform="translate(50, 0)">
-      <rect x="-100" y="-30" width="200" height="60" rx="8"/>
-      <text x="0" y="-12" text-anchor="middle" class="section-title" fill="#FDEDAD">GC SWEEP</text>
-      <g transform="translate(-90, 0)">
-        <text y="0" text-anchor="start" class="code-text" style="fill:#563A10;">ApplyTombstone(blobID)</text>
-        <text y="16" text-anchor="start" class="code-text" style="fill:#563A10;">if refcount == 0 → Backend.Delete(blobID)</text>
-        <text y="32" text-anchor="start" class="code-success">ts.Delete failures surfaced</text>
-      </g>
-    </g>
-    
-    <!-- Arrow -->
-    <path d="M150,0 H230" class="flow-success" marker-end="url(#arrow-success)"/>
-    
-    <!-- Metadata Reconciliation -->
-    <g class="node gc-box" transform="translate(330, 0)">
-      <rect x="-100" y="-30" width="200" height="60" rx="8"/>
-      <text x="0" y="-12" text-anchor="middle" class="section-title" fill="#FDEDAD">RECONCILE</text>
-      <g transform="translate(-90, 0)">
-        <text y="0" text-anchor="start" class="code-success">StartGC() guarded (no double)</text>
-        <text y="16" text-anchor="start" class="code-success">bbolt meta ↔ blob files</text>
-        <text y="32" text-anchor="start" class="code-success">Orphaned blobs → delete</text>
-        <text y="48" text-anchor="start" class="code-success">Missing blobs → alert</text>
-      </g>
-    </g>
-  </g>
-  
-  <!-- ============ KEY PRINCIPLES ============ -->
-  <g transform="translate(50, 540)">
-    <rect x="0" y="0" width="700" height="50" rx="8" class="verify-box"/>
-    <text x="350" y="18" text-anchor="middle" class="section-title" fill="#769267">KEY PRINCIPLES (Bolt + Sentinel)</text>
-    <g transform="translate(20, 28)">
-      <text y="0" text-anchor="start" class="code-success">⚡ Bolt: Single combined bbolt read (3→1), zero-escape SHA-256, cached checksums on GET</text>
-      <text y="18" text-anchor="start" class="code-success">🛡 Sentinel: Verify-on-read compiled-in (Rule 74), CRLF injection fixed, path traversal blocked</text>
-      <text y="36" text-anchor="start" class="code-success">🔗 x-amz-checksum-* echoed on S3 → client verifies without trusting server</text>
-    </g>
-  </g>
-  
-  <!-- Bolt/Sentinel badges -->
-  <g transform="translate(620, 15)">
-    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(244,121,131,0.15)" stroke="#F47983" stroke-width="1"/>
-    <text x="42.5" y="16" text-anchor="middle" font-family="'JetBrains Mono', ui-monospace, monospace" font-size="10px" font-weight="700" fill="#F47983">⚡ BOLT</text>
-  </g>
-  <g transform="translate(710, 15)">
-    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(118,146,103,0.15)" stroke="#769267" stroke-width="1"/>
-    <text x="42.5" y="16" text-anchor="middle" font-family="'JetBrains Mono', ui-monospace, monospace" font-size="10px" font-weight="700" fill="#769267">🛡 SENTINEL</text>
+
+  <!-- Bottom Invariant Banner -->
+  <g transform="translate(30, 265)">
+    <rect x="0" y="0" width="580" height="70" rx="8" ry="8" fill="#FEFEF9" stroke="#E8DFD8" stroke-width="1.5"/>
+    <text x="20" y="24" style="font-family:system-ui,sans-serif;font-size:12px;font-weight:700;fill:#563A10;">🛡 Sentinel Invariant: Zero Silent Corruption</text>
+    <text x="20" y="44" style="font-family:system-ui,sans-serif;font-size:11px;fill:#2D2D2D;">Corrupted data can never conclude with a clean EOF. The network connection is torn down,</text>
+    <text x="20" y="58" style="font-family:system-ui,sans-serif;font-size:11px;fill:#2D2D2D;">preventing bad bytes from ever reaching client application memory.</text>
   </g>
 </svg>

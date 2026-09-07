@@ -16,7 +16,7 @@
       .zone-header { font-family: system-ui, -apple-system, sans-serif; font-size: 13px; font-weight: 700; text-anchor: middle; }
       .step-rect { fill: #FEFEF9; stroke: #E0E0E0; stroke-width: 1; rx: 6; ry: 6; }
       .step-text { font-family: system-ui, -apple-system, sans-serif; font-size: 11px; font-weight: 600; fill: #2D2D2D; }
-      .step-code { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10px; fill: #769267; }
+      .step-code { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; fill: #769267; }
       .flow-line { fill: none; stroke: #769267; stroke-width: 2; stroke-linecap: round; marker-end: url(#arrow-get); }
     </style>
   </defs>
@@ -41,13 +41,13 @@
     <text x="25" y="145" class="step-text">2. Read Envelope Metadata</text>
     <text x="25" y="165" class="step-code">WrappedCEK = bbolt.Get(metaKey)</text>
 
-    <text x="132" y="245" style="font-family:system-ui,sans-serif;font-size:10px;fill:#563A10;text-anchor:middle;">Server cannot inspect payload</text>
+    <text x="132" y="245" style="font-family:system-ui,sans-serif;font-size: 11px;fill:#563A10;text-anchor:middle;">Server cannot inspect payload</text>
   </g>
 
   <!-- Network Boundary (Center Arrow) -->
   <path d="M295, 195 H345" class="flow-line"/>
-  <text x="320" y="172" style="font-family:ui-monospace,monospace;font-size:10px;fill:#6B6B6B;text-anchor:middle;">HTTP 200</text>
-  <text x="320" y="186" style="font-family:ui-monospace,monospace;font-size:10px;fill:#769267;text-anchor:middle;">Stream+Key</text>
+  <text x="320" y="172" style="font-family:ui-monospace,monospace;font-size: 11px;fill:#6B6B6B;text-anchor:middle;">HTTP 200</text>
+  <text x="320" y="186" style="font-family:ui-monospace,monospace;font-size: 11px;fill:#769267;text-anchor:middle;">Stream+Key</text>
 
   <!-- Client Zone (Right) -->
   <g transform="translate(345, 65)">
@@ -64,6 +64,6 @@
     <text x="25" y="145" class="step-text">4. Stream Decrypt Ciphertext</text>
     <text x="25" y="165" class="step-code">Plaintext = Open(CEK, Ciphertext)</text>
 
-    <text x="132" y="245" style="font-family:system-ui,sans-serif;font-size:10px;fill:#769267;text-anchor:middle;">Client verifies GCM auth tag</text>
+    <text x="132" y="245" style="font-family:system-ui,sans-serif;font-size: 11px;fill:#769267;text-anchor:middle;">Client verifies GCM auth tag</text>
   </g>
 </svg>

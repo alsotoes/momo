@@ -79,7 +79,7 @@ RADOS CRUSH models massive heterogeneous failure domains. We needed a *lite* ver
 
 ### Overview
 
-![CRUSH-lite placement algorithm overview](/diagrams/01-crush-placement.svg)
+{{< diagram src="/diagrams/01-crush-placement.svg" alt="CRUSH-lite placement algorithm overview" caption="CRUSH-lite placement algorithm overview" >}}
 
 ### Detail: Scoring Algorithm
 

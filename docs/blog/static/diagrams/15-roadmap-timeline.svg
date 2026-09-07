@@ -1,226 +1,80 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="800" height="600" role="img" aria-labelledby="road-title road-desc">
-  <title id="road-title">Momo Roadmap: R1-R6 Phases with Dependencies</title>
-  <desc id="road-desc">Production readiness roadmap: R1 Failure Domains → R2 Degraded Read/Self-Heal → R3 Write Durability → R4 momofs FUSE → R5 Metrics → R6 Metadata HA. Dependencies shown as arrows.</desc>
-  
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="title-15 desc-15">
+  <title id="title-15">Momo Production Readiness Roadmap: R1-R6</title>
+  <desc id="desc-15">Milestone progression of momo from failure-domain placement (R1) through metadata catalog high availability (R6).</desc>
+
   <defs>
-    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <path d="M0,0 L10,3.5 L0,7 Z" fill="#F47983"/>
-    </marker>
-    <marker id="arrow-success" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <path d="M0,0 L10,3.5 L0,7 Z" fill="#769267"/>
-    </marker>
-    <marker id="arrow-depends" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <path d="M0,0 L10,3.5 L0,7 Z" fill="#FCC9B9"/>
-    </marker>
-    
-    <filter id="drop-shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="#563A10" flood-opacity="0.15"/>
-    </filter>
-    
-    <linearGradient id="done-grad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:rgba(118,146,103,0.2)"/>
-      <stop offset="100%" style="stop-color:rgba(118,146,103,0.1)"/>
-    </linearGradient>
-    
-    <linearGradient id="current-grad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:rgba(244,121,131,0.2)"/>
-      <stop offset="100%" style="stop-color:rgba(244,121,131,0.1)"/>
-    </linearGradient>
-    
-    <linearGradient id="planned-grad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:rgba(252,201,185,0.15)"/>
-      <stop offset="100%" style="stop-color:rgba(252,201,185,0.08)"/>
-    </linearGradient>
-    
     <style>
-      .node { filter: url(#drop-shadow); transition: transform 0.2s ease; }
-      .title-text { font-family: 'Outfit', system-ui, -apple-system, sans-serif', sans-serif; font-size: 18px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
-      .section-title { font-family: 'Outfit', system-ui, -apple-system, sans-serif', sans-serif; font-size: 13px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
-      .label-text { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #2D2D2D; text-anchor: middle; }
-      .label-small { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #6B6B6B; text-anchor: middle; }
-      .code-text { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #F47983; }
-      .code-success { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #769267; }
-      .code-fail { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; fill: #dc2626; }
-      .flow-arrow { fill: none; stroke: #F47983; stroke-width: 2; stroke-linecap: round; marker-end: url(#arrow); }
-      .flow-depends { fill: none; stroke: #FCC9B9; stroke-width: 1.5; stroke-dasharray: 4,3; marker-end: url(#arrow-depends); }
-      .r-done { fill: url(#done-grad); stroke: #769267; stroke-width: 2; }
-      .r-current { fill: url(#current-grad); stroke: #F47983; stroke-width: 2; }
-      .r-planned { fill: url(#planned-grad); stroke: #FCC9B9; stroke-width: 2; }
-      .status-badge { font-family: 'JetBrains Mono', ui-monospace, monospace', monospace; font-size: 10px; font-weight: 700; rx: 4; ry: 4; }
+      .bg { fill: #FAFAFA; }
+      .title { font-family: system-ui, -apple-system, sans-serif; font-size: 16px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
+      .subtitle { font-family: system-ui, -apple-system, sans-serif; font-size: 12px; fill: #6B6B6B; text-anchor: middle; }
+      .mile-card { fill: #FFFFFF; stroke: #769267; stroke-width: 1.5; rx: 6; ry: 6; }
+      .head { font-family: system-ui, -apple-system, sans-serif; font-size: 12px; font-weight: 700; fill: #769267; text-anchor: middle; }
+      .sub { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10px; fill: #563A10; text-anchor: middle; }
+      .badge { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 10px; font-weight: 700; text-anchor: middle; }
     </style>
   </defs>
-  
-  <rect width="800" height="600" fill="#FAFAFA"/>
-  
-  <!-- Title -->
-  <text x="400" y="30" class="title-text">Momo Roadmap: R1 → R6</text>
-  <text x="400" y="52" class="diagram-subtitle">Production readiness stack — each phase builds on the last, dependencies explicit</text>
-  
-  <!-- ============ TIMELINE ============ -->
-  <g transform="translate(400, 100)">
-    <!-- R1: Failure Domains -->
-    <g class="node r-done" transform="translate(-340, -50)">
-      <rect x="-120" y="-5" width="240" height="100" rx="8"/>
-      <text x="0" y="12" text-anchor="middle" class="section-title" fill="#769267">R1: FAILURE DOMAINS</text>
-      <text x="0" y="30" text-anchor="middle" class="label-small">Placement awareness: rack/zone/DC</text>
-      <text x="0" y="44" text-anchor="middle" class="label-small">Replicas never share domain</text>
-      <g transform="translate(-55, 65)">
-        <rect x="0" y="0" width="45" height="18" rx="3" fill="#769267"/>
-        <text x="22.5" y="13" text-anchor="middle" class="status-badge" fill="white">DONE</text>
-      </g>
-      <g transform="translate(10, 65)">
-        <rect x="0" y="0" width="110" height="18" rx="3" fill="#563A10"/>
-        <text x="55" y="13" text-anchor="middle" class="status-badge" fill="white">019, 020</text>
-      </g>
-    </g>
-    
-    <!-- Arrow R1 → R2 -->
-    <path d="M-100,0 H-30" class="flow-arrow" marker-end="url(#arrow)"/>
-    
-    <!-- R2: Degraded Read / Self-Heal -->
-    <g class="node r-done" transform="translate(-60, -50)">
-      <rect x="-120" y="-5" width="240" height="100" rx="8"/>
-      <text x="0" y="12" text-anchor="middle" class="section-title" fill="#769267">R2: DEGRADED READ / SELF-HEAL</text>
-      <text x="0" y="30" text-anchor="middle" class="label-small">Corruption detection → fetch healthy replica</text>
-      <text x="0" y="44" text-anchor="middle" class="label-small">Heal bad replica, surface loud</text>
-      <g transform="translate(-55, 65)">
-        <rect x="0" y="0" width="45" height="18" rx="3" fill="#769267"/>
-        <text x="22.5" y="13" text-anchor="middle" class="status-badge" fill="white">DONE</text>
-      </g>
-      <g transform="translate(10, 65)">
-        <rect x="0" y="0" width="110" height="18" rx="3" fill="#563A10"/>
-        <text x="55" y="13" text-anchor="middle" class="status-badge" fill="white">020, 021</text>
-      </g>
-    </g>
-    
-    <!-- Arrow R2 → R3 -->
-    <path d="M180,0 H250" class="flow-arrow" marker-end="url(#arrow)"/>
-    
-    <!-- R3: Write Durability -->
-    <g class="node r-current" transform="translate(250, -50)">
-      <rect x="-120" y="-5" width="240" height="100" rx="8"/>
-      <text x="0" y="12" text-anchor="middle" class="section-title" fill="#F47983">R3: WRITE DURABILITY</text>
-      <text x="0" y="30" text-anchor="middle" class="label-small">fsync-before-ack, survivor quorum</text>
-      <text x="0" y="44" text-anchor="middle" class="label-small">Group commit, read-your-writes</text>
-      <g transform="translate(-55, 65)">
-        <rect x="0" y="0" width="60" height="18" rx="3" fill="#F47983"/>
-        <text x="30" y="13" text-anchor="middle" class="status-badge" fill="white">CURRENT</text>
-      </g>
-      <g transform="translate(10, 65)">
-        <rect x="0" y="0" width="110" height="18" rx="3" fill="#563A10"/>
-        <text x="55" y="13" text-anchor="middle" class="status-badge" fill="white">021, 022</text>
-      </g>
-    </g>
-    
-    <!-- Arrow R3 → R4 -->
-    <path d="M490,0 H560" class="flow-arrow" marker-end="url(#arrow)"/>
-    
-    <!-- R4: momofs FUSE -->
-    <g class="node r-planned" transform="translate(560, -50)">
-      <rect x="-120" y="-5" width="240" height="100" rx="8"/>
-      <text x="0" y="12" text-anchor="middle" class="section-title" fill="#FCC9B9">R4: momofs FUSE</text>
-      <text x="0" y="30" text-anchor="middle" class="label-small">POSIX mount via FUSE (bazil.org/fuse)</text>
-      <text x="0" y="44" text-anchor="middle" class="label-small">Per-handle buffered writes, clean unmount</text>
-      <g transform="translate(-55, 65)">
-        <rect x="0" y="0" width="65" height="18" rx="3" fill="#FCC9B9"/>
-        <text x="32.5" y="13" text-anchor="middle" class="status-badge" fill="white">PLANNED</text>
-      </g>
-      <g transform="translate(10, 65)">
-        <rect x="0" y="0" width="110" height="18" rx="3" fill="#563A10"/>
-        <text x="55" y="13" text-anchor="middle" class="status-badge" fill="white">022, 023</text>
-      </g>
-    </g>
-    
-    <!-- Dependency arrows from R1/R2/R3 to R4 -->
-    <path d="M-100,-50 Q-100,-100 560,-50" class="flow-depends" marker-end="url(#arrow-depends)" style="opacity:0.5;"/>
-    <path d="M60,-50 Q60,-100 560,-50" class="flow-depends" marker-end="url(#arrow-depends)" style="opacity:0.5;"/>
-    <path d="M490,-50 Q490,-100 560,-50" class="flow-depends" marker-end="url(#arrow-depends)" style="opacity:0.5;"/>
+
+  <rect width="640" height="360" class="bg"/>
+
+  <text x="320" y="32" class="title">Production Readiness Milestones: R1 - R6</text>
+  <text x="320" y="52" class="subtitle">Systematic engineering progression from durability foundations to distributed metadata HA</text>
+
+  <!-- Row 1: R1, R2, R3 -->
+  <g transform="translate(30, 75)">
+    <rect x="0" y="0" width="180" height="85" class="mile-card"/>
+    <text x="90" y="24" class="head">R1: Failure Domains</text>
+    <text x="90" y="44" class="sub">CRUSH-lite Rack/DC Diversity</text>
+    <rect x="40" y="54" width="100" height="20" rx="4" fill="rgba(118,146,103,0.15)"/>
+    <text x="90" y="68" class="badge" fill="#769267">✓ SHIPPED</text>
   </g>
-  
-  <!-- ============ PHASE 2: R5, R6 ============ -->
-  <g transform="translate(400, 300)">
-    <!-- R5: Metrics/Observability -->
-    <g class="node r-planned" transform="translate(-340, 0)">
-      <rect x="-120" y="-5" width="240" height="120" rx="8"/>
-      <text x="0" y="12" text-anchor="middle" class="section-title" fill="#FCC9B9">R5: METRICS / OBSERVABILITY</text>
-      <text x="0" y="30" text-anchor="middle" class="label-small">Prometheus /metrics, MetricsHook</text>
-      <text x="0" y="44" text-anchor="middle" class="label-small">Multi-window SLO burn-rate alerting</text>
-      <text x="0" y="58" text-anchor="middle" class="label-small">Continuous profiling (pprof file-based)</text>
-      <text x="0" y="72" text-anchor="middle" class="label-small">RUM events, CDP integration</text>
-      <g transform="translate(-55, 90)">
-        <rect x="0" y="0" width="65" height="18" rx="3" fill="#FCC9B9"/>
-        <text x="32.5" y="13" text-anchor="middle" class="status-badge" fill="white">PLANNED</text>
-      </g>
-      <g transform="translate(10, 90)">
-        <rect x="0" y="0" width="110" height="18" rx="3" fill="#563A10"/>
-        <text x="55" y="13" text-anchor="middle" class="status-badge" fill="white">025, 026, 032</text>
-      </g>
-    </g>
-    
-    <!-- Arrow R5 → R6 -->
-    <path d="M-100,50 H-30" class="flow-arrow" marker-end="url(#arrow)"/>
-    
-    <!-- R6: Metadata HA + Backup/Recovery -->
-    <g class="node r-planned" transform="translate(60, 0)">
-      <rect x="-120" y="-5" width="240" height="120" rx="8"/>
-      <text x="0" y="12" text-anchor="middle" class="section-title" fill="#FFA6A6">R6: METADATA HA + BACKUP/RECOVERY</text>
-      <text x="0" y="30" text-anchor="middle" class="label-small">Distributed metadata catalog</text>
-      <text x="0" y="44" text-anchor="middle" class="label-small">Snapshot/restore, point-in-time recovery</text>
-      <text x="0" y="58" text-anchor="middle" class="label-small">Cross-region replication</text>
-      <text x="0" y="72" text-anchor="middle" class="label-small">Automated failover</text>
-      <g transform="translate(-55, 90)">
-        <rect x="0" y="0" width="65" height="18" rx="3" fill="#FFA6A6"/>
-        <text x="32.5" y="13" text-anchor="middle" class="status-badge" fill="white">PLANNED</text>
-      </g>
-      <g transform="translate(10, 90)">
-        <rect x="0" y="0" width="110" height="18" rx="3" fill="#563A10"/>
-        <text x="55" y="13" text-anchor="middle" class="status-badge" fill="white">028, 034</text>
-      </g>
-    </g>
-    
-    <!-- Arrow R5 → R6 -->
-    <path d="M180,50 H250" class="flow-arrow" marker-end="url(#arrow)"/>
-    
-    <!-- R6 also depends on R3, R4 -->
-    <path d="M490,-50 Q490,0 60,0" class="flow-depends" marker-end="url(#arrow-depends)" style="opacity:0.4;"/>
-    <path d="M490,-50 Q490,0 60,0" class="flow-depends" marker-end="url(#arrow-depends)" style="opacity:0.4;"/>
+
+  <g transform="translate(230, 75)">
+    <rect x="0" y="0" width="180" height="85" class="mile-card"/>
+    <text x="90" y="24" class="head">R2: Self-Heal Rebuild</text>
+    <text x="90" y="44" class="sub">Degraded Reads &amp; Recovery</text>
+    <rect x="40" y="54" width="100" height="20" rx="4" fill="rgba(118,146,103,0.15)"/>
+    <text x="90" y="68" class="badge" fill="#769267">✓ SHIPPED</text>
   </g>
-  
-  <!-- ============ DEPENDENCY MAP ============ -->
-  <g transform="translate(50, 480)">
-    <text x="0" y="0" class="section-title" fill="#2D2D2D" text-anchor="start">DEPENDENCY MAP</text>
-    <g transform="translate(0, 20)">
-      <text y="0" text-anchor="start" class="code-success" style="font-size:10px;">R1 (Failure Domains) ──► R2 (Self-Heal) ──► R3 (Durability) ──► R4 (FUSE) ──► R5 (Metrics) ──► R6 (Metadata HA)</text>
-      <text y="18" text-anchor="start" class="code-text" style="font-size:10px; fill:#FCC9B9;">         │              │              │              │              │</text>
-      <text y="36" text-anchor="start" class="code-text" style="font-size:10px; fill:#FCC9B9;">         └──────────────┴──────────────┴──────────────┴──────────────► R6 (also needs R3, R4, R5)</text>
-      <text y="54" text-anchor="start" class="code-text" style="font-size:10px; fill:#F47983;">         R0: CAS, CRUSH, P2P, S3 Gateway, Encryption — Foundation (COMPLETE)</text>
-    </g>
+
+  <g transform="translate(430, 75)">
+    <rect x="0" y="0" width="180" height="85" class="mile-card"/>
+    <text x="90" y="24" class="head">R3: Write Durability</text>
+    <text x="90" y="44" class="sub">fsync-Before-Ack &amp; Quorum</text>
+    <rect x="40" y="54" width="100" height="20" rx="4" fill="rgba(118,146,103,0.15)"/>
+    <text x="90" y="68" class="badge" fill="#769267">✓ SHIPPED</text>
   </g>
-  
-  <!-- ============ STATUS LEGEND ============ -->
-  <g transform="translate(400, 550)">
-    <g transform="translate(-200, 0)">
-      <rect x="0" y="0" width="100" height="24" rx="4" fill="rgba(118,146,103,0.2)" stroke="#769267" stroke-width="2"/>
-      <text x="50" y="16" text-anchor="middle" font-family="'JetBrains Mono', ui-monospace, monospace" font-size="10px" font-weight="700" fill="#769267">DONE</text>
-    </g>
-    <g transform="translate(-50, 0)">
-      <rect x="0" y="0" width="100" height="24" rx="4" fill="rgba(244,121,131,0.2)" stroke="#F47983" stroke-width="2"/>
-      <text x="50" y="16" text-anchor="middle" font-family="'JetBrains Mono', ui-monospace, monospace" font-size="10px" font-weight="700" fill="#F47983">CURRENT</text>
-    </g>
-    <g transform="translate(100, 0)">
-      <rect x="0" y="0" width="100" height="24" rx="4" fill="rgba(252,201,185,0.15)" stroke="#FCC9B9" stroke-width="2"/>
-      <text x="50" y="16" text-anchor="middle" font-family="'JetBrains Mono', ui-monospace, monospace" font-size="10px" font-weight="700" fill="#FCC9B9">PLANNED</text>
-    </g>
+
+  <!-- Row 2: R4, R5, R6 -->
+  <g transform="translate(30, 180)">
+    <rect x="0" y="0" width="180" height="85" class="mile-card"/>
+    <text x="90" y="24" class="head">R4: momofs FUSE</text>
+    <text x="90" y="44" class="sub">Mountable POSIX File Layer</text>
+    <rect x="40" y="54" width="100" height="20" rx="4" fill="rgba(118,146,103,0.15)"/>
+    <text x="90" y="68" class="badge" fill="#769267">✓ SHIPPED</text>
   </g>
-  
-  <!-- Bolt/Sentinel badges -->
-  <g transform="translate(620, 15)">
-    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(244,121,131,0.15)" stroke="#F47983" stroke-width="1"/>
-    <text x="42.5" y="16" text-anchor="middle" font-family="'JetBrains Mono', ui-monospace, monospace" font-size="10px" font-weight="700" fill="#F47983">⚡ BOLT</text>
+
+  <g transform="translate(230, 180)">
+    <rect x="0" y="0" width="180" height="85" class="mile-card"/>
+    <text x="90" y="24" class="head">R5: Observability</text>
+    <text x="90" y="44" class="sub">Per-Node Prometheus Exporter</text>
+    <rect x="40" y="54" width="100" height="20" rx="4" fill="rgba(118,146,103,0.15)"/>
+    <text x="90" y="68" class="badge" fill="#769267">✓ SHIPPED</text>
   </g>
-  <g transform="translate(710, 15)">
-    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(118,146,103,0.15)" stroke="#769267" stroke-width="1"/>
-    <text x="42.5" y="16" text-anchor="middle" font-family="'JetBrains Mono', ui-monospace, monospace" font-size="10px" font-weight="700" fill="#769267">🛡 SENTINEL</text>
+
+  <g transform="translate(430, 180)">
+    <rect x="0" y="0" width="180" height="85" class="mile-card"/>
+    <text x="90" y="24" class="head">R6: Metadata HA</text>
+    <text x="90" y="44" class="sub">256-Shard Quorum Ring + PITR</text>
+    <rect x="40" y="54" width="100" height="20" rx="4" fill="rgba(118,146,103,0.15)"/>
+    <text x="90" y="68" class="badge" fill="#769267">✓ SHIPPED</text>
+  </g>
+
+  <!-- Bottom Forward Horizon Banner -->
+  <g transform="translate(30, 280)">
+    <rect x="0" y="0" width="580" height="55" rx="6" ry="6" fill="#FEFEF9" stroke="#E8DFD8"/>
+    <text x="20" y="24" style="font-family:system-ui,sans-serif;font-size:11px;font-weight:600;fill:#563A10;">Forward Horizon (R7–R11):</text>
+    <text x="180" y="24" style="font-family:system-ui,sans-serif;font-size:11px;fill:#2D2D2D;">Multi-tenancy, Metadata backup/DR, Admin CLI, and automated rebalance.</text>
+    <text x="20" y="40" style="font-family:ui-monospace,monospace;font-size:11px;fill:#6B6B6B;">All production milestones verified through continuous benchmark gates and self-healing tests.</text>
   </g>
 </svg>

@@ -33,7 +33,7 @@ implements it with its own guarantees:
 | `s3` | remote object store over SigV4, TLS-gated (see [011](011-s3-https-tls-enforcement.md)) |
 | `raw` | block-device direct I/O |
 
-![Pluggable storage backends architecture](/diagrams/04-storage-backends.svg)
+{{< diagram src="/diagrams/04-storage-backends.svg" alt="Pluggable storage backends architecture" caption="Pluggable storage backends architecture" >}}
 
 ## The trap this avoids
 
