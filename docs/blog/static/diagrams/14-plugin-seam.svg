@@ -5,17 +5,17 @@
   
   <defs>
     <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <path d="M0,0 L10,3.5 L0,7 Z" fill="var(--momo)"/>
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="#F47983"/>
     </marker>
     <marker id="arrow-success" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <path d="M0,0 L10,3.5 L0,7 Z" fill="var(--leaf)"/>
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="#769267"/>
     </marker>
     <marker id="arrow-fail" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
       <path d="M0,0 L10,3.5 L0,7 Z" fill="#dc2626"/>
     </marker>
     
     <filter id="drop-shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="var(--bark)" flood-opacity="0.15"/>
+      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="#563A10" flood-opacity="0.15"/>
     </filter>
     
     <linearGradient id="core-grad" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -30,23 +30,23 @@
     
     <style>
       .node { filter: url(#drop-shadow); transition: transform 0.2s ease; }
-      .title-text { font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; fill: var(--diagram-text); text-anchor: middle; }
-      .section-title { font-family: 'Outfit', sans-serif; font-size: 13px; font-weight: 700; fill: var(--diagram-text); text-anchor: middle; }
-      .label-text { font-family: 'JetBrains Mono', monospace; font-size: 10px; fill: var(--diagram-text); text-anchor: middle; }
-      .label-small { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--diagram-text-muted); text-anchor: middle; }
-      .code-text { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--momo); }
-      .code-success { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--leaf); }
+      .title-text { font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
+      .section-title { font-family: 'Outfit', sans-serif; font-size: 13px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
+      .label-text { font-family: 'JetBrains Mono', monospace; font-size: 10px; fill: #2D2D2D; text-anchor: middle; }
+      .label-small { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #6B6B6B; text-anchor: middle; }
+      .code-text { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #F47983; }
+      .code-success { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #769267; }
       .code-fail { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #dc2626; }
-      .flow-arrow { fill: none; stroke: var(--momo); stroke-width: 2; stroke-linecap: round; marker-end: url(#arrow); }
-      .flow-success { stroke: var(--leaf); stroke-width: 2; marker-end: url(#arrow-success); }
-      .core-box { fill: url(#core-grad); stroke: var(--leaf); stroke-width: 2; rx: 10; ry: 10; }
-      .seam-box { fill: url(#seam-grad); stroke: var(--sakura); stroke-width: 2; rx: 10; ry: 10; }
-      .impl-box { fill: var(--diagram-bg); stroke: var(--momo); stroke-width: 1.5; rx: 8; ry: 8; filter: url(#drop-shadow); }
-      .policy-box { fill: rgba(253,237,173,0.15); stroke: var(--cream); stroke-width: 2; rx: 8; ry: 8; }
+      .flow-arrow { fill: none; stroke: #F47983; stroke-width: 2; stroke-linecap: round; marker-end: url(#arrow); }
+      .flow-success { stroke: #769267; stroke-width: 2; marker-end: url(#arrow-success); }
+      .core-box { fill: url(#core-grad); stroke: #769267; stroke-width: 2; rx: 10; ry: 10; }
+      .seam-box { fill: url(#seam-grad); stroke: #FCC9B9; stroke-width: 2; rx: 10; ry: 10; }
+      .impl-box { fill: #FAFAFA; stroke: #F47983; stroke-width: 1.5; rx: 8; ry: 8; filter: url(#drop-shadow); }
+      .policy-box { fill: rgba(253,237,173,0.15); stroke: #FDEDAD; stroke-width: 2; rx: 8; ry: 8; }
     </style>
   </defs>
   
-  <rect width="800" height="500" fill="var(--diagram-bg)"/>
+  <rect width="800" height="500" fill="#FAFAFA"/>
   
   <!-- Title -->
   <text x="400" y="30" class="title-text">Compile-Time Seam Architecture (Rule 74)</text>
@@ -55,7 +55,7 @@
   <!-- ============ CORE INVARIANTS (Auditable, Never Bypassed) ============ -->
   <g class="node core-box" transform="translate(400, 85)">
     <rect x="-180" y="-5" width="360" height="320" rx="10" ry="10"/>
-    <text x="0" y="20" text-anchor="middle" class="section-title" fill="var(--leaf)">🔒 CORE TRUST INVARIANTS (Compiled-In, Never Bypassed)</text>
+    <text x="0" y="20" text-anchor="middle" class="section-title" fill="#769267">🔒 CORE TRUST INVARIANTS (Compiled-In, Never Bypassed)</text>
     
     <g transform="translate(-160, 40)">
       <text y="0" text-anchor="start" class="code-success">✓ CAS: Content-addressable write chokepoint</text>
@@ -64,7 +64,7 @@
       <text y="54" text-anchor="start" class="code-success">  stack buffers, no heap escape</text>
       <text y="72" text-anchor="start" class="code-success">✓ CRUSH/Placement: Deterministic weighted</text>
       <text y="90" text-anchor="start" class="code-success">  hash-to-replica, no central allocator</text>
-      <text y="108" text-anchor="start" class="code-success">✓ Verify-on-Read: Every read hashes & compares</text>
+      <text y="108" text-anchor="start" class="code-success">✓ Verify-on-Read: Every read hashes &amp; compares</text>
       <text y="126" text-anchor="start" class="code-success">  corruption = loud failure (ErrCorruptionDetected)</text>
       <text y="144" text-anchor="start" class="code-success">✓ Validate→Write: Single chokepoint</text>
       <text y="162" text-anchor="start" class="code-success">  all paths (PUT, S3, replication, FUSE)</text>
@@ -76,15 +76,15 @@
   <!-- ============ SEAMS (Decision Points Only) ============ -->
   <g class="node seam-box" transform="translate(400, 380)">
     <rect x="-180" y="-5" width="360" height="100" rx="10" ry="10"/>
-    <text x="0" y="15" text-anchor="middle" class="section-title" fill="var(--sakura)">⚡ SEAMS (Dispatch Only at Decision Points)</text>
+    <text x="0" y="15" text-anchor="middle" class="section-title" fill="#FCC9B9">⚡ SEAMS (Dispatch Only at Decision Points)</text>
     
     <g transform="translate(-160, 30)">
-      <text y="0" text-anchor="start" class="code-text" style="fill:var(--sakura);">Seam 1: Storage Backend</text>
+      <text y="0" text-anchor="start" class="code-text" style="fill:#FCC9B9;">Seam 1: Storage Backend</text>
       <text y="16" text-anchor="start" class="code-text">interface Store { PutBlob, GetBlob, ... }</text>
       <text y="32" text-anchor="start" class="code-text">impls: local, nfs, s3, raw</text>
       <text y="48" text-anchor="start" class="code-text">selected by: [storage] backend config</text>
       
-      <text y="64" text-anchor="start" class="code-text" style="fill:var(--sakura);">Seam 2: Replication Strategy</text>
+      <text y="64" text-anchor="start" class="code-text" style="fill:#FCC9B9;">Seam 2: Replication Strategy</text>
       <text y="80" text-anchor="start" class="code-text">interface Replicator { Forward, Quorum }</text>
       <text y="96" text-anchor="start" class="code-text">impls: None, Chain, Splay, Primary-Splay</text>
       <text y="112" text-anchor="start" class="code-text">selected by: polymorphic controller</text>
@@ -97,7 +97,7 @@
   <g transform="translate(50, 220)">
     <g class="node" transform="translate(0, 0)">
       <rect x="0" y="0" width="220" height="140" rx="8" class="impl-box"/>
-      <text x="110" y="18" text-anchor="middle" class="section-title" fill="var(--momo)">PUT Fast Path</text>
+      <text x="110" y="18" text-anchor="middle" class="section-title" fill="#F47983">PUT Fast Path</text>
       <g transform="translate(10, 30)">
         <text y="0" text-anchor="start" class="code-success">1. Hash on ingest (stack buffer)</text>
         <text y="16" text-anchor="start" class="code-success">2. Validate (inline, no seam)</text>
@@ -110,7 +110,7 @@
     
     <g class="node" transform="translate(240, 0)">
       <rect x="0" y="0" width="220" height="140" rx="8" class="impl-box"/>
-      <text x="110" y="18" text-anchor="middle" class="section-title" fill="var(--leaf)">GET Fast Path</text>
+      <text x="110" y="18" text-anchor="middle" class="section-title" fill="#769267">GET Fast Path</text>
       <g transform="translate(10, 30)">
         <text y="0" text-anchor="start" class="code-success">1. Backend.GetBlob() — virtual</text>
         <text y="16" text-anchor="start" class="code-success">2. Verify-on-read (inline)</text>
@@ -122,7 +122,7 @@
     
     <g class="node" transform="translate(480, 0)">
       <rect x="0" y="0" width="220" height="140" rx="8" class="impl-box"/>
-      <text x="110" y="18" text-anchor="middle" class="section-title" fill="var(--sakura)">Replication Fast Path</text>
+      <text x="110" y="18" text-anchor="middle" class="section-title" fill="#FCC9B9">Replication Fast Path</text>
       <g transform="translate(10, 30)">
         <text y="0" text-anchor="start" class="code-success">1. Strategy selected (controller)</text>
         <text y="16" text-anchor="start" class="code-success">2. Replicator.Forward() — seam</text>
@@ -139,7 +139,7 @@
   
   <g class="node policy-box" transform="translate(400, 420)">
     <rect x="-200" y="-5" width="400" height="70" rx="8" ry="8"/>
-    <text x="0" y="15" text-anchor="middle" class="section-title" fill="var(--cream)">[storage] backend = "local" | "nfs" | "s3" | "raw"</text>
+    <text x="0" y="15" text-anchor="middle" class="section-title" fill="#FDEDAD">[storage] backend = "local" | "nfs" | "s3" | "raw"</text>
     <text x="0" y="35" text-anchor="middle" class="label-small">durability.mode = "fsync" | "group-commit" | "none"</text>
     <text x="0" y="50" text-anchor="middle" class="label-small">replication = "chain" | "splay" | "primary-splay" (controller)</text>
   </g>
@@ -158,24 +158,24 @@
     </g>
     
     <g class="node" transform="translate(60, 0)">
-      <rect x="0" y="0" width="220" height="70" rx="8" style="fill:rgba(253,237,173,0.15); stroke:var(--cream); stroke-width:2;"/>
-      <text x="110" y="18" text-anchor="middle" class="section-title" fill="var(--cream)">✅ ALLOWED (Control Plane Only)</text>
+      <rect x="0" y="0" width="220" height="70" rx="8" style="fill:rgba(253,237,173,0.15); stroke:#FDEDAD; stroke-width:2;"/>
+      <text x="110" y="18" text-anchor="middle" class="section-title" fill="#FDEDAD">✅ ALLOWED (Control Plane Only)</text>
       <g transform="translate(10, 30)">
-        <text y="0" text-anchor="start" class="code-text" style="fill:var(--bark);">• Read-only policy feeds</text>
-        <text y="16" text-anchor="start" class="code-text" style="fill:var(--bark);">• Config reload triggers</text>
-        <text y="32" text-anchor="start" class="code-text" style="fill:var(--bark);">• Metrics/observability plugins</text>
-        <text y="48" text-anchor="start" class="code-text" style="fill:var(--bark);">• Outputs validated locally</text>
+        <text y="0" text-anchor="start" class="code-text" style="fill:#563A10;">• Read-only policy feeds</text>
+        <text y="16" text-anchor="start" class="code-text" style="fill:#563A10;">• Config reload triggers</text>
+        <text y="32" text-anchor="start" class="code-text" style="fill:#563A10;">• Metrics/observability plugins</text>
+        <text y="48" text-anchor="start" class="code-text" style="fill:#563A10;">• Outputs validated locally</text>
       </g>
     </g>
   </g>
   
   <!-- Bolt/Sentinel badges -->
   <g transform="translate(620, 15)">
-    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(244,121,131,0.15)" stroke="var(--momo)" stroke-width="1"/>
-    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="var(--momo)">⚡ BOLT</text>
+    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(244,121,131,0.15)" stroke="#F47983" stroke-width="1"/>
+    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="#F47983">⚡ BOLT</text>
   </g>
   <g transform="translate(710, 15)">
-    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(118,146,103,0.15)" stroke="var(--leaf)" stroke-width="1"/>
-    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="var(--leaf)">🛡 SENTINEL</text>
+    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(118,146,103,0.15)" stroke="#769267" stroke-width="1"/>
+    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="#769267">🛡 SENTINEL</text>
   </g>
 </svg>

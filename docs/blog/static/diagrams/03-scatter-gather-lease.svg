@@ -1,21 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 700" width="800" height="700" role="img" aria-labelledby="sg-title sg-desc">
-  <title id="sg-title">Scatter-Gather List & Lease Consensus Quorum</title>
+  <title id="sg-title">Scatter-Gather List &amp; Lease Consensus Quorum</title>
   <desc id="sg-desc">Top: Scatter-gather fan-out to shard owners, merge, dedup by content hash, paginate. Bottom: Lease voting with majority quorum formula votes > peers/2, partition edge case (fail closed). Bug fixes #806 (off-by-one) and #810 (zero quorum partition).</desc>
   
   <defs>
     <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <path d="M0,0 L10,3.5 L0,7 Z" fill="var(--momo)"/>
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="#F47983"/>
     </marker>
     <marker id="arrow-success" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <path d="M0,0 L10,3.5 L0,7 Z" fill="var(--leaf)"/>
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="#769267"/>
     </marker>
     <marker id="arrow-fail" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
       <path d="M0,0 L10,3.5 L0,7 Z" fill="#dc2626"/>
     </marker>
     
     <filter id="drop-shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="var(--bark)" flood-opacity="0.15"/>
+      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="#563A10" flood-opacity="0.15"/>
     </filter>
     
     <linearGradient id="shard-grad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -26,36 +26,36 @@
     <style>
       .node { filter: url(#drop-shadow); transition: transform 0.2s ease; }
       .node:hover { transform: scale(1.03); }
-      .shard-box { fill: url(#shard-grad); stroke: var(--momo); stroke-width: 1.5; }
-      .title-text { font-family: 'Outfit', sans-serif; font-size: 16px; font-weight: 700; fill: var(--diagram-text); }
-      .section-title { font-family: 'Outfit', sans-serif; font-size: 13px; font-weight: 700; fill: var(--diagram-text); }
-      .label-text { font-family: 'JetBrains Mono', monospace; font-size: 10px; fill: var(--diagram-text); text-anchor: middle; }
-      .label-small { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--diagram-text-muted); text-anchor: middle; }
-      .code-text { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--momo); }
-      .code-success { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--leaf); }
+      .shard-box { fill: url(#shard-grad); stroke: #F47983; stroke-width: 1.5; }
+      .title-text { font-family: 'Outfit', sans-serif; font-size: 16px; font-weight: 700; fill: #2D2D2D; }
+      .section-title { font-family: 'Outfit', sans-serif; font-size: 13px; font-weight: 700; fill: #2D2D2D; }
+      .label-text { font-family: 'JetBrains Mono', monospace; font-size: 10px; fill: #2D2D2D; text-anchor: middle; }
+      .label-small { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #6B6B6B; text-anchor: middle; }
+      .code-text { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #F47983; }
+      .code-success { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #769267; }
       .code-fail { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #dc2626; }
-      .math-text { font-family: 'JetBrains Mono', monospace; font-size: 11px; fill: var(--bark); }
-      .flow-arrow { fill: none; stroke: var(--momo); stroke-width: 1.5; stroke-linecap: round; marker-end: url(#arrow); }
-      .flow-success { stroke: var(--leaf); marker-end: url(#arrow-success); }
+      .math-text { font-family: 'JetBrains Mono', monospace; font-size: 11px; fill: #563A10; }
+      .flow-arrow { fill: none; stroke: #F47983; stroke-width: 1.5; stroke-linecap: round; marker-end: url(#arrow); }
+      .flow-success { stroke: #769267; marker-end: url(#arrow-success); }
       .flow-fail { stroke: #dc2626; marker-end: url(#arrow-fail); stroke-dasharray: 4,3; }
-      .merge-box { fill: rgba(252,201,185,0.15); stroke: var(--sakura); stroke-width: 2; }
-      .quorum-box { fill: rgba(118,146,103,0.1); stroke: var(--leaf); stroke-width: 2; }
+      .merge-box { fill: rgba(252,201,185,0.15); stroke: #FCC9B9; stroke-width: 2; }
+      .quorum-box { fill: rgba(118,146,103,0.1); stroke: #769267; stroke-width: 2; }
       .partition-box { fill: rgba(220,38,38,0.1); stroke: #dc2626; stroke-width: 2; }
     </style>
   </defs>
   
-  <rect width="800" height="700" fill="var(--diagram-bg)"/>
+  <rect width="800" height="700" fill="#FAFAFA"/>
   
   <!-- Title -->
-  <text x="400" y="30" class="title-text" style="font-size:18px;">Scatter-Gather List & Lease Consensus Quorum</text>
-  <text x="400" y="50" class="diagram-subtitle">Metadata sharded across ring → fan-out query → merge & dedup | Lease voting: majority quorum with fail-closed partition handling</text>
+  <text x="400" y="30" class="title-text" style="font-size:18px;">Scatter-Gather List &amp; Lease Consensus Quorum</text>
+  <text x="400" y="50" class="diagram-subtitle">Metadata sharded across ring → fan-out query → merge &amp; dedup | Lease voting: majority quorum with fail-closed partition handling</text>
   
   <!-- ============ TOP SECTION: SCATTER-GATHER (y=60 to y=360) ============ -->
   <text x="400" y="75" class="section-title">📋 SCATTER-GATHER: GlobalList / ListObjectsV2</text>
   
   <!-- Client Request -->
   <g class="node" transform="translate(400, 95)">
-    <rect x="-50" y="-25" width="100" height="50" rx="8" fill="var(--cream)" stroke="var(--cream)" stroke-width="2"/>
+    <rect x="-50" y="-25" width="100" height="50" rx="8" fill="#FDEDAD" stroke="#FDEDAD" stroke-width="2"/>
     <text y="-6" text-anchor="middle" class="label-text">Client</text>
     <text y="8" text-anchor="middle" class="label-small">ListObjectsV2</text>
   </g>
@@ -74,57 +74,57 @@
   <!-- Shard Owners -->
   <g transform="translate(150, 165)">
     <rect x="0" y="0" width="160" height="140" rx="10" class="shard-box" ry="10"/>
-    <text x="80" y="22" text-anchor="middle" class="section-title" fill="var(--momo)">Shard Owner N1</text>
+    <text x="80" y="22" text-anchor="middle" class="section-title" fill="#F47983">Shard Owner N1</text>
     <text x="80" y="40" text-anchor="middle" class="label-small">hash range: 0x0000–0x5555</text>
     
     <g transform="translate(10, 50)">
-      <rect x="0" y="0" width="140" height="24" rx="4" fill="var(--diagram-bg)" stroke="var(--diagram-border)"/>
+      <rect x="0" y="0" width="140" height="24" rx="4" fill="#FAFAFA" stroke="#E0E0E0"/>
       <text x="70" y="16" text-anchor="middle" class="label-text">obj:A (hash: a1b2...)</text>
     </g>
     <g transform="translate(10, 80)">
-      <rect x="0" y="0" width="140" height="24" rx="4" fill="var(--diagram-bg)" stroke="var(--diagram-border)"/>
+      <rect x="0" y="0" width="140" height="24" rx="4" fill="#FAFAFA" stroke="#E0E0E0"/>
       <text x="70" y="16" text-anchor="middle" class="label-text">obj:B (hash: c3d4...)</text>
     </g>
     <g transform="translate(10, 110)">
-      <rect x="0" y="0" width="140" height="24" rx="4" fill="var(--diagram-bg)" stroke="var(--diagram-border)"/>
+      <rect x="0" y="0" width="140" height="24" rx="4" fill="#FAFAFA" stroke="#E0E0E0"/>
       <text x="70" y="16" text-anchor="middle" class="label-text">obj:C (hash: e5f6...)</text>
     </g>
   </g>
   
   <g transform="translate(320, 165)">
     <rect x="0" y="0" width="160" height="140" rx="10" class="shard-box" ry="10"/>
-    <text x="80" y="22" text-anchor="middle" class="section-title" fill="var(--sakura)">Shard Owner N2</text>
+    <text x="80" y="22" text-anchor="middle" class="section-title" fill="#FCC9B9">Shard Owner N2</text>
     <text x="80" y="40" text-anchor="middle" class="label-small">hash range: 0x5556–0xAAAA</text>
     
     <g transform="translate(10, 50)">
-      <rect x="0" y="0" width="140" height="24" rx="4" fill="var(--diagram-bg)" stroke="var(--diagram-border)"/>
+      <rect x="0" y="0" width="140" height="24" rx="4" fill="#FAFAFA" stroke="#E0E0E0"/>
       <text x="70" y="16" text-anchor="middle" class="label-text">obj:D (hash: 7890...)</text>
     </g>
     <g transform="translate(10, 80)">
-      <rect x="0" y="0" width="140" height="24" rx="4" fill="var(--diagram-bg)" stroke="var(--diagram-border)"/>
+      <rect x="0" y="0" width="140" height="24" rx="4" fill="#FAFAFA" stroke="#E0E0E0"/>
       <text x="70" y="16" text-anchor="middle" class="label-text">obj:A (hash: a1b2...)</text>
     </g>
     <g transform="translate(10, 110)">
-      <rect x="0" y="0" width="140" height="24" rx="4" fill="var(--diagram-bg)" stroke="var(--diagram-border)"/>
+      <rect x="0" y="0" width="140" height="24" rx="4" fill="#FAFAFA" stroke="#E0E0E0"/>
       <text x="70" y="16" text-anchor="middle" class="label-text">obj:E (hash: 1122...)</text>
     </g>
   </g>
   
   <g transform="translate(490, 165)">
     <rect x="0" y="0" width="160" height="140" rx="10" class="shard-box" ry="10"/>
-    <text x="80" y="22" text-anchor="middle" class="section-title" fill="var(--peach)">Shard Owner N3</text>
+    <text x="80" y="22" text-anchor="middle" class="section-title" fill="#FFA6A6">Shard Owner N3</text>
     <text x="80" y="40" text-anchor="middle" class="label-small">hash range: 0xAAAB–0xFFFF</text>
     
     <g transform="translate(10, 50)">
-      <rect x="0" y="0" width="140" height="24" rx="4" fill="var(--diagram-bg)" stroke="var(--diagram-border)"/>
+      <rect x="0" y="0" width="140" height="24" rx="4" fill="#FAFAFA" stroke="#E0E0E0"/>
       <text x="70" y="16" text-anchor="middle" class="label-text">obj:F (hash: 3344...)</text>
     </g>
     <g transform="translate(10, 80)">
-      <rect x="0" y="0" width="140" height="24" rx="4" fill="var(--diagram-bg)" stroke="var(--diagram-border)"/>
+      <rect x="0" y="0" width="140" height="24" rx="4" fill="#FAFAFA" stroke="#E0E0E0"/>
       <text x="70" y="16" text-anchor="middle" class="label-text">obj:B (hash: c3d4...)</text>
     </g>
     <g transform="translate(10, 110)">
-      <rect x="0" y="0" width="140" height="24" rx="4" fill="var(--diagram-bg)" stroke="var(--diagram-border)"/>
+      <rect x="0" y="0" width="140" height="24" rx="4" fill="#FAFAFA" stroke="#E0E0E0"/>
       <text x="70" y="16" text-anchor="middle" class="label-text">obj:G (hash: 5566...)</text>
     </g>
   </g>
@@ -143,7 +143,7 @@
   <!-- Merge Step -->
   <g class="node merge-box" transform="translate(400, 345)">
     <rect x="-120" y="-35" width="240" height="70" rx="10"/>
-    <text y="-18" text-anchor="middle" class="section-title" fill="var(--sakura)">MERGE & DEDUP</text>
+    <text y="-18" text-anchor="middle" class="section-title" fill="#FCC9B9">MERGE &amp; DEDUP</text>
     <g transform="translate(0, 5)">
       <text y="0" text-anchor="middle" class="code-text">1. Collect all metadata from shard owners</text>
       <text y="16" text-anchor="middle" class="code-success">2. Dedup by content hash (drop alternate names)</text>
@@ -156,15 +156,15 @@
   <path d="M400,415 V440" class="flow-success" marker-end="url(#arrow-success)"/>
   
   <g class="node" transform="translate(400, 445)">
-    <rect x="-80" y="-20" width="160" height="40" rx="8" fill="rgba(118,146,103,0.15)" stroke="var(--leaf)" stroke-width="2"/>
-    <text y="6" text-anchor="middle" font-family="Outfit" font-size="12px" font-weight="600" fill="var(--leaf)">✓ PAGINATED RESULT</text>
+    <rect x="-80" y="-20" width="160" height="40" rx="8" fill="rgba(118,146,103,0.15)" stroke="#769267" stroke-width="2"/>
+    <text y="6" text-anchor="middle" font-family="Outfit" font-size="12px" font-weight="600" fill="#769267">✓ PAGINATED RESULT</text>
   </g>
   
   <!-- Return to client -->
   <path d="M400,485 V510" class="flow-success" marker-end="url(#arrow-success)"/>
   
   <g class="node" transform="translate(400, 515)">
-    <rect x="-50" y="-25" width="100" height="50" rx="8" fill="var(--cream)" stroke="var(--cream)" stroke-width="2"/>
+    <rect x="-50" y="-25" width="100" height="50" rx="8" fill="#FDEDAD" stroke="#FDEDAD" stroke-width="2"/>
     <text y="-6" text-anchor="middle" class="label-text">Client</text>
     <text y="8" text-anchor="middle" class="label-small">A, B, C, D, E, F, G</text>
   </g>
@@ -175,7 +175,7 @@
   <!-- Quorum Formula Box -->
   <g class="node quorum-box" transform="translate(400, 595)">
     <rect x="-180" y="-5" width="360" height="95" rx="10"/>
-    <text y="15" text-anchor="middle" class="section-title" fill="var(--leaf)">MAJORITY QUORUM FORMULA</text>
+    <text y="15" text-anchor="middle" class="section-title" fill="#769267">MAJORITY QUORUM FORMULA</text>
     <g transform="translate(0, 30)">
       <text y="0" text-anchor="middle" class="math-text" style="font-size:16px;">votes > peers / 2</text>
       <text y="25" text-anchor="middle" class="label-small">Correct integer arithmetic — fixes #806 off-by-one</text>
@@ -220,11 +220,11 @@
   
   <!-- Bolt/Sentinel badges -->
   <g transform="translate(620, 15)">
-    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(244,121,131,0.15)" stroke="var(--momo)" stroke-width="1"/>
-    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="var(--momo)">⚡ BOLT</text>
+    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(244,121,131,0.15)" stroke="#F47983" stroke-width="1"/>
+    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="#F47983">⚡ BOLT</text>
   </g>
   <g transform="translate(710, 15)">
-    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(118,146,103,0.15)" stroke="var(--leaf)" stroke-width="1"/>
-    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="var(--leaf)">🛡 SENTINEL</text>
+    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(118,146,103,0.15)" stroke="#769267" stroke-width="1"/>
+    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="#769267">🛡 SENTINEL</text>
   </g>
 </svg>

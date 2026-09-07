@@ -5,55 +5,55 @@
   
   <defs>
     <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <path d="M0,0 L10,3.5 L0,7 Z" fill="var(--momo)"/>
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="#F47983"/>
     </marker>
     <marker id="arrow-quic" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <path d="M0,0 L10,3.5 L0,7 Z" fill="var(--leaf)"/>
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="#769267"/>
     </marker>
     <marker id="arrow-bidir" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <path d="M0,0 L10,3.5 L0,7 Z" fill="var(--sakura)"/>
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="#FCC9B9"/>
     </marker>
     
     <filter id="drop-shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="var(--bark)" flood-opacity="0.15"/>
+      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="#563A10" flood-opacity="0.15"/>
     </filter>
     
     <linearGradient id="node-grad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:var(--diagram-bg)"/>
-      <stop offset="100%" style="stop-color:var(--diagram-grid)"/>
+      <stop offset="0%" style="stop-color:#FAFAFA"/>
+      <stop offset="100%" style="stop-color:#F0F0F0"/>
     </linearGradient>
     
     <style>
       .node { filter: url(#drop-shadow); transition: transform 0.2s ease; }
       .node:hover { transform: scale(1.05); filter: url(#drop-shadow) brightness(1.15); }
-      .panel-title { font-family: 'Outfit', sans-serif; font-size: 14px; font-weight: 700; fill: var(--diagram-text); text-anchor: middle; }
-      .panel-desc { font-family: 'Outfit', sans-serif; font-size: 10px; fill: var(--diagram-text-muted); text-anchor: middle; }
-      .node-label { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600; fill: var(--diagram-text); text-anchor: middle; }
-      .node-role { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--diagram-text-muted); text-anchor: middle; }
-      .flow-label { font-family: 'JetBrains Mono', monospace; font-size: 8px; fill: var(--diagram-text-muted); }
-      .transport-tcp { fill: var(--bark); }
-      .transport-quic { fill: var(--leaf); }
-      .legend-text { font-family: 'Outfit', sans-serif; font-size: 10px; fill: var(--diagram-text); }
-      .legend-code { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--momo); }
+      .panel-title { font-family: 'Outfit', sans-serif; font-size: 14px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
+      .panel-desc { font-family: 'Outfit', sans-serif; font-size: 10px; fill: #6B6B6B; text-anchor: middle; }
+      .node-label { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600; fill: #2D2D2D; text-anchor: middle; }
+      .node-role { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #6B6B6B; text-anchor: middle; }
+      .flow-label { font-family: 'JetBrains Mono', monospace; font-size: 8px; fill: #6B6B6B; }
+      .transport-tcp { fill: #563A10; }
+      .transport-quic { fill: #769267; }
+      .legend-text { font-family: 'Outfit', sans-serif; font-size: 10px; fill: #2D2D2D; }
+      .legend-code { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #F47983; }
     </style>
   </defs>
   
-  <rect width="800" height="550" fill="var(--diagram-bg)"/>
+  <rect width="800" height="550" fill="#FAFAFA"/>
   
   <!-- Main Title -->
-  <text x="400" y="30" class="diagram-title" style="font-size:18px;">Replication Strategies & Polymorphic Engine</text>
-  <text x="400" y="50" class="diagram-subtitle">Four strategies, one runtime switch — metrics-driven controller adapts to load & network</text>
+  <text x="400" y="30" class="diagram-title" style="font-size:18px;">Replication Strategies &amp; Polymorphic Engine</text>
+  <text x="400" y="50" class="diagram-subtitle">Four strategies, one runtime switch — metrics-driven controller adapts to load &amp; network</text>
   
   <!-- PANEL 1: None -->
   <g transform="translate(20, 70)">
-    <rect x="0" y="0" width="180" height="200" rx="10" ry="10" fill="var(--diagram-bg)" stroke="var(--diagram-border)" stroke-width="1"/>
+    <rect x="0" y="0" width="180" height="200" rx="10" ry="10" fill="#FAFAFA" stroke="#E0E0E0" stroke-width="1"/>
     <text x="90" y="25" class="panel-title">NONE</text>
     <text x="90" y="42" class="panel-desc">ReplicationNone (ID 4)</text>
-    <text x="90" y="56" class="panel-desc" fill="var(--momo)">No copies — ephemeral/test only</text>
+    <text x="90" y="56" class="panel-desc" fill="#F47983">No copies — ephemeral/test only</text>
     
     <!-- Single node -->
     <g class="node" transform="translate(90, 110)">
-      <circle cx="0" cy="0" r="30" fill="url(#node-grad)" stroke="var(--diagram-border)" stroke-width="1.5"/>
+      <circle cx="0" cy="0" r="30" fill="url(#node-grad)" stroke="#E0E0E0" stroke-width="1.5"/>
       <text y="-8" class="node-label">Client</text>
       <text y="8" class="node-role">PUT → ACK</text>
     </g>
@@ -62,14 +62,14 @@
   
   <!-- PANEL 2: Chain -->
   <g transform="translate(210, 70)">
-    <rect x="0" y="0" width="180" height="200" rx="10" ry="10" fill="var(--diagram-bg)" stroke="var(--momo)" stroke-width="1.5"/>
-    <text x="90" y="25" class="panel-title" fill="var(--momo)">CHAIN</text>
+    <rect x="0" y="0" width="180" height="200" rx="10" ry="10" fill="#FAFAFA" stroke="#F47983" stroke-width="1.5"/>
+    <text x="90" y="25" class="panel-title" fill="#F47983">CHAIN</text>
     <text x="90" y="42" class="panel-desc">ReplicationChain (ID 1)</text>
-    <text x="90" y="56" class="panel-desc" fill="var(--momo)">N0 → N1 → N2 sequential</text>
+    <text x="90" y="56" class="panel-desc" fill="#F47983">N0 → N1 → N2 sequential</text>
     
     <!-- Chain nodes -->
     <g class="node" transform="translate(35, 110)">
-      <circle cx="0" cy="0" r="28" fill="url(#node-grad)" stroke="var(--momo)" stroke-width="2"/>
+      <circle cx="0" cy="0" r="28" fill="url(#node-grad)" stroke="#F47983" stroke-width="2"/>
       <text y="-6" class="node-label">N0</text>
       <text y="6" class="node-role">PRIMARY</text>
     </g>
@@ -78,7 +78,7 @@
     <text x="105" y="100" class="flow-label transport-tcp">TCP</text>
     
     <g class="node" transform="translate(175, 110)">
-      <circle cx="0" cy="0" r="28" fill="url(#node-grad)" stroke="var(--sakura)" stroke-width="2"/>
+      <circle cx="0" cy="0" r="28" fill="url(#node-grad)" stroke="#FCC9B9" stroke-width="2"/>
       <text y="-6" class="node-label">N1</text>
       <text y="6" class="node-role">REPLICA</text>
     </g>
@@ -87,25 +87,25 @@
     <text x="245" y="100" class="flow-label transport-tcp">TCP</text>
     
     <g class="node" transform="translate(315, 110)">
-      <circle cx="0" cy="0" r="28" fill="url(#node-grad)" stroke="var(--peach)" stroke-width="2"/>
+      <circle cx="0" cy="0" r="28" fill="url(#node-grad)" stroke="#FFA6A6" stroke-width="2"/>
       <text y="-6" class="node-label">N2</text>
       <text y="6" class="node-role">REPLICA</text>
     </g>
     
     <text x="90" y="165" class="flow-label transport-tcp">Transport: momo-tcp (LAN)</text>
-    <text x="90" y="180" class="panel-desc" fill="var(--momo)">Low latency, ordered writes</text>
+    <text x="90" y="180" class="panel-desc" fill="#F47983">Low latency, ordered writes</text>
   </g>
   
   <!-- PANEL 3: Splay -->
   <g transform="translate(400, 70)">
-    <rect x="0" y="0" width="180" height="200" rx="10" ry="10" fill="var(--diagram-bg)" stroke="var(--sakura)" stroke-width="1.5"/>
-    <text x="90" y="25" class="panel-title" fill="var(--sakura)">SPLAY</text>
+    <rect x="0" y="0" width="180" height="200" rx="10" ry="10" fill="#FAFAFA" stroke="#FCC9B9" stroke-width="1.5"/>
+    <text x="90" y="25" class="panel-title" fill="#FCC9B9">SPLAY</text>
     <text x="90" y="42" class="panel-desc">ReplicationSplay (ID 2)</text>
-    <text x="90" y="56" class="panel-desc" fill="var(--sakura)">N0 → N1 AND N2 parallel</text>
+    <text x="90" y="56" class="panel-desc" fill="#FCC9B9">N0 → N1 AND N2 parallel</text>
     
     <!-- Splay nodes -->
     <g class="node" transform="translate(90, 95)">
-      <circle cx="0" cy="0" r="28" fill="url(#node-grad)" stroke="var(--momo)" stroke-width="2"/>
+      <circle cx="0" cy="0" r="28" fill="url(#node-grad)" stroke="#F47983" stroke-width="2"/>
       <text y="-6" class="node-label">N0</text>
       <text y="6" class="node-role">PRIMARY</text>
     </g>
@@ -115,31 +115,31 @@
     <path d="M90,123 V145" class="diagram-flow" marker-end="url(#arrow)" transform="translate(30,0)"/>
     
     <g class="node" transform="translate(35, 165)">
-      <circle cx="0" cy="0" r="25" fill="url(#node-grad)" stroke="var(--sakura)" stroke-width="2"/>
+      <circle cx="0" cy="0" r="25" fill="url(#node-grad)" stroke="#FCC9B9" stroke-width="2"/>
       <text y="-4" class="node-label" font-size="10px">N1</text>
       <text y="6" class="node-role" font-size="8px">REPLICA</text>
     </g>
     
     <g class="node" transform="translate(145, 165)">
-      <circle cx="0" cy="0" r="25" fill="url(#node-grad)" stroke="var(--peach)" stroke-width="2"/>
+      <circle cx="0" cy="0" r="25" fill="url(#node-grad)" stroke="#FFA6A6" stroke-width="2"/>
       <text y="-4" class="node-label" font-size="10px">N2</text>
       <text y="6" class="node-role" font-size="8px">REPLICA</text>
     </g>
     
     <text x="90" y="205" class="flow-label transport-tcp">Transport: momo-tcp (LAN)</text>
-    <text x="90" y="220" class="panel-desc" fill="var(--sakura)">Parallel, faster than chain</text>
+    <text x="90" y="220" class="panel-desc" fill="#FCC9B9">Parallel, faster than chain</text>
   </g>
   
   <!-- PANEL 4: Primary-Splay -->
   <g transform="translate(590, 70)">
-    <rect x="0" y="0" width="190" height="200" rx="10" ry="10" fill="var(--diagram-bg)" stroke="var(--leaf)" stroke-width="1.5"/>
-    <text x="95" y="25" class="panel-title" fill="var(--leaf)">PRIMARY-SPLAY</text>
+    <rect x="0" y="0" width="190" height="200" rx="10" ry="10" fill="#FAFAFA" stroke="#769267" stroke-width="1.5"/>
+    <text x="95" y="25" class="panel-title" fill="#769267">PRIMARY-SPLAY</text>
     <text x="95" y="42" class="panel-desc">ReplicationPrimarySplay (ID 3)</text>
-    <text x="95" y="56" class="panel-desc" fill="var(--leaf)">Client → all nodes concurrent</text>
+    <text x="95" y="56" class="panel-desc" fill="#769267">Client → all nodes concurrent</text>
     
     <!-- Primary-Splay nodes -->
     <g class="node" transform="translate(45, 100)">
-      <rect x="-30" y="-25" width="60" height="50" rx="6" fill="url(#node-grad)" stroke="var(--cream)" stroke-width="2"/>
+      <rect x="-30" y="-25" width="60" height="50" rx="6" fill="url(#node-grad)" stroke="#FDEDAD" stroke-width="2"/>
       <text y="-5" class="node-label" font-size="10px">Client</text>
       <text y="8" class="node-role" font-size="8px">ORIGINATOR</text>
     </g>
@@ -155,35 +155,35 @@
     <text x="130" y="170" class="flow-label transport-quic">QUIC</text>
     
     <g class="node" transform="translate(160, 60)">
-      <circle cx="0" cy="0" r="25" fill="url(#node-grad)" stroke="var(--momo)" stroke-width="2"/>
+      <circle cx="0" cy="0" r="25" fill="url(#node-grad)" stroke="#F47983" stroke-width="2"/>
       <text y="-4" class="node-label" font-size="10px">N0</text>
       <text y="6" class="node-role" font-size="8px">REPLICA</text>
     </g>
     
     <g class="node" transform="translate(160, 120)">
-      <circle cx="0" cy="0" r="25" fill="url(#node-grad)" stroke="var(--sakura)" stroke-width="2"/>
+      <circle cx="0" cy="0" r="25" fill="url(#node-grad)" stroke="#FCC9B9" stroke-width="2"/>
       <text y="-4" class="node-label" font-size="10px">N1</text>
       <text y="6" class="node-role" font-size="8px">REPLICA</text>
     </g>
     
     <g class="node" transform="translate(160, 180)">
-      <circle cx="0" cy="0" r="25" fill="url(#node-grad)" stroke="var(--peach)" stroke-width="2"/>
+      <circle cx="0" cy="0" r="25" fill="url(#node-grad)" stroke="#FFA6A6" stroke-width="2"/>
       <text y="-4" class="node-label" font-size="10px">N2</text>
       <text y="6" class="node-role" font-size="8px">REPLICA</text>
     </g>
     
     <text x="95" y="215" class="flow-label transport-quic">Transport: momo-quic (WAN/lossy)</text>
-    <text x="95" y="230" class="panel-desc" fill="var(--leaf)">0-RTT, no HOL blocking</text>
+    <text x="95" y="230" class="panel-desc" fill="#769267">0-RTT, no HOL blocking</text>
   </g>
   
   <!-- POLYMORPHIC CONTROLLER SECTION -->
   <g transform="translate(20, 290)">
-    <rect x="0" y="0" width="760" height="230" rx="12" ry="12" fill="rgba(244,121,131,0.08)" stroke="var(--momo)" stroke-width="1.5"/>
-    <text x="380" y="30" class="panel-title" fill="var(--momo)">⚡ POLYMORPHIC CONTROLLER — Runtime Strategy Selection</text>
+    <rect x="0" y="0" width="760" height="230" rx="12" ry="12" fill="rgba(244,121,131,0.08)" stroke="#F47983" stroke-width="1.5"/>
+    <text x="380" y="30" class="panel-title" fill="#F47983">⚡ POLYMORPHIC CONTROLLER — Runtime Strategy Selection</text>
     
     <!-- Controller box -->
     <g class="node" transform="translate(380, 60)">
-      <rect x="-100" y="-35" width="200" height="70" rx="8" fill="var(--momo)" stroke="var(--momo)" stroke-width="2"/>
+      <rect x="-100" y="-35" width="200" height="70" rx="8" fill="#F47983" stroke="#F47983" stroke-width="2"/>
       <text y="-12" text-anchor="middle" font-family="Outfit" font-size="13px" font-weight="700" fill="white">POLYMORPHIC CONTROLLER</text>
       <text y="6" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" fill="rgba(255,255,255,0.9)">CPU + Memory → Strategy</text>
       <text y="18" text-anchor="middle" font-family="JetBrains Mono" font-size="8px" fill="rgba(255,255,255,0.7)">Broadcast via control channel</text>
@@ -191,7 +191,7 @@
     
     <!-- Inputs -->
     <g transform="translate(100, 90)">
-      <circle cx="0" cy="0" r="35" fill="var(--diagram-bg)" stroke="var(--sakura)" stroke-width="2"/>
+      <circle cx="0" cy="0" r="35" fill="#FAFAFA" stroke="#FCC9B9" stroke-width="2"/>
       <text y="-8" text-anchor="middle" class="node-label">CPU</text>
       <text y="6" text-anchor="middle" class="node-role">gopsutil</text>
       <text y="18" text-anchor="middle" class="legend-code">load > 80%</text>
@@ -200,7 +200,7 @@
     <path d="M135,90 H260" class="diagram-flow" marker-end="url(#arrow)"/>
     
     <g transform="translate(460, 90)">
-      <circle cx="0" cy="0" r="35" fill="var(--diagram-bg)" stroke="var(--leaf)" stroke-width="2"/>
+      <circle cx="0" cy="0" r="35" fill="#FAFAFA" stroke="#769267" stroke-width="2"/>
       <text y="-8" text-anchor="middle" class="node-label">MEM</text>
       <text y="6" text-anchor="middle" class="node-role">gopsutil</text>
       <text y="18" text-anchor="middle" class="legend-code">mem > 75%</text>
@@ -208,32 +208,32 @@
     
     <!-- Decision logic -->
     <g transform="translate(380, 145)">
-      <rect x="-120" y="-25" width="240" height="50" rx="6" fill="var(--diagram-bg)" stroke="var(--diagram-border)"/>
+      <rect x="-120" y="-25" width="240" height="50" rx="6" fill="#FAFAFA" stroke="#E0E0E0"/>
       <text y="-8" text-anchor="middle" class="panel-desc">DECISION LOGIC</text>
-      <text y="8" text-anchor="middle" class="legend-code" fill="var(--momo)">if (mem > 75%) → Chain (lowest overhead)</text>
-      <text y="20" text-anchor="middle" class="legend-code" fill="var(--sakura)">else if (cpu > 80% || WAN) → Primary-Splay</text>
-      <text y="32" text-anchor="middle" class="legend-code" fill="var(--peach)">else → Splay (balanced)</text>
+      <text y="8" text-anchor="middle" class="legend-code" fill="#F47983">if (mem > 75%) → Chain (lowest overhead)</text>
+      <text y="20" text-anchor="middle" class="legend-code" fill="#FCC9B9">else if (cpu > 80% || WAN) → Primary-Splay</text>
+      <text y="32" text-anchor="middle" class="legend-code" fill="#FFA6A6">else → Splay (balanced)</text>
     </g>
     
     <!-- Broadcast output -->
     <path d="M380,200 V220" class="diagram-flow" marker-end="url(#arrow)"/>
     
     <g transform="translate(380, 225)">
-      <rect x="-80" y="-15" width="160" height="30" rx="6" fill="var(--sakura)" stroke="var(--sakura)"/>
+      <rect x="-80" y="-15" width="160" height="30" rx="6" fill="#FCC9B9" stroke="#FCC9B9"/>
       <text y="5" text-anchor="middle" font-family="Outfit" font-size="11px" font-weight="600" fill="white">Control Channel Broadcast</text>
     </g>
     
     <!-- Output to all nodes -->
     <g transform="translate(220, 230)">
-      <circle cx="0" cy="0" r="20" fill="var(--diagram-bg)" stroke="var(--momo)" stroke-width="1.5"/>
+      <circle cx="0" cy="0" r="20" fill="#FAFAFA" stroke="#F47983" stroke-width="1.5"/>
       <text y="3" text-anchor="middle" class="node-label" font-size="9px">N0</text>
     </g>
     <g transform="translate(380, 230)">
-      <circle cx="0" cy="0" r="20" fill="var(--diagram-bg)" stroke="var(--sakura)" stroke-width="1.5"/>
+      <circle cx="0" cy="0" r="20" fill="#FAFAFA" stroke="#FCC9B9" stroke-width="1.5"/>
       <text y="3" text-anchor="middle" class="node-label" font-size="9px">N1</text>
     </g>
     <g transform="translate(540, 230)">
-      <circle cx="0" cy="0" r="20" fill="var(--diagram-bg)" stroke="var(--peach)" stroke-width="1.5"/>
+      <circle cx="0" cy="0" r="20" fill="#FAFAFA" stroke="#FFA6A6" stroke-width="1.5"/>
       <text y="3" text-anchor="middle" class="node-label" font-size="9px">N2</text>
     </g>
     
@@ -245,32 +245,32 @@
   
   <!-- Transport sweet spot summary -->
   <g transform="translate(20, 500)">
-    <text x="0" y="0" class="panel-title" text-anchor="start" fill="var(--diagram-text)">Transport Sweet Spots:</text>
+    <text x="0" y="0" class="panel-title" text-anchor="start" fill="#2D2D2D">Transport Sweet Spots:</text>
     <g transform="translate(0, 20)">
-      <rect x="0" y="0" width="150" height="22" rx="4" fill="rgba(244,121,131,0.15)" stroke="var(--momo)"/>
+      <rect x="0" y="0" width="150" height="22" rx="4" fill="rgba(244,121,131,0.15)" stroke="#F47983"/>
       <text x="75" y="15" text-anchor="middle" class="legend-code">Chain → LAN, high BW</text>
     </g>
     <g transform="translate(170, 0)">
-      <rect x="0" y="0" width="150" height="22" rx="4" fill="rgba(252,201,185,0.15)" stroke="var(--sakura)"/>
+      <rect x="0" y="0" width="150" height="22" rx="4" fill="rgba(252,201,185,0.15)" stroke="#FCC9B9"/>
       <text x="75" y="15" text-anchor="middle" class="legend-code">Splay → LAN, parallel</text>
     </g>
     <g transform="translate(340, 0)">
-      <rect x="0" y="0" width="180" height="22" rx="4" fill="rgba(118,146,103,0.15)" stroke="var(--leaf)"/>
+      <rect x="0" y="0" width="180" height="22" rx="4" fill="rgba(118,146,103,0.15)" stroke="#769267"/>
       <text x="90" y="15" text-anchor="middle" class="legend-code">Primary-Splay → WAN/lossy, QUIC</text>
     </g>
     <g transform="translate(550, 0)">
-      <rect x="0" y="0" width="150" height="22" rx="4" fill="rgba(253,237,173,0.15)" stroke="var(--cream)"/>
+      <rect x="0" y="0" width="150" height="22" rx="4" fill="rgba(253,237,173,0.15)" stroke="#FDEDAD"/>
       <text x="75" y="15" text-anchor="middle" class="legend-code">None → test/ephemeral</text>
     </g>
   </g>
   
   <!-- Bolt/Sentinel badges -->
   <g transform="translate(620, 15)">
-    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(244,121,131,0.15)" stroke="var(--momo)" stroke-width="1"/>
-    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="var(--momo)">⚡ BOLT</text>
+    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(244,121,131,0.15)" stroke="#F47983" stroke-width="1"/>
+    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="#F47983">⚡ BOLT</text>
   </g>
   <g transform="translate(710, 15)">
-    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(118,146,103,0.15)" stroke="var(--leaf)" stroke-width="1"/>
-    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="var(--leaf)">🛡 SENTINEL</text>
+    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(118,146,103,0.15)" stroke="#769267" stroke-width="1"/>
+    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="#769267">🛡 SENTINEL</text>
   </g>
 </svg>

@@ -5,17 +5,17 @@
   
   <defs>
     <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <path d="M0,0 L10,3.5 L0,7 Z" fill="var(--momo)"/>
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="#F47983"/>
     </marker>
     <marker id="arrow-success" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <path d="M0,0 L10,3.5 L0,7 Z" fill="var(--leaf)"/>
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="#769267"/>
     </marker>
     <marker id="arrow-bidir" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <path d="M0,0 L10,3.5 L0,7 Z" fill="var(--sakura)"/>
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="#FCC9B9"/>
     </marker>
     
     <filter id="drop-shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="var(--bark)" flood-opacity="0.15"/>
+      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="#563A10" flood-opacity="0.15"/>
     </filter>
     
     <linearGradient id="kernel-grad" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -42,26 +42,26 @@
       .node { filter: url(#drop-shadow); transition: transform 0.2s ease; }
       .node:hover { transform: scale(1.02); }
       .layer-box { rx: 12; ry: 12; stroke-width: 2; }
-      .kernel-layer { fill: url(#kernel-grad); stroke: var(--bark); }
-      .fuse-layer { fill: url(#fuse-grad); stroke: var(--peach); }
-      .momofs-layer { fill: url(#momofs-grad); stroke: var(--momo); }
-      .cas-layer { fill: url(#cas-grad); stroke: var(--leaf); }
-      .title-text { font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; fill: var(--diagram-text); text-anchor: middle; }
-      .section-title { font-family: 'Outfit', sans-serif; font-size: 13px; font-weight: 700; fill: var(--diagram-text); text-anchor: middle; }
-      .label-text { font-family: 'JetBrains Mono', monospace; font-size: 10px; fill: var(--diagram-text); text-anchor: middle; }
-      .label-small { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--diagram-text-muted); text-anchor: middle; }
-      .code-text { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--momo); }
-      .code-success { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--leaf); }
-      .code-fuse { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--peach); }
-      .code-momofs { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--momo); }
-      .code-cas { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--leaf); }
-      .flow-arrow { fill: none; stroke: var(--momo); stroke-width: 2; stroke-linecap: round; marker-end: url(#arrow); }
-      .flow-bidir { stroke: var(--sakura); stroke-width: 1.5; marker-end: url(#arrow-bidir); stroke-dasharray: 3,3; }
-      .component-box { fill: var(--diagram-bg); stroke: var(--diagram-border); stroke-width: 1.5; rx: 6; ry: 6; filter: url(#drop-shadow); }
+      .kernel-layer { fill: url(#kernel-grad); stroke: #563A10; }
+      .fuse-layer { fill: url(#fuse-grad); stroke: #FFA6A6; }
+      .momofs-layer { fill: url(#momofs-grad); stroke: #F47983; }
+      .cas-layer { fill: url(#cas-grad); stroke: #769267; }
+      .title-text { font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
+      .section-title { font-family: 'Outfit', sans-serif; font-size: 13px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
+      .label-text { font-family: 'JetBrains Mono', monospace; font-size: 10px; fill: #2D2D2D; text-anchor: middle; }
+      .label-small { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #6B6B6B; text-anchor: middle; }
+      .code-text { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #F47983; }
+      .code-success { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #769267; }
+      .code-fuse { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #FFA6A6; }
+      .code-momofs { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #F47983; }
+      .code-cas { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #769267; }
+      .flow-arrow { fill: none; stroke: #F47983; stroke-width: 2; stroke-linecap: round; marker-end: url(#arrow); }
+      .flow-bidir { stroke: #FCC9B9; stroke-width: 1.5; marker-end: url(#arrow-bidir); stroke-dasharray: 3,3; }
+      .component-box { fill: #FAFAFA; stroke: #E0E0E0; stroke-width: 1.5; rx: 6; ry: 6; filter: url(#drop-shadow); }
     </style>
   </defs>
   
-  <rect width="800" height="600" fill="var(--diagram-bg)"/>
+  <rect width="800" height="600" fill="#FAFAFA"/>
   
   <!-- Title -->
   <text x="400" y="30" class="title-text">momofs FUSE Transport Stack</text>
@@ -72,58 +72,58 @@
   <!-- LAYER 1: KERNEL VFS -->
   <g class="node kernel-layer layer-box" transform="translate(30, 80)">
     <rect x="0" y="0" width="740" height="100" rx="12" ry="12"/>
-    <text x="370" y="25" text-anchor="middle" class="section-title" fill="var(--bark)">🖥 KERNEL VFS (Linux /dev/fuse)</text>
+    <text x="370" y="25" text-anchor="middle" class="section-title" fill="#563A10">🖥 KERNEL VFS (Linux /dev/fuse)</text>
     <g transform="translate(20, 40)">
-      <text y="0" text-anchor="start" class="code-text" style="fill:var(--bark);">User process: open/read/write/stat/mkdir/unlink/rename</text>
-      <text y="18" text-anchor="start" class="code-text" style="fill:var(--bark);">→ VFS translates to FUSE requests → /dev/fuse</text>
-      <text y="36" text-anchor="start" class="code-text" style="fill:var(--bark);">→ fuseRoot.Lookup / fuseFile.Read / fuseFile.Write / fuseDir.Readdir</text>
+      <text y="0" text-anchor="start" class="code-text" style="fill:#563A10;">User process: open/read/write/stat/mkdir/unlink/rename</text>
+      <text y="18" text-anchor="start" class="code-text" style="fill:#563A10;">→ VFS translates to FUSE requests → /dev/fuse</text>
+      <text y="36" text-anchor="start" class="code-text" style="fill:#563A10;">→ fuseRoot.Lookup / fuseFile.Read / fuseFile.Write / fuseDir.Readdir</text>
     </g>
   </g>
   
   <!-- Arrow -->
   <path d="M400,180 V195" class="flow-bidir" marker-end="url(#arrow-bidir)"/>
-  <text x="400" y="192" text-anchor="middle" class="label-small" fill="var(--sakura)">FUSE protocol (request/response)</text>
+  <text x="400" y="192" text-anchor="middle" class="label-small" fill="#FCC9B9">FUSE protocol (request/response)</text>
   
   <!-- LAYER 2: FUSE DAEMON (bazil.org/fuse) -->
   <g class="node fuse-layer layer-box" transform="translate(30, 200)">
     <rect x="0" y="0" width="740" height="130" rx="12" ry="12"/>
-    <text x="370" y="25" text-anchor="middle" class="section-title" fill="var(--peach)">🔌 FUSE DAEMON — bazil.org/fuse (pinned v0.0.0-20230120002735)</text>
+    <text x="370" y="25" text-anchor="middle" class="section-title" fill="#FFA6A6">🔌 FUSE DAEMON — bazil.org/fuse (pinned v0.0.0-20230120002735)</text>
     <g transform="translate(20, 40)">
       <text y="0" text-anchor="start" class="code-fuse">Entry: momo -imp fs -fs-mount /mnt -fs-data /data</text>
       <text y="18" text-anchor="start" class="code-fuse">ServeFUSE(conn) with ctx-cancellable connection</text>
       <text y="36" text-anchor="start" class="code-fuse">Adapters: fuseRoot / fuseDir / fuseFile / fuseFileHandle / fuseDirHandle</text>
       <text y="54" text-anchor="start" class="code-fuse">toFuseErr: POSIX errno mapping (ENOENT, EIO, EACCES, ENOSPC...)</text>
       <text y="72" text-anchor="start" class="code-fuse">UnmountFUSE on shutdown (SIGINT/SIGTERM via signal.NotifyContext)</text>
-      <text y="90" text-anchor="start" class="code-fuse" style="fill:var(--peach);">Per-handle write buffer → materialize whole blob on Flush/Release</text>
+      <text y="90" text-anchor="start" class="code-fuse" style="fill:#FFA6A6;">Per-handle write buffer → materialize whole blob on Flush/Release</text>
     </g>
   </g>
   
   <!-- Arrow -->
   <path d="M400,330 V345" class="flow-bidir" marker-end="url(#arrow-bidir)"/>
-  <text x="400" y="342" text-anchor="middle" class="label-small" fill="var(--sakura)">POSIX API (in-process, zero RPC)</text>
+  <text x="400" y="342" text-anchor="middle" class="label-small" fill="#FCC9B9">POSIX API (in-process, zero RPC)</text>
   
   <!-- LAYER 3: momofs POSIX CORE -->
   <g class="node momofs-layer layer-box" transform="translate(30, 355)">
     <rect x="0" y="0" width="740" height="120" rx="12" ry="12"/>
-    <text x="370" y="25" text-anchor="middle" class="section-title" fill="var(--momo)">📁 momofs POSIX CORE (src/momofs)</text>
+    <text x="370" y="25" text-anchor="middle" class="section-title" fill="#F47983">📁 momofs POSIX CORE (src/momofs)</text>
     <g transform="translate(20, 40)">
       <text y="0" text-anchor="start" class="code-momofs">fuseRoot: Lookup, Getattr, Mkdir, Create, Remove, Rename</text>
       <text y="18" text-anchor="start" class="code-momofs">fuseDir: Readdir, Lookup, Mkdir, Create, Unlink, Rename</text>
       <text y="36" text-anchor="start" class="code-momofs">fuseFile: Read, Write, Flush, Release, Fsync, Getattr</text>
       <text y="54" text-anchor="start" class="code-momofs">fuseFileHandle: buffered writes (per-handle) → materialize on Flush</text>
       <text y="72" text-anchor="start" class="code-momofs">ReadAt for random access reads (streaming via CAS)</text>
-      <text y="90" text-anchor="start" class="code-momofs" style="fill:var(--momo);">Write model: buffer per-handle → whole blob on Flush (CAS write-whole-file)</text>
+      <text y="90" text-anchor="start" class="code-momofs" style="fill:#F47983;">Write model: buffer per-handle → whole blob on Flush (CAS write-whole-file)</text>
     </g>
   </g>
   
   <!-- Arrow -->
   <path d="M400,475 V490" class="flow-bidir" marker-end="url(#arrow-bidir)"/>
-  <text x="400" y="487" text-anchor="middle" class="label-small" fill="var(--sakura)">Store interface (PutBlob/GetBlob/StatBlob)</text>
+  <text x="400" y="487" text-anchor="middle" class="label-small" fill="#FCC9B9">Store interface (PutBlob/GetBlob/StatBlob)</text>
   
   <!-- LAYER 4: CAS STORE -->
   <g class="node cas-layer layer-box" transform="translate(30, 500)">
     <rect x="0" y="0" width="740" height="70" rx="12" ry="12"/>
-    <text x="370" y="25" text-anchor="middle" class="section-title" fill="var(--leaf)">📦 CAS STORE (Content-Addressable)</text>
+    <text x="370" y="25" text-anchor="middle" class="section-title" fill="#769267">📦 CAS STORE (Content-Addressable)</text>
     <g transform="translate(20, 40)">
       <text y="0" text-anchor="start" class="code-cas">PutBlob(blobID, reader) → hash on ingest → backend (local/nfs/s3/raw)</text>
       <text y="18" text-anchor="start" class="code-cas">GetBlob(blobID) → verify-on-read (SHA-256 matches blobID)</text>
@@ -133,19 +133,19 @@
   </g>
   
   <!-- ============ MOUNT LIFECYCLE ============ -->
-  <text x="400" y="590" class="section-title">🔄 MOUNT LIFECYCLE & UNMOUNT CLEANUP</text>
+  <text x="400" y="590" class="section-title">🔄 MOUNT LIFECYCLE &amp; UNMOUNT CLEANUP</text>
   
   <g transform="translate(400, 595)">
     <g class="node" transform="translate(-300, 0)">
-      <rect x="-70" y="-25" width="140" height="50" rx="8" fill="var(--cream)" stroke="var(--cream)" stroke-width="2"/>
-      <text y="-5" text-anchor="middle" class="code-text" style="fill:var(--cream);">1. momo -imp fs</text>
+      <rect x="-70" y="-25" width="140" height="50" rx="8" fill="#FDEDAD" stroke="#FDEDAD" stroke-width="2"/>
+      <text y="-5" text-anchor="middle" class="code-text" style="fill:#FDEDAD;">1. momo -imp fs</text>
       <text y="10" text-anchor="middle" class="label-small">ServeFUSE starts</text>
     </g>
     
     <path d="M-160,0 H-80" class="flow-arrow" marker-end="url(#arrow)"/>
     
     <g class="node" transform="translate(0, 0)">
-      <rect x="-70" y="-25" width="140" height="50" rx="8" fill="var(--diagram-bg)" stroke="var(--peach)" stroke-width="2"/>
+      <rect x="-70" y="-25" width="140" height="50" rx="8" fill="#FAFAFA" stroke="#FFA6A6" stroke-width="2"/>
       <text y="-5" text-anchor="middle" class="code-fuse">2. FUSE conn ready</text>
       <text y="10" text-anchor="middle" class="label-small">/dev/fuse open</text>
     </g>
@@ -153,7 +153,7 @@
     <path d="M80,0 H160" class="flow-arrow" marker-end="url(#arrow)"/>
     
     <g class="node" transform="translate(240, 0)">
-      <rect x="-70" y="-25" width="140" height="50" rx="8" fill="var(--diagram-bg)" stroke="var(--momo)" stroke-width="2"/>
+      <rect x="-70" y="-25" width="140" height="50" rx="8" fill="#FAFAFA" stroke="#F47983" stroke-width="2"/>
       <text y="-5" text-anchor="middle" class="code-momofs">3. POSIX ops served</text>
       <text y="10" text-anchor="middle" class="label-small">Read/Write/Stat...</text>
     </g>
@@ -169,7 +169,7 @@
     <path d="M560,0 H640" class="flow-fail" marker-end="url(#arrow-fail)"/>
     
     <g class="node" transform="translate(720, 0)">
-      <rect x="-70" y="-25" width="140" height="50" rx="8" fill="rgba(118,146,103,0.2)" stroke="var(--leaf)" stroke-width="2"/>
+      <rect x="-70" y="-25" width="140" height="50" rx="8" fill="rgba(118,146,103,0.2)" stroke="#769267" stroke-width="2"/>
       <text y="-5" text-anchor="middle" class="code-success">5. Clean shutdown</text>
       <text y="10" text-anchor="middle" class="label-small">ctx cancelled, conn closed</text>
     </g>
@@ -178,7 +178,7 @@
   <!-- ============ WRITE MODEL DETAIL ============ -->
   <g transform="translate(50, 540)">
     <rect x="0" y="0" width="700" height="50" rx="8" class="gc-box"/>
-    <text x="350" y="18" text-anchor="middle" class="section-title" fill="var(--cream)">WRITE MODEL: Per-Handle Buffer → Whole Blob on Flush (CAS Write-Whole-File Design)</text>
+    <text x="350" y="18" text-anchor="middle" class="section-title" fill="#FDEDAD">WRITE MODEL: Per-Handle Buffer → Whole Blob on Flush (CAS Write-Whole-File Design)</text>
     <g transform="translate(20, 28)">
       <text y="0" text-anchor="start" class="code-success">✓ Bolt: Bounded per-handle buffers — no unbounded memory for large in-flight writes</text>
       <text y="18" text-anchor="start" class="code-success">✓ Sentinel: Unmount MUST be clean (stale FUSE mount = partial tree); scatter changes stay lease-validating</text>
@@ -188,11 +188,11 @@
   
   <!-- Bolt/Sentinel badges -->
   <g transform="translate(620, 15)">
-    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(244,121,131,0.15)" stroke="var(--momo)" stroke-width="1"/>
-    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="var(--momo)">⚡ BOLT</text>
+    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(244,121,131,0.15)" stroke="#F47983" stroke-width="1"/>
+    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="#F47983">⚡ BOLT</text>
   </g>
   <g transform="translate(710, 15)">
-    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(118,146,103,0.15)" stroke="var(--leaf)" stroke-width="1"/>
-    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="var(--leaf)">🛡 SENTINEL</text>
+    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(118,146,103,0.15)" stroke="#769267" stroke-width="1"/>
+    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="#769267">🛡 SENTINEL</text>
   </g>
 </svg>

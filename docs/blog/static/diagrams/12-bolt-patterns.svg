@@ -5,34 +5,34 @@
   
   <defs>
     <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <path d="M0,0 L10,3.5 L0,7 Z" fill="var(--momo)"/>
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="#F47983"/>
     </marker>
     <marker id="arrow-success" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <path d="M0,0 L10,3.5 L0,7 Z" fill="var(--leaf)"/>
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="#769267"/>
     </marker>
     
     <filter id="drop-shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="var(--bark)" flood-opacity="0.15"/>
+      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="#563A10" flood-opacity="0.15"/>
     </filter>
     
     <style>
       .node { filter: url(#drop-shadow); transition: transform 0.2s ease; }
-      .title-text { font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; fill: var(--diagram-text); text-anchor: middle; }
-      .section-title { font-family: 'Outfit', sans-serif; font-size: 13px; font-weight: 700; fill: var(--diagram-text); text-anchor: middle; }
-      .label-text { font-family: 'JetBrains Mono', monospace; font-size: 10px; fill: var(--diagram-text); text-anchor: middle; }
-      .label-small { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--diagram-text-muted); text-anchor: middle; }
-      .code-text { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--momo); }
-      .code-success { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--leaf); }
+      .title-text { font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
+      .section-title { font-family: 'Outfit', sans-serif; font-size: 13px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
+      .label-text { font-family: 'JetBrains Mono', monospace; font-size: 10px; fill: #2D2D2D; text-anchor: middle; }
+      .label-small { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #6B6B6B; text-anchor: middle; }
+      .code-text { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #F47983; }
+      .code-success { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #769267; }
       .code-fail { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #dc2626; }
-      .code-quic { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--peach); }
-      .flow-arrow { fill: none; stroke: var(--momo); stroke-width: 2; stroke-linecap: round; marker-end: url(#arrow); }
-      .flow-success { stroke: var(--leaf); stroke-width: 2; marker-end: url(#arrow-success); }
-      .step-box { fill: var(--diagram-bg); stroke: var(--diagram-border); stroke-width: 1.5; rx: 6; ry: 6; }
-      .pattern-box { fill: rgba(244,121,131,0.08); stroke: var(--momo); stroke-width: 2; rx: 10; ry: 10; }
+      .code-quic { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #FFA6A6; }
+      .flow-arrow { fill: none; stroke: #F47983; stroke-width: 2; stroke-linecap: round; marker-end: url(#arrow); }
+      .flow-success { stroke: #769267; stroke-width: 2; marker-end: url(#arrow-success); }
+      .step-box { fill: #FAFAFA; stroke: #E0E0E0; stroke-width: 1.5; rx: 6; ry: 6; }
+      .pattern-box { fill: rgba(244,121,131,0.08); stroke: #F47983; stroke-width: 2; rx: 10; ry: 10; }
     </style>
   </defs>
   
-  <rect width="800" height="600" fill="var(--diagram-bg)"/>
+  <rect width="800" height="600" fill="#FAFAFA"/>
   
   <!-- Title -->
   <text x="400" y="30" class="title-text">⚡ Bolt Performance Patterns</text>
@@ -43,7 +43,7 @@
   
   <g class="node pattern-box" transform="translate(400, 120)">
     <rect x="-300" y="-5" width="600" height="150" rx="10" ry="10"/>
-    <text x="0" y="20" text-anchor="middle" class="section-title" fill="var(--momo)">Stack Buffers → Zero Heap Allocation</text>
+    <text x="0" y="20" text-anchor="middle" class="section-title" fill="#F47983">Stack Buffers → Zero Heap Allocation</text>
     
     <g transform="translate(-280, 40)">
       <text y="0" text-anchor="start" class="code-fail" style="font-size:10px;">❌ REJECTED: sync.Pool of []byte</text>
@@ -68,7 +68,7 @@
   
   <g class="node pattern-box" transform="translate(400, 320)">
     <rect x="-300" y="-5" width="600" height="150" rx="10" ry="10"/>
-    <text x="0" y="20" text-anchor="middle" class="section-title" fill="var(--leaf)">Phased Absolute Deadlines</text>
+    <text x="0" y="20" text-anchor="middle" class="section-title" fill="#769267">Phased Absolute Deadlines</text>
     
     <g transform="translate(-280, 40)">
       <text y="0" text-anchor="start" class="code-fail" style="font-size:10px;">❌ BEFORE: Per-Op SetDeadline</text>
@@ -97,7 +97,7 @@
   
   <g class="node pattern-box" transform="translate(400, 520)">
     <rect x="-300" y="-5" width="600" height="60" rx="10" ry="10"/>
-    <text x="0" y="20" text-anchor="middle" class="section-title" fill="var(--sakura)">Single Transaction, Multiple Buckets</text>
+    <text x="0" y="20" text-anchor="middle" class="section-title" fill="#FCC9B9">Single Transaction, Multiple Buckets</text>
     
     <g transform="translate(-280, 35)">
       <text y="0" text-anchor="start" class="code-fail" style="font-size:10px;">❌ BEFORE: 3 separate views</text>
@@ -119,7 +119,7 @@
   
   <!-- Bolt/Sentinel badges -->
   <g transform="translate(620, 15)">
-    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(244,121,131,0.15)" stroke="var(--momo)" stroke-width="1"/>
-    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="var(--momo)">⚡ BOLT</text>
+    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(244,121,131,0.15)" stroke="#F47983" stroke-width="1"/>
+    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="#F47983">⚡ BOLT</text>
   </g>
 </svg>

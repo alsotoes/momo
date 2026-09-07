@@ -7,41 +7,41 @@
   <defs>
     <!-- Arrow marker -->
     <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <path d="M0,0 L10,3.5 L0,7 Z" fill="var(--diagram-primary)"/>
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="#F47983"/>
     </marker>
     <marker id="arrow-success" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <path d="M0,0 L10,3.5 L0,7 Z" fill="var(--diagram-success)"/>
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="#769267"/>
     </marker>
     <marker id="arrow-structure" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <path d="M0,0 L10,3.5 L0,7 Z" fill="var(--diagram-structure)"/>
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="#563A10"/>
     </marker>
     
     <!-- Gradient for primary flow -->
     <linearGradient id="grad-primary" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" style="stop-color:var(--momo)"/>
-      <stop offset="100%" style="stop-color:var(--sakura)"/>
+      <stop offset="0%" style="stop-color:#F47983"/>
+      <stop offset="100%" style="stop-color:#FCC9B9"/>
     </linearGradient>
     
     <!-- Drop shadow -->
     <filter id="drop-shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="var(--bark)" flood-opacity="0.15"/>
+      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="#563A10" flood-opacity="0.15"/>
     </filter>
     
     <!-- Node style classes -->
     <style>
       .step-box { filter: url(#drop-shadow); }
       .step-box:hover { filter: url(#drop-shadow) brightness(1.1); }
-      .flow-text { font-family: 'JetBrains Mono', monospace; font-size: 10px; fill: var(--diagram-text-muted); }
-      .step-title { font-family: 'Outfit', sans-serif; font-size: 13px; font-weight: 700; fill: var(--diagram-text); }
-      .step-desc { font-family: 'Outfit', sans-serif; font-size: 10px; fill: var(--diagram-text-muted); }
-      .code-snippet { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--momo); }
-      .legend-text { font-family: 'Outfit', sans-serif; font-size: 11px; fill: var(--diagram-text); }
-      .legend-label { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--diagram-text-muted); }
+      .flow-text { font-family: 'JetBrains Mono', monospace; font-size: 10px; fill: #6B6B6B; }
+      .step-title { font-family: 'Outfit', sans-serif; font-size: 13px; font-weight: 700; fill: #2D2D2D; }
+      .step-desc { font-family: 'Outfit', sans-serif; font-size: 10px; fill: #6B6B6B; }
+      .code-snippet { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #F47983; }
+      .legend-text { font-family: 'Outfit', sans-serif; font-size: 11px; fill: #2D2D2D; }
+      .legend-label { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #6B6B6B; }
     </style>
   </defs>
   
   <!-- Background -->
-  <rect width="800" height="600" fill="var(--diagram-bg)"/>
+  <rect width="800" height="600" fill="#FAFAFA"/>
   
   <!-- Title -->
   <text x="400" y="35" class="diagram-title" id="main-title">CRUSH-lite: Deterministic Weighted Placement</text>
@@ -49,7 +49,7 @@
   
   <!-- Step 1: Input -->
   <g class="step-box" transform="translate(40, 90)">
-    <rect x="0" y="0" width="160" height="100" rx="8" ry="8" class="diagram-node" stroke="var(--momo)"/>
+    <rect x="0" y="0" width="160" height="100" rx="8" ry="8" class="diagram-node" stroke="#F47983"/>
     <text x="80" y="25" class="step-title" text-anchor="middle">1. INPUT</text>
     <text x="80" y="45" class="step-desc" text-anchor="middle">Object Hash (SHA-256)</text>
     <text x="80" y="62" class="code-snippet" text-anchor="middle">placementKey = blobID</text>
@@ -62,7 +62,7 @@
   
   <!-- Step 2: Scoring -->
   <g class="step-box" transform="translate(290, 70)">
-    <rect x="0" y="0" width="220" height="140" rx="8" ry="8" class="diagram-node" stroke="var(--momo)"/>
+    <rect x="0" y="0" width="220" height="140" rx="8" ry="8" class="diagram-node" stroke="#F47983"/>
     <text x="110" y="25" class="step-title" text-anchor="middle">2. SCORE CANDIDATES</text>
     <text x="110" y="45" class="step-desc" text-anchor="middle">Weighted Rendezvous Hashing</text>
     <g transform="translate(10, 55)">
@@ -78,7 +78,7 @@
   
   <!-- Step 3: Sort -->
   <g class="step-box" transform="translate(600, 90)">
-    <rect x="0" y="0" width="160" height="100" rx="8" ry="8" class="diagram-node" stroke="var(--sakura)"/>
+    <rect x="0" y="0" width="160" height="100" rx="8" ry="8" class="diagram-node" stroke="#FCC9B9"/>
     <text x="80" y="25" class="step-title" text-anchor="middle">3. SORT</text>
     <text x="80" y="45" class="step-desc" text-anchor="middle">Deterministic Order</text>
     <text x="80" y="62" class="code-snippet" text-anchor="middle">sort.Stable(byScore)</text>
@@ -92,7 +92,7 @@
   
   <!-- Step 4: Replica List -->
   <g class="step-box" transform="translate(400, 260)">
-    <rect x="0" y="0" width="200" height="100" rx="8" ry="8" class="diagram-node" stroke="var(--peach)"/>
+    <rect x="0" y="0" width="200" height="100" rx="8" ry="8" class="diagram-node" stroke="#FFA6A6"/>
     <text x="100" y="25" class="step-title" text-anchor="middle">4. REPLICA LIST</text>
     <text x="100" y="45" class="step-desc" text-anchor="middle">Top-N by Score</text>
     <g transform="translate(10, 55)">
@@ -108,7 +108,7 @@
   
   <!-- Step 5: Failure Domain Filter -->
   <g class="step-box" transform="translate(370, 430)">
-    <rect x="0" y="0" width="260" height="120" rx="8" ry="8" class="diagram-node" stroke="var(--leaf)"/>
+    <rect x="0" y="0" width="260" height="120" rx="8" ry="8" class="diagram-node" stroke="#769267"/>
     <text x="130" y="25" class="step-title" text-anchor="middle">5. FAILURE DOMAIN FILTER (R1)</text>
     <text x="130" y="45" class="step-desc" text-anchor="middle">Constrain replicas across rack/zone/DC</text>
     <g transform="translate(10, 55)">
@@ -126,7 +126,7 @@
   
   <!-- Step 6: Final Placement -->
   <g class="step-box" transform="translate(400, 570)">
-    <rect x="0" y="0" width="200" height="30" rx="8" ry="8" class="diagram-node" stroke="var(--leaf)" fill="rgba(118,146,103,0.1)"/>
+    <rect x="0" y="0" width="200" height="30" rx="8" ry="8" class="diagram-node" stroke="#769267" fill="rgba(118,146,103,0.1)"/>
     <text x="100" y="20" class="step-title" text-anchor="middle">✓ FINAL PLACEMENT</text>
   </g>
   
@@ -138,7 +138,7 @@
     <g id="node-ring">
       <!-- Node 1 -->
       <g class="diagram-element" transform="translate(80, 120)">
-        <circle cx="0" cy="0" r="35" class="diagram-node" stroke="var(--momo)"/>
+        <circle cx="0" cy="0" r="35" class="diagram-node" stroke="#F47983"/>
         <text y="-12" text-anchor="middle" class="step-title" font-size="12px">N1 (w=1.0)</text>
         <text y="4" text-anchor="middle" class="code-snippet">score: 0.847</text>
         <text y="20" text-anchor="middle" class="step-desc">Rack A, Zone 1</text>
@@ -146,7 +146,7 @@
       
       <!-- Node 2 -->
       <g class="diagram-element" transform="translate(220, 40)">
-        <circle cx="0" cy="0" r="35" class="diagram-node" stroke="var(--sakura)"/>
+        <circle cx="0" cy="0" r="35" class="diagram-node" stroke="#FCC9B9"/>
         <text y="-12" text-anchor="middle" class="step-title" font-size="12px">N2 (w=1.5)</text>
         <text y="4" text-anchor="middle" class="code-snippet">score: 0.923</text>
         <text y="20" text-anchor="middle" class="step-desc">Rack B, Zone 1</text>
@@ -154,7 +154,7 @@
       
       <!-- Node 3 -->
       <g class="diagram-element" transform="translate(360, 120)">
-        <circle cx="0" cy="0" r="35" class="diagram-node" stroke="var(--peach)"/>
+        <circle cx="0" cy="0" r="35" class="diagram-node" stroke="#FFA6A6"/>
         <text y="-12" text-anchor="middle" class="step-title" font-size="12px">N3 (w=1.0)</text>
         <text y="4" text-anchor="middle" class="code-snippet">score: 0.756</text>
         <text y="20" text-anchor="middle" class="step-desc">Rack A, Zone 2</text>
@@ -162,7 +162,7 @@
       
       <!-- Node 4 -->
       <g class="diagram-element" transform="translate(220, 200)">
-        <circle cx="0" cy="0" r="35" class="diagram-node" stroke="var(--leaf)"/>
+        <circle cx="0" cy="0" r="35" class="diagram-node" stroke="#769267"/>
         <text y="-12" text-anchor="middle" class="step-title" font-size="12px">N4 (w=2.0)</text>
         <text y="4" text-anchor="middle" class="code-snippet">score: 0.981</text>
         <text y="20" text-anchor="middle" class="step-desc">Rack C, Zone 2</text>
@@ -170,7 +170,7 @@
       
       <!-- Node 5 -->
       <g class="diagram-element" transform="translate(80, 200)">
-        <circle cx="0" cy="0" r="35" class="diagram-node" stroke="var(--cream)"/>
+        <circle cx="0" cy="0" r="35" class="diagram-node" stroke="#FDEDAD"/>
         <text y="-12" text-anchor="middle" class="step-title" font-size="12px">N5 (w=1.0)</text>
         <text y="4" text-anchor="middle" class="code-snippet">score: 0.634</text>
         <text y="20" text-anchor="middle" class="step-desc">Rack B, Zone 2</text>
@@ -181,23 +181,23 @@
     <g transform="translate(520, 160)">
       <text x="0" y="0" class="step-title" text-anchor="start">Sorted Order (N=3):</text>
       <g transform="translate(0, 25)">
-        <rect x="0" y="0" width="120" height="28" rx="4" ry="4" fill="rgba(244,121,131,0.15)" stroke="var(--momo)" stroke-width="1.5"/>
-        <text x="60" y="19" text-anchor="middle" class="step-title" font-size="12px" fill="var(--momo)">1. N4 (0.981) ✓</text>
+        <rect x="0" y="0" width="120" height="28" rx="4" ry="4" fill="rgba(244,121,131,0.15)" stroke="#F47983" stroke-width="1.5"/>
+        <text x="60" y="19" text-anchor="middle" class="step-title" font-size="12px" fill="#F47983">1. N4 (0.981) ✓</text>
       </g>
       <g transform="translate(0, 60)">
-        <rect x="0" y="0" width="120" height="28" rx="4" ry="4" fill="rgba(252,201,185,0.15)" stroke="var(--sakura)" stroke-width="1.5"/>
-        <text x="60" y="19" text-anchor="middle" class="step-title" font-size="12px" fill="var(--sakura)">2. N2 (0.923) ✓</text>
+        <rect x="0" y="0" width="120" height="28" rx="4" ry="4" fill="rgba(252,201,185,0.15)" stroke="#FCC9B9" stroke-width="1.5"/>
+        <text x="60" y="19" text-anchor="middle" class="step-title" font-size="12px" fill="#FCC9B9">2. N2 (0.923) ✓</text>
       </g>
       <g transform="translate(0, 95)">
-        <rect x="0" y="0" width="120" height="28" rx="4" ry="4" fill="rgba(244,121,131,0.15)" stroke="var(--momo)" stroke-width="1.5"/>
-        <text x="60" y="19" text-anchor="middle" class="step-title" font-size="12px" fill="var(--momo)">3. N1 (0.847) ✓</text>
+        <rect x="0" y="0" width="120" height="28" rx="4" ry="4" fill="rgba(244,121,131,0.15)" stroke="#F47983" stroke-width="1.5"/>
+        <text x="60" y="19" text-anchor="middle" class="step-title" font-size="12px" fill="#F47983">3. N1 (0.847) ✓</text>
       </g>
       <g transform="translate(0, 130)">
-        <rect x="0" y="0" width="120" height="28" rx="4" ry="4" fill="var(--diagram-grid)" stroke="var(--diagram-border)"/>
+        <rect x="0" y="0" width="120" height="28" rx="4" ry="4" fill="#F0F0F0" stroke="#E0E0E0"/>
         <text x="60" y="19" text-anchor="middle" class="step-desc" font-size="12px">N3 (0.756)</text>
       </g>
       <g transform="translate(0, 165)">
-        <rect x="0" y="0" width="120" height="28" rx="4" ry="4" fill="var(--diagram-grid)" stroke="var(--diagram-border)"/>
+        <rect x="0" y="0" width="120" height="28" rx="4" ry="4" fill="#F0F0F0" stroke="#E0E0E0"/>
         <text x="60" y="19" text-anchor="middle" class="step-desc" font-size="12px">N5 (0.634)</text>
       </g>
     </g>
@@ -205,33 +205,33 @@
   
   <!-- Legend -->
   <g transform="translate(50, 520)">
-    <rect x="0" y="0" width="700" height="60" rx="6" ry="6" fill="var(--diagram-bg)" stroke="var(--diagram-border)"/>
+    <rect x="0" y="0" width="700" height="60" rx="6" ry="6" fill="#FAFAFA" stroke="#E0E0E0"/>
     <text x="10" y="20" class="legend-text">Momo Palette Legend:</text>
     <g transform="translate(10, 35)">
       <g transform="translate(0, 0)">
-        <rect x="0" y="0" width="16" height="16" rx="3" fill="var(--momo)"/>
+        <rect x="0" y="0" width="16" height="16" rx="3" fill="#F47983"/>
         <text x="22" y="12" class="legend-label">Momo-iro — Primary flow, scoring</text>
       </g>
       <g transform="translate(220, 0)">
-        <rect x="0" y="0" width="16" height="16" rx="3" fill="var(--sakura)"/>
+        <rect x="0" y="0" width="16" height="16" rx="3" fill="#FCC9B9"/>
         <text x="22" y="12" class="legend-label">Sakura-iro — Sort, architecture</text>
       </g>
       <g transform="translate(440, 0)">
-        <rect x="0" y="0" width="16" height="16" rx="3" fill="var(--peach)"/>
+        <rect x="0" y="0" width="16" height="16" rx="3" fill="#FFA6A6"/>
         <text x="22" y="12" class="legend-label">Peach — Replica list, data</text>
       </g>
     </g>
     <g transform="translate(10, 55)">
       <g transform="translate(0, 0)">
-        <rect x="0" y="0" width="16" height="16" rx="3" fill="var(--leaf)"/>
+        <rect x="0" y="0" width="16" height="16" rx="3" fill="#769267"/>
         <text x="22" y="12" class="legend-label">Leaf — Verify, success, R1 filter</text>
       </g>
       <g transform="translate(220, 0)">
-        <rect x="0" y="0" width="16" height="16" rx="3" fill="var(--bark)"/>
+        <rect x="0" y="0" width="16" height="16" rx="3" fill="#563A10"/>
         <text x="22" y="12" class="legend-label">Bark — Structure, keys, anchors</text>
       </g>
       <g transform="translate(440, 0)">
-        <rect x="0" y="0" width="16" height="16" rx="3" fill="var(--cream)"/>
+        <rect x="0" y="0" width="16" height="16" rx="3" fill="#FDEDAD"/>
         <text x="22" y="12" class="legend-label">Cream — Highlights, client-side</text>
       </g>
     </g>
@@ -239,11 +239,11 @@
   
   <!-- Bolt/Sentinel badges -->
   <g transform="translate(600, 20)">
-    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(244,121,131,0.15)" stroke="var(--momo)" stroke-width="1"/>
-    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="var(--momo)">⚡ BOLT</text>
+    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(244,121,131,0.15)" stroke="#F47983" stroke-width="1"/>
+    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="#F47983">⚡ BOLT</text>
   </g>
   <g transform="translate(695, 20)">
-    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(118,146,103,0.15)" stroke="var(--leaf)" stroke-width="1"/>
-    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="var(--leaf)">🛡 SENTINEL</text>
+    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(118,146,103,0.15)" stroke="#769267" stroke-width="1"/>
+    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="#769267">🛡 SENTINEL</text>
   </g>
 </svg>

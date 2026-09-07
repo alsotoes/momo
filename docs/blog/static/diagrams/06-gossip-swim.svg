@@ -1,55 +1,55 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="800" height="600" role="img" aria-labelledby="gossip-title gossip-desc">
-  <title id="gossip-title">P2P Gossip & SWIM Failure Detection</title>
+  <title id="gossip-title">P2P Gossip &amp; SWIM Failure Detection</title>
   <desc id="gossip-desc">Masterless ring: SWIM failure detection with heartbeat/ping/ack, ALIVE/OFFLINE state machine, discovered-peer dialing, OFFLINE→ALIVE restoration. Gossip fanout adapts with cluster size.</desc>
   
   <defs>
     <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <path d="M0,0 L10,3.5 L0,7 Z" fill="var(--momo)"/>
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="#F47983"/>
     </marker>
     <marker id="arrow-success" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <path d="M0,0 L10,3.5 L0,7 Z" fill="var(--leaf)"/>
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="#769267"/>
     </marker>
     <marker id="arrow-bidir" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <path d="M0,0 L10,3.5 L0,7 Z" fill="var(--sakura)"/>
+      <path d="M0,0 L10,3.5 L0,7 Z" fill="#FCC9B9"/>
     </marker>
     
     <filter id="drop-shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="var(--bark)" flood-opacity="0.15"/>
+      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="#563A10" flood-opacity="0.15"/>
     </filter>
     
     <style>
       .node { filter: url(#drop-shadow); transition: transform 0.2s ease; }
       .node:hover { transform: scale(1.05); }
-      .alive { fill: rgba(118,146,103,0.2); stroke: var(--leaf); stroke-width: 2; }
+      .alive { fill: rgba(118,146,103,0.2); stroke: #769267; stroke-width: 2; }
       .offline { fill: rgba(220,38,38,0.15); stroke: #dc2626; stroke-width: 2; stroke-dasharray: 4,3; }
       .suspect { fill: rgba(245,158,11,0.2); stroke: #f59e0b; stroke-width: 2; }
-      .title-text { font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; fill: var(--diagram-text); text-anchor: middle; }
-      .section-title { font-family: 'Outfit', sans-serif; font-size: 13px; font-weight: 700; fill: var(--diagram-text); text-anchor: middle; }
-      .label-text { font-family: 'JetBrains Mono', monospace; font-size: 10px; fill: var(--diagram-text); text-anchor: middle; }
-      .label-small { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--diagram-text-muted); text-anchor: middle; }
-      .code-text { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--momo); }
-      .code-success { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: var(--leaf); }
-      .flow-arrow { fill: none; stroke: var(--momo); stroke-width: 1.5; stroke-linecap: round; marker-end: url(#arrow); }
-      .flow-success { stroke: var(--leaf); marker-end: url(#arrow-success); }
-      .flow-bidir { stroke: var(--sakura); marker-end: url(#arrow-bidir); stroke-dasharray: 3,3; }
-      .gossip-msg { fill: none; stroke: var(--momo); stroke-width: 1; stroke-dasharray: 2,3; marker-end: url(#arrow); }
+      .title-text { font-family: 'Outfit', sans-serif; font-size: 18px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
+      .section-title { font-family: 'Outfit', sans-serif; font-size: 13px; font-weight: 700; fill: #2D2D2D; text-anchor: middle; }
+      .label-text { font-family: 'JetBrains Mono', monospace; font-size: 10px; fill: #2D2D2D; text-anchor: middle; }
+      .label-small { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #6B6B6B; text-anchor: middle; }
+      .code-text { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #F47983; }
+      .code-success { font-family: 'JetBrains Mono', monospace; font-size: 9px; fill: #769267; }
+      .flow-arrow { fill: none; stroke: #F47983; stroke-width: 1.5; stroke-linecap: round; marker-end: url(#arrow); }
+      .flow-success { stroke: #769267; marker-end: url(#arrow-success); }
+      .flow-bidir { stroke: #FCC9B9; marker-end: url(#arrow-bidir); stroke-dasharray: 3,3; }
+      .gossip-msg { fill: none; stroke: #F47983; stroke-width: 1; stroke-dasharray: 2,3; marker-end: url(#arrow); }
     </style>
   </defs>
   
-  <rect width="800" height="600" fill="var(--diagram-bg)"/>
+  <rect width="800" height="600" fill="#FAFAFA"/>
   
   <!-- Title -->
-  <text x="400" y="30" class="title-text">P2P Gossip & SWIM — Masterless Ring</text>
+  <text x="400" y="30" class="title-text">P2P Gossip &amp; SWIM — Masterless Ring</text>
   <text x="400" y="50" class="diagram-subtitle">Gossip for metadata, SWIM failure detection, scatter-gather queries, lease consensus — momo's nervous system</text>
   
   <!-- ============ RING TOPOLOGY ============ -->
-  <text x="400" y="75" class="section-title">🔄 RING TOPOLOGY & GOSSIP FAN-OUT</text>
+  <text x="400" y="75" class="section-title">🔄 RING TOPOLOGY &amp; GOSSIP FAN-OUT</text>
   
   <!-- 5-node ring -->
   <g transform="translate(400, 200)">
     <!-- Center -->
-    <circle cx="0" cy="0" r="140" fill="none" stroke="var(--diagram-grid)" stroke-width="1" stroke-dasharray="8,8"/>
+    <circle cx="0" cy="0" r="140" fill="none" stroke="#F0F0F0" stroke-width="1" stroke-dasharray="8,8"/>
     
     <!-- Nodes on ring -->
     <g id="ring-nodes">
@@ -95,7 +95,7 @@
     </g>
     
     <!-- Gossip connections (bidirectional) -->
-    <g style="stroke:var(--momo); stroke-width:1; stroke-dasharray:3,3;">
+    <g style="stroke:#F47983; stroke-width:1; stroke-dasharray:3,3;">
       <path d="M0,-140 L82,-114" class="gossip-msg" marker-end="url(#arrow)"/>
       <path d="M82,-114 L115,50" class="gossip-msg" marker-end="url(#arrow)"/>
       <path d="M115,50 L-115,50" class="gossip-msg" marker-end="url(#arrow)"/>
@@ -108,7 +108,7 @@
     
     <!-- Fanout indicator -->
     <g transform="translate(0, 180)">
-      <rect x="-100" y="0" width="200" height="30" rx="6" fill="rgba(244,121,131,0.15)" stroke="var(--momo)"/>
+      <rect x="-100" y="0" width="200" height="30" rx="6" fill="rgba(244,121,131,0.15)" stroke="#F47983"/>
       <text x="0" y="19" text-anchor="middle" class="label-small">Gossip fanout = min(3, cluster_size) — adaptive scaling (#897)</text>
     </g>
   </g>
@@ -120,7 +120,7 @@
     <!-- ALIVE state -->
     <g class="node alive" transform="translate(0, 0)">
       <rect x="0" y="0" width="140" height="100" rx="10" ry="10"/>
-      <text x="70" y="22" text-anchor="middle" class="section-title" fill="var(--leaf)">ALIVE</text>
+      <text x="70" y="22" text-anchor="middle" class="section-title" fill="#769267">ALIVE</text>
       <g transform="translate(10, 35)">
         <text y="0" text-anchor="start" class="code-success">• Heartbeat received</text>
         <text y="16" text-anchor="start" class="code-success">• Ping/Ack successful</text>
@@ -169,8 +169,8 @@
   
   <g transform="translate(100, 540)">
     <g class="node" transform="translate(0, 0)">
-      <rect x="0" y="0" width="150" height="80" rx="8" fill="var(--diagram-bg)" stroke="var(--momo)" stroke-width="2"/>
-      <text x="75" y="18" text-anchor="middle" class="section-title" fill="var(--momo)">DISCOVERY</text>
+      <rect x="0" y="0" width="150" height="80" rx="8" fill="#FAFAFA" stroke="#F47983" stroke-width="2"/>
+      <text x="75" y="18" text-anchor="middle" class="section-title" fill="#F47983">DISCOVERY</text>
       <text x="75" y="38" text-anchor="middle" class="label-small">Gossip reveals</text>
       <text x="75" y="52" text-anchor="middle" class="label-small">new peer addr</text>
       <text x="75" y="66" text-anchor="middle" class="code-text" style="font-size:8px;">peer = gossip.PeerMeta</text>
@@ -179,8 +179,8 @@
     <path d="M170,40 H220" class="flow-arrow" marker-end="url(#arrow)"/>
     
     <g class="node" transform="translate(230, 0)">
-      <rect x="0" y="0" width="150" height="80" rx="8" fill="var(--diagram-bg)" stroke="var(--leaf)" stroke-width="2"/>
-      <text x="75" y="18" text-anchor="middle" class="section-title" fill="var(--leaf)">DIAL</text>
+      <rect x="0" y="0" width="150" height="80" rx="8" fill="#FAFAFA" stroke="#769267" stroke-width="2"/>
+      <text x="75" y="18" text-anchor="middle" class="section-title" fill="#769267">DIAL</text>
       <text x="75" y="38" text-anchor="middle" class="label-small">TCP/QUIC connect</text>
       <text x="75" y="52" text-anchor="middle" class="label-small">Verify identity</text>
       <text x="75" y="66" text-anchor="middle" class="code-success" style="font-size:8px;">conn, err = dial()</text>
@@ -189,8 +189,8 @@
     <path d="M380,40 H430" class="flow-success" marker-end="url(#arrow-success)"/>
     
     <g class="node" transform="translate(440, 0)">
-      <rect x="0" y="0" width="150" height="80" rx="8" fill="rgba(118,146,103,0.15)" stroke="var(--leaf)" stroke-width="2"/>
-      <text x="75" y="18" text-anchor="middle" class="section-title" fill="var(--leaf)">PEER MAP</text>
+      <rect x="0" y="0" width="150" height="80" rx="8" fill="rgba(118,146,103,0.15)" stroke="#769267" stroke-width="2"/>
+      <text x="75" y="18" text-anchor="middle" class="section-title" fill="#769267">PEER MAP</text>
       <text x="75" y="38" text-anchor="middle" class="label-small">Add to PeerMap</text>
       <text x="75" y="52" text-anchor="middle" class="label-small">Update CRUSH weights</text>
       <text x="75" y="66" text-anchor="middle" class="code-success" style="font-size:8px;">PeerMap.Add(peer)</text>
@@ -201,11 +201,11 @@
   
   <!-- Bolt/Sentinel badges -->
   <g transform="translate(620, 15)">
-    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(244,121,131,0.15)" stroke="var(--momo)" stroke-width="1"/>
-    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="var(--momo)">⚡ BOLT</text>
+    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(244,121,131,0.15)" stroke="#F47983" stroke-width="1"/>
+    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="#F47983">⚡ BOLT</text>
   </g>
   <g transform="translate(710, 15)">
-    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(118,146,103,0.15)" stroke="var(--leaf)" stroke-width="1"/>
-    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="var(--leaf)">🛡 SENTINEL</text>
+    <rect x="0" y="0" width="85" height="24" rx="12" fill="rgba(118,146,103,0.15)" stroke="#769267" stroke-width="1"/>
+    <text x="42.5" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="9px" font-weight="700" fill="#769267">🛡 SENTINEL</text>
   </g>
 </svg>
