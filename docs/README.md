@@ -8,26 +8,26 @@ It is designed around a small, auditable core: CRUSH-lite placement, a pluggable
 
 | Document | Description |
 |---|---|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | System architecture, storage layer, replication, P2P, metrics |
-| [CONFIGURATION.md](CONFIGURATION.md) | Complete configuration reference for `momo.conf` |
-| [STANDARDS.md](STANDARDS.md) | ⚡ Bolt (performance) and 🛡️ Sentinel (security) coding standards |
-| [PROTOCOL.md](PROTOCOL.md) | Wire protocol specification (handshake, metadata, replication) |
-| [REPLICATION_STRATEGIES.md](REPLICATION_STRATEGIES.md) | Chain, Splay, Primary-Splay replication modes |
-| [CRUSH.md](CRUSH.md) | CRUSH-lite placement algorithm (Weighted Rendezvous Hashing) |
-| [P2P.md](P2P.md) | P2P gossip, SWIM failure detection, scatter-gather, lease consensus |
-| [TESTING.md](TESTING.md) | Test suites, CI pipeline, contract testing, E2E tests |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guidelines and PR workflow |
-| [ROADMAP.md](ROADMAP.md) | Project roadmap with milestones and GitHub issues |
-| [ERROR_CODES.md](ERROR_CODES.md) | POSIX error codes and exit statuses reference |
-| [PERFORMANCE.md](PERFORMANCE.md) | Auto-generated benchmark results and performance history |
-| [COMPATIBILITY.md](COMPATIBILITY.md) | Go version, platform compatibility, dependencies |
-| [CONTRACT_TESTING.md](CONTRACT_TESTING.md) | TCP wire protocol contract testing strategy |
-| [POLYMORPHIC_SYSTEM.md](POLYMORPHIC_SYSTEM.md) | Dynamic replication mode switching and polymorphic engine |
-| [AI_FLYING_SOLO.md](AI_FLYING_SOLO.md) | Autonomous development workflow for AI agents (bugs and features) |
-| [EXTERNAL_CLIENT_REPLICATION.md](EXTERNAL_CLIENT_REPLICATION.md) | External S3 client replication mode downgrade handling |
-| [PENTESTING.md](PENTESTING.md) | Security pentest overview — DotDotPwn fuzzing + Python exploit scripts (points to `pentest/README.md` for reproduction) |
-| [blog/README.md](blog/README.md) | Engineering journal (Hugo-format posts) — journey, research, architecture decisions, changes |
-| [adr/README.md](adr/README.md) | Architecture Decision Records (Fowler pattern) — one per ratified OpenSpec change, auto-synced from specs |
+| [ARCHITECTURE](ARCHITECTURE.md) | System architecture, storage layer, replication, P2P, metrics |
+| [CONFIGURATION](CONFIGURATION.md) | Complete configuration reference for `momo.conf` |
+| [STANDARDS](STANDARDS.md) | ⚡ Bolt (performance) and 🛡️ Sentinel (security) coding standards |
+| [PROTOCOL](PROTOCOL.md) | Wire protocol specification (handshake, metadata, replication) |
+| [REPLICATION_STRATEGIES](REPLICATION_STRATEGIES.md) | Chain, Splay, Primary-Splay replication modes |
+| [CRUSH](CRUSH.md) | CRUSH-lite placement algorithm (Weighted Rendezvous Hashing) |
+| [P2P](P2P.md) | P2P gossip, SWIM failure detection, scatter-gather, lease consensus |
+| [TESTING](TESTING.md) | Test suites, CI pipeline, contract testing, E2E tests |
+| [CONTRIBUTING](CONTRIBUTING.md) | Contribution guidelines and PR workflow |
+| [ROADMAP](ROADMAP.md) | Project roadmap with milestones and GitHub issues |
+| [ERROR_CODES](ERROR_CODES.md) | POSIX error codes and exit statuses reference |
+| [PERFORMANCE](PERFORMANCE.md) | Auto-generated benchmark results and performance history |
+| [COMPATIBILITY](COMPATIBILITY.md) | Go version, platform compatibility, dependencies |
+| [CONTRACT_TESTING](CONTRACT_TESTING.md) | TCP wire protocol contract testing strategy |
+| [POLYMORPHIC_SYSTEM](POLYMORPHIC_SYSTEM.md) | Dynamic replication mode switching and polymorphic engine |
+| [AI_FLYING_SOLO](AI_FLYING_SOLO.md) | Autonomous development workflow for AI agents (bugs and features) |
+| [EXTERNAL_CLIENT_REPLICATION](EXTERNAL_CLIENT_REPLICATION.md) | External S3 client replication mode downgrade handling |
+| [PENTESTING](PENTESTING.md) | Security pentest overview — DotDotPwn fuzzing + Python exploit scripts (points to `pentest/README.md` for reproduction) |
+| [BLOG](blog/README.md) | Engineering journal (Hugo-format posts) — journey, research, architecture decisions, changes |
+| [ADR](adr/README.md) | Architecture Decision Records (Fowler pattern) — one per ratified OpenSpec change, auto-synced from specs |
 
 ## Key Features
 
