@@ -69,6 +69,9 @@ updates:
     labels:
       - "dependencies"
       - "go"
+    ignore:
+      - dependency-name: "github.com/quic-go/quic-go"
+        versions: [">= 0.62.0"]
 
   # Enable updates for GitHub Actions CI/CD workflows
   - package-ecosystem: "github-actions"
