@@ -25,8 +25,6 @@ It is designed around a small, auditable core: CRUSH-lite placement, a pluggable
 | [POLYMORPHIC_SYSTEM.md](POLYMORPHIC_SYSTEM.md) | Dynamic replication mode switching and polymorphic engine |
 | [AI_FLYING_SOLO.md](AI_FLYING_SOLO.md) | Autonomous development workflow for AI agents (bugs and features) |
 | [EXTERNAL_CLIENT_REPLICATION.md](EXTERNAL_CLIENT_REPLICATION.md) | External S3 client replication mode downgrade handling |
-| [PENTESTING.md](PENTESTING.md) | Pentesting Momo with DotDotPwn — traversal fuzzing overview |
-| [../pentest/README.md](../pentest/README.md) | Security pentest toolkit — DotDotPwn fuzzing + Python exploit scripts (9 CVEs found) |
 | [blog/README.md](blog/README.md) | Engineering journal (Hugo-format posts) — journey, research, architecture decisions, changes |
 | [adr/README.md](adr/README.md) | Architecture Decision Records (Fowler pattern) — one per ratified OpenSpec change, auto-synced from specs |
 
