@@ -1,12 +1,12 @@
 module github.com/alsotoes/momo/src/transport
 
-go 1.25.10
+go 1.26.0
 
 require (
 	github.com/alsotoes/momo/src/common v0.0.0-00010101000000-000000000000
 	github.com/alsotoes/momo/src/crypto v0.0.0-00010101000000-000000000000
 	github.com/alsotoes/momo/src/storage v0.0.0-20260708003031-b3e2d20e8156
-	github.com/quic-go/quic-go v0.61.0
+	github.com/quic-go/quic-go v0.62.0
 	go.uber.org/goleak v1.3.0
 )
 
