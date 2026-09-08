@@ -1,6 +1,6 @@
 module github.com/alsotoes/momo/src/p2p
 
-go 1.25.10
+go 1.26.2
 
 require go.uber.org/goleak v1.3.0
 

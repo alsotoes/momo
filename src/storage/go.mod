@@ -1,6 +1,6 @@
 module github.com/alsotoes/momo/src/storage
 
-go 1.25.10
+go 1.26.2
 
 replace github.com/alsotoes/momo/src/common => ../common
 

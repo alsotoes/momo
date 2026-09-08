@@ -1,6 +1,6 @@
 module github.com/alsotoes/momo/src/momofs
 
-go 1.25.10
+go 1.26.2
 
 require (
 	github.com/alsotoes/momo/src/common v0.0.0

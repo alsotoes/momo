@@ -1,6 +1,6 @@
 module github.com/alsotoes/momo
 
-go 1.25.10
+go 1.26.2
 
 require (
 	github.com/alsotoes/momo/src/client v0.0.0-20260610224110-df9547453bcd
