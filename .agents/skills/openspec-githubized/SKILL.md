@@ -16,6 +16,7 @@ GitHub updates are best effort once project setup exists.
 ## Invocation Contract
 
 - If the user asks to operate on an OpenSpec change, use this skill as the GitHub lifecycle overlay.
+- This skill is the OpenSpec slice of the project's end-to-end `docs/AI_FLYING_SOLO.md` workflow (issue → branch → OpenSpec change → PR → CI → reviewer → merge). Use this skill **in addition to** that workflow, not as a replacement for it.
 - Also use the base OpenSpec skill that matches the request, such as `openspec-propose`, `openspec-apply-change`, `openspec-archive-change`, or `openspec-sync-specs`.
 - If `openspec/github.yaml` exists, run the relevant GitHub hook for the current phase when possible.
 - If `openspec/github.yaml` is missing during proposal/setup, create it before issue binding or other GitHub lifecycle work.
@@ -36,6 +37,7 @@ GitHub updates are best effort once project setup exists.
 ## GitHub Rules
 
 - Prefer the `gh` CLI for GitHub operations: `gh issue create/view/edit/close`, `gh pr create/checks/merge/comment`, `gh run list`, `gh api`.
+- This skill aligns agent behavior with the project's enforcement gates — it is advisory, not a gate itself. The AI Reviewer (Rule 70) independently verifies `Resolves` links, issue labels, and OpenSpec-change presence before merge; CI runs `blog-check` (Rule 76) and `adr-sync-check` (Rules 77/78) as hard checks. Follow this skill so agent output passes those gates.
 - The tracking GitHub issue is created FIRST (Rule 11, Step 1 of the flying-solo workflow) — before the OpenSpec change exists. Proposal **binds** that issue; there is no backlog-hunting step.
 - If `openspec/github.yaml` is missing during proposal/setup, perform setup: read the repo owner/name/branch from `gh repo view` and confirm the issue label filter. Write the config, then bind the existing issue.
 - During missing-config setup, call only read-only `gh repo view` / `gh issue view`. Do not create new issues until the configured lifecycle flow requires them.
