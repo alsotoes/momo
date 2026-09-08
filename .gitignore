@@ -80,3 +80,7 @@ skills-lock.json
 **/.kiro/
 plan.md
 **/plan.md
+
+# MemPalace per-project files
+mempalace.yaml
+entities.json

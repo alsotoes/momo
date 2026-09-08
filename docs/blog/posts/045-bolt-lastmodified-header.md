@@ -28,6 +28,7 @@ related:
 - 036-s3-listxml-appendformat-optimization
 - 012-s3-integrity-checksums
 - 047-bolt-s3-copyresult-time-alloc
+- 048-bolt-listparts-appendformat
 ---
 
 ## One allocation per request, invisible until it isn't

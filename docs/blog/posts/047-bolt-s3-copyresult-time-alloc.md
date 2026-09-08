@@ -14,7 +14,7 @@ summary: "How we optimized S3 XML responses by replacing time.Format with time.A
 artifacts:
   - type: spec
     path: openspec/changes/bolt-s3-copyresult-time-alloc
-related: ["024-bolt-performance-engineering", "045-bolt-lastmodified-header"]
+related: ["024-bolt-performance-engineering", "045-bolt-lastmodified-header", "048-bolt-listparts-appendformat"]
 difficulty: "intermediate"
 pattern: "zero-alloc"
 teaches:

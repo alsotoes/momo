@@ -205,3 +205,7 @@
 ## 2024-09-01 - Eliminate time formatting allocations in HTTP headers
 **Learning:** Formatting dates inside frequent network request paths using `time.Format` allocates new strings on the heap, adding garbage collection pressure.
 **Action:** When constructing raw HTTP response headers, avoid `time.Format` and instead use `time.AppendFormat` to write the formatted time string directly into pre-allocated, stack-bound byte slices (e.g., `time.Unix(0, modTime).UTC().AppendFormat(b, http.TimeFormat)`). This completely eliminates the dynamic string allocation per request.
+
+## 2026-09-08 - Eliminate time.Format string allocation in S3 ListParts
+**Learning:** Re-evaluating `time.Now().UTC().Format()` inside the S3 ListParts XML loop: even after hoisting the timestamp out of the loop, `time.Format` still allocates a heap string for every response. In a loop generating an XML array, this is a per-request allocation.
+**Action:** Scan loops generating arrays in XML/JSON for repeated calls to `time.Now()` or `strconv.Itoa`. Hoist constant strings out of the loop and convert `time.Format` to `time.AppendFormat` with a stack-allocated buffer (e.g., `var timeBuf [32]byte; time.Now().UTC().AppendFormat(timeBuf[:0], time.RFC3339)`), then `buf.Write(tstr)` instead of `buf.WriteString(tstr)`.

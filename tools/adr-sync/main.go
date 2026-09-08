@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/alsotoes/momo/tools/adr-sync/generator"
@@ -38,10 +39,31 @@ func main() {
 	}
 	sort.Strings(specIDs)
 
+	// Stable ADR numbering: preserve numbers already assigned to existing ADR
+	// files (NNNN-<specID>.md), and assign the next free number to specs without
+	// an ADR yet. This keeps ADR numbers immutable when new specs are inserted
+	// mid-alphabet (Rule 78), instead of renumbering every downstream ADR.
+	existing := existingADRNumbers()
+	used := make(map[int]bool)
+	for _, n := range existing {
+		used[n] = true
+	}
+	next := 1
+	for used[next] {
+		next++
+	}
+
 	mismatch := false
 
-	for i, specID := range specIDs {
-		num := i + 1
+	for _, specID := range specIDs {
+		num, ok := existing[specID]
+		if !ok {
+			for used[next] {
+				next++
+			}
+			num = next
+			used[next] = true
+		}
 
 		specDirs, _ := filepath.Glob(filepath.Join("openspec", "changes", specID, "specs", "*", "spec.md"))
 		if len(specDirs) == 0 {
@@ -130,6 +152,28 @@ func main() {
 	} else if !*checkOnly {
 		fmt.Printf("Synced %d ADRs\n", len(specIDs))
 	}
+}
+
+// existingADRNumbers maps each specID that already has an ADR file in
+// docs/adr/ (NNNN-<specID>.md) to its assigned number. Used for stable
+// numbering so inserting a new spec never renumbers existing ADRs.
+func existingADRNumbers() map[string]int {
+	existing := make(map[string]int)
+	adrFiles, _ := filepath.Glob(filepath.Join("docs", "adr", "*.md"))
+	numRe := regexp.MustCompile(`^(\d{4})-([a-z0-9-]+)\.md$`)
+	for _, f := range adrFiles {
+		base := filepath.Base(f)
+		m := numRe.FindStringSubmatch(base)
+		if m == nil {
+			continue
+		}
+		n, err := strconv.Atoi(m[1])
+		if err != nil {
+			continue
+		}
+		existing[m[2]] = n
+	}
+	return existing
 }
 
 func buildDecisionFromSpec(spec model.SpecDoc) string {
