@@ -1,8 +1,8 @@
 # Momo
 
-Momo is a high-performance, transport-agnostic file replication playground written in Go. It demonstrates several replication strategies and a simple, metrics‑driven controller that can switch strategies at runtime (a “polymorphic” system), optimized with zero-allocation techniques. It fully supports both legacy TCP (`momo-tcp`) and modern QUIC (`momo-quic`) transports.
+Momo is a high-performance, transport-agnostic **distributed object storage system** written in Go. It stores content-addressed blobs (SHA-256) with server-side deduplication, replicates them across a cluster using pluggable replication strategies, and exposes multiple access surfaces: a native TCP/QUIC protocol and an S3-compatible REST gateway, plus a FUSE filesystem (`momofs`) for POSIX access.
 
-This document explains the architecture, configuration, wire protocol, replication modes, and how to run the client and servers.
+It is designed around a small, auditable core: CRUSH-lite placement, a pluggable `BlobStore` backend layer, P2P gossip membership, and runtime-reconfigurable replication (a "polymorphic" system driven by live metrics).
 
 ## Documentation Index
 
@@ -30,169 +30,48 @@ This document explains the architecture, configuration, wire protocol, replicati
 | [blog/README.md](blog/README.md) | Engineering journal (Hugo-format posts) — journey, research, architecture decisions, changes |
 | [adr/README.md](adr/README.md) | Architecture Decision Records (Fowler pattern) — one per ratified OpenSpec change, auto-synced from specs |
 
-## Key Performance & Security Features (⚡ Bolt & 🛡️ Sentinel)
+## Key Features
 
-- **Balanced Primary Architecture**: Removes central bottlenecks by deterministically selecting primary nodes for each object using the CRUSH-lite algorithm.
-- **Automated AI Governance**: Pull Requests are automatically reviewed and merged by a Gemini-powered audit engine that enforces strict architectural steering rules.
-- **Content-Addressable Storage (CAS)**: Saves disk space and bandwidth by identifying files by their SHA-256 content hash, with built-in server-side deduplication.
-- **Pluggable Storage Backends**: Configurable blob storage via `[storage] backend` — supports `local` (default), `nfs`, `s3` (zero-dep SigV4 client), and `raw` (direct block I/O). Bbolt metadata stays local per-node.
-- **Pluggable Transport Layer**: Communicate seamlessly over raw TCP, encrypted QUIC (TLS 1.3), or S3-compatible REST gateways via a modular `ProtocolFactory`.
-- **Zero-Allocation Hashing & Encoding**: SHA-256 sums and hex encoding use stack-allocated buffers to eliminate heap escapes.
-- **Phased Absolute Deadlines**: Continuous protection against Slowloris attacks with strict bounds for handshake (10s), metadata (60s), and dynamic transfer phases.
-- **Bitwise Deadline Amortization**: Reduces `SetDeadline` system calls by ~98% in hot paths.
-- **Consolidated Network I/O**: Merges authentication tokens, timestamps, and payloads into unified writes to minimize syscalls and Nagle delays.
-- **Security Hardening**: Mandatory 64-byte AuthToken validation, CRLF log injection protection, and comprehensive `AUDIT:` logging for all sensitive operations.
-- **P2P Cluster Coordination**: Gossip-based membership with SWIM-style failure detection (direct ping/ack, indirect ping, adaptive RTT timeouts), scatter-gather queries, and lease-based consensus for deletes.
-- **Prometheus Metrics Exporter**: Built-in `/metrics` and `/health` endpoints with `sync/atomic` counters — zero-overhead on hot path, no external dependencies. All uploads, downloads, deletes, replication, errors, and bytes transferred are instrumented via a `MetricsHook` interface injected into the transport layer.
+- **Content-Addressable Storage (CAS)**: blobs identified by SHA-256 content hash, with server-side deduplication and at-rest integrity verification (verify-on-read + background scrub).
+- **Pluggable Storage Backends**: `local` (default), `nfs`, `s3` (zero-dependency SigV4 client), and `raw` (direct block I/O) via the `BlobStore` interface. Metadata lives in a per-node Bbolt store.
+- **Pluggable Transports**: native TCP and QUIC (TLS 1.3), plus an S3-compatible REST gateway, through a modular `ProtocolFactory`.
+- **CRUSH-lite Placement**: deterministic, failure-domain-aware replica placement (Weighted Rendezvous Hashing) computed client-side — no central metadata service.
+- **Replication Strategies**: runtime-switchable `None`, `Chain`, `Splay`, and `Primary-Splay` modes, reconfigurable by a metrics-driven "polymorphic" controller.
+- **Write Durability & Quorum**: configurable durability barrier (`fsync` / `group-commit` / `none`) and `write_quorum` semantics.
+- **P2P Cluster Coordination**: gossip membership with SWIM-style failure detection, scatter-gather queries, and lease-based consensus for deletes.
+- **Distributed Metadata (R6)**: consistent-hash ring with quorum reads/writes, vector clocks, and shard-aware listing — optional and backward compatible.
+- **S3 Gateway**: SigV4 auth (dedicated gateway credentials), multipart upload, checksums, honest `501` for unsupported subresources.
+- **FUSE Filesystem (momofs)**: POSIX access to the CAS store via `momo -imp fs` (go-fuse/v2).
+- **Security**: mandatory 64-byte auth-token validation, CRLF injection protection, path-traversal validation, envelope E2EE for clients, honest panic recovery (Rule 37).
+- **Prometheus Metrics**: `/metrics` + `/health` per node with `sync/atomic` counters — zero overhead on hot paths.
 
 ## Repository Layout
 
-- `.github/scripts/`: Automation and governance scripts.
-  - `ai_reviewer.py`: Python-based Gemini AI code review engine.
-  - `test-e2e.sh`: End-to-end integration test runner.
-  - `test-e2e-p2p.sh`: P2P gossip convergence and failure detection E2E test.
-  - `test-e2e-encryption.sh`: Envelope E2EE round-trip smoke test (native + S3 `s3enc`/`s3dec`).
-  - `test-scale-cas.sh`: CAS storage scale test with CRUSH placement.
-  - `test-external-client.sh`: External S3 client replication mode downgrade test.
-  - `test-metrics.sh`: Prometheus metrics E2E test (start, upload, scrape, verify).
-  - `run-pentest.sh`: Pentest orchestration script (Docker-based DotDotPwn scans).
-  - `Dockerfile.dotdotpwn`: DotDotPwn container image for pentest pipeline.
-  - `check-notsecret.sh`: Rule 29 scanner-safe secrets enforcement.
-  - `update_readme_with_benchmarks.sh`: Automated documentation updater.
-- `.github/workflows/`: CI/CD pipeline definitions (15 workflows).
-  - `go.yml`: Build, test, benchmark, coverage, secrets check.
-  - `encryption_smoke_test.yml`: Envelope E2EE smoke tests (TCP, QUIC, S3-TCP, S3-QUIC).
-  - `smoke_test.yml`: Multi-protocol replication smoke tests (TCP, QUIC, S3-TCP, S3-QUIC).
-  - `scale_cas_test.yml`: CAS storage scale E2E test.
-  - `p2p_test.yml`: P2P gossip convergence + failure detection E2E.
-  - `distributed_test.yml`: TCP contract, k6 load, chaos node-crash.
-  - `metrics_test.yml`: Prometheus metrics endpoint E2E verification.
-  - `external_client_test.yml`: External S3 client replication downgrade test.
-  - `storage_backends_test.yml`: S3 and raw device storage backend E2E tests.
-  - `benchmark_compare.yml`: Benchmark regression detection (>5% threshold).
-  - `verify_go_version.yml`: Go version sync across all config files.
-  - `pentest.yml`: Security pentest pipeline (DotDotPwn + Python exploits, 6 phases).
-  - `gemini_reviewer.yml`: AI code review (security, performance, architecture).
-  - `auto_reviewer.yml`: Initial automated review on PR open/reopen.
-  - `weekly_sanity.yml`: Weekly full suite + security audit (Sun 00:00 UTC).
-- `src/momo.go`: Entry point (client/server runner and metrics bootstrap).
-- `src/transport/`: Pluggable communication layers and protocol implementations.
-  - `communicator.go`: Central `Communicator` and `MomoListener` interfaces, `MetricsHook` interface.
-  - `factory.go`: `ProtocolFactory` for instantiating transports.
-  - `momo_tcp.go`: Legacy TCP implementation.
-  - `momo_quic.go`: Modern QUIC implementation using `quic-go`.
-  - `s3_communicator.go`: S3-compatible REST API mapping.
-  - `quic_net_conn.go`: Adapts `quic.Stream` + `Dialer.DialContext`.
-- `src/client/`: Client-side logic for cluster replication and file forwarding.
-  - `client.go`: Main cluster connection and parallel file transmission logic.
-- `src/common/`: Agnostic, shared utilities.
-  - `config.go`: Optimized INI configuration loader.
-  - `hash.go`: Optimized file SHA-256 hashing.
-  - `log.go`: Secure logging with CRLF sanitization.
-  - `string.go`: Performance-tuned string padding.
-  - `constants.go`: Shared system-wide protocol constants.
-  - `struct.go`: Configuration and metadata type definitions.
-  - `crush.go`: CRUSH-lite placement algorithm.
-  - `net.go`: Network utilities (`DialSocket`, `DialSocketWithContext`, `IdleTimeoutConn`).
-  - `parse.go`: Safe integer parsing helpers.
-  - `contains.go`: String containment checks for path traversal validation.
-- `src/server/`: Server daemon and file reception logic.
-  - `server.go`: Core Daemon loop utilizing pluggable transports.
-  - `file.go`: Secure metadata parsing and file writing.
-  - `replication.go`: Dynamic replication mode control server.
-  - `metrics_exporter.go`: Prometheus `/metrics` and `/health` endpoint with `MetricsCollector`.
-  - `contract_test.go`: Wire protocol contract tests (handshake, metadata, round-trip, RPC framing).
-  - `query_handler.go`: LIST/DELETE/GET query handlers for native protocol.
-  - `p2p_adapters.go`: Adapters bridging P2P scatter-gather/lease to server interfaces.
-- `src/storage/`: Content-Addressable Storage (CAS) engine with pluggable backends.
-  - `storage.go`: Metadata store (Bbolt-backed) with namespace mapping, refcounting, tombstones.
-  - `blobstore.go`: `BlobStore` interface defining `PutBlob`/`GetBlob`/`DeleteBlob`.
-  - `factory.go`: `StorageFactory` (`NewStore`) — backend selection via `[storage] backend` config.
-  - `local_blobstore.go`: Local filesystem backend with tiered directory layout (`blobs/ab/cd/ef/<hash>`).
-  - `s3_blobstore.go`: S3-compatible backend via zero-dependency SigV4 HTTP client.
-  - `raw_blobstore.go`: Raw block device backend with bump allocator and bbolt allocation table.
-  - `gc.go`: Garbage collection for orphaned blobs and expired tombstones.
-- `src/p2p/`: P2P transport layer with gossip membership protocol.
-  - `types.go`: Peer, RPC, HeartbeatPayload, PingPayload with binary length-prefixed encoding.
-  - `transport.go`: Transport interface (Listen, Dial, Consume, Broadcast, Send).
-  - `tcp_transport.go`: TCPTransport implementation with connection tracking.
-  - `peer_map.go`: Thread-safe PeerMap with RandomPeers for gossip fanout.
-  - `gossip.go`: Gossiper with heartbeat, SWIM ping/ack, indirect ping, adaptive RTT timeouts, suspicion.
-  - `scatter_gather.go`: Parallel scatter-gather query fan-out and response collection.
-  - `lease.go`: Lease-based consensus for destructive operations.
-- `src/metrics/`: Performance monitoring and polymorphic control loop.
-  - `metrics.go`: CPU/memory sampling via gopsutil.
-  - `replication.go`: Polymorphic replication mode broadcast and control.
-- `pentest/`: Security pentest toolkit (DotDotPwn fuzzing + Python exploit scripts).
-  - `configs/`: Momo configs for pentest runs (native, S3, S3 test).
-  - `payloads/`: DotDotPwn payload templates with `TRAVERSAL` token.
-  - `scripts/`: Python exploit toolkit (`momo_exploit.py`) and native fuzzer bridge (`momo_native_fuzz.py`).
-  - `reports/`: Assessment reports (9 CVEs documented).
-  - `README.md`, `COMMANDS.md`: Reproduction guide.
-- `conf/momo.conf`: Secure configuration example.
-- `conf/smoke.conf`: Smoke test configuration (3-node cluster).
-- `conf/pentest.conf`: Pentest cluster configuration.
-- `docker-compose.pentest.yml`: Docker Compose for pentest cluster.
+| Path | What lives here |
+|---|---|
+| `src/` | Go source: `transport/` (TCP, QUIC, S3), `storage/` (CAS + blob stores), `server/` (daemon + metrics exporter), `client/`, `p2p/` (gossip, scatter-gather, leases), `crypto/` (E2EE, OPRF), `momofs/` (FUSE), `common/`, `metrics/` |
+| `src/momo.go` | Entry point — client/server runner and metrics bootstrap |
+| `.github/` | CI/CD (19 workflows: build, test, benchmark, smoke, pentest, reviewer) + governance scripts (`ai_reviewer.py`, E2E runners) |
+| `docs/` | This documentation set (architecture, protocol, config, testing, ADRs, engineering blog) |
+| `openspec/` | OpenSpec changes (`changes/`), ratified specs, `github.yaml` lifecycle binding |
+| `conf/` | Example configurations (`momo.conf`, `smoke.conf`, `pentest.conf`) |
+| `pentest/` | Security pentest toolkit — DotDotPwn fuzzing + Python exploit scripts |
+| `hooks/` | Git hooks (pre-commit benchmark/doc regeneration) |
 
-All packages include corresponding `*_test.go` files for unit and integration tests.
-
-## Replication Modes & Handshake Actions
-
-Handshake Requested Mode constants (see `src/common/constants.go`):
-
-### 📈 Replication Strategies (Numeric codes)
-- `0`: **No Replication**: Standalone storage on the selected primary node.
-- `1`: **Chain Replication**: Pipelined chain replication. Client uploads to Primary, which chain-forwards sequentially down the cluster.
-- `2`: **Splay Replication**: Server-side splaying. Client uploads a single copy, and the Primary splays it in parallel to all other nodes.
-- `3`: **Primary-Splay Replication (Client-Splay)**: Client-side splaying. Shifts replication workload to the client, which copies the payload concurrently to all replica nodes in parallel.
-
-### 🔌 Native Query Actions (ASCII character codes)
-- `'L'`: **ModeList**: Query directory list of all stored file objects.
-- `'D'`: **ModeDelete**: Request specific file deletion mapping on BoltDB.
-- `'G'`: **ModeGet**: Request native file payload retrieval (Download).
-
-## Data Flow
-
-Handshake and transfer overview:
-
-1. **Secure Handshake**: Client opens a network connection (TCP, QUIC, or S3) and sends a combined **84-byte packet** (64-byte AuthToken + 19-byte Timestamp + 1-byte RequestedMode). The `RequestedMode` byte is polymorphic: numbers (`'0'`-`'9'`) represent replication modes, while characters (`'L'`, `'D'`, `'G'`) represent non-replication query actions.
-2. **Replication Mode Confirmation**: Server responds with a **1-byte confirmation** of the final replication strategy.
-3. **Decoupled Metadata Check**: Client sends the **192-byte file metadata packet** (64-byte Hash + 64-byte Name + 64-byte Size). Server replies with a 1-byte code indicating if the transfer is required (`'1'`) or can be skipped (`'2'`) due to matching hash database existence (**CAS Deduplication**).
-4. **Streamed Payload**: Client streams file bytes until EOF.
-5. **Validation & ACK**: Server writes to disk via `io.TeeReader` (simultaneous hashing), validates integrity, and replies with `ACK{serverId}`.
-
-
-## Verification & Testing
-
-Momo has a highly mature local verification framework composed of unit, integration, and end-to-end (E2E) testing targets:
-
-1.  **Transport Decoupling Tests (`factory_test.go`)**: Verifies pluggable dialers and listeners.
-2.  **Concurrency Leak Checks (`goleak`)**: Enforces absolute thread/connection leak hygiene on all transports.
-3.  **End-to-End TCP Replication (`smoke-tcp`)**: Verifies data distribution across 3 virtual TCP daemons.
-4.  **End-to-End QUIC Replication (`smoke-quic`)**: Verifies secure data replication over encrypted QUIC streams.
-5.  **Scale & CAS Engine (`smoke-scale-cas`)**: A high-integrity stress test simulating a **5-node cluster** with a **replication factor of 3**. It explicitly verifies:
-    *   **CRUSH-lite Placement**: Deterministic data distribution across heterogeneous nodes.
-    *   **Content-Aware Deduplication**: Server-side "Deduplication hits" that skip redundant uploads.
-    *   **Bbolt Persistence**: Transactional metadata integrity across multiple virtual daemons.
-6.  **Security Pentest (`pentest`)**: DotDotPwn fuzzing + Python exploit toolkit against S3 and native TCP protocols. Found 9 CVEs (1 critical, 4 high, 3 medium, 1 low). See [pentest/README.md](../pentest/README.md).
-
-### Running Tests Locally
+## Getting Started
 
 ```bash
-# Run all unit and integration tests
-make test
-
-# Run a specific smoke test
-make smoke-scale-cas
-
-# Run Prometheus metrics E2E test
-make test-metrics
-
-# Run contract tests
-make test-contract
-
-# Run security pentest (DotDotPwn + Python exploits)
-make pentest
+make build     # build the momo binary
+make test      # run all unit + integration tests
 ```
 
-Momo includes a built-in benchmarking suite and performance history tracking. Refer to the [Performance Guide](PERFORMANCE.md) for the latest metrics.
+See [CONFIGURATION.md](CONFIGURATION.md) for `momo.conf` reference and `conf/momo.conf` for a working example. A 3-node cluster can be brought up with `docker compose up` (see [TESTING.md](TESTING.md) for the smoke/E2E matrix).
+
+## Verification
+
+- `make test` — full unit + integration suite (race detector + `goleak`).
+- `make smoke-*` — end-to-end replication over TCP/QUIC/S3 across virtual daemons.
+- `make test-metrics` / `make test-contract` — metrics and wire-protocol contract E2E.
+- `make pentest` — security pentest (DotDotPwn + Python exploits).
+
+Full detail in [TESTING.md](TESTING.md); benchmark history in [PERFORMANCE.md](PERFORMANCE.md).
