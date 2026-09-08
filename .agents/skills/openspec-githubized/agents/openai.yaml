@@ -1,0 +1,10 @@
+interface:
+  display_name: "OpenSpec GitHubized"
+  short_description: "Overlay GitHub sync on OpenSpec change work"
+  default_prompt: "Use $openspec-githubized whenever operating on an OpenSpec change so GitHub stays current while the repo remains the technical source of truth."
+
+dependencies:
+  tools:
+    - type: "cli"
+      value: "gh"
+      description: "GitHub CLI for issues, PRs, CI runs, and repository identity"

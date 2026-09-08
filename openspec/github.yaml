@@ -1,0 +1,20 @@
+# OpenSpec GitHub lifecycle binding (used by the openspec-githubized skill).
+# Mirrors the repo's Rule 11 / Rule 72 gates. The repo is the technical source
+# of truth; this file only records the GitHub binding for OpenSpec change work.
+
+repository:
+  owner: alsotoes
+  name: momo
+  default_branch: master
+
+issue:
+  assignee: alsotoes        # Rule 72 ownership gate: issue must be assigned before work
+  label_filter: automation  # required label on every bound issue (orphaned-issue gate)
+  category_labels: [bug, enhancement]
+
+close:
+  auto_close_via_resolves: true  # PR body `Resolves #N` closes the issue on merge (Rule 11)
+
+narrative_mirrors:
+  blog: docs/blog/posts  # Rule 76 — post-merge narrative layer
+  adr: docs/adr          # Rules 77/78 — auto-generated ADRs from specs
