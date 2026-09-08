@@ -20,6 +20,7 @@ artifacts:
 - type: spec
   path: openspec/changes/perf-profiling-baseline
 related:
+- 048-bolt-listparts-appendformat
 - 047-bolt-s3-copyresult-time-alloc
 - 045-bolt-lastmodified-header
 - 003-transport-tcp-to-quic
