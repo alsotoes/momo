@@ -61,6 +61,9 @@ func (h *StorageQueryHandler) handleGet(data []byte) (result []byte, err error) 
 		return nil, fmt.Errorf("empty file name: %w", syscall.EINVAL)
 	}
 	name := string(data)
+	if strings.ContainsAny(name, "\r\n") {
+		return nil, fmt.Errorf("invalid characters in name: %w", syscall.EBADMSG)
+	}
 	// 🛡️ Sentinel: Sanitize name to prevent path traversal. Allow forward slashes
 	// for full virtual paths (e.g., "dirA/file.txt") but reject ".." and backslashes.
 	if strings.Contains(name, "..") || strings.Contains(name, "\\") {
@@ -88,6 +91,9 @@ func (h *StorageQueryHandler) handleHas(data []byte) (result []byte, err error) 
 		return nil, fmt.Errorf("empty hash")
 	}
 	hash := string(data)
+	if strings.ContainsAny(hash, "\r\n") {
+		return nil, fmt.Errorf("invalid characters in hash: %w", syscall.EBADMSG)
+	}
 	// 🛡️ Sentinel: Sanitize hash immediately to prevent path traversal in local storage queries.
 	if common.HasPathTraversalChars(hash) {
 		return nil, fmt.Errorf("invalid hash: %w", syscall.EBADMSG)
@@ -117,6 +123,9 @@ func (h *StorageQueryHandler) handleDelete(data []byte) (result []byte, err erro
 		return nil, fmt.Errorf("empty file name: %w", syscall.EINVAL)
 	}
 	name := string(data)
+	if strings.ContainsAny(name, "\r\n") {
+		return nil, fmt.Errorf("invalid characters in name: %w", syscall.EBADMSG)
+	}
 	// 🛡️ Sentinel: Sanitize name to prevent path traversal. Allow forward slashes
 	// for full virtual paths (e.g., "dirA/file.txt") but reject ".." and backslashes.
 	if strings.Contains(name, "..") || strings.Contains(name, "\\") {
