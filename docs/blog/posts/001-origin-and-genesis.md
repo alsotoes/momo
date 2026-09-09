@@ -39,7 +39,7 @@ Phase 2: Content-Addressable Storage (CAS)
         v
 Phase 3: Production Distributed Storage (R1–R6)
 - Deterministic CRUSH-lite placement across failure domains.
-- AWS S3 compatible gateway with SigV4 and streaming multipart upload.
+- S3-compatible gateway with SigV4 and streaming multipart upload.
 - POSIX FUSE filesystem interface (momofs) over the CAS core.
 ```
 
