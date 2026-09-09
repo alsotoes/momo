@@ -53,7 +53,7 @@ func (h *StorageQueryHandler) handleGet(data []byte) (result []byte, err error) 
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Recovered from panic in handleGet: %v", r)
-			err = fmt.Errorf("panic in handleGet: %v: %w", r, syscall.EIO)
+				result, err = nil, syscall.EIO
 		}
 	}()
 
@@ -83,7 +83,7 @@ func (h *StorageQueryHandler) handleHas(data []byte) (result []byte, err error) 
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Recovered from panic in handleHas: %v", r)
-			err = fmt.Errorf("panic in handleHas: %v: %w", r, syscall.EIO)
+				result, err = nil, syscall.EIO
 		}
 	}()
 
@@ -115,7 +115,7 @@ func (h *StorageQueryHandler) handleDelete(data []byte) (result []byte, err erro
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Recovered from panic in handleDelete: %v", r)
-			err = fmt.Errorf("panic in handleDelete: %v: %w", r, syscall.EIO)
+				result, err = nil, syscall.EIO
 		}
 	}()
 
