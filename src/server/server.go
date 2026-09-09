@@ -111,7 +111,16 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 		}
 		encKeyHex = hex.EncodeToString(atRestKey)
 	}
-	store, err := storage.NewStore(cfg.Storage, daemons[serverId], encKeyHex)
+	// Initialize R2 self-heal rebuild source (Rule 74, #930).
+	// A nil source leaves degraded read and the rebuild loop inert (single-node / legacy behavior).
+	var rebuildSrc *DaemonRebuildSource
+	if cfg.Storage.RebuildInterval > 0 && cfg.Global.ReplicationFactor > 1 {
+		rebuildSrc = NewDaemonRebuildSource(serverId, cfg.Daemons, cfg, cfg.Global.ReplicationFactor)
+		log.Printf("R2: Self-heal rebuild enabled (interval=%ds, workers=%d, degraded_read=%v)",
+			cfg.Storage.RebuildInterval, cfg.Storage.RebuildWorkers, cfg.Storage.DegradedRead)
+	}
+
+	store, err := storage.NewStoreWithRebuild(cfg.Storage, daemons[serverId], encKeyHex, rebuildSrc, cfg.Global.ReplicationFactor)
 	if err != nil {
 		return fmt.Errorf("failed to initialize storage: %w", err)
 	}
