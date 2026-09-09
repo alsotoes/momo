@@ -84,3 +84,4 @@ plan.md
 # MemPalace per-project files
 mempalace.yaml
 entities.json
+.agents/skills/adr-skill/

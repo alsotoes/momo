@@ -31,7 +31,23 @@ This layer handles the physical movement of bytes. It includes the carrier trans
 #### 2. Core Replication Logic (Agnostic)
 The core logic defines the data distribution path (e.g., `Chain`, `Splay`). This logic is **completely agnostic** of the communication layer. It executes replication by requesting a connection (`Communicator`) from the factory and doesn't care whether bytes move via TCP or QUIC streams.
 
-#### 3. State Management (Polymorphic System)
+### Cluster/Protocol Separation Contract (Enforced)
+
+The architecture enforces separation through three compile-time interfaces that form hard boundaries between protocol implementations and cluster logic:
+
+| Interface | Package | Implemented By | Consumed By |
+|---|---|---|---|
+| `transport.Communicator` | `transport` | `MomoTCPCommunicator`, `MomoQUICCommunicator`, `S3Communicator` | `server.Daemon`, `client.Connect` |
+| `p2p.Transport` | `p2p` | `TCPTransport` | `server.bootstrapP2P`, `p2p.ScatterGather`, `p2p.LeaseManager`, `p2p.OPRFProvider` |
+| `storage.Store` | `storage` | `CASStore` | `server.Daemon`, `DaemonRebuildSource`, `R6 metadata RPC` |
+
+**Invariant:** Cluster logic (`server`, `common`, `p2p`, `storage`, `R2 rebuild`, `R6 metadata`) **never imports protocol implementations** and **never performs type assertions** on `Communicator` beyond the optional capability interfaces (`GlobalLister`, `LeaseAcquirer`, `DeletePropagator`, `MetricsHook`, `LatencyRecorder`, `OPRFService`, `ChecksumProvider`).
+
+The `ProtocolFactory` (`transport/factory.go`) is the **sole protocol-aware component** — it dispatches based on config and returns the interface.
+
+---
+
+### 3. State Management (Polymorphic System)
 The metrics controller (`metrics.GetMetrics`, `src/metrics/metrics.go`) runs on the **primary (controller) node — daemon 0**; it short-circuits on any node with `serverId != 0`. It is responsible for monitoring system metrics (CPU and memory usage). When a threshold is reached, the controller broadcasts the new replication strategy to the entire cluster via the `ChangeReplication` endpoint, ensuring all potential "Primary" nodes remain in sync. (Per-node Prometheus `/metrics`/`/health` export is independent and runs on every node; see Observability §7.)
 
 ### 4. Distributed Object Engine (CAS 2.0)
