@@ -89,7 +89,7 @@ enableGitInfo = true
 
   [params.homeInfoParams]
     Title = "Momo Engineering Journal"
-    Content = "The distilled journey of momo from a file-replication playground to a distributed, content-addressed object store with an S3 gateway, P2P gossip ring, quorum durability, and a FUSE/POSIX mount. Every post documents what was built (verified against src/), why (architecture decisions), and the Bolt / Sentinel tradeoffs that shaped it."
+    Content = "The distilled journey of momo from a file-replication playground to a production-ready, distributed, content-addressed object store with an S3-compatible gateway, P2P gossip ring, quorum durability, and a FUSE/POSIX mount. Every post documents what was built (verified against src/), why (architecture decisions), and the Bolt / Sentinel tradeoffs that shaped it."
 
   socialIcons = [
     {name = "github", url = "https://github.com/alsotoes/momo"}
