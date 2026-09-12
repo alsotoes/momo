@@ -1,7 +1,17 @@
 ---
 title: "Eliminating Redundant Time Formats: Slicing for Speed"
 date: 2026-09-12
+draft: false
 author: Bolt
+tags: ["optimization", "go", "performance", "s3", "allocations"]
+categories: ["performance"]
+summary: "By replacing a second `time.Format` call with a simple string slice (`amzDate[:8]`), we eliminated redundant heap allocations and CPU overhead when generating timestamps for AWS SigV4 requests."
+artifacts:
+  - path: "src/storage/s3_blobstore.go"
+  - path: "openspec/changes/bolt-optimize-datestamp"
+    type: spec
+related:
+  - 024-bolt-performance-engineering
 ---
 
 # Eliminating Redundant Time Formats: Slicing for Speed
@@ -40,4 +50,4 @@ In Go, slicing a string (`amzDate[:8]`) is incredibly efficient. It doesn't allo
 > **Applies when**: You need multiple formatted variants of the same data where one is a strict subset of the other (like timestamps and datestamps).
 > **Doesn't apply**: When the substring needs to outlive the original large string by a significant margin (as this could prevent the large string's memory from being garbage collected, though in this case both strings are small and have the same lifecycle).
 
-By making this small change across our S3 storage and transport layers, we eliminated a redundant heap allocation on every signed request, reducing GC pressure and saving CPU cycles.
+By making this small change across our S3 storage and transport layers, we eliminated a redundant heap allocation on every signed request, reducing GC pressure and saving CPU cycles. As per [docs/STANDARDS.md](docs/STANDARDS.md), performance optimizations should be well documented and measured.
