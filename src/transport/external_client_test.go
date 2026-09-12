@@ -18,7 +18,8 @@ func TestS3Communicator_ExternalClientDetection(t *testing.T) {
 	t.Run("aws-cli without X-Momo-Requested-Mode is external", func(t *testing.T) {
 		now := time.Now().UTC()
 		amzDate := now.Format("20060102T150405Z")
-		dateStamp := now.Format("20060102")
+		// Derive datestamp directly from amzDate to eliminate redundant time parsing and string allocations
+		dateStamp := amzDate[:8]
 		region := "us-east-1"
 		payloadHash := "dummyhash"
 		signedHeaders := "host;x-amz-date"

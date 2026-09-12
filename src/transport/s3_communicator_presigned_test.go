@@ -23,7 +23,8 @@ import (
 func buildPresignedHTTPRequest(req *http.Request, payloadHash, secretKey string) string {
 	now := time.Now().UTC()
 	amzDate := now.Format("20060102T150405Z")
-	dateStamp := now.Format("20060102")
+	// Derive datestamp directly from amzDate to eliminate redundant time parsing and string allocations
+	dateStamp := amzDate[:8]
 	region := "us-east-1"
 
 	signedHeaders := "host"
@@ -137,7 +138,8 @@ func TestS3Communicator_PresignedExpired(t *testing.T) {
 	// already outside the validity window even though the signature is correct.
 	now := time.Now().UTC().Add(-10 * time.Minute)
 	amzDate := now.Format("20060102T150405Z")
-	dateStamp := now.Format("20060102")
+	// Derive datestamp directly from amzDate to eliminate redundant time parsing and string allocations
+	dateStamp := amzDate[:8]
 	region := "us-east-1"
 	signedHeaders := "host"
 	payloadHash := emptyStringSHA256
@@ -256,7 +258,8 @@ func TestS3Communicator_PresignedDELETE(t *testing.T) {
 func buildPresignedGatewayRequest(req *http.Request, payloadHash, accessKey, secretKey string) string {
 	now := time.Now().UTC()
 	amzDate := now.Format("20060102T150405Z")
-	dateStamp := now.Format("20060102")
+	// Derive datestamp directly from amzDate to eliminate redundant time parsing and string allocations
+	dateStamp := amzDate[:8]
 	region := "us-east-1"
 
 	signedHeaders := "host"

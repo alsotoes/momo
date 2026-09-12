@@ -23,7 +23,8 @@ import (
 func signedStreamingPUT(authToken string, content []byte, decodedLenHeader string, corrupted bool) (wire []byte, decodedHash string) {
 	now := time.Now().UTC()
 	amzDate := now.Format("20060102T150405Z")
-	dateStamp := now.Format("20060102")
+	// Derive datestamp directly from amzDate to eliminate redundant time parsing and string allocations
+	dateStamp := amzDate[:8]
 	region := "us-east-1"
 	scope := dateStamp + "/" + region + "/s3/aws4_request"
 	payloadLiteral := s3StreamingSignedPayload
@@ -264,7 +265,8 @@ func TestS3Communicator_StreamingPUT_Expect100Continue(t *testing.T) {
 
 	now := time.Now().UTC()
 	amzDate := now.Format("20060102T150405Z")
-	dateStamp := now.Format("20060102")
+	// Derive datestamp directly from amzDate to eliminate redundant time parsing and string allocations
+	dateStamp := amzDate[:8]
 	region := "us-east-1"
 	scope := dateStamp + "/" + region + "/s3/aws4_request"
 	payloadLiteral := s3StreamingSignedPayload

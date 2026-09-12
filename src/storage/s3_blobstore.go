@@ -271,7 +271,8 @@ func (s *S3BlobStore) newRequest(method, key string, body io.Reader, payloadHash
 
 	now := time.Now().UTC()
 	amzDate := now.Format("20060102T150405Z")
-	dateStamp := now.Format("20060102")
+	// Derive datestamp directly from amzDate to eliminate redundant time parsing and string allocations
+	dateStamp := amzDate[:8]
 
 	req.Host = parsedURL.Host
 	req.Header.Set("x-amz-date", amzDate)

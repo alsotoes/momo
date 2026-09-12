@@ -95,7 +95,8 @@ func TestS3Communicator_AWSV4Auth(t *testing.T) {
 
 	now := time.Now().UTC()
 	amzDate := now.Format("20060102T150405Z")
-	dateStamp := now.Format("20060102")
+	// Derive datestamp directly from amzDate to eliminate redundant time parsing and string allocations
+	dateStamp := amzDate[:8]
 	region := "us-east-1"
 	payloadHash := "dummyhash"
 	signedHeaders := "host;x-amz-content-sha256;x-amz-date"
@@ -183,7 +184,8 @@ func TestS3Communicator_SigV4InvalidSignature(t *testing.T) {
 func signedSigV4PUT(accessKey, secretKey, host string) string {
 	now := time.Now().UTC()
 	amzDate := now.Format("20060102T150405Z")
-	dateStamp := now.Format("20060102")
+	// Derive datestamp directly from amzDate to eliminate redundant time parsing and string allocations
+	dateStamp := amzDate[:8]
 	region := "us-east-1"
 	payloadHash := "dummyhash"
 	signedHeaders := "host;x-amz-content-sha256;x-amz-date"
@@ -1660,7 +1662,8 @@ func TestS3Communicator_HEAD_SigV4Auth(t *testing.T) {
 
 	now := time.Now().UTC()
 	amzDate := now.Format("20060102T150405Z")
-	dateStamp := now.Format("20060102")
+	// Derive datestamp directly from amzDate to eliminate redundant time parsing and string allocations
+	dateStamp := amzDate[:8]
 	region := "us-east-1"
 	payloadHash := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" // sha256("")
 	signedHeaders := "host;x-amz-content-sha256;x-amz-date"
@@ -2374,7 +2377,8 @@ func TestS3Communicator_XMLErrorAuthFailures(t *testing.T) {
 	// 3. SigV4 with correct credentials but wrong signature -> 403 SignatureDoesNotMatch
 	now := time.Now().UTC()
 	amzDate := now.Format("20060102T150405Z")
-	dateStamp := now.Format("20060102")
+	// Derive datestamp directly from amzDate to eliminate redundant time parsing and string allocations
+	dateStamp := amzDate[:8]
 	region := "us-east-1"
 	payloadHash := "dummyhash"
 	signedHeaders := "host;x-amz-content-sha256;x-amz-date"

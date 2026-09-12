@@ -209,3 +209,7 @@
 ## 2026-09-08 - Eliminate time.Format string allocation in S3 ListParts
 **Learning:** Re-evaluating `time.Now().UTC().Format()` inside the S3 ListParts XML loop: even after hoisting the timestamp out of the loop, `time.Format` still allocates a heap string for every response. In a loop generating an XML array, this is a per-request allocation.
 **Action:** Scan loops generating arrays in XML/JSON for repeated calls to `time.Now()` or `strconv.Itoa`. Hoist constant strings out of the loop and convert `time.Format` to `time.AppendFormat` with a stack-allocated buffer (e.g., `var timeBuf [32]byte; time.Now().UTC().AppendFormat(timeBuf[:0], time.RFC3339)`), then `buf.Write(tstr)` instead of `buf.WriteString(tstr)`.
+
+## 2026-09-12 - Eliminate redundant time formatting allocations
+**Learning:** To eliminate redundant time parsing and string allocations when generating both a full timestamp (e.g., '20060102T150405Z') and a datestamp ('20060102'), format the full timestamp once using `time.Format` and derive the datestamp by slicing the first 8 bytes (e.g., `dateStamp := amzDate[:8]`).
+**Action:** When both a full timestamp and a datestamp are needed for AWS SigV4 requests or similar protocols, generate the full timestamp first and then slice it to get the datestamp. This avoids the overhead of calling `time.Format` twice.
