@@ -23,10 +23,10 @@ None documented.
 - **Code**: Done
 - **Tests**: Done
 - **Docs**: Done
-- **Blog post**:
+- **Blog post**: docs/blog/posts/049-eliminate-redundant-time-format-allocations.md
 
 ## References
 - Issue: #1065
 - PR:
 - Spec: `openspec/changes/bolt-optimize-datestamp/`
-- Blog:
+- Blog: docs/blog/posts/049-eliminate-redundant-time-format-allocations.md
