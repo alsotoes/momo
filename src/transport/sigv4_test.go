@@ -82,7 +82,8 @@ func TestVerifySigV4Signature_ReplayAttack(t *testing.T) {
 
 	staleTime := time.Now().UTC().Add(-1 * time.Hour)
 	amzDate := staleTime.Format("20060102T150405Z")
-	dateStamp := staleTime.Format("20060102")
+	// Derive datestamp directly from amzDate to eliminate redundant time parsing and string allocations
+	dateStamp := amzDate[:8]
 	region := "us-east-1"
 
 	req, authHeader := buildSigV4Request(t, amzDate, dateStamp, region, secretKey)
@@ -96,7 +97,8 @@ func TestVerifySigV4Signature_FreshRequest(t *testing.T) {
 
 	now := time.Now().UTC()
 	amzDate := now.Format("20060102T150405Z")
-	dateStamp := now.Format("20060102")
+	// Derive datestamp directly from amzDate to eliminate redundant time parsing and string allocations
+	dateStamp := amzDate[:8]
 	region := "us-east-1"
 
 	req, authHeader := buildSigV4Request(t, amzDate, dateStamp, region, secretKey)
@@ -113,7 +115,8 @@ func TestVerifySigV4Signature_RequiresAmzDateHeader(t *testing.T) {
 
 	now := time.Now().UTC()
 	amzDate := now.Format("20060102T150405Z")
-	dateStamp := now.Format("20060102")
+	// Derive datestamp directly from amzDate to eliminate redundant time parsing and string allocations
+	dateStamp := amzDate[:8]
 	region := "us-east-1"
 
 	req, authHeader := buildSigV4Request(t, amzDate, dateStamp, region, secretKey)
@@ -133,7 +136,8 @@ func buildPresignedSigV4Request(t *testing.T, method, rawPath string, signedHead
 
 	now := time.Now().UTC()
 	amzDate := now.Format("20060102T150405Z")
-	dateStamp := now.Format("20060102")
+	// Derive datestamp directly from amzDate to eliminate redundant time parsing and string allocations
+	dateStamp := amzDate[:8]
 	region := "us-east-1"
 
 	signedHeadersStr := strings.Join(signedHeaders, ";")
@@ -219,7 +223,8 @@ func TestVerifySigV4Signature_PresignedExpired(t *testing.T) {
 	_ = buildPresigned
 	now := time.Now().UTC().Add(-10 * time.Second)
 	amzDate := now.Format("20060102T150405Z")
-	dateStamp := now.Format("20060102")
+	// Derive datestamp directly from amzDate to eliminate redundant time parsing and string allocations
+	dateStamp := amzDate[:8]
 	region := "us-east-1"
 
 	presign := &url.Values{}
