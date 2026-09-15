@@ -38,34 +38,48 @@ func NewLocalBlobStore(dataDir string) (*LocalBlobStore, error) {
 func (b *LocalBlobStore) SetSyncEnabled(on bool) { b.syncEnabled = on }
 
 // SyncBlob fsyncs the file backing hash (R3 fsync barrier, #931).
-func (b *LocalBlobStore) SyncBlob(hash string) error {
+func (b *LocalBlobStore) SyncBlob(hash string) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in LocalBlobStore.SyncBlob: %v", r)
+			err = fmt.Errorf("panic in SyncBlob: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	if common.HasPathTraversalChars(hash) {
 		return fmt.Errorf("durability: invalid hash contains path traversal characters: %w", syscall.EINVAL)
 	}
-	f, err := os.Open(b.blobPath(hash))
-	if err != nil {
-		return fmt.Errorf("durability: open blob to sync %s: %w", hash, err)
+	f, openErr := os.Open(b.blobPath(hash))
+	if openErr != nil {
+		return fmt.Errorf("durability: open blob to sync %s: %v: %w", hash, openErr, syscall.EIO)
 	}
 	defer f.Close()
-	if err := f.Sync(); err != nil {
-		return fmt.Errorf("durability: fsync blob %s: %w", hash, err)
+	if syncErr := f.Sync(); syncErr != nil {
+		return fmt.Errorf("durability: fsync blob %s: %v: %w", hash, syncErr, syscall.EIO)
 	}
 	return nil
 }
 
 // SyncDir fsyncs the parent directory of hash (R3 group-commit barrier): makes
 // the blob's atomic rename durable without a per-blob data-file fsync.
-func (b *LocalBlobStore) SyncDir(hash string) error {
+func (b *LocalBlobStore) SyncDir(hash string) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in LocalBlobStore.SyncDir: %v", r)
+			err = fmt.Errorf("panic in SyncDir: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	if common.HasPathTraversalChars(hash) {
 		return fmt.Errorf("durability: invalid hash contains path traversal characters: %w", syscall.EINVAL)
 	}
-	d, err := os.Open(filepath.Dir(b.blobPath(hash)))
-	if err != nil {
-		return fmt.Errorf("durability: open blob dir for %s: %w", hash, err)
+	d, openErr := os.Open(filepath.Dir(b.blobPath(hash)))
+	if openErr != nil {
+		return fmt.Errorf("durability: open blob dir for %s: %v: %w", hash, openErr, syscall.EIO)
 	}
 	defer d.Close()
-	if err := d.Sync(); err != nil {
-		return fmt.Errorf("durability: fsync blob dir for %s: %w", hash, err)
+	if syncErr := d.Sync(); syncErr != nil {
+		return fmt.Errorf("durability: fsync blob dir for %s: %v: %w", hash, syncErr, syscall.EIO)
 	}
 	return nil
 }
