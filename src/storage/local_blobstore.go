@@ -42,20 +42,20 @@ func (b *LocalBlobStore) SyncBlob(hash string) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Panic recovered in LocalBlobStore.SyncBlob: %v", r)
-			err = fmt.Errorf("panic in SyncBlob: %v: %w", r, syscall.EIO)
+			err = syscall.EIO
 		}
 	}()
 
 	if common.HasPathTraversalChars(hash) {
 		return fmt.Errorf("durability: invalid hash contains path traversal characters: %w", syscall.EINVAL)
 	}
-	f, openErr := os.Open(b.blobPath(hash))
-	if openErr != nil {
-		return fmt.Errorf("durability: open blob to sync %s: %v: %w", hash, openErr, syscall.EIO)
+	f, err := os.Open(b.blobPath(hash))
+	if err != nil {
+		return fmt.Errorf("durability: open blob to sync %s: %w", hash, err)
 	}
 	defer f.Close()
-	if syncErr := f.Sync(); syncErr != nil {
-		return fmt.Errorf("durability: fsync blob %s: %v: %w", hash, syncErr, syscall.EIO)
+	if err := f.Sync(); err != nil {
+		return fmt.Errorf("durability: fsync blob %s: %w", hash, err)
 	}
 	return nil
 }
@@ -66,20 +66,20 @@ func (b *LocalBlobStore) SyncDir(hash string) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Panic recovered in LocalBlobStore.SyncDir: %v", r)
-			err = fmt.Errorf("panic in SyncDir: %v: %w", r, syscall.EIO)
+			err = syscall.EIO
 		}
 	}()
 
 	if common.HasPathTraversalChars(hash) {
 		return fmt.Errorf("durability: invalid hash contains path traversal characters: %w", syscall.EINVAL)
 	}
-	d, openErr := os.Open(filepath.Dir(b.blobPath(hash)))
-	if openErr != nil {
-		return fmt.Errorf("durability: open blob dir for %s: %v: %w", hash, openErr, syscall.EIO)
+	d, err := os.Open(filepath.Dir(b.blobPath(hash)))
+	if err != nil {
+		return fmt.Errorf("durability: open blob dir for %s: %w", hash, err)
 	}
 	defer d.Close()
-	if syncErr := d.Sync(); syncErr != nil {
-		return fmt.Errorf("durability: fsync blob dir for %s: %v: %w", hash, syncErr, syscall.EIO)
+	if err := d.Sync(); err != nil {
+		return fmt.Errorf("durability: fsync blob dir for %s: %w", hash, err)
 	}
 	return nil
 }
