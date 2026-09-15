@@ -39,8 +39,12 @@ func (b *LocalBlobStore) SetSyncEnabled(on bool) { b.syncEnabled = on }
 
 // SyncBlob fsyncs the file backing hash (R3 fsync barrier, #931).
 func (b *LocalBlobStore) SyncBlob(hash string) (err error) {
+	var f *os.File
 	defer func() {
 		if r := recover(); r != nil {
+			if f != nil {
+				f.Close()
+			}
 			log.Printf("CRITICAL: Panic recovered in LocalBlobStore.SyncBlob: %v", r)
 			err = syscall.EIO
 		}
@@ -49,7 +53,7 @@ func (b *LocalBlobStore) SyncBlob(hash string) (err error) {
 	if common.HasPathTraversalChars(hash) {
 		return fmt.Errorf("durability: invalid hash contains path traversal characters: %w", syscall.EINVAL)
 	}
-	f, err := os.Open(b.blobPath(hash))
+	f, err = os.Open(b.blobPath(hash))
 	if err != nil {
 		return fmt.Errorf("durability: open blob to sync %s: %w", hash, err)
 	}
@@ -63,8 +67,12 @@ func (b *LocalBlobStore) SyncBlob(hash string) (err error) {
 // SyncDir fsyncs the parent directory of hash (R3 group-commit barrier): makes
 // the blob's atomic rename durable without a per-blob data-file fsync.
 func (b *LocalBlobStore) SyncDir(hash string) (err error) {
+	var d *os.File
 	defer func() {
 		if r := recover(); r != nil {
+			if d != nil {
+				d.Close()
+			}
 			log.Printf("CRITICAL: Panic recovered in LocalBlobStore.SyncDir: %v", r)
 			err = syscall.EIO
 		}
@@ -73,7 +81,7 @@ func (b *LocalBlobStore) SyncDir(hash string) (err error) {
 	if common.HasPathTraversalChars(hash) {
 		return fmt.Errorf("durability: invalid hash contains path traversal characters: %w", syscall.EINVAL)
 	}
-	d, err := os.Open(filepath.Dir(b.blobPath(hash)))
+	d, err = os.Open(filepath.Dir(b.blobPath(hash)))
 	if err != nil {
 		return fmt.Errorf("durability: open blob dir for %s: %w", hash, err)
 	}
