@@ -155,4 +155,4 @@
 ## 2024-05-24 - [Fix Path Traversal bypass]
 **Vulnerability:** Path traversal bypass in metadata upload name extraction
 **Learning:** Checking for path traversal on split path parts fails to catch combined string payload path traversals
-**Prevention:** Always validate the combined wire name directly using `common.HasPathTraversalChars` across all transport protocols (such as S3, Momo-TCP, and Momo-QUIC) within `SendMetadata` before transmitting files.
+**Prevention:** Always validate the combined wire name using `path.Clean()` directly across all transport protocols (such as S3, Momo-TCP, and Momo-QUIC) within `SendMetadata` before transmitting files, as `common.HasPathTraversalChars` rejects valid virtual directory slashes.

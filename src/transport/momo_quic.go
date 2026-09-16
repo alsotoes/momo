@@ -18,6 +18,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"path"
 	"strings"
 	"sync"
 	"syscall"
@@ -719,7 +720,8 @@ func (m *MomoQUICCommunicator) SendMetadata(meta *common.FileMetadata) (status i
 		return 0, fmt.Errorf("invalid characters in wireName: %w", syscall.EBADMSG)
 	}
 
-	if common.HasPathTraversalChars(wireName) {
+	cleanName := path.Clean(wireName)
+	if cleanName == "." || cleanName == ".." || strings.HasPrefix(cleanName, "../") || strings.HasPrefix(cleanName, "/") {
 		return 0, fmt.Errorf("path traversal in wireName: %w", syscall.EBADMSG)
 	}
 	copy(metadataBuffer[hashLength:hashLength+common.FileInfoLength], common.PadString(wireName, common.FileInfoLength))

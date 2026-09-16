@@ -1713,7 +1713,8 @@ func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (status int, er
 		return 0, fmt.Errorf("invalid characters in path: %w", syscall.EBADMSG)
 	}
 
-	if common.HasPathTraversalChars(wireName) {
+	cleanName := path.Clean(wireName)
+	if cleanName == "." || cleanName == ".." || strings.HasPrefix(cleanName, "../") || strings.HasPrefix(cleanName, "/") {
 		return 0, fmt.Errorf("path traversal in wireName: %w", syscall.EBADMSG)
 	}
 
