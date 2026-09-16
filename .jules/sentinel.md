@@ -152,3 +152,7 @@
 **Vulnerability:** The internal scatter-gather query handlers (`handleGet`, `handleHas`, `handleDelete`) processed network data (`name` and `hash` fields) without sanitizing for Carriage Return and Line Feed (`\r\n`) characters.
 **Learning:** Even if external boundary layers (like S3 communicators) validate for CRLF, internal cluster communications passed via peer-to-peer protocols must also be treated with defense-in-depth sanitization. Failure to do so allows protocol smuggling or log injection inside the trusted cluster if a peer node is compromised.
 **Prevention:** Always explicitly validate that network-extracted strings (like names and hashes) do not contain `\r\n` characters immediately upon extraction within internal query handlers (e.g., using `strings.ContainsAny`), ensuring strict defense-in-depth even for intra-cluster traffic.
+## 2024-05-24 - [Fix Path Traversal bypass]
+**Vulnerability:** Path traversal bypass in metadata upload name extraction
+**Learning:** Checking for path traversal on split path parts fails to catch combined string payload path traversals
+**Prevention:** Always validate the combined wire name directly using `common.HasPathTraversalChars` across all transport protocols (such as S3, Momo-TCP, and Momo-QUIC) within `SendMetadata` before transmitting files.
