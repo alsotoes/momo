@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"path"
 	"strings"
 	"syscall"
 	"time"
@@ -705,10 +706,9 @@ func (m *MomoTCPCommunicator) SendMetadata(meta *common.FileMetadata) (status in
 		return 0, fmt.Errorf("invalid characters in wireName: %w", syscall.EBADMSG)
 	}
 
-	for _, part := range strings.Split(wireName, "/") {
-		if common.HasPathTraversalChars(part) {
-			return 0, fmt.Errorf("path traversal in wireName: %w", syscall.EBADMSG)
-		}
+	cleanName := path.Clean(wireName)
+	if cleanName == "." || cleanName == ".." || strings.HasPrefix(cleanName, "../") || strings.HasPrefix(cleanName, "/") {
+		return 0, fmt.Errorf("path traversal in wireName: %w", syscall.EBADMSG)
 	}
 	copy(metadataBuffer[hashLength:hashLength+common.FileInfoLength], common.PadString(wireName, common.FileInfoLength))
 
