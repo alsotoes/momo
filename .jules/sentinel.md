@@ -152,3 +152,8 @@
 **Vulnerability:** The internal scatter-gather query handlers (`handleGet`, `handleHas`, `handleDelete`) processed network data (`name` and `hash` fields) without sanitizing for Carriage Return and Line Feed (`\r\n`) characters.
 **Learning:** Even if external boundary layers (like S3 communicators) validate for CRLF, internal cluster communications passed via peer-to-peer protocols must also be treated with defense-in-depth sanitization. Failure to do so allows protocol smuggling or log injection inside the trusted cluster if a peer node is compromised.
 **Prevention:** Always explicitly validate that network-extracted strings (like names and hashes) do not contain `\r\n` characters immediately upon extraction within internal query handlers (e.g., using `strings.ContainsAny`), ensuring strict defense-in-depth even for intra-cluster traffic.
+
+## 2026-09-18 - Path Traversal bypass via strings.Split
+**Vulnerability:** The `SendMetadata` functions split paths using `strings.Split(wireName, "/")` and validated each part individually for path traversal characters.
+**Learning:** Splitting the string by `/` strips out the slashes, allowing the separator character itself to bypass security checks. This could allow an attacker to bypass path traversal validation.
+**Prevention:** Always apply path traversal validation (e.g., `common.HasPathTraversalChars`) directly on the combined raw string, rather than evaluating `strings.Split(path, "/")` parts individually.
