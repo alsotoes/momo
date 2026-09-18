@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"path"
 	"bytes"
 	"context"
 	"crypto/rand"
@@ -719,7 +720,8 @@ func (m *MomoQUICCommunicator) SendMetadata(meta *common.FileMetadata) (status i
 		return 0, fmt.Errorf("invalid characters in wireName: %w", syscall.EBADMSG)
 	}
 
-	if common.HasPathTraversalChars(wireName) {
+	cleaned := path.Clean(wireName)
+	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") || strings.HasPrefix(cleaned, "/") {
 		return 0, fmt.Errorf("path traversal in wireName: %w", syscall.EBADMSG)
 	}
 	copy(metadataBuffer[hashLength:hashLength+common.FileInfoLength], common.PadString(wireName, common.FileInfoLength))
