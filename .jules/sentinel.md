@@ -152,3 +152,8 @@
 **Vulnerability:** The internal scatter-gather query handlers (`handleGet`, `handleHas`, `handleDelete`) processed network data (`name` and `hash` fields) without sanitizing for Carriage Return and Line Feed (`\r\n`) characters.
 **Learning:** Even if external boundary layers (like S3 communicators) validate for CRLF, internal cluster communications passed via peer-to-peer protocols must also be treated with defense-in-depth sanitization. Failure to do so allows protocol smuggling or log injection inside the trusted cluster if a peer node is compromised.
 **Prevention:** Always explicitly validate that network-extracted strings (like names and hashes) do not contain `\r\n` characters immediately upon extraction within internal query handlers (e.g., using `strings.ContainsAny`), ensuring strict defense-in-depth even for intra-cluster traffic.
+
+## 2026-09-19 - Insecure Path Traversal Validation via strings.Split
+**Vulnerability:** The transport protocols (`momo_tcp.go`, `momo_quic.go`, `s3_communicator.go`) validated `wireName` for path traversal by splitting the path with `strings.Split(wireName, "/")` and checking each part with `common.HasPathTraversalChars()`.
+**Learning:** This approach is fundamentally flawed because splitting by `/` strips out the slashes, effectively masking them from `HasPathTraversalChars`. Furthermore, if you use `HasPathTraversalChars` on the raw string, it falsely rejects valid virtual directories containing slashes.
+**Prevention:** When validating paths for traversal where `/` is a valid separator, sanitize the string using `path.Clean()` and explicitly reject the request if the result equals `.`, `..`, or starts with `../` or `/`.
