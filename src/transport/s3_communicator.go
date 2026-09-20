@@ -1683,6 +1683,9 @@ func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (status int, er
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Panic recovered in S3 SendMetadata: %v", r)
+			if m != nil {
+				m.Close() // Explicitly close the connection to prevent zombie sockets (Rule 43)
+			}
 			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
 		}
 	}()
@@ -1871,6 +1874,9 @@ func (m *S3Communicator) SendMetadataStatus(status int) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Panic recovered in S3 SendMetadataStatus: %v", r)
+			if m != nil {
+				m.Close() // Explicitly close the connection to prevent zombie sockets (Rule 43)
+			}
 			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
 		}
 	}()
