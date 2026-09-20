@@ -1683,6 +1683,9 @@ func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (status int, er
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Panic recovered in S3 SendMetadata: %v", r)
+			if m != nil {
+				m.Close() // Explicitly close the connection to prevent zombie sockets (Rule 43)
+			}
 			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
 		}
 	}()
@@ -1713,10 +1716,9 @@ func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (status int, er
 		return 0, fmt.Errorf("invalid characters in path: %w", syscall.EBADMSG)
 	}
 
-	for _, part := range strings.Split(wireName, "/") {
-		if common.HasPathTraversalChars(part) {
-			return 0, fmt.Errorf("path traversal in wireName: %w", syscall.EBADMSG)
-		}
+	cleanWire := path.Clean(wireName)
+	if cleanWire == "." || cleanWire == ".." || strings.HasPrefix(cleanWire, "../") || strings.HasPrefix(cleanWire, "/") {
+		return 0, fmt.Errorf("path traversal in wireName: %w", syscall.EBADMSG)
 	}
 
 	// 🛡️ Sentinel: Validate hash, auth token, and host for CRLF to prevent HTTP header injection.
@@ -1872,6 +1874,9 @@ func (m *S3Communicator) SendMetadataStatus(status int) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Panic recovered in S3 SendMetadataStatus: %v", r)
+			if m != nil {
+				m.Close() // Explicitly close the connection to prevent zombie sockets (Rule 43)
+			}
 			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
 		}
 	}()

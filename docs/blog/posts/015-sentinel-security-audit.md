@@ -25,6 +25,7 @@ artifacts:
 - type: doc
   path: docs/PENTESTING.md
 related:
+- 064-sentinel-path-traversal-sendmetadata
 - 013-e2ee-envelope-encryption
 - 011-s3-https-tls-enforcement
 - 010-s3-auth-presigned-sigv4

@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"path"
 	"strings"
 	"syscall"
 	"time"
@@ -681,6 +682,9 @@ func (m *MomoTCPCommunicator) SendMetadata(meta *common.FileMetadata) (status in
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Recovered from panic in SendMetadata: %v", r)
+			if m != nil {
+				m.Close() // Explicitly close the connection to prevent zombie sockets (Rule 43)
+			}
 			err = fmt.Errorf("panic in SendMetadata: %v: %w", r, syscall.EIO)
 		}
 	}()
@@ -705,10 +709,9 @@ func (m *MomoTCPCommunicator) SendMetadata(meta *common.FileMetadata) (status in
 		return 0, fmt.Errorf("invalid characters in wireName: %w", syscall.EBADMSG)
 	}
 
-	for _, part := range strings.Split(wireName, "/") {
-		if common.HasPathTraversalChars(part) {
-			return 0, fmt.Errorf("path traversal in wireName: %w", syscall.EBADMSG)
-		}
+	cleanWire := path.Clean(wireName)
+	if cleanWire == "." || cleanWire == ".." || strings.HasPrefix(cleanWire, "../") || strings.HasPrefix(cleanWire, "/") {
+		return 0, fmt.Errorf("path traversal in wireName: %w", syscall.EBADMSG)
 	}
 	copy(metadataBuffer[hashLength:hashLength+common.FileInfoLength], common.PadString(wireName, common.FileInfoLength))
 
@@ -785,6 +788,9 @@ func (m *MomoTCPCommunicator) SendMetadataStatus(status int) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Recovered from panic in SendMetadataStatus: %v", r)
+			if m != nil {
+				m.Close() // Explicitly close the connection to prevent zombie sockets (Rule 43)
+			}
 			err = fmt.Errorf("panic in SendMetadataStatus: %v: %w", r, syscall.EIO)
 		}
 	}()
