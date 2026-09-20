@@ -78,3 +78,4 @@ See [docs/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel min
 
 Encryption posture: [013](013-e2ee-envelope-encryption.md). Wire hardening:
 [011](011-s3-https-tls-enforcement.md) · [010](010-s3-auth-presigned-sigv4.md).
+Integrity: [007](007-at-rest-integrity-and-gc.md).
