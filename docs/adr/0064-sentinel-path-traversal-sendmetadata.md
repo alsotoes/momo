@@ -23,10 +23,10 @@ None documented.
 - **Code**: Planned
 - **Tests**: Planned
 - **Docs**: Planned
-- **Blog post**:
+- **Blog post**: docs/blog/posts/064-sentinel-path-traversal-sendmetadata.md
 
 ## References
 - Issue:
 - PR:
 - Spec: `openspec/changes/sentinel-path-traversal-sendmetadata/`
-- Blog:
+- Blog: docs/blog/posts/064-sentinel-path-traversal-sendmetadata.md
