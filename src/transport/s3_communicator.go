@@ -526,7 +526,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Panic recovered in S3 HandshakeServer: %v", r)
-			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
+			err = syscall.EIO
 			if m != nil && m.conn != nil {
 				m.conn.Close()
 			}

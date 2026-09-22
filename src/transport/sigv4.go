@@ -72,11 +72,6 @@ func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
 				return sigV4Components{}, false
 			}
 
-			// 🛡️ Rule 35 & 32: Validate lengths before slice arithmetic to prevent out-of-bounds panics
-			if c1 >= len(cred) || c2 >= len(cred) || c3 >= len(cred) {
-				return sigV4Components{}, false
-			}
-
 			c.AccessKey = cred[:c1]
 			c.DateStamp = cred[c1+1 : c2]
 			c.Region = cred[c2+1 : c3]
@@ -305,11 +300,6 @@ func parseSigV4QueryAuth(req *http.Request) (sigV4Components, bool) {
 	c3 += c2 + 1
 	c4 := strings.IndexByte(cred[c3+1:], '/')
 	if c4 == -1 {
-		return sigV4Components{}, false
-	}
-
-	// 🛡️ Rule 35 & 32: Validate lengths before slice arithmetic to prevent out-of-bounds panics
-	if c1 >= len(cred) || c2 >= len(cred) || c3 >= len(cred) {
 		return sigV4Components{}, false
 	}
 
