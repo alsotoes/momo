@@ -2328,31 +2328,38 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, s
 	return buf.Bytes(), nextToken, nil
 }
 
-// ⚡ Bolt: Optimize XML escaping by replacing byte-by-byte iteration with fast-path
-// block writes using strings.IndexAny. This reduces loop overhead and leverages
-// optimized standard library routines for finding target characters, improving performance.
+// ⚡ Bolt: Optimize XML escaping by replacing strings.IndexAny with a direct boolean
+// array lookup. This avoids the overhead of repeated strings.IndexAny function calls,
+// significantly improving performance when escaping strings with special characters.
 func xmlEscape(buf *bytes.Buffer, s string) {
-	for len(s) > 0 {
-		i := strings.IndexAny(s, "&<>\"'")
-		if i == -1 {
-			buf.WriteString(s)
-			break
-		}
-		buf.WriteString(s[:i])
-		switch s[i] {
-		case '&':
-			buf.WriteString("&amp;")
-		case '<':
-			buf.WriteString("&lt;")
-		case '>':
-			buf.WriteString("&gt;")
-		case '"':
-			buf.WriteString("&quot;")
-		case '\'':
-			buf.WriteString("&apos;")
-		}
-		s = s[i+1:]
+	escapeBytes := [256]bool{
+		'&': true,
+		'<': true,
+		'>': true,
+		'"': true,
+		'\'': true,
 	}
+
+	last := 0
+	for i := 0; i < len(s); i++ {
+		if escapeBytes[s[i]] {
+			buf.WriteString(s[last:i])
+			switch s[i] {
+			case '&':
+				buf.WriteString("&amp;")
+			case '<':
+				buf.WriteString("&lt;")
+			case '>':
+				buf.WriteString("&gt;")
+			case '"':
+				buf.WriteString("&quot;")
+			case '\'':
+				buf.WriteString("&apos;")
+			}
+			last = i + 1
+		}
+	}
+	buf.WriteString(s[last:])
 }
 
 // s3ErrorCode maps an HTTP status to the S3 XML error Code used in error bodies.
