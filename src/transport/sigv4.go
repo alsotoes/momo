@@ -26,36 +26,75 @@ type sigV4Components struct {
 }
 
 func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
-	if !strings.HasPrefix(authHeader, "AWS4-HMAC-SHA256 ") {
+	// Optimization: Manual parsing loop using strings.IndexByte and direct slice indexing
+	// to eliminate strings.Split heap allocations on the hot path for auth headers.
+	if len(authHeader) < 17 || authHeader[:17] != "AWS4-HMAC-SHA256 " {
 		return sigV4Components{}, false
 	}
 
-	rest := strings.TrimPrefix(authHeader, "AWS4-HMAC-SHA256 ")
-	parts := strings.Split(rest, ", ")
-	if len(parts) < 3 {
-		return sigV4Components{}, false
-	}
-
+	rest := authHeader[17:]
 	var c sigV4Components
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if strings.HasPrefix(part, "Credential=") {
-			cred := strings.TrimPrefix(part, "Credential=")
-			credParts := strings.Split(cred, "/")
-			if len(credParts) < 5 {
+	partsCount := 0
+
+	for len(rest) > 0 {
+		var part string
+		idx := strings.IndexByte(rest, ',')
+		if idx == -1 {
+			part = rest
+			rest = ""
+		} else {
+			part = rest[:idx]
+			rest = rest[idx+1:]
+		}
+
+		for len(part) > 0 && part[0] == ' ' {
+			part = part[1:]
+		}
+		for len(part) > 0 && part[len(part)-1] == ' ' {
+			part = part[:len(part)-1]
+		}
+
+		if len(part) == 0 {
+			continue
+		}
+		partsCount++
+
+		if len(part) > 11 && part[:11] == "Credential=" {
+			cred := part[11:]
+
+			idx1 := strings.IndexByte(cred, '/')
+			if idx1 == -1 {
 				return sigV4Components{}, false
 			}
-			c.AccessKey = credParts[0]
-			c.DateStamp = credParts[1]
-			c.Region = credParts[2]
-		} else if strings.HasPrefix(part, "SignedHeaders=") {
-			c.SignedHeaders = strings.TrimPrefix(part, "SignedHeaders=")
-		} else if strings.HasPrefix(part, "Signature=") {
-			c.Signature = strings.TrimPrefix(part, "Signature=")
+			c.AccessKey = cred[:idx1]
+			cred = cred[idx1+1:]
+
+			idx2 := strings.IndexByte(cred, '/')
+			if idx2 == -1 {
+				return sigV4Components{}, false
+			}
+			c.DateStamp = cred[:idx2]
+			cred = cred[idx2+1:]
+
+			idx3 := strings.IndexByte(cred, '/')
+			if idx3 == -1 {
+				return sigV4Components{}, false
+			}
+			c.Region = cred[:idx3]
+			cred = cred[idx3+1:]
+
+			idx4 := strings.IndexByte(cred, '/')
+			if idx4 == -1 {
+				return sigV4Components{}, false
+			}
+		} else if len(part) > 14 && part[:14] == "SignedHeaders=" {
+			c.SignedHeaders = part[14:]
+		} else if len(part) > 10 && part[:10] == "Signature=" {
+			c.Signature = part[10:]
 		}
 	}
 
-	if c.AccessKey == "" || c.Signature == "" || c.SignedHeaders == "" {
+	if partsCount < 3 || c.AccessKey == "" || c.Signature == "" || c.SignedHeaders == "" {
 		return sigV4Components{}, false
 	}
 	return c, true
