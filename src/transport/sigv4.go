@@ -25,15 +25,21 @@ type sigV4Components struct {
 	AmzDate       string
 }
 
-func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
+func parseSigV4AuthHeader(authHeader string) (c sigV4Components, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in parseSigV4AuthHeader: %v", r)
+			err = fmt.Errorf("panic parsing sigv4 auth header: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	// Optimization: Manual parsing loop using strings.IndexByte and direct slice indexing
 	// to eliminate strings.Split heap allocations on the hot path for auth headers.
 	if len(authHeader) < 17 || authHeader[:17] != "AWS4-HMAC-SHA256 " {
-		return sigV4Components{}, false
+		return sigV4Components{}, fmt.Errorf("missing or invalid AWS4-HMAC-SHA256 prefix: %w", syscall.EINVAL)
 	}
 
 	rest := authHeader[17:]
-	var c sigV4Components
 	partsCount := 0
 
 	for len(rest) > 0 {
@@ -64,28 +70,28 @@ func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
 
 			idx1 := strings.IndexByte(cred, '/')
 			if idx1 == -1 {
-				return sigV4Components{}, false
+				return sigV4Components{}, fmt.Errorf("malformed Credential field, missing access key: %w", syscall.EBADMSG)
 			}
 			c.AccessKey = cred[:idx1]
 			cred = cred[idx1+1:]
 
 			idx2 := strings.IndexByte(cred, '/')
 			if idx2 == -1 {
-				return sigV4Components{}, false
+				return sigV4Components{}, fmt.Errorf("malformed Credential field, missing date stamp: %w", syscall.EBADMSG)
 			}
 			c.DateStamp = cred[:idx2]
 			cred = cred[idx2+1:]
 
 			idx3 := strings.IndexByte(cred, '/')
 			if idx3 == -1 {
-				return sigV4Components{}, false
+				return sigV4Components{}, fmt.Errorf("malformed Credential field, missing region: %w", syscall.EBADMSG)
 			}
 			c.Region = cred[:idx3]
 			cred = cred[idx3+1:]
 
 			idx4 := strings.IndexByte(cred, '/')
 			if idx4 == -1 {
-				return sigV4Components{}, false
+				return sigV4Components{}, fmt.Errorf("malformed Credential field, missing scope parts: %w", syscall.EBADMSG)
 			}
 		} else if len(part) > 14 && part[:14] == "SignedHeaders=" {
 			c.SignedHeaders = part[14:]
@@ -94,10 +100,37 @@ func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
 		}
 	}
 
-	if partsCount < 3 || c.AccessKey == "" || c.Signature == "" || c.SignedHeaders == "" {
-		return sigV4Components{}, false
+	if partsCount < 3 {
+		return sigV4Components{}, fmt.Errorf("incomplete auth header, expected at least 3 parts: %w", syscall.EBADMSG)
 	}
-	return c, true
+	if c.AccessKey == "" {
+		return sigV4Components{}, fmt.Errorf("missing AccessKey: %w", syscall.EBADMSG)
+	}
+	if c.Signature == "" {
+		return sigV4Components{}, fmt.Errorf("missing Signature: %w", syscall.EBADMSG)
+	}
+	if c.SignedHeaders == "" {
+		return sigV4Components{}, fmt.Errorf("missing SignedHeaders: %w", syscall.EBADMSG)
+	}
+
+	// 🛡️ Rule 35: Safe Serialization/Validation - bounds checking on extracted fields
+	if len(c.AccessKey) > 128 {
+		return sigV4Components{}, fmt.Errorf("AccessKey exceeds maximum allowed length: %w", syscall.EINVAL)
+	}
+	if len(c.DateStamp) > 16 {
+		return sigV4Components{}, fmt.Errorf("DateStamp exceeds maximum allowed length: %w", syscall.EINVAL)
+	}
+	if len(c.Region) > 64 {
+		return sigV4Components{}, fmt.Errorf("Region exceeds maximum allowed length: %w", syscall.EINVAL)
+	}
+	if len(c.SignedHeaders) > 2048 {
+		return sigV4Components{}, fmt.Errorf("SignedHeaders exceeds maximum allowed length: %w", syscall.EINVAL)
+	}
+	if len(c.Signature) > 256 {
+		return sigV4Components{}, fmt.Errorf("Signature exceeds maximum allowed length: %w", syscall.EINVAL)
+	}
+
+	return c, nil
 }
 
 func sigV4Escape(s string, encodeSlash bool) (string, error) {
@@ -384,8 +417,9 @@ func verifySigV4Signature(req *http.Request, authHeader, secretKey string) bool 
 			verifySigV4SignatureWithPayload(req, components, secretKey, emptyStringSHA256)
 	}
 
-	components, ok := parseSigV4AuthHeader(authHeader)
-	if !ok {
+	components, err := parseSigV4AuthHeader(authHeader)
+	if err != nil {
+		log.Printf("AUDIT: SigV4 auth header parsing failed: %v", err)
 		return false
 	}
 
