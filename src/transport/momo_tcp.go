@@ -10,6 +10,7 @@ import (
 	"math"
 	"net"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"syscall"
@@ -769,6 +770,12 @@ func (m *MomoTCPCommunicator) ReceiveMetadata() (meta common.FileMetadata, err e
 	// 🛡️ Sentinel: Reject carriage returns or line feeds to prevent downstream Protocol Injection.
 	if strings.ContainsAny(metadata.Name, "\r\n") {
 		return common.FileMetadata{}, fmt.Errorf("invalid name: contains CRLF: %w", syscall.EBADMSG)
+	}
+
+	// 🛡️ Sentinel: Validate name for path traversal (allow virtual directories via /)
+	cleaned := path.Clean(metadata.Name)
+	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") || strings.HasPrefix(cleaned, "/") {
+		return common.FileMetadata{}, fmt.Errorf("invalid name: path traversal: %w", syscall.EBADMSG)
 	}
 
 	size, err := common.SafeParseInt(buffer[hashLength+common.FileInfoLength:])
