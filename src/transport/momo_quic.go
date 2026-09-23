@@ -17,6 +17,7 @@ import (
 	"math/big"
 	"net"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -695,6 +696,9 @@ func (m *MomoQUICCommunicator) SendMetadata(meta *common.FileMetadata) (status i
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Recovered from panic in SendMetadata: %v", r)
+			if m != nil {
+				m.Close() // Explicitly close the connection to prevent zombie sockets (Rule 43)
+			}
 			err = fmt.Errorf("panic in SendMetadata: %v: %w", r, syscall.EIO)
 		}
 	}()
@@ -719,10 +723,9 @@ func (m *MomoQUICCommunicator) SendMetadata(meta *common.FileMetadata) (status i
 		return 0, fmt.Errorf("invalid characters in wireName: %w", syscall.EBADMSG)
 	}
 
-	for _, part := range strings.Split(wireName, "/") {
-		if common.HasPathTraversalChars(part) {
-			return 0, fmt.Errorf("path traversal in wireName: %w", syscall.EBADMSG)
-		}
+	cleanedName := path.Clean(wireName)
+	if cleanedName == "." || cleanedName == ".." || strings.HasPrefix(cleanedName, "../") || strings.HasPrefix(cleanedName, "/") {
+		return 0, fmt.Errorf("path traversal in wireName: %w", syscall.EBADMSG)
 	}
 	copy(metadataBuffer[hashLength:hashLength+common.FileInfoLength], common.PadString(wireName, common.FileInfoLength))
 
@@ -783,6 +786,10 @@ func (m *MomoQUICCommunicator) ReceiveMetadata() (meta common.FileMetadata, err 
 	// 🛡️ Sentinel: Reject carriage returns or line feeds to prevent downstream Protocol Injection.
 	if strings.ContainsAny(metadata.Name, "\r\n") {
 		return common.FileMetadata{}, fmt.Errorf("invalid name: contains CRLF: %w", syscall.EBADMSG)
+	}
+	cleanedName := path.Clean(metadata.Name)
+	if cleanedName == "." || cleanedName == ".." || strings.HasPrefix(cleanedName, "../") || strings.HasPrefix(cleanedName, "/") {
+		return common.FileMetadata{}, fmt.Errorf("path traversal in name: %w", syscall.EBADMSG)
 	}
 
 	size, err := common.SafeParseInt(buffer[hashLength+common.FileInfoLength:])
