@@ -153,7 +153,7 @@
 **Learning:** Even if external boundary layers (like S3 communicators) validate for CRLF, internal cluster communications passed via peer-to-peer protocols must also be treated with defense-in-depth sanitization. Failure to do so allows protocol smuggling or log injection inside the trusted cluster if a peer node is compromised.
 **Prevention:** Always explicitly validate that network-extracted strings (like names and hashes) do not contain `\r\n` characters immediately upon extraction within internal query handlers (e.g., using `strings.ContainsAny`), ensuring strict defense-in-depth even for intra-cluster traffic.
 
-## 2026-09-23 - Path Traversal in Metadata Name Field
+## 2026-09-01 - Path Traversal in Metadata Name Field
 **Vulnerability:** In `SendMetadata` and `ReceiveMetadata` operations, validating paths by splitting them with `strings.Split(path, "/")` and applying `common.HasPathTraversalChars` on each part is insufficient and insecure, as it drops slashes. Additionally, missing validation on `metadata.Name` during `ReceiveMetadata` can allow path traversal.
 **Learning:** Attempting to manually split and evaluate path segments can lead to bypasses, particularly when dealing with complex path structures.
 **Prevention:** Always sanitize the extracted name (`wireName` or `metadata.Name`) using `path.Clean()` and explicitly reject if it is `.`, `..`, or begins with `../` or `/`. Do not use `common.HasPathTraversalChars` on paths that legitimately contain virtual directory slashes.
