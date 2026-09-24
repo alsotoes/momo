@@ -30,32 +30,62 @@ func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
 		return sigV4Components{}, false
 	}
 
-	rest := strings.TrimPrefix(authHeader, "AWS4-HMAC-SHA256 ")
-	parts := strings.Split(rest, ", ")
-	if len(parts) < 3 {
-		return sigV4Components{}, false
-	}
-
+	// ⚡ Bolt: Zero-allocation loop replacing strings.Split for high-throughput auth headers
+	rest := authHeader[17:] // len("AWS4-HMAC-SHA256 ")
 	var c sigV4Components
-	for _, part := range parts {
+	partCount := 0
+
+	for len(rest) > 0 {
+		var part string
+		idx := strings.Index(rest, ", ")
+		if idx == -1 {
+			part = rest
+			rest = ""
+		} else {
+			part = rest[:idx]
+			rest = rest[idx+2:]
+		}
+
 		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		partCount++
+
 		if strings.HasPrefix(part, "Credential=") {
-			cred := strings.TrimPrefix(part, "Credential=")
-			credParts := strings.Split(cred, "/")
-			if len(credParts) < 5 {
+			cred := part[11:] // len("Credential=")
+			var credParts [5]string
+			currCred := cred
+			validCred := true
+			for i := 0; i < 5; i++ {
+				slashIdx := strings.IndexByte(currCred, '/')
+				if i < 4 {
+					if slashIdx == -1 {
+						validCred = false
+						break
+					}
+					credParts[i] = currCred[:slashIdx]
+					currCred = currCred[slashIdx+1:]
+				} else {
+					credParts[i] = currCred
+				}
+			}
+
+			if !validCred {
 				return sigV4Components{}, false
 			}
+
 			c.AccessKey = credParts[0]
 			c.DateStamp = credParts[1]
 			c.Region = credParts[2]
 		} else if strings.HasPrefix(part, "SignedHeaders=") {
-			c.SignedHeaders = strings.TrimPrefix(part, "SignedHeaders=")
+			c.SignedHeaders = part[14:] // len("SignedHeaders=")
 		} else if strings.HasPrefix(part, "Signature=") {
-			c.Signature = strings.TrimPrefix(part, "Signature=")
+			c.Signature = part[10:] // len("Signature=")
 		}
 	}
 
-	if c.AccessKey == "" || c.Signature == "" || c.SignedHeaders == "" {
+	if partCount < 3 || c.AccessKey == "" || c.Signature == "" || c.SignedHeaders == "" {
 		return sigV4Components{}, false
 	}
 	return c, true
