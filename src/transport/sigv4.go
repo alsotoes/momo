@@ -25,40 +25,77 @@ type sigV4Components struct {
 	AmzDate       string
 }
 
-func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
+func parseSigV4AuthHeader(authHeader string) (c sigV4Components, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("Recovered from panic in parseSigV4AuthHeader: %v", r)
+			err = syscall.EIO
+		}
+	}()
+
 	if !strings.HasPrefix(authHeader, "AWS4-HMAC-SHA256 ") {
-		return sigV4Components{}, false
+		return sigV4Components{}, syscall.EBADMSG
 	}
 
-	rest := strings.TrimPrefix(authHeader, "AWS4-HMAC-SHA256 ")
-	parts := strings.Split(rest, ", ")
-	if len(parts) < 3 {
-		return sigV4Components{}, false
-	}
+	// ⚡ Bolt: Zero-allocation loop replacing strings.Split for high-throughput auth headers
+	rest := authHeader[17:] // len("AWS4-HMAC-SHA256 ")
+	partCount := 0
 
-	var c sigV4Components
-	for _, part := range parts {
+	// 🛡️ Rule 24: Bounded Loops
+	for len(rest) > 0 && partCount < 10 {
+		var part string
+		idx := strings.Index(rest, ", ")
+		if idx == -1 {
+			part = rest
+			rest = ""
+		} else {
+			part = rest[:idx]
+			rest = rest[idx+2:]
+		}
+
 		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		partCount++
+
 		if strings.HasPrefix(part, "Credential=") {
-			cred := strings.TrimPrefix(part, "Credential=")
-			credParts := strings.Split(cred, "/")
-			if len(credParts) < 5 {
-				return sigV4Components{}, false
+			cred := part[11:] // len("Credential=")
+			var credParts [5]string
+			currCred := cred
+			validCred := true
+			for i := 0; i < 5; i++ {
+				slashIdx := strings.IndexByte(currCred, '/')
+				if i < 4 {
+					if slashIdx == -1 {
+						validCred = false
+						break
+					}
+					credParts[i] = currCred[:slashIdx]
+					currCred = currCred[slashIdx+1:]
+				} else {
+					credParts[i] = currCred
+				}
 			}
+
+			if !validCred {
+				return sigV4Components{}, syscall.EBADMSG
+			}
+
 			c.AccessKey = credParts[0]
 			c.DateStamp = credParts[1]
 			c.Region = credParts[2]
 		} else if strings.HasPrefix(part, "SignedHeaders=") {
-			c.SignedHeaders = strings.TrimPrefix(part, "SignedHeaders=")
+			c.SignedHeaders = part[14:] // len("SignedHeaders=")
 		} else if strings.HasPrefix(part, "Signature=") {
-			c.Signature = strings.TrimPrefix(part, "Signature=")
+			c.Signature = part[10:] // len("Signature=")
 		}
 	}
 
-	if c.AccessKey == "" || c.Signature == "" || c.SignedHeaders == "" {
-		return sigV4Components{}, false
+	if partCount < 3 || c.AccessKey == "" || c.Signature == "" || c.SignedHeaders == "" {
+		return sigV4Components{}, syscall.EBADMSG
 	}
-	return c, true
+	return c, nil
 }
 
 func sigV4Escape(s string, encodeSlash bool) (string, error) {
@@ -345,8 +382,8 @@ func verifySigV4Signature(req *http.Request, authHeader, secretKey string) bool 
 			verifySigV4SignatureWithPayload(req, components, secretKey, emptyStringSHA256)
 	}
 
-	components, ok := parseSigV4AuthHeader(authHeader)
-	if !ok {
+		components, err := parseSigV4AuthHeader(authHeader)
+		if err != nil {
 		return false
 	}
 
