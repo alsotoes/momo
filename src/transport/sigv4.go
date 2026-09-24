@@ -25,17 +25,24 @@ type sigV4Components struct {
 	AmzDate       string
 }
 
-func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
+func parseSigV4AuthHeader(authHeader string) (c sigV4Components, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("Recovered from panic in parseSigV4AuthHeader: %v", r)
+			err = syscall.EIO
+		}
+	}()
+
 	if !strings.HasPrefix(authHeader, "AWS4-HMAC-SHA256 ") {
-		return sigV4Components{}, false
+		return sigV4Components{}, syscall.EBADMSG
 	}
 
 	// ⚡ Bolt: Zero-allocation loop replacing strings.Split for high-throughput auth headers
 	rest := authHeader[17:] // len("AWS4-HMAC-SHA256 ")
-	var c sigV4Components
 	partCount := 0
 
-	for len(rest) > 0 {
+	// 🛡️ Rule 24: Bounded Loops
+	for len(rest) > 0 && partCount < 10 {
 		var part string
 		idx := strings.Index(rest, ", ")
 		if idx == -1 {
@@ -72,7 +79,7 @@ func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
 			}
 
 			if !validCred {
-				return sigV4Components{}, false
+				return sigV4Components{}, syscall.EBADMSG
 			}
 
 			c.AccessKey = credParts[0]
@@ -86,9 +93,9 @@ func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
 	}
 
 	if partCount < 3 || c.AccessKey == "" || c.Signature == "" || c.SignedHeaders == "" {
-		return sigV4Components{}, false
+		return sigV4Components{}, syscall.EBADMSG
 	}
-	return c, true
+	return c, nil
 }
 
 func sigV4Escape(s string, encodeSlash bool) (string, error) {
@@ -375,8 +382,8 @@ func verifySigV4Signature(req *http.Request, authHeader, secretKey string) bool 
 			verifySigV4SignatureWithPayload(req, components, secretKey, emptyStringSHA256)
 	}
 
-	components, ok := parseSigV4AuthHeader(authHeader)
-	if !ok {
+		components, err := parseSigV4AuthHeader(authHeader)
+		if err != nil {
 		return false
 	}
 
