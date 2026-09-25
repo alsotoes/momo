@@ -213,3 +213,6 @@
 ## 2026-09-12 - Eliminate redundant time formatting allocations
 **Learning:** To eliminate redundant time parsing and string allocations when generating both a full timestamp (e.g., '20060102T150405Z') and a datestamp ('20060102'), format the full timestamp once using `time.Format` and derive the datestamp by slicing the first 8 bytes (e.g., `dateStamp := amzDate[:8]`).
 **Action:** When both a full timestamp and a datestamp are needed for AWS SigV4 requests or similar protocols, generate the full timestamp first and then slice it to get the datestamp. This avoids the overhead of calling `time.Format` twice.
+## 2026-09-25 - Boolean Array Lookup for Fast Path Optimization
+**Learning:** To optimize repeated substring or character searches on fast paths (e.g., checking for characters to escape in XML), replacing strings.IndexAny with a direct boolean array lookup (var escapeBytes [256]bool) can significantly reduce function call overhead and improve performance.
+**Action:** Use boolean array lookups for repeated character searches on hot paths.

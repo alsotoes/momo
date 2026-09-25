@@ -2328,13 +2328,24 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, s
 	return buf.Bytes(), nextToken, nil
 }
 
-// ⚡ Bolt: Optimize XML escaping by replacing byte-by-byte iteration with fast-path
-// block writes using strings.IndexAny. This reduces loop overhead and leverages
-// optimized standard library routines for finding target characters, improving performance.
+var escapeBytes [256]bool
+
+func init() {
+	for _, c := range []byte("&<>\"'") {
+		escapeBytes[c] = true
+	}
+}
+
+// ⚡ Bolt: Optimize XML escaping by replacing strings.IndexAny with a fast-path
+// boolean array lookup. This reduces function call overhead and significantly
+// improves performance on hot paths.
 func xmlEscape(buf *bytes.Buffer, s string) {
 	for len(s) > 0 {
-		i := strings.IndexAny(s, "&<>\"'")
-		if i == -1 {
+		i := 0
+		for i < len(s) && !escapeBytes[s[i]] {
+			i++
+		}
+		if i == len(s) {
 			buf.WriteString(s)
 			break
 		}
