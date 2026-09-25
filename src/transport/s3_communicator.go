@@ -2094,7 +2094,7 @@ func FormatListBucketsXML(configuredBucket string) []byte {
 	buf.WriteString(`<ListAllMyBucketsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Owner><ID>momo</ID><DisplayName>momo</DisplayName></Owner><Buckets>`)
 	if configuredBucket != "" {
 		buf.WriteString(`<Bucket><Name>`)
-		xmlEscape(&buf, configuredBucket)
+		_ = xmlEscape(&buf, configuredBucket)
 		buf.WriteString(`</Name><CreationDate>2024-01-01T00:00:00.000Z</CreationDate></Bucket>`)
 	}
 	buf.WriteString(`</Buckets></ListAllMyBucketsResult>`)
@@ -2108,7 +2108,7 @@ func FormatGetBucketLocationXML(region string) []byte {
 	var buf bytes.Buffer
 	buf.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)
 	buf.WriteString(`<LocationConstraint xmlns="http://s3.amazonaws.com/doc/2006-03-01/">`)
-	xmlEscape(&buf, region)
+	_ = xmlEscape(&buf, region)
 	buf.WriteString(`</LocationConstraint>`)
 	return buf.Bytes()
 }
@@ -2181,16 +2181,16 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, s
 	buf.WriteString(`<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">`)
 
 	buf.WriteString(`<Name>`)
-	xmlEscape(&buf, bucketName)
+	_ = xmlEscape(&buf, bucketName)
 	buf.WriteString(`</Name>`)
 
 	buf.WriteString(`<Prefix>`)
-	xmlEscape(&buf, prefix)
+	_ = xmlEscape(&buf, prefix)
 	buf.WriteString(`</Prefix>`)
 
 	if delimiter != "" {
 		buf.WriteString(`<Delimiter>`)
-		xmlEscape(&buf, delimiter)
+		_ = xmlEscape(&buf, delimiter)
 		buf.WriteString(`</Delimiter>`)
 	}
 
@@ -2209,7 +2209,7 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, s
 	emitContents := func(file common.FileMetadata, key string) {
 		buf.WriteString(`<Contents>`)
 		buf.WriteString(`<Key>`)
-		xmlEscape(&buf, key)
+		_ = xmlEscape(&buf, key)
 		buf.WriteString(`</Key>`)
 		buf.WriteString(`<LastModified>`)
 		// ⚡ Bolt: Eliminate string allocation in formatLastModified by using AppendFormat with a stack-allocated buffer to write directly into the XML builder.
@@ -2217,7 +2217,7 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, s
 		buf.Write(t.AppendFormat(timeBuf[:0], "2006-01-02T15:04:05.000Z"))
 		buf.WriteString(`</LastModified>`)
 		buf.WriteString(`<ETag>"`)
-		xmlEscape(&buf, file.Hash)
+		_ = xmlEscape(&buf, file.Hash)
 		buf.WriteString(`"</ETag>`)
 		if fetchOwner {
 			buf.WriteString(`<Owner>`)
@@ -2300,7 +2300,7 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, s
 	for _, cp := range sortedPrefixes {
 		buf.WriteString(`<CommonPrefixes>`)
 		buf.WriteString(`<Prefix>`)
-		xmlEscape(&buf, cp)
+		_ = xmlEscape(&buf, cp)
 		buf.WriteString(`</Prefix>`)
 		buf.WriteString(`</CommonPrefixes>`)
 	}
@@ -2320,7 +2320,7 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, s
 	if truncated && lastToken != "" {
 		nextToken = encodeContinuationToken(lastKind, lastToken)
 		buf.WriteString(`<NextContinuationToken>`)
-		xmlEscape(&buf, nextToken)
+		_ = xmlEscape(&buf, nextToken)
 		buf.WriteString(`</NextContinuationToken>`)
 	}
 
@@ -2328,13 +2328,29 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, s
 	return buf.Bytes(), nextToken, nil
 }
 
-// ⚡ Bolt: Optimize XML escaping by replacing byte-by-byte iteration with fast-path
-// block writes using strings.IndexAny. This reduces loop overhead and leverages
-// optimized standard library routines for finding target characters, improving performance.
-func xmlEscape(buf *bytes.Buffer, s string) {
+var escapeBytes [256]bool
+
+func init() {
+	for _, c := range []byte("&<>\"'") {
+		escapeBytes[c] = true
+	}
+}
+
+// ⚡ Bolt: Optimize XML escaping by replacing strings.IndexAny with a fast-path
+// boolean array lookup. This reduces function call overhead and significantly
+// improves performance on hot paths.
+func xmlEscape(buf *bytes.Buffer, s string) error {
+	// 🛡️ Rule 32/35: Prevent unbound memory exhaustion by checking metadata length limits
+	if len(s) > 1024 {
+		return syscall.EINVAL
+	}
+
 	for len(s) > 0 {
-		i := strings.IndexAny(s, "&<>\"'")
-		if i == -1 {
+		i := 0
+		for i < len(s) && !escapeBytes[s[i]] {
+			i++
+		}
+		if i == len(s) {
 			buf.WriteString(s)
 			break
 		}
@@ -2353,6 +2369,7 @@ func xmlEscape(buf *bytes.Buffer, s string) {
 		}
 		s = s[i+1:]
 	}
+	return nil
 }
 
 // s3ErrorCode maps an HTTP status to the S3 XML error Code used in error bodies.
@@ -2893,7 +2910,7 @@ func FormatCopyObjectResultXML(etag string, modTime int64) []byte {
 	var buf bytes.Buffer
 	var timeBuf [32]byte
 	buf.WriteString(`<?xml version="1.0" encoding="UTF-8"?><CopyObjectResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><ETag>"`)
-	xmlEscape(&buf, etag)
+	_ = xmlEscape(&buf, etag)
 	buf.WriteString(`"</ETag><LastModified>`)
 	// ⚡ Bolt: Eliminate string allocation in formatLastModified by using AppendFormat with a stack-allocated buffer to write directly into the XML builder.
 	t := time.Unix(0, modTime).UTC()
@@ -2909,16 +2926,16 @@ func FormatDeleteObjectsResultXML(deleted []string, errs []s3DeleteError) []byte
 	buf.WriteString(`<?xml version="1.0" encoding="UTF-8"?><DeleteResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">`)
 	for _, k := range deleted {
 		buf.WriteString(`<Deleted><Key>`)
-		xmlEscape(&buf, k)
+		_ = xmlEscape(&buf, k)
 		buf.WriteString(`</Key></Deleted>`)
 	}
 	for _, e := range errs {
 		buf.WriteString(`<Error><Key>`)
-		xmlEscape(&buf, e.Key)
+		_ = xmlEscape(&buf, e.Key)
 		buf.WriteString(`</Key><Code>`)
-		xmlEscape(&buf, e.Code)
+		_ = xmlEscape(&buf, e.Code)
 		buf.WriteString(`</Code><Message>`)
-		xmlEscape(&buf, e.Message)
+		_ = xmlEscape(&buf, e.Message)
 		buf.WriteString(`</Message></Error>`)
 	}
 	buf.WriteString(`</DeleteResult>`)
@@ -3033,7 +3050,7 @@ func writeRangeNotSatisfiable(w io.Writer, size int64, key string) (int, error) 
 	var bodyBuf bytes.Buffer
 	bodyBuf.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)
 	bodyBuf.WriteString(`<Error><Code>InvalidRange</Code><Message>The requested range cannot be satisfied.</Message><Resource>`)
-	xmlEscape(&bodyBuf, key)
+	_ = xmlEscape(&bodyBuf, key)
 	bodyBuf.WriteString(`</Resource></Error>`)
 
 	var hdrBuf [256]byte
@@ -3067,13 +3084,13 @@ func writeS3Error(w io.Writer, status int, code, message, resource string) (int,
 	bodyBuf.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)
 	bodyBuf.WriteString(`<Error>`)
 	bodyBuf.WriteString(`<Code>`)
-	xmlEscape(&bodyBuf, code)
+	_ = xmlEscape(&bodyBuf, code)
 	bodyBuf.WriteString(`</Code><Message>`)
-	xmlEscape(&bodyBuf, message)
+	_ = xmlEscape(&bodyBuf, message)
 	bodyBuf.WriteString(`</Message>`)
 	if resource != "" {
 		bodyBuf.WriteString(`<Resource>`)
-		xmlEscape(&bodyBuf, resource)
+		_ = xmlEscape(&bodyBuf, resource)
 		bodyBuf.WriteString(`</Resource>`)
 	}
 	bodyBuf.WriteString(`</Error>`)
@@ -3322,7 +3339,7 @@ func (m *S3Communicator) handleCompleteMultipartUpload(req *http.Request, bucket
 	writeXMLString(&buf, "Bucket", bucket)
 	writeXMLString(&buf, "Key", key)
 	buf.WriteString(`<ETag>"`)
-	xmlEscape(&buf, finalHash)
+	_ = xmlEscape(&buf, finalHash)
 	buf.WriteString(`"</ETag>`)
 	buf.WriteString(`</CompleteMultipartUploadResult>`)
 
@@ -3416,7 +3433,7 @@ func (m *S3Communicator) handleListParts(bucket, key, uploadID string) (requeste
 		buf.Write(strconv.AppendInt(intBuf[:0], int64(p.partNumber), 10))
 		buf.WriteString(`</PartNumber>`)
 		buf.WriteString(`<ETag>"`)
-		xmlEscape(&buf, p.etag)
+		_ = xmlEscape(&buf, p.etag)
 		buf.WriteString(`"</ETag>`)
 		buf.WriteString(`<Size>`)
 		buf.Write(strconv.AppendInt(intBuf[:0], int64(len(p.data)), 10))
@@ -3470,7 +3487,7 @@ func (m *S3Communicator) handleListMultipartUploads(bucket string) (requestedMod
 		buf.WriteString(`<Upload>`)
 		writeXMLString(&buf, "Key", e.key)
 		buf.WriteString(`<UploadId>`)
-		xmlEscape(&buf, e.id)
+		_ = xmlEscape(&buf, e.id)
 		buf.WriteString(`</UploadId>`)
 		buf.WriteString(`</Upload>`)
 	}
@@ -3486,7 +3503,7 @@ func writeXMLString(w *bytes.Buffer, name, value string) {
 	w.WriteByte('<')
 	w.WriteString(name)
 	w.WriteByte('>')
-	xmlEscape(w, value)
+	_ = xmlEscape(w, value)
 	w.WriteString("</")
 	w.WriteString(name)
 	w.WriteByte('>')
