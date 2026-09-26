@@ -26,36 +26,70 @@ type sigV4Components struct {
 }
 
 func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
+	// ⚡ Bolt: Use a zero-allocation loop instead of strings.Split to parse authentication headers.
 	if !strings.HasPrefix(authHeader, "AWS4-HMAC-SHA256 ") {
 		return sigV4Components{}, false
 	}
 
-	rest := strings.TrimPrefix(authHeader, "AWS4-HMAC-SHA256 ")
-	parts := strings.Split(rest, ", ")
-	if len(parts) < 3 {
-		return sigV4Components{}, false
-	}
+	rest := authHeader[17:]
 
 	var c sigV4Components
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
+	var count int
+
+	for len(rest) > 0 {
+		var part string
+		idx := strings.IndexByte(rest, ',')
+		if idx >= 0 {
+			part = rest[:idx]
+			rest = rest[idx+1:]
+		} else {
+			part = rest
+			rest = ""
+		}
+
+		// TrimSpace manually
+		for len(part) > 0 && part[0] == ' ' {
+			part = part[1:]
+		}
+		for len(part) > 0 && part[len(part)-1] == ' ' {
+			part = part[:len(part)-1]
+		}
+
+		if len(part) == 0 {
+			continue
+		}
+		count++
+
 		if strings.HasPrefix(part, "Credential=") {
-			cred := strings.TrimPrefix(part, "Credential=")
-			credParts := strings.Split(cred, "/")
-			if len(credParts) < 5 {
+			cred := part[11:]
+			var credParts [5]string
+			var credCount int
+			credRest := cred
+			for len(credRest) > 0 && credCount < 5 {
+				idx := strings.IndexByte(credRest, '/')
+				if idx >= 0 {
+					credParts[credCount] = credRest[:idx]
+					credRest = credRest[idx+1:]
+				} else {
+					credParts[credCount] = credRest
+					credRest = ""
+				}
+				credCount++
+			}
+			if credCount < 5 {
 				return sigV4Components{}, false
 			}
 			c.AccessKey = credParts[0]
 			c.DateStamp = credParts[1]
 			c.Region = credParts[2]
 		} else if strings.HasPrefix(part, "SignedHeaders=") {
-			c.SignedHeaders = strings.TrimPrefix(part, "SignedHeaders=")
+			c.SignedHeaders = part[14:]
 		} else if strings.HasPrefix(part, "Signature=") {
-			c.Signature = strings.TrimPrefix(part, "Signature=")
+			c.Signature = part[10:]
 		}
 	}
 
-	if c.AccessKey == "" || c.Signature == "" || c.SignedHeaders == "" {
+	if count < 3 || c.AccessKey == "" || c.Signature == "" || c.SignedHeaders == "" {
 		return sigV4Components{}, false
 	}
 	return c, true
@@ -251,8 +285,22 @@ func parseSigV4QueryAuth(req *http.Request) (sigV4Components, bool) {
 		return sigV4Components{}, false
 	}
 	cred := q.Get("X-Amz-Credential")
-	credParts := strings.Split(cred, "/")
-	if len(credParts) < 5 {
+	// ⚡ Bolt: Use a zero-allocation loop instead of strings.Split to parse authentication headers.
+	var credParts [5]string
+	var credCount int
+	credRest := cred
+	for len(credRest) > 0 && credCount < 5 {
+		idx := strings.IndexByte(credRest, '/')
+		if idx >= 0 {
+			credParts[credCount] = credRest[:idx]
+			credRest = credRest[idx+1:]
+		} else {
+			credParts[credCount] = credRest
+			credRest = ""
+		}
+		credCount++
+	}
+	if credCount < 5 {
 		return sigV4Components{}, false
 	}
 	c := sigV4Components{
