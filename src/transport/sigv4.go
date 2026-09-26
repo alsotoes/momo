@@ -25,15 +25,22 @@ type sigV4Components struct {
 	AmzDate       string
 }
 
-func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
+func parseSigV4AuthHeader(authHeader string) (c sigV4Components, err error) {
+	// 🛡️ Rule 37: Panic Recovery Logging
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in parseSigV4AuthHeader: %v", r)
+			err = syscall.EBADMSG
+		}
+	}()
+
 	// ⚡ Bolt: Use a zero-allocation loop instead of strings.Split to parse authentication headers.
 	if !strings.HasPrefix(authHeader, "AWS4-HMAC-SHA256 ") {
-		return sigV4Components{}, false
+		return sigV4Components{}, syscall.EBADMSG
 	}
 
 	rest := authHeader[17:]
 
-	var c sigV4Components
 	var count int
 
 	for len(rest) > 0 {
@@ -77,7 +84,7 @@ func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
 				credCount++
 			}
 			if credCount < 5 {
-				return sigV4Components{}, false
+				return sigV4Components{}, syscall.EBADMSG
 			}
 			c.AccessKey = credParts[0]
 			c.DateStamp = credParts[1]
@@ -90,9 +97,9 @@ func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
 	}
 
 	if count < 3 || c.AccessKey == "" || c.Signature == "" || c.SignedHeaders == "" {
-		return sigV4Components{}, false
+		return sigV4Components{}, syscall.EBADMSG
 	}
-	return c, true
+	return c, nil
 }
 
 func sigV4Escape(s string, encodeSlash bool) (string, error) {
@@ -279,10 +286,18 @@ func isPresignedSigV4(req *http.Request) bool {
 // parseSigV4QueryAuth parses presigned-URL SigV4 auth parameters from the query
 // string: X-Amz-Algorithm, X-Amz-Credential, X-Amz-Date, X-Amz-Expires,
 // X-Amz-SignedHeaders, and X-Amz-Signature.
-func parseSigV4QueryAuth(req *http.Request) (sigV4Components, bool) {
+func parseSigV4QueryAuth(req *http.Request) (c sigV4Components, err error) {
+	// 🛡️ Rule 37: Panic Recovery Logging
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in parseSigV4QueryAuth: %v", r)
+			err = syscall.EBADMSG
+		}
+	}()
+
 	q := req.URL.Query()
 	if q.Get("X-Amz-Algorithm") != "AWS4-HMAC-SHA256" {
-		return sigV4Components{}, false
+		return sigV4Components{}, syscall.EBADMSG
 	}
 	cred := q.Get("X-Amz-Credential")
 	// ⚡ Bolt: Use a zero-allocation loop instead of strings.Split to parse authentication headers.
@@ -301,9 +316,9 @@ func parseSigV4QueryAuth(req *http.Request) (sigV4Components, bool) {
 		credCount++
 	}
 	if credCount < 5 {
-		return sigV4Components{}, false
+		return sigV4Components{}, syscall.EBADMSG
 	}
-	c := sigV4Components{
+	c = sigV4Components{
 		AccessKey:     credParts[0],
 		DateStamp:     credParts[1],
 		Region:        credParts[2],
@@ -312,9 +327,9 @@ func parseSigV4QueryAuth(req *http.Request) (sigV4Components, bool) {
 		AmzDate:       q.Get("X-Amz-Date"),
 	}
 	if c.AccessKey == "" || c.Signature == "" || c.SignedHeaders == "" || c.AmzDate == "" {
-		return sigV4Components{}, false
+		return sigV4Components{}, syscall.EBADMSG
 	}
-	return c, true
+	return c, nil
 }
 
 func verifySigV4Timestamp(amzDate string) (ok bool) {
@@ -378,8 +393,8 @@ func verifySigV4Expiry(req *http.Request) bool {
 // X-Amz-Signature is always excluded from the canonical query string.
 func verifySigV4Signature(req *http.Request, authHeader, secretKey string) bool {
 	if isPresignedSigV4(req) {
-		components, ok := parseSigV4QueryAuth(req)
-		if !ok {
+		components, err := parseSigV4QueryAuth(req)
+		if err != nil {
 			return false
 		}
 		if !verifySigV4Expiry(req) {
@@ -393,8 +408,8 @@ func verifySigV4Signature(req *http.Request, authHeader, secretKey string) bool 
 			verifySigV4SignatureWithPayload(req, components, secretKey, emptyStringSHA256)
 	}
 
-	components, ok := parseSigV4AuthHeader(authHeader)
-	if !ok {
+	components, err := parseSigV4AuthHeader(authHeader)
+	if err != nil {
 		return false
 	}
 
