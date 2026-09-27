@@ -25,9 +25,9 @@ type sigV4Components struct {
 	AmzDate       string
 }
 
-func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
+func parseSigV4AuthHeader(authHeader string) (sigV4Components, error) {
 	if !strings.HasPrefix(authHeader, "AWS4-HMAC-SHA256 ") {
-		return sigV4Components{}, false
+		return sigV4Components{}, fmt.Errorf("malformed authentication header: missing prefix: %w", syscall.EACCES)
 	}
 
 	// ⚡ Bolt: Eliminate heap allocations and GC pressure on hot authentication paths
@@ -52,22 +52,22 @@ func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
 		if strings.HasPrefix(part, "Credential=") {
 			cred := part[11:]
 			slash1 := strings.IndexByte(cred, '/')
-			if slash1 < 0 {
-				return sigV4Components{}, false
+			if slash1 < 0 || slash1 >= len(cred) {
+				return sigV4Components{}, fmt.Errorf("malformed authentication header: invalid credential segment 1: %w", syscall.EACCES)
 			}
 			slash2 := strings.IndexByte(cred[slash1+1:], '/')
-			if slash2 < 0 {
-				return sigV4Components{}, false
+			if slash2 < 0 || slash2 >= len(cred[slash1+1:]) {
+				return sigV4Components{}, fmt.Errorf("malformed authentication header: invalid credential segment 2: %w", syscall.EACCES)
 			}
 			slash2 += slash1 + 1
 			slash3 := strings.IndexByte(cred[slash2+1:], '/')
-			if slash3 < 0 {
-				return sigV4Components{}, false
+			if slash3 < 0 || slash3 >= len(cred[slash2+1:]) {
+				return sigV4Components{}, fmt.Errorf("malformed authentication header: invalid credential segment 3: %w", syscall.EACCES)
 			}
 			slash3 += slash2 + 1
 			slash4 := strings.IndexByte(cred[slash3+1:], '/')
-			if slash4 < 0 {
-				return sigV4Components{}, false
+			if slash4 < 0 || slash4 >= len(cred[slash3+1:]) {
+				return sigV4Components{}, fmt.Errorf("malformed authentication header: invalid credential segment 4: %w", syscall.EACCES)
 			}
 
 			c.AccessKey = cred[:slash1]
@@ -81,9 +81,9 @@ func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
 	}
 
 	if partsFound < 3 || c.AccessKey == "" || c.Signature == "" || c.SignedHeaders == "" {
-		return sigV4Components{}, false
+		return sigV4Components{}, fmt.Errorf("malformed authentication header: missing fields: %w", syscall.EACCES)
 	}
-	return c, true
+	return c, nil
 }
 
 func sigV4Escape(s string, encodeSlash bool) (string, error) {
@@ -370,8 +370,8 @@ func verifySigV4Signature(req *http.Request, authHeader, secretKey string) bool 
 			verifySigV4SignatureWithPayload(req, components, secretKey, emptyStringSHA256)
 	}
 
-	components, ok := parseSigV4AuthHeader(authHeader)
-	if !ok {
+	components, err := parseSigV4AuthHeader(authHeader)
+	if err != nil {
 		return false
 	}
 
