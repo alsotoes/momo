@@ -30,32 +30,57 @@ func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
 		return sigV4Components{}, false
 	}
 
-	rest := strings.TrimPrefix(authHeader, "AWS4-HMAC-SHA256 ")
-	parts := strings.Split(rest, ", ")
-	if len(parts) < 3 {
-		return sigV4Components{}, false
-	}
+	rest := authHeader[17:] // len("AWS4-HMAC-SHA256 ")
 
 	var c sigV4Components
-	for _, part := range parts {
+	partsCount := 0
+
+	for {
+		var part string
+		idx := strings.Index(rest, ", ")
+		if idx >= 0 {
+			part = rest[:idx]
+			rest = rest[idx+2:]
+		} else {
+			part = rest
+		}
+		partsCount++
+
 		part = strings.TrimSpace(part)
+
 		if strings.HasPrefix(part, "Credential=") {
-			cred := strings.TrimPrefix(part, "Credential=")
-			credParts := strings.Split(cred, "/")
-			if len(credParts) < 5 {
-				return sigV4Components{}, false
-			}
-			c.AccessKey = credParts[0]
-			c.DateStamp = credParts[1]
-			c.Region = credParts[2]
+			// ⚡ Bolt: Eliminate strings.Split to reduce heap allocations on high-throughput hot paths.
+			cred := part[11:] // len("Credential=")
+
+			c1 := strings.IndexByte(cred, '/')
+			if c1 < 0 { return sigV4Components{}, false }
+			c.AccessKey = cred[:c1]
+
+			rem := cred[c1+1:]
+			c2 := strings.IndexByte(rem, '/')
+			if c2 < 0 { return sigV4Components{}, false }
+			c.DateStamp = rem[:c2]
+
+			rem2 := rem[c2+1:]
+			c3 := strings.IndexByte(rem2, '/')
+			if c3 < 0 { return sigV4Components{}, false }
+			c.Region = rem2[:c3]
+
+			// there should be at least one more slash after region
+			if strings.IndexByte(rem2[c3+1:], '/') < 0 { return sigV4Components{}, false }
+
 		} else if strings.HasPrefix(part, "SignedHeaders=") {
-			c.SignedHeaders = strings.TrimPrefix(part, "SignedHeaders=")
+			c.SignedHeaders = part[14:] // len("SignedHeaders=")
 		} else if strings.HasPrefix(part, "Signature=") {
-			c.Signature = strings.TrimPrefix(part, "Signature=")
+			c.Signature = part[10:] // len("Signature=")
+		}
+
+		if idx < 0 {
+			break
 		}
 	}
 
-	if c.AccessKey == "" || c.Signature == "" || c.SignedHeaders == "" {
+	if partsCount < 3 || c.AccessKey == "" || c.Signature == "" || c.SignedHeaders == "" {
 		return sigV4Components{}, false
 	}
 	return c, true
