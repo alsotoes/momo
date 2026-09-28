@@ -25,20 +25,23 @@ type sigV4Components struct {
 	AmzDate       string
 }
 
-func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
+func parseSigV4AuthHeader(authHeader string) (c sigV4Components, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Recovered from panic in parseSigV4AuthHeader: %v", r)
+			err = syscall.EIO
 		}
 	}()
 
 	if !strings.HasPrefix(authHeader, "AWS4-HMAC-SHA256 ") {
-		return sigV4Components{}, false
+		return sigV4Components{}, syscall.EBADMSG
 	}
 
+	if len(authHeader) < 17 {
+		return sigV4Components{}, syscall.EBADMSG
+	}
 	rest := authHeader[17:] // len("AWS4-HMAC-SHA256 ")
 
-	var c sigV4Components
 	partsCount := 0
 
 	for {
@@ -46,7 +49,11 @@ func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
 		idx := strings.Index(rest, ", ")
 		if idx >= 0 {
 			part = rest[:idx]
-			rest = rest[idx+2:]
+			if len(rest) > idx+2 {
+				rest = rest[idx+2:]
+			} else {
+				rest = ""
+			}
 		} else {
 			part = rest
 		}
@@ -57,35 +64,35 @@ func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
 		if strings.HasPrefix(part, "Credential=") {
 			// ⚡ Bolt: Eliminate strings.Split to reduce heap allocations on high-throughput hot paths.
 			if len(part) <= 11 {
-				return sigV4Components{}, false
+				return sigV4Components{}, syscall.EBADMSG
 			}
 			cred := part[11:] // len("Credential=")
 
 			c1 := strings.IndexByte(cred, '/')
-			if c1 < 0 { return sigV4Components{}, false }
+			if c1 < 0 { return sigV4Components{}, syscall.EBADMSG }
 			c.AccessKey = cred[:c1]
 
 			rem := cred[c1+1:]
 			c2 := strings.IndexByte(rem, '/')
-			if c2 < 0 { return sigV4Components{}, false }
+			if c2 < 0 { return sigV4Components{}, syscall.EBADMSG }
 			c.DateStamp = rem[:c2]
 
 			rem2 := rem[c2+1:]
 			c3 := strings.IndexByte(rem2, '/')
-			if c3 < 0 { return sigV4Components{}, false }
+			if c3 < 0 { return sigV4Components{}, syscall.EBADMSG }
 			c.Region = rem2[:c3]
 
 			// there should be at least one more slash after region
-			if strings.IndexByte(rem2[c3+1:], '/') < 0 { return sigV4Components{}, false }
+			if len(rem2) <= c3+1 || strings.IndexByte(rem2[c3+1:], '/') < 0 { return sigV4Components{}, syscall.EBADMSG }
 
 		} else if strings.HasPrefix(part, "SignedHeaders=") {
 			if len(part) <= 14 {
-				return sigV4Components{}, false
+				return sigV4Components{}, syscall.EBADMSG
 			}
 			c.SignedHeaders = part[14:] // len("SignedHeaders=")
 		} else if strings.HasPrefix(part, "Signature=") {
 			if len(part) <= 10 {
-				return sigV4Components{}, false
+				return sigV4Components{}, syscall.EBADMSG
 			}
 			c.Signature = part[10:] // len("Signature=")
 		}
@@ -96,9 +103,9 @@ func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
 	}
 
 	if partsCount < 3 || c.AccessKey == "" || c.Signature == "" || c.SignedHeaders == "" {
-		return sigV4Components{}, false
+		return sigV4Components{}, syscall.EBADMSG
 	}
-	return c, true
+	return c, nil
 }
 
 func sigV4Escape(s string, encodeSlash bool) (string, error) {
@@ -385,8 +392,8 @@ func verifySigV4Signature(req *http.Request, authHeader, secretKey string) bool 
 			verifySigV4SignatureWithPayload(req, components, secretKey, emptyStringSHA256)
 	}
 
-	components, ok := parseSigV4AuthHeader(authHeader)
-	if !ok {
+	components, err := parseSigV4AuthHeader(authHeader)
+	if err != nil {
 		return false
 	}
 
