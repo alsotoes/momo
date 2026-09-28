@@ -26,6 +26,12 @@ type sigV4Components struct {
 }
 
 func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in parseSigV4AuthHeader: %v", r)
+		}
+	}()
+
 	if !strings.HasPrefix(authHeader, "AWS4-HMAC-SHA256 ") {
 		return sigV4Components{}, false
 	}
@@ -50,6 +56,9 @@ func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
 
 		if strings.HasPrefix(part, "Credential=") {
 			// ⚡ Bolt: Eliminate strings.Split to reduce heap allocations on high-throughput hot paths.
+			if len(part) <= 11 {
+				return sigV4Components{}, false
+			}
 			cred := part[11:] // len("Credential=")
 
 			c1 := strings.IndexByte(cred, '/')
@@ -70,8 +79,14 @@ func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
 			if strings.IndexByte(rem2[c3+1:], '/') < 0 { return sigV4Components{}, false }
 
 		} else if strings.HasPrefix(part, "SignedHeaders=") {
+			if len(part) <= 14 {
+				return sigV4Components{}, false
+			}
 			c.SignedHeaders = part[14:] // len("SignedHeaders=")
 		} else if strings.HasPrefix(part, "Signature=") {
+			if len(part) <= 10 {
+				return sigV4Components{}, false
+			}
 			c.Signature = part[10:] // len("Signature=")
 		}
 
