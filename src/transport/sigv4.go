@@ -31,28 +31,60 @@ func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
 	}
 
 	rest := strings.TrimPrefix(authHeader, "AWS4-HMAC-SHA256 ")
-	parts := strings.Split(rest, ", ")
-	if len(parts) < 3 {
-		return sigV4Components{}, false
-	}
-
 	var c sigV4Components
-	for _, part := range parts {
+	partsCount := 0
+
+	// ⚡ Bolt: Use a zero-allocation manual parsing loop instead of strings.Split to eliminate heap allocations on the hot path.
+	for len(rest) > 0 {
+		var part string
+		idx := strings.Index(rest, ", ")
+		if idx != -1 {
+			part = rest[:idx]
+			rest = rest[idx+2:]
+		} else {
+			part = rest
+			rest = ""
+		}
+
 		part = strings.TrimSpace(part)
+		partsCount++
+
 		if strings.HasPrefix(part, "Credential=") {
 			cred := strings.TrimPrefix(part, "Credential=")
-			credParts := strings.Split(cred, "/")
-			if len(credParts) < 5 {
+			idx1 := strings.IndexByte(cred, '/')
+			if idx1 == -1 {
 				return sigV4Components{}, false
 			}
-			c.AccessKey = credParts[0]
-			c.DateStamp = credParts[1]
-			c.Region = credParts[2]
+			c.AccessKey = cred[:idx1]
+
+			cred = cred[idx1+1:]
+			idx2 := strings.IndexByte(cred, '/')
+			if idx2 == -1 {
+				return sigV4Components{}, false
+			}
+			c.DateStamp = cred[:idx2]
+
+			cred = cred[idx2+1:]
+			idx3 := strings.IndexByte(cred, '/')
+			if idx3 == -1 {
+				return sigV4Components{}, false
+			}
+			c.Region = cred[:idx3]
+
+			cred = cred[idx3+1:]
+			idx4 := strings.IndexByte(cred, '/')
+			if idx4 == -1 {
+				return sigV4Components{}, false
+			}
 		} else if strings.HasPrefix(part, "SignedHeaders=") {
 			c.SignedHeaders = strings.TrimPrefix(part, "SignedHeaders=")
 		} else if strings.HasPrefix(part, "Signature=") {
 			c.Signature = strings.TrimPrefix(part, "Signature=")
 		}
+	}
+
+	if partsCount < 3 {
+		return sigV4Components{}, false
 	}
 
 	if c.AccessKey == "" || c.Signature == "" || c.SignedHeaders == "" {
@@ -251,14 +283,37 @@ func parseSigV4QueryAuth(req *http.Request) (sigV4Components, bool) {
 		return sigV4Components{}, false
 	}
 	cred := q.Get("X-Amz-Credential")
-	credParts := strings.Split(cred, "/")
-	if len(credParts) < 5 {
+	// ⚡ Bolt: Use a zero-allocation manual parsing loop instead of strings.Split to eliminate heap allocations on the hot path.
+	idx1 := strings.IndexByte(cred, '/')
+	if idx1 == -1 {
 		return sigV4Components{}, false
 	}
+	accessKey := cred[:idx1]
+
+	cred = cred[idx1+1:]
+	idx2 := strings.IndexByte(cred, '/')
+	if idx2 == -1 {
+		return sigV4Components{}, false
+	}
+	dateStamp := cred[:idx2]
+
+	cred = cred[idx2+1:]
+	idx3 := strings.IndexByte(cred, '/')
+	if idx3 == -1 {
+		return sigV4Components{}, false
+	}
+	region := cred[:idx3]
+
+	cred = cred[idx3+1:]
+	idx4 := strings.IndexByte(cred, '/')
+	if idx4 == -1 {
+		return sigV4Components{}, false
+	}
+
 	c := sigV4Components{
-		AccessKey:     credParts[0],
-		DateStamp:     credParts[1],
-		Region:        credParts[2],
+		AccessKey:     accessKey,
+		DateStamp:     dateStamp,
+		Region:        region,
 		SignedHeaders: q.Get("X-Amz-SignedHeaders"),
 		Signature:     q.Get("X-Amz-Signature"),
 		AmzDate:       q.Get("X-Amz-Date"),

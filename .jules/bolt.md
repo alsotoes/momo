@@ -213,3 +213,7 @@
 ## 2026-09-12 - Eliminate redundant time formatting allocations
 **Learning:** To eliminate redundant time parsing and string allocations when generating both a full timestamp (e.g., '20060102T150405Z') and a datestamp ('20060102'), format the full timestamp once using `time.Format` and derive the datestamp by slicing the first 8 bytes (e.g., `dateStamp := amzDate[:8]`).
 **Action:** When both a full timestamp and a datestamp are needed for AWS SigV4 requests or similar protocols, generate the full timestamp first and then slice it to get the datestamp. This avoids the overhead of calling `time.Format` twice.
+
+## 2026-10-01 - Eliminate string allocations in SigV4 parsing
+**Learning:** Using `strings.Split` to parse delimited strings like HTTP headers or AWS credentials (e.g. `Credential=AKIA.../20261001/us-east-1/s3/aws4_request`) allocates new string slices on the heap, adding garbage collection pressure on the hot authentication path. Benchmarks showed `strings.Split` allocating ~128B/80B per call.
+**Action:** Replace `strings.Split` with manual loops utilizing `strings.Index` and `strings.IndexByte` alongside slice indexing to parse components in place. This eliminates heap allocations entirely and improves execution time.
