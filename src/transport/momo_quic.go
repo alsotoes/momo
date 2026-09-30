@@ -16,6 +16,7 @@ import (
 	"math"
 	"math/big"
 	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -719,7 +720,14 @@ func (m *MomoQUICCommunicator) SendMetadata(meta *common.FileMetadata) (status i
 		return 0, fmt.Errorf("invalid characters in wireName: %w", syscall.EBADMSG)
 	}
 
-	for _, part := range strings.Split(wireName, "/") {
+	// 🛡️ Sentinel: URL-decode wireName to catch URL-encoded path traversal (e.g., ..%2ffile)
+	decodedName, err := url.PathUnescape(wireName)
+	if err != nil {
+		return 0, fmt.Errorf("invalid wireName encoding: %w", syscall.EBADMSG)
+	}
+
+	// 🛡️ Sentinel: Validate path traversal on decoded name to catch URL-encoded bypasses.
+	for _, part := range strings.Split(decodedName, "/") {
 		if common.HasPathTraversalChars(part) {
 			return 0, fmt.Errorf("path traversal in wireName: %w", syscall.EBADMSG)
 		}
