@@ -557,14 +557,14 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		token = strings.TrimPrefix(authHeader, "Bearer ")
 	} else if strings.HasPrefix(authHeader, "AWS4-HMAC-SHA256 ") {
 		isSigV4 = true
-		components, ok := parseSigV4AuthHeader(authHeader)
-		if !ok {
+		components, err := parseSigV4AuthHeader(authHeader)
+		if err != nil {
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			writeS3Error(m.conn, http.StatusForbidden, "AuthorizationHeaderMalformed", "The authorization header is malformed.", "")
 			return 0, 0, syscall.EACCES
 		}
 		token = components.AccessKey
-	} else if p, ok := parseSigV4QueryAuth(req); ok {
+	} else if p, err := parseSigV4QueryAuth(req); err == nil {
 		isSigV4 = true
 		token = p.AccessKey
 	} else if isPresignedSigV4(req) {
@@ -625,7 +625,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		// seed signature is the request signature; chunk signatures chain from
 		// it with the same derived signing key/date/scope.
 		if req.Method == "PUT" && isStreamingLiteral(req.Header.Get("X-Amz-Content-Sha256")) {
-			if comps, ok := parseSigV4AuthHeader(authHeader); ok {
+			if comps, err := parseSigV4AuthHeader(authHeader); err == nil {
 				amzDate := req.Header.Get("X-Amz-Date")
 				if amzDate == "" {
 					amzDate = comps.AmzDate
@@ -636,7 +636,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 					scope:      comps.DateStamp + "/" + comps.Region + "/s3/aws4_request",
 					seedSig:    comps.Signature,
 				}
-			} else if comps, ok := parseSigV4QueryAuth(req); ok {
+			} else if comps, err := parseSigV4QueryAuth(req); err == nil {
 				m.sigV4 = &streamingSigningCtx{
 					signingKey: deriveSigningKey(secretKey, comps.DateStamp, comps.Region),
 					amzDate:    comps.AmzDate,
