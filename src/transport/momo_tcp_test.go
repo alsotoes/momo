@@ -665,6 +665,7 @@ func TestMomoTCPReceiveMetadata_RejectsCRLF(t *testing.T) {
 // hash string before SanitizeLog. Hashes containing path traversal characters
 // ('..', '/', '\') or empty hashes must fail closed with EBADMSG.
 func TestMomoTCPReceiveMetadata_RejectsNamePathTraversal(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	tests := []struct {
 		name     string
 		fileName string
