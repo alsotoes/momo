@@ -1,7 +1,10 @@
 package storage
 
 import (
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -20,13 +23,15 @@ import (
 
 // Buckets used in Bbolt
 var (
-	bucketObjects    = []byte("objects")    // Maps ContentHash -> {ObjectMeta binary}
-	bucketNamespace  = []byte("namespace")  // Maps FileName -> ContentHash
-	bucketPaths      = []byte("paths")      // Maps FileName -> RemotePath
-	bucketTombstones = []byte("tombstones") // Maps FileName -> deletion timestamp (unix nano)
-	bucketModTimes   = []byte("modtimes")   // Maps FileName -> modification timestamp (unix nano)
-	bucketS3Meta     = []byte("s3meta")     // Maps FileName -> JSON S3 object metadata (content-type, x-amz-meta-*)
-	bucketQuarantine = []byte("quarantine") // Maps ContentHash -> mark-and-hold flag (R2, #930)
+	bucketObjects    = []byte("objects")     // Maps ContentHash -> {ObjectMeta binary}
+	bucketNamespace  = []byte("namespace")   // Maps FileName -> ContentHash
+	bucketPaths      = []byte("paths")       // Maps FileName -> RemotePath
+	bucketTombstones = []byte("tombstones")  // Maps FileName -> deletion timestamp (unix nano)
+	bucketModTimes   = []byte("modtimes")    // Maps FileName -> modification timestamp (unix nano)
+	bucketS3Meta     = []byte("s3meta")      // Maps FileName -> JSON S3 object metadata (content-type, x-amz-meta-*)
+	bucketQuarantine = []byte("quarantine")  // Maps ContentHash -> mark-and-hold flag (R2, #930)
+	bucketTenantMeta = []byte("tenant_meta") // Maps TenantID -> JSON TenantConfig (R8, #936)
+	bucketAuditLog   = []byte("audit_log")   // Immutable append-only audit log entries (R8, #936)
 )
 
 // ObjectMeta is the binary metadata stored in the objects bucket.
@@ -1158,3 +1163,237 @@ func (s *CASStore) IncGC() { s.gcRuns.Add(1) }
 
 // AddGCEvicted records bytes physically removed by GC in this sweep.
 func (s *CASStore) AddGCEvicted(n uint64) { s.gcEvicted.Add(n) }
+
+// === R8 Tenant Metadata Methods ===
+
+// PutTenantConfig stores a tenant configuration in the tenant_meta bucket.
+func (s *CASStore) PutTenantConfig(tenant *common.TenantConfig) error {
+	return s.db.Update(func(tx *bbolt.Tx) error {
+		b := tx.Bucket(bucketTenantMeta)
+		if b == nil {
+			return fmt.Errorf("tenant_meta bucket not found")
+		}
+		data, err := json.Marshal(tenant)
+		if err != nil {
+			return fmt.Errorf("failed to marshal tenant config: %w", err)
+		}
+		return b.Put([]byte(tenant.ID), data)
+	})
+}
+
+// GetTenantConfig retrieves a tenant configuration by ID.
+func (s *CASStore) GetTenantConfig(tenantID string) (*common.TenantConfig, error) {
+	var tenant common.TenantConfig
+	err := s.db.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket(bucketTenantMeta)
+		if b == nil {
+			return fmt.Errorf("tenant_meta bucket not found")
+		}
+		data := b.Get([]byte(tenantID))
+		if data == nil {
+			return fmt.Errorf("tenant %q not found: %w", tenantID, syscall.ENOENT)
+		}
+		return json.Unmarshal(data, &tenant)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &tenant, nil
+}
+
+// ListTenantConfigs returns all tenant configurations.
+func (s *CASStore) ListTenantConfigs() ([]*common.TenantConfig, error) {
+	var tenants []*common.TenantConfig
+	err := s.db.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket(bucketTenantMeta)
+		if b == nil {
+			return nil // bucket doesn't exist yet
+		}
+		return b.ForEach(func(k, v []byte) error {
+			var tenant common.TenantConfig
+			if err := json.Unmarshal(v, &tenant); err != nil {
+				return err
+			}
+			tenants = append(tenants, &tenant)
+			return nil
+		})
+	})
+	return tenants, err
+}
+
+// DeleteTenantConfig removes a tenant configuration.
+func (s *CASStore) DeleteTenantConfig(tenantID string) error {
+	return s.db.Update(func(tx *bbolt.Tx) error {
+		b := tx.Bucket(bucketTenantMeta)
+		if b == nil {
+			return nil
+		}
+		return b.Delete([]byte(tenantID))
+	})
+}
+
+// === R8 Audit Log Methods ===
+
+// AuditLogEntry represents an immutable audit log entry (R8, #936).
+type AuditLogEntry struct {
+	Timestamp int64  `json:"timestamp"` // Unix nanoseconds
+	TenantID  string `json:"tenant_id"`
+	Identity  string `json:"identity"`   // e.g., "aws-cli", "momo-cli", "peer-3"
+	Operation string `json:"operation"`  // e.g., "PutObject", "GetObject", "DeleteObject"
+	Resource  string `json:"resource"`   // e.g., "bucket/key"
+	Outcome   string `json:"outcome"`    // "success" or "failure"
+	RequestID string `json:"request_id"` // Correlation ID
+	PrevHash  string `json:"prev_hash"`  // SHA-256 of previous entry (hex)
+	EntryHash string `json:"entry_hash"` // SHA-256 of this entry (hex)
+}
+
+// WriteAuditLog appends an audit log entry with hash chaining for tamper evidence.
+func (s *CASStore) WriteAuditLog(entry *AuditLogEntry) error {
+	return s.db.Update(func(tx *bbolt.Tx) error {
+		b := tx.Bucket(bucketAuditLog)
+		if b == nil {
+			return fmt.Errorf("audit_log bucket not found")
+		}
+
+		// Get previous entry hash
+		var prevHash string
+		c := b.Cursor()
+		if k, _ := c.Last(); k != nil {
+			var lastEntry AuditLogEntry
+			if v := b.Get(k); v != nil {
+				if err := json.Unmarshal(v, &lastEntry); err == nil {
+					prevHash = lastEntry.EntryHash
+				}
+			}
+		}
+
+		entry.Timestamp = time.Now().UnixNano()
+		entry.PrevHash = prevHash
+
+		// Compute entry hash (excluding EntryHash itself)
+		entryData, _ := json.Marshal(struct {
+			Timestamp int64  `json:"timestamp"`
+			TenantID  string `json:"tenant_id"`
+			Identity  string `json:"identity"`
+			Operation string `json:"operation"`
+			Resource  string `json:"resource"`
+			Outcome   string `json:"outcome"`
+			RequestID string `json:"request_id"`
+			PrevHash  string `json:"prev_hash"`
+		}{
+			Timestamp: entry.Timestamp,
+			TenantID:  entry.TenantID,
+			Identity:  entry.Identity,
+			Operation: entry.Operation,
+			Resource:  entry.Resource,
+			Outcome:   entry.Outcome,
+			RequestID: entry.RequestID,
+			PrevHash:  prevHash,
+		})
+		hash := sha256.Sum256(entryData)
+		entry.EntryHash = hex.EncodeToString(hash[:])
+
+		data, err := json.Marshal(entry)
+		if err != nil {
+			return fmt.Errorf("failed to marshal audit entry: %w", err)
+		}
+
+		// Use timestamp as key (nanoseconds since epoch, big-endian for sorting)
+		var key [8]byte
+		binary.BigEndian.PutUint64(key[:], uint64(entry.Timestamp))
+		return b.Put(key[:], data)
+	})
+}
+
+// VerifyAuditLog walks the audit log chain and verifies hash integrity.
+// Returns error if any hash mismatch is found (tamper detection).
+func (s *CASStore) VerifyAuditLog() error {
+	return s.db.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket(bucketAuditLog)
+		if b == nil {
+			return nil // No audit log yet
+		}
+
+		var prevHash string
+		c := b.Cursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			var entry AuditLogEntry
+			if err := json.Unmarshal(v, &entry); err != nil {
+				return fmt.Errorf("failed to unmarshal audit entry at %d: %w", binary.BigEndian.Uint64(k), err)
+			}
+
+			// Verify prev hash
+			if entry.PrevHash != prevHash {
+				return fmt.Errorf("audit log chain broken at timestamp %d: prev_hash mismatch (expected %q, got %q)", binary.BigEndian.Uint64(k), prevHash, entry.PrevHash)
+			}
+
+			// Verify entry hash
+			entryData, _ := json.Marshal(struct {
+				Timestamp int64  `json:"timestamp"`
+				TenantID  string `json:"tenant_id"`
+				Identity  string `json:"identity"`
+				Operation string `json:"operation"`
+				Resource  string `json:"resource"`
+				Outcome   string `json:"outcome"`
+				RequestID string `json:"request_id"`
+				PrevHash  string `json:"prev_hash"`
+			}{
+				Timestamp: entry.Timestamp,
+				TenantID:  entry.TenantID,
+				Identity:  entry.Identity,
+				Operation: entry.Operation,
+				Resource:  entry.Resource,
+				Outcome:   entry.Outcome,
+				RequestID: entry.RequestID,
+				PrevHash:  prevHash,
+			})
+			hash := sha256.Sum256(entryData)
+			computedHash := hex.EncodeToString(hash[:])
+			if entry.EntryHash != computedHash {
+				return fmt.Errorf("audit log entry hash mismatch at timestamp %d: expected %q, got %q", binary.BigEndian.Uint64(k), computedHash, entry.EntryHash)
+			}
+
+			prevHash = entry.EntryHash
+		}
+		return nil
+	})
+}
+
+// GetAuditLogEntries returns audit log entries for a time range (optional).
+func (s *CASStore) GetAuditLogEntries(startTime, endTime int64, limit int) ([]*AuditLogEntry, error) {
+	var entries []*AuditLogEntry
+	_ = s.db.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket(bucketAuditLog)
+		if b == nil {
+			return nil
+		}
+		c := b.Cursor()
+		var startKey, endKey []byte
+		if startTime > 0 {
+			var sk [8]byte
+			binary.BigEndian.PutUint64(sk[:], uint64(startTime))
+			startKey = sk[:]
+		}
+		if endTime > 0 {
+			var ek [8]byte
+			binary.BigEndian.PutUint64(ek[:], uint64(endTime))
+			endKey = ek[:]
+		}
+
+		for k, v := c.Seek(startKey); k != nil; k, v = c.Next() {
+			if limit > 0 && len(entries) >= limit {
+				break
+			}
+			if endKey != nil && binary.BigEndian.Uint64(k) > uint64(endTime) {
+				break
+			}
+			var entry AuditLogEntry
+			if err := json.Unmarshal(v, &entry); err != nil {
+				continue
+			}
+			entries = append(entries, &entry)
+		}
+		return nil
+	})
+	return entries, nil
+}

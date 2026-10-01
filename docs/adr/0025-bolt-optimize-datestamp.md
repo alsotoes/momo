@@ -27,6 +27,7 @@ None documented.
 
 ## References
 - Issue: #1065
-- PR:
+- PR: 
 - Spec: `openspec/changes/bolt-optimize-datestamp/`
 - Blog: docs/blog/posts/049-eliminate-redundant-time-format-allocations.md
+
