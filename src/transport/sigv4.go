@@ -25,37 +25,67 @@ type sigV4Components struct {
 	AmzDate       string
 }
 
+// ⚡ Bolt: Eliminate heap allocations in parseSigV4AuthHeader by replacing strings.Split
+// and strings.TrimSpace with a zero-allocation manual parsing loop using strings.IndexByte.
 func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
 	if !strings.HasPrefix(authHeader, "AWS4-HMAC-SHA256 ") {
 		return sigV4Components{}, false
 	}
 
-	rest := strings.TrimPrefix(authHeader, "AWS4-HMAC-SHA256 ")
-	parts := strings.Split(rest, ", ")
-	if len(parts) < 3 {
-		return sigV4Components{}, false
-	}
-
+	rest := authHeader[17:] // len("AWS4-HMAC-SHA256 ")
 	var c sigV4Components
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
+	partsFound := 0
+
+	for len(rest) > 0 {
+		idx := strings.IndexByte(rest, ',')
+		var part string
+		if idx == -1 {
+			part = rest
+			rest = ""
+		} else {
+			part = rest[:idx]
+			rest = rest[idx+1:]
+		}
+
+		for len(part) > 0 && part[0] == ' ' {
+			part = part[1:]
+		}
+
 		if strings.HasPrefix(part, "Credential=") {
-			cred := strings.TrimPrefix(part, "Credential=")
-			credParts := strings.Split(cred, "/")
-			if len(credParts) < 5 {
+			cred := part[11:]
+			c1 := strings.IndexByte(cred, '/')
+			if c1 == -1 {
 				return sigV4Components{}, false
 			}
-			c.AccessKey = credParts[0]
-			c.DateStamp = credParts[1]
-			c.Region = credParts[2]
+			c2 := strings.IndexByte(cred[c1+1:], '/')
+			if c2 == -1 {
+				return sigV4Components{}, false
+			}
+			c2 += c1 + 1
+			c3 := strings.IndexByte(cred[c2+1:], '/')
+			if c3 == -1 {
+				return sigV4Components{}, false
+			}
+			c3 += c2 + 1
+			c4 := strings.IndexByte(cred[c3+1:], '/')
+			if c4 == -1 {
+				return sigV4Components{}, false
+			}
+
+			c.AccessKey = cred[:c1]
+			c.DateStamp = cred[c1+1 : c2]
+			c.Region = cred[c2+1 : c3]
+			partsFound++
 		} else if strings.HasPrefix(part, "SignedHeaders=") {
-			c.SignedHeaders = strings.TrimPrefix(part, "SignedHeaders=")
+			c.SignedHeaders = part[14:]
+			partsFound++
 		} else if strings.HasPrefix(part, "Signature=") {
-			c.Signature = strings.TrimPrefix(part, "Signature=")
+			c.Signature = part[10:]
+			partsFound++
 		}
 	}
 
-	if c.AccessKey == "" || c.Signature == "" || c.SignedHeaders == "" {
+	if partsFound < 3 || c.AccessKey == "" || c.Signature == "" || c.SignedHeaders == "" {
 		return sigV4Components{}, false
 	}
 	return c, true
@@ -245,20 +275,38 @@ func isPresignedSigV4(req *http.Request) bool {
 // parseSigV4QueryAuth parses presigned-URL SigV4 auth parameters from the query
 // string: X-Amz-Algorithm, X-Amz-Credential, X-Amz-Date, X-Amz-Expires,
 // X-Amz-SignedHeaders, and X-Amz-Signature.
+// ⚡ Bolt: Eliminate heap allocation in parseSigV4QueryAuth by replacing strings.Split
+// with inline strings.IndexByte to locate and extract credential components.
 func parseSigV4QueryAuth(req *http.Request) (sigV4Components, bool) {
 	q := req.URL.Query()
 	if q.Get("X-Amz-Algorithm") != "AWS4-HMAC-SHA256" {
 		return sigV4Components{}, false
 	}
 	cred := q.Get("X-Amz-Credential")
-	credParts := strings.Split(cred, "/")
-	if len(credParts) < 5 {
+
+	c1 := strings.IndexByte(cred, '/')
+	if c1 == -1 {
 		return sigV4Components{}, false
 	}
+	c2 := strings.IndexByte(cred[c1+1:], '/')
+	if c2 == -1 {
+		return sigV4Components{}, false
+	}
+	c2 += c1 + 1
+	c3 := strings.IndexByte(cred[c2+1:], '/')
+	if c3 == -1 {
+		return sigV4Components{}, false
+	}
+	c3 += c2 + 1
+	c4 := strings.IndexByte(cred[c3+1:], '/')
+	if c4 == -1 {
+		return sigV4Components{}, false
+	}
+
 	c := sigV4Components{
-		AccessKey:     credParts[0],
-		DateStamp:     credParts[1],
-		Region:        credParts[2],
+		AccessKey:     cred[:c1],
+		DateStamp:     cred[c1+1:c2],
+		Region:        cred[c2+1:c3],
 		SignedHeaders: q.Get("X-Amz-SignedHeaders"),
 		Signature:     q.Get("X-Amz-Signature"),
 		AmzDate:       q.Get("X-Amz-Date"),
