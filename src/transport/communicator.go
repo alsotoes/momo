@@ -183,6 +183,12 @@ type Communicator interface {
 	// unblinded tag. It fails closed (returns an error) when fewer than
 	// threshold distinct evaluations are available.
 	SendOPRFEval(authToken string, timestamp int64, blinded []byte, threshold int) ([]OPRFEvalResult, error)
+
+	// OnStorageError is invoked when the server encounters a storage error
+	// (e.g., ENOSPC) during a file ingest operation. It should encode the
+	// error to the client and close the connection appropriately.
+	// Returns the error to signal that the operation failed.
+	OnStorageError(err error) error
 }
 
 // MomoListener defines a transport-agnostic interface for accepting new Momo connections.

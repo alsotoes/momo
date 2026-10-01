@@ -2,6 +2,7 @@ package storage
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -209,6 +210,8 @@ type CASStore struct {
 	scrubWG      sync.WaitGroup
 	scrubOnce    sync.Once
 	scrubStarted atomic.Int32
+	scrubLastRun atomic.Int64  // Unix nano timestamp of last scrub run
+	scrubErrors  atomic.Uint64 // Cumulative scrub error count
 
 	// Self-heal rebuild (R2, #930). Armed by StartRebuild; degradedRead enables
 	// survivor-set read fallback in Get. rebuildSource is the Rule 74 cluster
@@ -442,6 +445,9 @@ func (s *CASStore) PutWithMetadata(name string, hash string, size int64, remoteP
 			meta.MetadataReplicas = metadataReplicas
 		}
 		if err := obj.Put([]byte(hash), meta.encode()); err != nil {
+			if errors.Is(err, syscall.ENOSPC) {
+				return err
+			}
 			return fmt.Errorf("metadata error: %w", syscall.EIO)
 		}
 
@@ -454,6 +460,9 @@ func (s *CASStore) PutWithMetadata(name string, hash string, size int64, remoteP
 		var mtBuf [8]byte
 		binary.BigEndian.PutUint64(mtBuf[:], uint64(time.Now().UnixNano()))
 		if err := tx.Bucket(bucketModTimes).Put([]byte(name), mtBuf[:]); err != nil {
+			if errors.Is(err, syscall.ENOSPC) {
+				return err
+			}
 			return fmt.Errorf("metadata error: %w", syscall.EIO)
 		}
 
@@ -468,6 +477,9 @@ func (s *CASStore) PutWithMetadata(name string, hash string, size int64, remoteP
 			}
 			paths := tx.Bucket(bucketPaths)
 			if err := paths.Put([]byte(name), []byte(normalized)); err != nil {
+				if errors.Is(err, syscall.ENOSPC) {
+					return err
+				}
 				return fmt.Errorf("metadata error: %w", syscall.EIO)
 			}
 		}
@@ -1113,6 +1125,30 @@ func Restore(inputPath, outputPath string, force bool) error {
 	return nil
 }
 func (s *CASStore) DataDir() string { return s.base }
+
+// GetDiskUsage returns the used and free bytes of the filesystem containing the store.
+// Returns an error if statfs fails.
+func (s *CASStore) GetDiskUsage() (used, free uint64, err error) {
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs(s.base, &stat); err != nil {
+		return 0, 0, fmt.Errorf("statfs: %w", err)
+	}
+	// Total blocks * block size = total bytes
+	total := stat.Blocks * uint64(stat.Bsize)
+	// Free blocks for unprivileged users * block size = free bytes
+	free = stat.Bavail * uint64(stat.Bsize)
+	used = total - free
+	return used, free, nil
+}
+
+// ScrubStatus returns the current status of the background integrity scrub.
+// Returns (running, lastRunUnixNano, errorCount).
+func (s *CASStore) ScrubStatus() (running bool, lastRun int64, errors uint64) {
+	running = s.scrubStarted.Load() == 1 && s.scrubDone != nil
+	lastRun = s.scrubLastRun.Load()
+	errors = s.scrubErrors.Load()
+	return running, lastRun, errors
+}
 
 // GCMetrics returns (gcRuns, gcEvictedBytes) collected by the CAS GC sweep.
 func (s *CASStore) GCMetrics() (uint64, uint64) { return s.gcRuns.Load(), s.gcEvicted.Load() }

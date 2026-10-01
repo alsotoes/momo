@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -131,6 +132,11 @@ func getFile(comm transport.Communicator, store storage.Store, fileName string, 
 
 	// Use store.Put which handles deduplication and atomicity.
 	if err := store.Put(fileName, expectedHash, fileSize, remotePath, io.LimitReader(reader, fileSize)); err != nil {
+		if errors.Is(err, syscall.ENOSPC) {
+			if err2 := comm.OnStorageError(err); err2 != nil {
+				log.Printf("AUDIT: OnStorageError failed for %s: %v", fileName, common.SanitizeLog(err2.Error()))
+			}
+		}
 		return fmt.Errorf("storage error: failed to put object %s: %w", fileName, err)
 	}
 

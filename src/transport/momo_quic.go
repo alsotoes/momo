@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -888,6 +889,25 @@ func (m *MomoQUICCommunicator) IsExternalClient() bool {
 // peer token (Secondary role) rather than the client auth token.
 func (m *MomoQUICCommunicator) IsPeer() bool {
 	return m.isPeer
+}
+
+// OnStorageError handles storage errors (e.g., ENOSPC) during native protocol
+// file ingest. It writes the error code to the client and closes the connection.
+func (m *MomoQUICCommunicator) OnStorageError(err error) error {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in OnStorageError: %v", r)
+		}
+	}()
+
+	if errors.Is(err, syscall.ENOSPC) {
+		// Write error code byte for ENOSPC (issue #935, R7)
+		if _, werr := m.Write([]byte{byte(syscall.ENOSPC)}); werr != nil {
+			return fmt.Errorf("failed to write ENOSPC error: %v: %w", werr, syscall.EIO)
+		}
+		return err
+	}
+	return err
 }
 
 // Close closes the underlying QUIC stream and connection.

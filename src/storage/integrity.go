@@ -127,7 +127,9 @@ func (s *CASStore) scrubLoop(cfg ScrubConfig) {
 		case <-ticker.C:
 			if err := s.runScrub(); err != nil {
 				log.Printf("STORAGE SCRUB: pass error: %v", err)
+				s.scrubErrors.Add(1)
 			}
+			s.scrubLastRun.Store(time.Now().UnixNano())
 		}
 	}
 }

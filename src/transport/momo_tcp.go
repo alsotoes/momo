@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/subtle"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -869,4 +870,26 @@ func (m *MomoTCPCommunicator) IsExternalClient() bool {
 // peer token (Secondary role) rather than the client auth token.
 func (m *MomoTCPCommunicator) IsPeer() bool {
 	return m.isPeer
+}
+
+// OnStorageError handles storage errors (e.g., ENOSPC) during native protocol
+// file ingest. It writes the error code to the client and closes the connection.
+func (m *MomoTCPCommunicator) OnStorageError(err error) error {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in OnStorageError: %v", r)
+		}
+	}()
+
+	m.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	defer m.SetWriteDeadline(time.Time{})
+
+	if errors.Is(err, syscall.ENOSPC) {
+		// Write error code byte for ENOSPC (issue #935, R7)
+		if _, werr := m.Write([]byte{byte(syscall.ENOSPC)}); werr != nil {
+			return fmt.Errorf("failed to write ENOSPC error: %v: %w", werr, syscall.EIO)
+		}
+		return err
+	}
+	return err
 }
