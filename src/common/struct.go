@@ -190,6 +190,30 @@ type ConfigurationMetrics struct {
 	EnableLatencyHistograms bool
 }
 
+// TenantConfig holds per-tenant configuration (R8, #936).
+type TenantConfig struct {
+	// ID is the unique tenant identifier (UUID v4).
+	ID string
+	// MasterKeyID references the root key used to wrap this tenant's KEK.
+	MasterKeyID string
+	// AuthToken is the opaque auth token for this tenant (tenant_id + HMAC).
+	AuthToken string
+	// QuotaBytes is the maximum storage bytes for this tenant (0 = unlimited).
+	QuotaBytes int64
+	// QuotaObjects is the maximum object count for this tenant (0 = unlimited).
+	QuotaObjects int64
+	// Enabled controls whether this tenant is active.
+	Enabled bool
+}
+
+// AuditConfig holds the audit logging configuration (R8, #936).
+type AuditConfig struct {
+	// Enabled controls whether audit logging is active.
+	Enabled bool
+	// RetentionDays is how long audit log entries are retained before pruning.
+	RetentionDays int
+}
+
 // ConfigurationP2P holds the P2P transport and gossip configuration.
 type ConfigurationP2P struct {
 	// Enabled controls whether the P2P transport starts alongside the main listener.
@@ -292,6 +316,10 @@ type Configuration struct {
 	P2P ConfigurationP2P
 	// Storage is the storage and GC configuration.
 	Storage ConfigurationStorage
+	// Tenants maps tenant ID to per-tenant configuration (R8, #936).
+	Tenants map[string]*TenantConfig
+	// Audit is the audit logging configuration (R8, #936).
+	Audit AuditConfig
 	// Momofs is the optional [momofs] FUSE configuration.
 	Momofs ConfigurationMomofs
 }

@@ -26,8 +26,14 @@ const (
 	sectionStorage = "storage"
 	// sectionMomofs is the name of the optional [momofs] section in the configuration file.
 	sectionMomofs = "momofs"
+	// sectionTenants is the name of the [tenants] section in the configuration file (R8, #936).
+	sectionTenants = "tenants"
+	// sectionAudit is the name of the [audit] section in the configuration file (R8, #936).
+	sectionAudit = "audit"
 	// prefixDaemon is the prefix for daemon sections in the configuration file (e.g., [daemon.0]).
 	prefixDaemon = "daemon."
+	// prefixTenant is the prefix for tenant sections in the configuration file (e.g., [tenant.xxx]).
+	prefixTenant = "tenant."
 )
 
 // Storage backend identifiers accepted by the [storage] section.
@@ -202,6 +208,23 @@ func GetConfig(path string) (Configuration, error) {
 		}
 	}
 
+	// Load [tenants] section (optional, R8 #936)
+	config.Tenants, err = loadTenantsConfig(cfg)
+	if err != nil {
+		return Configuration{}, fmt.Errorf("failed to load [%s] section: %w", sectionTenants, err)
+	}
+
+	// Load [audit] section (optional, R8 #936)
+	auditSec, err := cfg.GetSection(sectionAudit)
+	if err == nil {
+		config.Audit, err = loadAuditConfig(auditSec)
+		if err != nil {
+			return Configuration{}, fmt.Errorf("failed to load [%s] section: %w", sectionAudit, err)
+		}
+	} else {
+		config.Audit = defaultAuditConfig()
+	}
+
 	return config, nil
 }
 
@@ -221,6 +244,68 @@ func loadMomofsConfig(section *ini.Section) (ConfigurationMomofs, error) {
 		}
 	}
 	return momofsCfg, nil
+}
+
+// defaultAuditConfig returns the default audit configuration.
+func defaultAuditConfig() AuditConfig {
+	return AuditConfig{
+		Enabled:       false,
+		RetentionDays: 365,
+	}
+}
+
+// loadAuditConfig loads the [audit] section from the configuration (R8, #936).
+func loadAuditConfig(section *ini.Section) (AuditConfig, error) {
+	var auditCfg AuditConfig
+	auditCfg.Enabled = section.Key("enabled").MustBool(false)
+	auditCfg.RetentionDays = section.Key("retention_days").MustInt(365)
+	if auditCfg.RetentionDays < 1 {
+		return AuditConfig{}, fmt.Errorf("'retention_days' must be >= 1: %w", syscall.EINVAL)
+	}
+	return auditCfg, nil
+}
+
+// loadTenantsConfig loads all [tenant.*] sections from the configuration (R8, #936).
+func loadTenantsConfig(cfg *ini.File) (map[string]*TenantConfig, error) {
+	tenants := make(map[string]*TenantConfig)
+	sectionNames := cfg.SectionStrings()
+
+	for _, sectionName := range sectionNames {
+		if !strings.HasPrefix(sectionName, prefixTenant) {
+			continue
+		}
+
+		section, err := cfg.GetSection(sectionName)
+		if err != nil {
+			return nil, fmt.Errorf("unexpected error getting section %s", sectionName)
+		}
+
+		t := &TenantConfig{}
+		t.ID = section.Key("id").String()
+		if t.ID == "" {
+			return nil, fmt.Errorf("tenant %q missing 'id'", sectionName)
+		}
+		t.MasterKeyID = section.Key("master_key_id").String()
+		if t.MasterKeyID == "" {
+			return nil, fmt.Errorf("tenant %q missing 'master_key_id'", sectionName)
+		}
+		t.AuthToken = section.Key("auth_token").String()
+		if t.AuthToken == "" {
+			return nil, fmt.Errorf("tenant %q missing 'auth_token'", sectionName)
+		}
+		if len(t.AuthToken) > AuthTokenLength {
+			return nil, fmt.Errorf("tenant %q 'auth_token' length exceeds maximum allowed length of %d bytes", sectionName, AuthTokenLength)
+		}
+		t.QuotaBytes, _ = section.Key("quota_bytes").Int64()
+		t.QuotaObjects, _ = section.Key("quota_objects").Int64()
+		t.Enabled = section.Key("enabled").MustBool(true)
+
+		if _, exists := tenants[t.ID]; exists {
+			return nil, fmt.Errorf("duplicate tenant ID %q", t.ID)
+		}
+		tenants[t.ID] = t
+	}
+	return tenants, nil
 }
 
 // getConfigFromFileMu protects getConfigFromFileFn from concurrent reads/writes (Rule 471).

@@ -24,8 +24,8 @@ Current Momo uses a single shared `auth_token` for all clients and all operation
 None documented.
 
 ## Implementation Status
-- **Code**: Planned
-- **Tests**: Planned
+- **Code**: Partial
+- **Tests**: Partial
 - **Docs**: Planned
 - **Blog post**: 
 
