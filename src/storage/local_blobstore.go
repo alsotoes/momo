@@ -2,6 +2,7 @@ package storage
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -92,11 +93,34 @@ func (b *LocalBlobStore) SyncDir(hash string) (err error) {
 	return nil
 }
 
+// checkDiskSpace verifies that the filesystem has enough free space for a write.
+// Returns syscall.ENOSPC if available blocks are zero or free space is below 1 MiB.
+func (b *LocalBlobStore) checkDiskSpace() error {
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs(b.base, &stat); err != nil {
+		return fmt.Errorf("statfs: %w", err)
+	}
+	// Bavail is the number of free blocks available to unprivileged users.
+	// If zero, no space is available.
+	if stat.Bavail == 0 {
+		return syscall.ENOSPC
+	}
+	// FreeBytesAvailable is the number of free bytes available to unprivileged users.
+	// Reject if less than 1 MiB to avoid writing into a critically full filesystem.
+	if stat.Bavail*uint64(stat.Bsize) < 1<<20 {
+		return syscall.ENOSPC
+	}
+	return nil
+}
+
 // Compile-time assertion that LocalBlobStore exposes the R3 durability ops.
 var _ DurabilityOps = (*LocalBlobStore)(nil)
 
 // PutBlob writes a blob atomically using temp file + rename.
 func (b *LocalBlobStore) PutBlob(hash string, content io.Reader) (err error) {
+	if err := b.checkDiskSpace(); err != nil {
+		return err
+	}
 	var tmpFile *os.File
 	var tmpPath string
 
@@ -122,6 +146,9 @@ func (b *LocalBlobStore) PutBlob(hash string, content io.Reader) (err error) {
 		if os.IsPermission(err) {
 			return fmt.Errorf("storage error: failed to create tiered dir: %w", syscall.EACCES)
 		}
+		if errors.Is(err, syscall.ENOSPC) {
+			return fmt.Errorf("storage error: failed to create tiered dir: %w", syscall.ENOSPC)
+		}
 		return fmt.Errorf("storage error: failed to create tiered dir: %w", syscall.EIO)
 	}
 
@@ -129,6 +156,9 @@ func (b *LocalBlobStore) PutBlob(hash string, content io.Reader) (err error) {
 	if err != nil {
 		if os.IsPermission(err) {
 			return fmt.Errorf("storage error: failed to create temp file: %w", syscall.EACCES)
+		}
+		if errors.Is(err, syscall.ENOSPC) {
+			return fmt.Errorf("storage error: failed to create temp file: %w", syscall.ENOSPC)
 		}
 		return fmt.Errorf("storage error: failed to create temp file: %w", syscall.EIO)
 	}
@@ -140,13 +170,17 @@ func (b *LocalBlobStore) PutBlob(hash string, content io.Reader) (err error) {
 		tmpFile.Close()
 		os.Remove(tmpPath)
 		// Preserve the real error (e.g. a read error from content, or the
-		// write-side syscall like ENOSPC) instead of masking it as ENOSPC.
+		// write-side syscall like ENOSPC) instead of masking it as EIO,
+		// but wrap it so it chains EIO for the caller.
 		return fmt.Errorf("storage error: failed to write blob: %v: %w", err, syscall.EIO)
 	}
 
 	if err := writer.Flush(); err != nil {
 		tmpFile.Close()
 		os.Remove(tmpPath)
+		if errors.Is(err, syscall.ENOSPC) {
+			return fmt.Errorf("storage error: failed to flush blob: %w", syscall.ENOSPC)
+		}
 		return fmt.Errorf("storage error: failed to flush blob: %w", syscall.EIO)
 	}
 
@@ -157,6 +191,9 @@ func (b *LocalBlobStore) PutBlob(hash string, content io.Reader) (err error) {
 		if err := tmpFile.Sync(); err != nil {
 			tmpFile.Close()
 			os.Remove(tmpPath)
+			if errors.Is(err, syscall.ENOSPC) {
+				return fmt.Errorf("storage error: failed to fsync blob: %w", syscall.ENOSPC)
+			}
 			return fmt.Errorf("storage error: failed to fsync blob: %w", syscall.EIO)
 		}
 	}

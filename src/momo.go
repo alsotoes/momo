@@ -26,6 +26,23 @@ import (
 	"github.com/alsotoes/momo/src/transport"
 )
 
+// Exit codes for distinct failure classes (issue #935, R7)
+const (
+	ExitGenericError = 1 // Unclassified failure (backward compatible)
+	ExitConfigError  = 2 // Configuration error (missing/invalid config, flags)
+	ExitNetworkError = 3 // Network bind/connect failure
+	ExitStorageError = 4 // Storage initialization or disk full (ENOSPC)
+	ExitCryptoError  = 5 // Encryption key decode/derivation, TLS
+	ExitP2PError     = 6 // P2P gossip/lease failure
+)
+
+// fatalExit logs the error and exits with the specified code.
+// Replaces log.Fatalf which always exits with code 1.
+func fatalExit(code int, format string, v ...any) {
+	log.Printf("FATAL: "+format, v...)
+	os.Exit(code)
+}
+
 func main() {
 	Run()
 }
@@ -64,17 +81,17 @@ func Run() {
 
 	cfg, err := common.GetConfig(*configPathPtr)
 	if err != nil {
-		log.Fatalf("Failed to get config: %v", common.SanitizeLog(err.Error()))
+		fatalExit(ExitConfigError, "Failed to get config: %v", common.SanitizeLog(err.Error()))
 	}
 
 	common.LogStdOut(cfg.Global.Debug)
 
 	if (*impersonationPtr == "server") && (*serverIdPtr >= len(cfg.Daemons) || *serverIdPtr < 0) {
-		log.Fatalf("index out of range")
+		fatalExit(ExitConfigError, "index out of range")
 	}
 
 	if *impersonationPtr == "repl" && *serverIdPtr != -1 && (*serverIdPtr >= len(cfg.Daemons) || *serverIdPtr < 0) {
-		log.Fatalf("index out of range")
+		fatalExit(ExitConfigError, "index out of range")
 	}
 
 	switch *impersonationPtr {
@@ -85,7 +102,7 @@ func Run() {
 		if serverId == -1 {
 			fileHash, err := common.HashFile(*filePathPtr)
 			if err != nil {
-				log.Fatalf("Failed to hash file: %v", err)
+				fatalExit(ExitCryptoError, "Failed to hash file: %v", err)
 			}
 
 			// Build ClusterMap
@@ -98,14 +115,14 @@ func Run() {
 			// Calculate Primary using CRUSH
 			placement, err := cmap.Placement(fileHash, 1)
 			if err != nil {
-				log.Fatalf("Placement failed: %v", err)
+				fatalExit(ExitNetworkError, "Placement failed: %v", err)
 			}
 			serverId = placement[0].ID
 			log.Printf("Selected primary node %d for file %s", serverId, common.SanitizeLog(*filePathPtr))
 		}
 
 		if serverId >= len(cfg.Daemons) || serverId < 0 {
-			log.Fatalf("index out of range")
+			fatalExit(ExitConfigError, "index out of range")
 		}
 		// Envelope E2EE (zero-trust): client-held key for the native protocol.
 		// This overrides config values so the CLI flag is the source of truth;
@@ -122,11 +139,11 @@ func Run() {
 		wg.Wait()
 	case "server":
 		if err := runServer(context.Background(), cfg, *serverIdPtr); err != nil {
-			log.Fatalf("Server error: %v", common.SanitizeLog(err.Error()))
+			fatalExit(ExitP2PError, "Server error: %v", common.SanitizeLog(err.Error()))
 		}
 	case "repl":
 		if *modePtr == -1 {
-			log.Fatalf("Replication mode (-mode) must be specified for 'repl' impersonation")
+			fatalExit(ExitConfigError, "Replication mode (-mode) must be specified for 'repl' impersonation")
 		}
 		data := common.ReplicationData{
 			New:       *modePtr,
@@ -134,7 +151,7 @@ func Run() {
 		}
 		jsonBytes, err := json.Marshal(data)
 		if err != nil {
-			log.Fatalf("Failed to marshal replication data: %v", err)
+			fatalExit(ExitCryptoError, "Failed to marshal replication data: %v", err)
 		}
 		factory := transport.NewProtocolFactory(cfg)
 
@@ -160,28 +177,28 @@ func Run() {
 		}
 	case "s3enc", "s3dec":
 		if err := runS3Envelope(*impersonationPtr, *filePathPtr, *outPathPtr, *e2eeKeyPtr, *e2eeKeyIDPtr); err != nil {
-			log.Fatalf("S3 envelope error: %v", common.SanitizeLog(err.Error()))
+			fatalExit(ExitCryptoError, "S3 envelope error: %v", common.SanitizeLog(err.Error()))
 		}
 	case "fs":
 		if err := runFuseMount(cfg, *serverIdPtr, *mountPointPtr, *fsDataPtr); err != nil {
-			log.Fatalf("momofs mount error: %v", common.SanitizeLog(err.Error()))
+			fatalExit(ExitStorageError, "momofs mount error: %v", common.SanitizeLog(err.Error()))
 		}
 	case "backup":
 		if *backupOutputPtr == "" {
-			log.Fatalf("-backup-output is required for -imp backup: %v", syscall.EINVAL)
+			fatalExit(ExitConfigError, "-backup-output is required for -imp backup: %v", syscall.EINVAL)
 		}
 		if err := runBackup(cfg, *backupOutputPtr, *backupCompressPtr); err != nil {
-			log.Fatalf("Backup failed: %v", common.SanitizeLog(err.Error()))
+			fatalExit(ExitStorageError, "Backup failed: %v", common.SanitizeLog(err.Error()))
 		}
 	case "restore":
 		if *restoreInputPtr == "" {
-			log.Fatalf("-restore-input is required for -imp restore: %v", syscall.EINVAL)
+			fatalExit(ExitConfigError, "-restore-input is required for -imp restore: %v", syscall.EINVAL)
 		}
 		if err := runRestore(*restoreInputPtr, *restoreForcePtr); err != nil {
-			log.Fatalf("Restore failed: %v", common.SanitizeLog(err.Error()))
+			fatalExit(ExitStorageError, "Restore failed: %v", common.SanitizeLog(err.Error()))
 		}
 	default:
-		log.Fatalf("*** ERROR: Option unknown: %s", common.SanitizeLog(*impersonationPtr))
+		fatalExit(ExitConfigError, "*** ERROR: Option unknown: %s", common.SanitizeLog(*impersonationPtr))
 	}
 }
 

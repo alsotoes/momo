@@ -15,9 +15,11 @@ type fakeStorageStats struct {
 	gcEvict   uint64
 }
 
-func (f *fakeStorageStats) Stats() (int64, int64, error) { return f.blobCount, f.stored, nil }
-func (f *fakeStorageStats) DataDir() string              { return f.dir }
-func (f *fakeStorageStats) GCMetrics() (uint64, uint64)  { return f.gcRuns, f.gcEvict }
+func (f *fakeStorageStats) Stats() (int64, int64, error)          { return f.blobCount, f.stored, nil }
+func (f *fakeStorageStats) DataDir() string                       { return f.dir }
+func (f *fakeStorageStats) GCMetrics() (uint64, uint64)           { return f.gcRuns, f.gcEvict }
+func (f *fakeStorageStats) GetDiskUsage() (uint64, uint64, error) { return 1024, 1024, nil }
+func (f *fakeStorageStats) ScrubStatus() (bool, int64, uint64)    { return false, 0, 0 }
 
 // fakeClusterStats is a deterministic clusterStatsProvider for exporter tests.
 type fakeClusterStats struct {
@@ -35,9 +37,10 @@ func (f *fakeClusterStats) PeerCount() int { return f.peers }
 func (f *fakeClusterStats) PeerStateCount(state int) int {
 	return map[int]int{peerStateAlive: f.alive, peerStateSuspect: f.suspect, peerStateOffline: f.offline}[state]
 }
-func (f *fakeClusterStats) AvgPingLatencySeconds() float64    { return f.latency }
-func (f *fakeClusterStats) ActiveLeases() int                 { return f.leases }
-func (f *fakeClusterStats) ScatterCounters() (uint64, uint64) { return f.queries, f.timeouts }
+func (f *fakeClusterStats) AvgPingLatencySeconds() float64      { return f.latency }
+func (f *fakeClusterStats) ActiveLeases() int                   { return f.leases }
+func (f *fakeClusterStats) ScatterCounters() (uint64, uint64)   { return f.queries, f.timeouts }
+func (f *fakeClusterStats) GetReplicationStatus() (string, int) { return "test", 0 }
 
 // TestR5_ReplicationAndDedupCounters verifies replication bytes/failures and
 // the dedup-hit counter surface in the scrape output.

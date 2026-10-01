@@ -397,6 +397,26 @@ func (m *S3Communicator) OnIntegrityChecksumMismatch() error {
 	return fmt.Errorf("s3 checksum mismatch: %w", syscall.EBADMSG)
 }
 
+// OnStorageError handles storage errors (e.g., ENOSPC) during S3 file ingest.
+// It writes the appropriate S3 error response and returns the error.
+func (m *S3Communicator) OnStorageError(err error) error {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in S3 OnStorageError: %v", r)
+		}
+	}()
+
+	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	defer m.conn.SetWriteDeadline(time.Time{})
+
+	if errors.Is(err, syscall.ENOSPC) {
+		writeS3Error(m.conn, http.StatusInsufficientStorage, "InsufficientStorage",
+			"There is insufficient storage space to complete the request.", m.meta.Name)
+		return err
+	}
+	return err
+}
+
 // Write writes to the underlying HTTP connection.
 func (m *S3Communicator) Write(p []byte) (n int, err error) {
 	defer func() {
@@ -2343,10 +2363,10 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, s
 // significantly improving performance when escaping strings with special characters.
 func xmlEscape(buf *bytes.Buffer, s string) {
 	escapeBytes := [256]bool{
-		'&': true,
-		'<': true,
-		'>': true,
-		'"': true,
+		'&':  true,
+		'<':  true,
+		'>':  true,
+		'"':  true,
 		'\'': true,
 	}
 
@@ -2394,6 +2414,8 @@ func s3ErrorCode(status int) string {
 		return "InternalError"
 	case http.StatusServiceUnavailable:
 		return "ServiceUnavailable"
+	case http.StatusInsufficientStorage:
+		return "InsufficientStorage"
 	default:
 		return "InternalError"
 	}
@@ -2743,6 +2765,10 @@ func (m *S3Communicator) handleCopyObject(bucket, key, copySource string) (int, 
 	// existing hash and creates the destination namespace alias.
 	if err := m.store.Put(key, srcMeta.Hash, srcMeta.Size, "", rc); err != nil {
 		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		if errors.Is(err, syscall.ENOSPC) {
+			writeS3Error(m.conn, http.StatusInsufficientStorage, "InsufficientStorage", "There is insufficient storage space to complete the request.", key)
+			return 0, 0, fmt.Errorf("failed to copy file %q: %w", key, err)
+		}
 		writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "The request failed due to an internal error.", key)
 		return 0, 0, fmt.Errorf("failed to copy file %q: %w", key, err)
 	}
@@ -3329,6 +3355,10 @@ func (m *S3Communicator) handleCompleteMultipartUpload(req *http.Request, bucket
 
 	if err := m.store.Put(key, finalHash, finalSize, "", bytes.NewReader(data)); err != nil {
 		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		if errors.Is(err, syscall.ENOSPC) {
+			writeS3Error(m.conn, http.StatusInsufficientStorage, "InsufficientStorage", "There is insufficient storage space to complete the request.", "")
+			return 0, 0, fmt.Errorf("store.Put of assembled multipart object: %w", err)
+		}
 		writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to store assembled object.", "")
 		return 0, 0, fmt.Errorf("store.Put of assembled multipart object: %w", err)
 	}

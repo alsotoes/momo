@@ -305,8 +305,8 @@ func parseSigV4QueryAuth(req *http.Request) (sigV4Components, bool) {
 
 	c := sigV4Components{
 		AccessKey:     cred[:c1],
-		DateStamp:     cred[c1+1:c2],
-		Region:        cred[c2+1:c3],
+		DateStamp:     cred[c1+1 : c2],
+		Region:        cred[c2+1 : c3],
 		SignedHeaders: q.Get("X-Amz-SignedHeaders"),
 		Signature:     q.Get("X-Amz-Signature"),
 		AmzDate:       q.Get("X-Amz-Date"),

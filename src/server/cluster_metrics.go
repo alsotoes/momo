@@ -56,6 +56,11 @@ func (c *p2pClusterStats) ScatterCounters() (uint64, uint64) {
 	return c.scatterGater.ScatterCounters()
 }
 
+// GetReplicationStatus implements clusterStatsProvider.
+func (c *p2pClusterStats) GetReplicationStatus() (string, int) {
+	return "unknown", 0
+}
+
 // newP2PClusterStats wires the available p2p handles, tolerating any nil
 // (p2p disabled). The scatter handle also carries the peer map.
 func newP2PClusterStats(scatterGather *p2p.ScatterGather, leaseManager *p2p.LeaseManager) clusterStatsProvider {
