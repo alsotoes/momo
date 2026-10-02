@@ -16,51 +16,82 @@ related:
   - 043-reduce-read-verify-hashing
   - 044-plugin-seam-architecture
 ---
-You can't optimize what you can't measure. Phase-0 of the performance work
-built the measurement harness — and proved a hard security rule along the way.
+You cannot optimize what you cannot measure, and you cannot tell a real win from
+a lucky benchmark run without a reference point. So before we changed a single
+line of performance code, we built the measurement harness — and in the process
+settled a security question that will outlive every optimization.
 
-## Measure first
+A **profile** is a sampled record of where a program spends its time or memory.
+Go ships a profiler called **pprof** that can capture a **CPU profile** (which
+functions consumed processor time) and a **memory profile** (where allocations
+happened). A **baseline** is the profile you take *before* optimizing, so every
+later change can be compared against it.
 
-Before any optimization PR, momo needed a reproducible baseline. The harness
-uses Go's built-in, file-based profilers — no custom tooling, no daemons:
+## The Real Problem
+
+We had opinions about what was slow. We did not have evidence. Worse, the
+obvious way to get evidence — expose the profiler over HTTP so you can pull a
+live profile from a running server — is exactly the wrong move for us.
+
+momo's data-path server has no authentication and no TLS. A live profiler
+endpoint on such a server is a **remote-code-execution-class surface**: goroutine
+dumps leak internal state, an attacker who can steer what gets profiled can steer
+memory behavior, and the trace endpoints can crash the process. Convenience was
+not worth that.
+
+## The Solution: Profile to a File, Never to the Wire
+
+The harness uses Go's built-in, file-based profilers — no custom tooling, no
+daemons, no listening socket:
 
 ```sh
 go test -cpuprofile cpu.pprof -memprofile mem.pprof -bench . ./src/storage/...
 ```
 
-Benchmark segments cover the real hot paths: content hashing, local writes,
-verify-on-read, and S3 spooling. The profile is a **file**, not a listener.
+The benchmark segments cover the real hot paths: content hashing, local writes,
+verify-on-read, and S3 spooling. The important property is that the profile is a
+**file**, produced by the test process, not a listener on a server.
 
-## The security rule (Rule 75)
+The security rule that came out of this is simple and absolute: profile to disk,
+never to the wire.
 
-A networked `net/http/pprof` endpoint on an unauthenticated data-path server
-is a **remote-code-execution-class surface**: goroutine dumps leak internals,
-attacker-steerable profiling steers memory, and trace paths crash. Because momo
-has no auth/TLS, the answer is simple — profile to disk, never to the wire:
+- `go test -cpuprofile X -memprofile X -blockprofile X` writes profile files.
+- No HTTP debug listener on the data path, ever.
+- Any future admin endpoint would be loopback- or Unix-socket-only, enabled at
+  boot, and TLS-protected the moment it leaves the loopback interface.
 
-- `go test -cpuprofile X -memprofile X -blockprofile X` → `.pprof` files
-- No HTTP debug listener on the data path, ever
-- Any future admin endpoint: loopback/Unix socket only, boot-enabled, TLS if it
-  leaves loopback
+## What the Baseline Found
 
-## What the baseline found
+The first real profile was a surprise that saved real work. **Every cycle of
+hashing CPU was already inside `sha256.blockAVX2`** — the standard library's
+SHA-256 implementation already uses AVX2, the SIMD (single-instruction,
+multiple-data) vector instructions modern x86-64 CPUs provide. Our naive plan had
+been to "swap in a fast SIMD SHA-256." The baseline retired that idea before it
+became a pull request, because there was almost nothing left to win on this
+hardware.
 
-The first real profile was a surprise that saved real work: **100% of hashing
-CPU is inside `sha256.blockAVX2`** — the Go stdlib already ships AVX2 SIMD
-assembly. The naive "swap in a SIMD SHA-256" optimization would have bought
-almost nothing on amd64. Baseline-first just retired that idea before it became
-a PR.
+That is the whole case for measuring first: the baseline did not just guide an
+optimization, it cancelled one.
 
-## ⚡ Bolt / 🛡 Sentinel lens
+## ⚡ Bolt / 🛡 Sentinel Lens
 
-⚡ **Bolt**: measure, then optimize — the baseline is the reference every later
-perf PR is judged against (the benchstat gate in [025](025-benchmark-benchstat-gate.md)).
-🛡 **Sentinel**: no profiler on the wire — fail-closed over convenience.
+⚡ **Bolt**: measure, then optimize. The baseline is the reference every later
+performance change is judged against by the benchstat gate.
+🛡 **Sentinel**: no profiler on the wire — fail closed rather than expose a
+remote-code-execution-class surface for convenience.
 
 See [docs/STANDARDS.md](../../STANDARDS.md).
 
-## Related
+## References / Dig deeper
 
-Performance engineering: [024](024-bolt-performance-engineering.md). Benchstat gate:
-[025](025-benchmark-benchstat-gate.md). A Bolt optimization that shipped:
-[036](036-s3-listxml-appendformat-optimization.md).
+- Mindset standards: [docs/STANDARDS.md](../../STANDARDS.md).
+- The benchstat gate that consumes this baseline:
+  [025](025-benchmark-benchstat-gate.md).
+- Bolt engineering overview: [024](024-bolt-performance-engineering.md).
+- A Bolt optimization that shipped:
+  [036](036-s3-listxml-appendformat-optimization.md).
+- Follow-on work: [043](043-reduce-read-verify-hashing.md),
+  [044](044-plugin-seam-architecture.md).
+- The profile-baseline spec: `openspec/changes/perf-profiling-baseline`;
+  tracking issue [#948](https://github.com/alsotoes/momo/issues/948).
+- The "no networked profiler" rule is recorded as Rule 75 in the steering rules.
