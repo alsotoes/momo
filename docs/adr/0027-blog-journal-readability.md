@@ -43,11 +43,11 @@ None documented.
 - **Code**: Done
 - **Tests**: Done
 - **Docs**: Done
-- **Blog post**: docs/blog/posts/050-making-the-journal-readable.md
+- **Blog post**: 
 
 ## References
 - Issue: #1116
 - PR: 
 - Spec: `openspec/changes/blog-journal-readability/`
-- Blog: docs/blog/posts/050-making-the-journal-readable.md
+- Blog: 
 

@@ -14,7 +14,6 @@ related:
   - 028-roadmap-and-research
   - 030-external-s3-client-replication-downgrade
   - 031-core-integrity-verification
-  - 050-making-the-journal-readable
 ---
 
 As a codebase grows, the hardest question is rarely "what does this code do?" It
@@ -104,5 +103,4 @@ See [docs/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel min
 - Sibling posts: governance [027](027-governance-ai-review-spec-first.md),
   roadmap [028](028-roadmap-and-research.md),
   recent decisions [030](030-external-s3-client-replication-downgrade.md),
-  [031](031-core-integrity-verification.md),
-  making the journal readable [050](050-making-the-journal-readable.md).
+  [031](031-core-integrity-verification.md).

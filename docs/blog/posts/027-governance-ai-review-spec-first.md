@@ -17,7 +17,6 @@ related:
   - 025-benchmark-benchstat-gate
   - 028-roadmap-and-research
   - 041-architecture-decision-records
-  - 050-making-the-journal-readable
 ---
 
 Momo is a distributed storage system, and its *code* is distributed across many
@@ -118,5 +117,4 @@ See [docs/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel min
 - Agent guide: [docs/AI_FLYING_SOLO.md](../../AI_FLYING_SOLO.md).
 - Sibling posts: benchstat gate [025](025-benchmark-benchstat-gate.md),
   forward roadmap [028](028-roadmap-and-research.md),
-  decision records [041](041-architecture-decision-records.md),
-  making the journal readable [050](050-making-the-journal-readable.md).
+  decision records [041](041-architecture-decision-records.md).
