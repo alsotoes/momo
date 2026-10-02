@@ -4,9 +4,11 @@ Hugo-format journal covering the project journey: research, architecture
 decisions, engineering tradeoffs, and changes — each embedded with the
 ⚡ Bolt (performance) and 🛡 Sentinel (security) mindsets.
 
-Posts are a **narrative/link layer**. The OpenSpec changes remain the source of
-truth for requirements (Rule 39); docs under `docs/` are the reference
-material. Posts link to both rather than duplicating them (DRY).
+Posts are a **self-contained narrative layer**. The OpenSpec changes remain the
+source of truth for requirements (Rule 39); docs under `docs/` are the reference
+material. A post explains its subject in its own words; spec/doc/source links
+live in the final `References / Dig deeper` section for readers who want depth
+(DRY still applies to *facts* — but a link is not an explanation).
 
 ## Post format (Hugo static-site, content-only)
 
@@ -53,19 +55,26 @@ Body in GitHub-flavored markdown.
 - Operational momofs docs (`MOUNT_USER_GUIDE.md`, `IMPLEMENTATION.md §2.3`) are
   usable when ratified by `src/momofs` code.
 
-## Educational Writing Standard (NEW)
+## Educational Writing Standard
 
-Posts must be **teachable narratives** — see [`WRITING_GUIDE.md`](WRITING_GUIDE.md).
+Posts must be **self-contained teachable narratives** — see
+[`WRITING_GUIDE.md`](WRITING_GUIDE.md). The prime rule: **explain the concept in
+the post; do not use a repository location as the explanation.** A reader on the
+website must understand a post without opening a spec or source file.
+
 Every post MUST include:
-1. **The Real Problem** — human context, pain point, "aha!" moment
+
+1. **A narrative opening (The Real Problem)** — human context, pain point, "aha!"
 2. **Why Obvious Solutions Failed** — trade-offs, dead ends considered
 3. **Solution with Annotated Code** — inline *why*, not just *what*
 4. **Principle Callout** — reusable pattern with applicability boundaries
 5. **Verification** — benchmarks, profiles, production metrics
 6. **Failure Modes** — what could go wrong, how it's guarded
 7. **When NOT to Use** — explicit boundaries to prevent cargo-culting
+8. **References / Dig deeper** — the *only* place repository/spec/PR/doc pointers belong
 
-Tone: human ("we", "our"), admits uncertainty, shows dead ends.
+Tone: human ("we", "our"), admits uncertainty, shows dead ends. No `$…$` LaTeX
+(the site has no math renderer).
 
 ## Cross-linking
 
@@ -79,7 +88,8 @@ post that depends on or explains another (e.g. CRUSH post ↔ CAS post, P2P post
 1. OpenSpec change ships (or already shipped) with a matching GitHub issue.
 2. Author `posts/NNN-slug.md` per the schema above; `date` from the anchor
    artifact via `gh`, not the commit.
-3. Link source artifacts in the body (openspec change dir, PR, issue).
+3. Explain the subject in the body; put openspec/PR/issue/doc pointers in the
+   final `References / Dig deeper` section.
 4. Tag ⚡ `bolt` / 🛡 `sentinel` where relevant and link `docs/STANDARDS.md`.
 5. Add/refresh `related` in sibling posts.
 6. CI (`blog_check.yml`) validates front-matter schema + `related` existence.
@@ -89,6 +99,11 @@ post that depends on or explains another (e.g. CRUSH post ↔ CAS post, P2P post
 `make blog-check` (wraps `.github/scripts/blog_check.py`) verifies every post:
 required fields, RFC3339 `date` not in the future, `related` targets exist, and
 `artifacts: spec` paths resolve under `openspec/changes/`.
+
+It also enforces **readability** (issue #1116): a narrative opening, a
+`References`/`Dig deeper` section, no repository paths (`openspec/`, `src/`,
+`docs/`, `.github/`) in the prose outside References, and no unrendered `$…$`
+LaTeX.
 
 `make diagram-check` (wraps `.github/scripts/validate_diagrams.py`) verifies all SVG diagrams:
 valid XML, `<title>`/`<desc>` accessibility tags, responsive `viewBox` (standardized `0 0 640 360`),

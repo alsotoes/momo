@@ -136,6 +136,7 @@ pentest:
 
 blog-check:
 	@echo "Validating docs/blog posts (Rule 76)..."
+	python3 .github/scripts/test_blog_check.py
 	python3 .github/scripts/blog_check.py
 
 diagram-check:
