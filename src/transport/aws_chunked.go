@@ -327,19 +327,50 @@ func (r *awsChunkedReader) readHeaderLine() (string, error) {
 }
 
 // parseAWSChunkHeader parses "hex-size[;chunk-signature=<sig>][;ext=v]".
+// ⚡ Bolt: Eliminate heap allocations in parseAWSChunkHeader by replacing strings.Split
+// and strings.TrimSpace with a zero-allocation manual parsing loop using strings.IndexByte.
 func parseAWSChunkHeader(line string) (int64, string, error) {
-	parts := strings.Split(line, ";")
-	size, err := strconv.ParseInt(strings.TrimSpace(parts[0]), 16, 64)
+	var sizeStr, rest string
+	idx := strings.IndexByte(line, ';')
+	if idx == -1 {
+		sizeStr = line
+	} else {
+		sizeStr = line[:idx]
+		rest = line[idx+1:]
+	}
+
+	start := 0
+	for start < len(sizeStr) && (sizeStr[start] == ' ' || sizeStr[start] == '\t' || sizeStr[start] == '\n' || sizeStr[start] == '\r') {
+		start++
+	}
+	end := len(sizeStr)
+	for end > start && (sizeStr[end-1] == ' ' || sizeStr[end-1] == '\t' || sizeStr[end-1] == '\n' || sizeStr[end-1] == '\r') {
+		end--
+	}
+	sizeStr = sizeStr[start:end]
+
+	size, err := strconv.ParseInt(sizeStr, 16, 64)
 	if err != nil || size < 0 {
 		return 0, "", fmt.Errorf("malformed aws-chunked chunk size %q: %w", line, syscall.EBADMSG)
 	}
 	if size > maxAWSChunkSize {
 		return 0, "", fmt.Errorf("aws-chunked chunk size %d exceeds maximum %d: %w", size, maxAWSChunkSize, syscall.EBADMSG)
 	}
+
 	sig := ""
-	for _, part := range parts[1:] {
+	for len(rest) > 0 {
+		idx = strings.IndexByte(rest, ';')
+		var part string
+		if idx == -1 {
+			part = rest
+			rest = ""
+		} else {
+			part = rest[:idx]
+			rest = rest[idx+1:]
+		}
+
 		if strings.HasPrefix(part, awsChunkSigField) {
-			sig = strings.TrimPrefix(part, awsChunkSigField)
+			sig = part[len(awsChunkSigField):]
 			if len(sig) > 64 {
 				return 0, "", fmt.Errorf("malformed aws-chunked signature length: %w", syscall.EBADMSG)
 			}
