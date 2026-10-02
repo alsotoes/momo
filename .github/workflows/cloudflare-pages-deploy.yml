@@ -46,13 +46,12 @@ jobs:
 
       - name: Deploy to Cloudflare Pages
         if: steps.check-config.outputs.skip != 'true'
-        uses: cloudflare/pages-action@v1
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: ${{ vars.CLOUDFLARE_PAGES_PROJECT }}
-          directory: docs/blog/public
-          branch: ${{ vars.CLOUDFLARE_PAGES_BRANCH != '' && vars.CLOUDFLARE_PAGES_BRANCH || 'main' }}
+          wranglerVersion: "4"
+          command: pages deploy docs/blog/public --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT }} --branch=${{ vars.CLOUDFLARE_PAGES_BRANCH != '' && vars.CLOUDFLARE_PAGES_BRANCH || 'main' }}
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Notify deployment
