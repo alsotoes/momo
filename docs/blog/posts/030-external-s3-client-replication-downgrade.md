@@ -14,58 +14,124 @@ related:
   - 018-adaptive-scaling-peer-quality
   - 041-architecture-decision-records
 ---
-External S3 clients (aws-cli, rclone, boto3, etc.) don't speak momo's private handshake protocol — they don't send `X-Momo-Requested-Mode` or `X-Momo-Timestamp` headers. The server previously treated missing headers as forwarded peer connections (valid timestamp ≠ `DummyEpoch`) and applied `ReplicationNone` — **no replication occurred**. Even worse, `primary-splay` (mode 3) requires the *client* to fan out to replicas, which external S3 clients fundamentally cannot do.
+An `aws-cli` upload and a momo-client upload look almost identical on the wire:
+both are S3 `PUT` requests. They are not, however, equally capable of keeping your
+data safe. momo can replicate a write several ways, and two of those ways put the
+fan-out work on the *client*. A tool like `aws-cli`, `rclone`, or `boto3` speaks
+only the standard S3 API, so it cannot do that fan-out. When one of these
+"external" clients hit a node whose active replication mode assumed a momo-aware
+client, the server did the worst possible thing: it stored a single copy and
+reported success.
 
-## The Problem
+## The Real Problem
 
-When an aws-cli `PUT` hits a momo node running in `primary-splay` mode:
+*Replication* is keeping multiple copies of each object on different machines;
+the *replication factor* is how many copies. In momo, a write can be replicated
+in one of four shapes. Two of them are **client-side**: the client opens the
+parallel connections to every replica itself, so the server relays no bytes. The
+other two are **server-side**: the receiving node fans the write out to its peers.
 
-1. No `X-Momo-Requested-Mode` header → server can't identify momo client
-2. Timestamp parsing succeeds (uses `X-Amz-Date`) but isn't `DummyEpoch` → server thinks it's a peer forward
-3. Server applies `ReplicationNone` → **single copy, silent data loss risk**
-4. Even if mode respected, `primary-splay` requires client-side fan-out → aws-cli can't do it
+An external S3 client can only ever send one stream. It has no idea which nodes
+hold replicas and no protocol to reach them. So a client-side mode is simply not
+available to it.
 
-## The Solution: Configurable Downgrade
+The failure was in how the server told the two client kinds apart. momo clients
+add a private header naming the mode they intend, plus a timestamp header. The
+server used those to decide whether a request came from a momo client or from a
+peer forwarding a write. An external client sends neither, but it *does* send the
+standard `X-Amz-Date` timestamp. Parsing that succeeded, and because the value was
+not the sentinel "dummy" timestamp used for forwarded traffic, the server
+concluded it was a peer forward and applied **no replication at all**. A single
+copy landed, with a `200 OK` on top.
 
-Added `client_side_replication_modes` config (default `3` = `primary-splay`):
+## Why the Obvious Fixes Failed
+
+**"Treat a missing header as an error."** That would reject every legitimate
+external client — the exact compatibility we were trying to keep.
+
+**"Make external clients speak the momo handshake."** We do not control `aws-cli`,
+`rclone`, or the thousands of S3 SDKs. Compatibility means meeting them where
+they are.
+
+**"Just force server-side replication globally."** That would throw away
+client-side replication for momo clients, giving up the zero-relay-bandwidth win
+for the traffic that can actually use it. The mode must depend on *who is asking*,
+not on the cluster's global setting.
+
+## The Solution: Per-Request Downgrade
+
+We taught the server to recognize a request that has no momo mode header and
+treat it, correctly, as an external client. Then, instead of refusing the write,
+it steps the mode down to the next server-side alternative.
+
+A new config key lists which modes are client-side and therefore unusable by an
+external client:
 
 ```ini
 # momo.conf
+# Modes that require the client to fan out to replicas. An external
+# S3 client cannot do this, so the server downgrades past them.
 client_side_replication_modes = 3
 ```
 
-When an external S3 client connects:
-1. **Detection**: Missing `X-Momo-Requested-Mode` → force `timestamp = DummyEpoch`
-2. **Downgrade**: Walk `replication_order` forward to next server-side mode (e.g., `3` → `2` = `splay`)
-3. **Per-transaction only**: Global polymorphic state unchanged; momo CLI still uses mode 3
-4. **Configurable**: Future client-side modes added via config only — no code changes
+When an external request arrives:
 
-## Implementation
+1. **Detect** — no momo mode header means external client; the timestamp is
+   forced to the sentinel value so the peer-forward path is never taken.
+2. **Downgrade** — walk the configured replication order forward to the first
+   server-side mode (for example, client-side primary-splay to server-side splay).
+3. **Keep it local** — the downgrade is per transaction. The cluster's global
+   mode is untouched, so momo clients on the same node still get client-side
+   replication.
+4. **Stay configurable** — if we ever add another client-side mode, we add it to
+   the config list; no code change.
 
-- **Detection**: `s3_communicator.go` checks for `X-Momo-Requested-Mode` header absence
-- **Downgrade logic**: `server.go` walks `replication_order` past client-side modes
-- **Config parsing**: `config.go` uses zero-alloc CSV parser (same as `replication_order`)
-- **Zero global mutation**: Per-transaction downgrade; global state preserved
+The key design choice is *per-transaction*. A global mutation would have been
+simpler to write but would have flipped the mode for concurrent momo clients
+mid-flight. Because the decision is computed per request, two clients with
+different capabilities can share one node and each get the right behavior.
 
-## Verification
+## How We Verified
 
-- aws-cli `PUT` to `primary-splay` node → downgrades to `splay`, replicates correctly
-- momo CLI with `DummyEpoch` → uses `primary-splay` unchanged
-- Concurrent momo CLI + aws-cli → each gets correct mode; global state = 3
-- Config validation: `client_side_replication_modes` defaults to `3`
+- An `aws-cli` `PUT` to a node running client-side primary-splay downgrades to
+  server-side splay and the object is replicated.
+- A momo client using the sentinel timestamp keeps client-side primary-splay
+  unchanged.
+- Concurrent momo and external clients each get their correct mode while the
+  global mode stays at primary-splay.
+- Config validation defaults the client-side mode list to primary-splay.
 
-## Standards
+## What Could Go Wrong
 
-Per [docs/STANDARDS.md](../../STANDARDS.md), this follows ⚡ **Bolt** (zero-alloc CSV parsing, single config key) and 🛡 **Sentinel** (fail-closed: missing header = external client, never silent `ReplicationNone`).
+| Risk | Guard |
+|------|-------|
+| A future client-side mode added without updating config | The downgrade walk is driven entirely by the config list, so an unlisted mode would be treated as server-side; the list is validated at startup |
+| Misidentifying a peer forward as an external client | The sentinel-timestamp rule is only applied when the momo mode header is absent, preserving the peer path |
+| Global mode accidentally mutated | The downgrade returns a per-request value; the stored cluster mode is never written on this path |
 
-## Follow-ups
+## When NOT to Use This
 
-- Per-tenant override for `client_side_replication_modes` (future)
-- Metrics counter for downgrade occurrences (Phase 3 metrics)
-- Docs: `EXTERNAL_CLIENT_REPLICATION.md`, `CONFIGURATION.md`, `PROTOCOL.md`
+- **momo-aware clients.** They should keep client-side replication; the downgrade
+  only triggers when the mode header is missing.
+- **Clusters with a single node.** With no replicas there is nothing to downgrade
+  to, and the mode is irrelevant.
 
-## Artifacts
+## Engineering Standards (⚡ Bolt & 🛡 Sentinel)
 
-- Spec: `openspec/changes/add-external-client-replication/`
-- Issue: #258
-- PR: #... (merged)
+Per [docs/STANDARDS.md](../../STANDARDS.md):
+
+- ⚡ **Bolt**: the config list is parsed with the same zero-allocation CSV parser
+  used elsewhere, and the downgrade is a single integer walk — no allocation on
+  the request path.
+- 🛡 **Sentinel**: fail-closed. A missing mode header is treated as the least
+  capable client, never as permission to skip replication, so the silent
+  single-copy outcome cannot recur.
+
+## References / Dig deeper
+
+- Spec: `openspec/changes/add-external-client-replication/`.
+- Issue: #258.
+- Related posts: [016: P2P Gossip and SWIM](016-p2p-gossip-swim.md),
+  [018: Adaptive Scaling and Peer Quality](018-adaptive-scaling-peer-quality.md),
+  [041: Architecture Decision Records](041-architecture-decision-records.md).
+- Replication strategies: [002](002-replication-strategies-polymorphic.md).
