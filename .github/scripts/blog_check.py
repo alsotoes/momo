@@ -39,8 +39,8 @@ FILENAME_PATTERN = re.compile(r"^\d{3}-.+\.md$")
 # --- Readability checks (issue #1116) -------------------------------------
 # A post must be self-contained: a References/Dig-deeper section is required,
 # repository paths must not be used as the explanation in the prose, and no
-# unrendered LaTeX. Flip BLOG_READABILITY_STRICT=0 to downgrade to warnings.
-STRICT_READABILITY = os.environ.get("BLOG_READABILITY_STRICT", "0") != "0"
+# unrendered LaTeX. Set BLOG_READABILITY_STRICT=0 to downgrade to warnings.
+STRICT_READABILITY = os.environ.get("BLOG_READABILITY_STRICT", "1") != "0"
 FENCED_CODE_RE = re.compile(r"^```.*?^```", re.MULTILINE | re.DOTALL)
 REFERENCES_HEADING_RE = re.compile(
     r"^#{1,6}\s+.*\b(references|dig deeper)\b", re.IGNORECASE | re.MULTILINE

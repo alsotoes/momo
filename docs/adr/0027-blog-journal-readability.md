@@ -1,10 +1,10 @@
 # 0027-blog-journal-readability
 
 ## Status
-Proposed
+Accepted
 
 ## Confidence
-Low
+High
 
 ## Context
 The engineering journal (`docs/blog/`, https://momo.apps.headup.ws/) is hard to
@@ -40,9 +40,9 @@ be sharpened: **explain in the post; reference only for depth.**
 None documented.
 
 ## Implementation Status
-- **Code**: Planned
-- **Tests**: Planned
-- **Docs**: Planned
+- **Code**: Done
+- **Tests**: Done
+- **Docs**: Done
 - **Blog post**: docs/blog/posts/050-making-the-journal-readable.md
 
 ## References

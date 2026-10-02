@@ -32,47 +32,71 @@ related:
 - 031-core-integrity-verification
 - 043-reduce-read-verify-hashing
 ---
- At-Rest Integrity: Verify-on-Read, Checksums, and GC
+Storage that quietly returns wrong bytes is worse than storage that fails
+loudly. A corrupted read that looks successful can poison downstream systems for
+days before anyone notices. This arc turned momo's content-addressing property
+into explicit, enforced at-rest integrity.
 
-Because momo is content-addressed ([004](004-cas-content-addressable-store.md)),
-the stored key **is** the checksum — so read-path integrity is structurally
-free. This arc turned that property into explicit machinery.
+## The Real Problem
 
-## What landed
+Because momo names every blob by the SHA-256 hash of its contents
+([004](004-cas-content-addressable-store.md)), the stored key **is** the
+checksum. In principle that makes read-path integrity free: re-hash the bytes,
+compare to the key, and you know whether they are intact. But "in principle" was
+doing a lot of work. Verification was scattered across handlers, some paths
+skipped it, and there was no consistent answer to *what happens* when a mismatch
+is found.
+
+We also had a garbage-collection gap. Deleting an object had to remove its bytes
+without deleting a blob another object still referenced — and the deletion path
+had no single, auditable owner.
+
+## What Landed
 
 {{< diagram src="/diagrams/08-integrity-pipeline.svg" alt="At-rest integrity pipeline" caption="At-rest integrity pipeline" >}}
 
-- **Central integrity verification** in the storage layer (#911): one
-  validate→verify path shared by all readers, instead of ad-hoc checks spread
-  through handlers. `Store.GetMeta` was added so `QueryGet` stops opening the
-  content stream just to see metadata.
-- **Verify-on-read with corruption surfacing** (#925): on hash mismatch a
-  replica is marked suspect — the input to the degraded-read/self-heal arc
+- **Central integrity verification** (#911): one validate-then-verify path shared
+  by every reader, instead of ad-hoc checks spread through handlers. A metadata
+  accessor was added so a metadata query no longer has to open the content
+  stream just to read a size or a timestamp.
+- **Verify-on-read with corruption surfacing** (#925): when a re-hash does not
+  match the key, the replica is marked *suspect* rather than silently served.
+  That suspicion is the input to the degraded-read and self-heal arc
   ([020](020-r2-degraded-read-self-heal.md)).
-- **Checksums on the wire**: `x-amz-checksum-*` echo for S3 clients
+- **Checksums on the wire**: S3 clients can ask for a checksum and momo echoes
+  it back, so a caller can verify the transfer end to end
   ([012](012-s3-integrity-checksums.md)).
-- **GC**: tombstones drive refcount-sweep; `ApplyTombstone` deletes blob content,
-  `ts.Delete` failures are surfaced, and `StartGC` is guarded against double
-  invocation.
+- **Garbage collection**: a *tombstone* — a deletion marker recorded in metadata
+  — drives a reference-count sweep. Applying a tombstone deletes the blob
+  content, failures to delete are surfaced instead of swallowed, and the sweep
+  entry point is guarded against being started twice.
 
 ## 🛡 Sentinel lens
 
-At-rest integrity is a security property: silent bitrot becomes a *loud,
-auditable* mismatch. The same sweep that added verification also fixed CRLF
-injection and path traversal in the blob/metadata layer
-([015](015-sentinel-security-audit.md)). The traced rule: **integrity checks
-must be compiled into the core, never skip-able via a seam** (Rule 74).
+At-rest integrity is a security property, not just a performance nicety: silent
+bitrot becomes a *loud, auditable* mismatch that the system can act on. The same
+sweep that added verification also fixed CRLF injection and path traversal in the
+blob and metadata layers ([015](015-sentinel-security-audit.md)). The principle
+we traced through it: **integrity checks must be compiled into the core and can
+never be skipped by swapping a seam.** If a backend could opt out of
+verification, the guarantee would be only as strong as the weakest backend.
 
 ## ⚡ Bolt lens
 
-- Single combined bbolt metadata read replaced three views (fewer write-path
-  transactions, less CPU/latency).
-- Verify-on-read reuses the zero-escape SHA-256 path from
-  [024](024-bolt-performance-engineering.md).
+- A single combined metadata read replaced three separate key/value views,
+  reducing write-path transactions and CPU.
+- Verify-on-read reuses the zero-escape SHA-256 hashing path from
+  [024](024-bolt-performance-engineering.md), so verification does not allocate
+  per object.
 
 See [docs/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
 
-## Related
+## References / Dig deeper
 
-[004](004-cas-content-addressable-store.md) · [012](012-s3-integrity-checksums.md)
-· [020](020-r2-degraded-read-self-heal.md) · [015](015-sentinel-security-audit.md).
+- Specs: `openspec/changes/core-integrity-verification`,
+  `openspec/changes/storage-at-rest-integrity`.
+- Pull requests: #911 (central verification), #925 (verify-on-read).
+- Related: [004](004-cas-content-addressable-store.md),
+  [012](012-s3-integrity-checksums.md),
+  [020](020-r2-degraded-read-self-heal.md),
+  [015](015-sentinel-security-audit.md).

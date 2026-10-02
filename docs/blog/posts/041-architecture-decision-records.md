@@ -16,76 +16,93 @@ related:
   - 031-core-integrity-verification
   - 050-making-the-journal-readable
 ---
-As the codebase grew past 30 reference docs, ~40 ratified specs, and 30 blog
-posts, one thing was missing: a **decision log**. Why was CRUSH chosen over a
-central directory? Why embedded BoltDB over ScyllaDB? Why seams over dynamic
-plugins? The answers were scattered across `ARCHITECTURE.md`, `DESIGN_DECISIONS.md`,
-and the spec proposals — hard to find, harder to audit, and easy to contradict.
 
-Momo adopted the **Architecture Decision Record** pattern as described by
-[Martin Fowler](https://martinfowler.com/bliki/ArchitectureDecisionRecord.html)
-(building on [Michael Nygard's original](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions)).
+As a codebase grows, the hardest question is rarely "what does this code do?" It
+is "why is it built this way?" Months after a decision, the reasoning is gone —
+buried in a chat thread, a spec proposal, or a reviewer's memory. We had passed
+thirty reference documents, dozens of ratified specs, and thirty blog posts, and
+the answers to basic questions had scattered across all of them.
+
+This post is about the fix: an **Architecture Decision Record (ADR)**, a short
+document that captures exactly one decision — the context, the choice, its
+consequences, and the alternatives that lost. The pattern comes from Martin
+Fowler, building on Michael Nygard's original write-up.
 
 ## Why ADRs
 
-Fowler's framing fits the project's trajectory: ADRs are short documents that
-capture **a single decision** — the context that motivated it, the decision
-itself, its consequences, and the alternatives considered. Their value is
-twofold:
+An ADR is deliberately small and deliberately narrow. Its value is twofold.
+First, it is **a record for later**: years from now, anyone can read *why* CRUSH
+placement was chosen over a central directory, or why an embedded key/value store
+was chosen over a separate database. Second, it is **clarity in the writing**:
+forcing trade-offs and alternatives onto the page surfaces disagreement while it
+is still cheap — before it hardens into two parts of the codebase contradicting
+each other.
 
-1. **A record for later**: months or years from now, anyone can see *why* the
-   system is built the way it is.
-2. **Clarity in the writing**: forcing trade-offs and alternatives onto paper
-   surfaces disagreement before it becomes a codebase contradiction.
+Two properties make ADRs trustworthy. They are **inverted-pyramid**: the decision
+is stated up front, with the detail below it. And they are **immutable once
+accepted**: a decision is never silently edited. If it changes, a *new* record is
+written and linked to the old one as its successor, and the old one is marked
+deprecated. The history of reasoning is append-only.
 
-They are deliberately **inverted-pyramid** — the decision up front, details
-after — and **immutable once accepted**: a changed decision gets a *new* ADR
-linked via `Supersedes`, never an edit to the old one.
+## How Momo Applies It
 
-## How Momo applies it
+Our specs are the single source of truth for required behavior, so the ADR layer
+does not re-derive the architecture. Instead, each ratified change gets one
+record that:
 
-Momo's specs are the single source of truth (Rule 39) — so the ADR layer does
-not re-derive the architecture. Instead, each **ratified OpenSpec change** gets
-one ADR in `docs/adr/NNNN-<change-id>.md` that:
+- states its **status** (accepted, proposed, or deprecated);
+- records the **context** from the proposal;
+- summarizes the **decision** as requirement summaries;
+- lists **consequences** and **alternatives considered**;
+- links back to the spec, the issue, the pull request, and the blog post.
 
-- States its **status** (`Accepted` / `Proposed` / `Deprecated`)
-- Records the **context** from the spec proposal
-- Summarizes the **decision** as requirement summaries
-- Lists **consequences** and **alternatives considered**
-- Links the spec path, GitHub issue, PR, and blog post (Rule 11/76/78)
+Thirty-nine records now cover the ratified spec set, from the first storage
+change to end-to-end encryption. The process itself is codified in three steering
+rules: every feature or enhancement must ship a record; records are synchronized
+from specs automatically (status derived from task completion, with blog links
+matched by issue number); and direct pushes to the main branch are disallowed,
+with documentation-only changes the narrow exception — so every record is a
+reviewed artifact.
 
-39 ADRs now cover the ratified spec set, from `add-cas-storage` (0001) to
-`add-e2e-encryption` (0039). Governance is codified:
-
-- **Rule 77** — every feature/enhancement must ship an ADR.
-- **Rule 78** — ADRs are synchronized from specs automatically
-  (`make adr-sync`), status derives from `tasks.md` completion, confidence is
-  computed, and blog links are matched by issue number.
-- **Rule 79** — no direct pushes to `master`; doc-only changes are the narrow
-  exception, keeping every ADR a reviewed artifact.
-
-## The Fowler contract, honored
+## The Fowler Contract, Honored
 
 | Fowler principle | Momo implementation |
 |---|---|
-| One decision per record | One ADR per ratified OpenSpec change |
+| One decision per record | One record per ratified change |
 | Inverted pyramid | Status → Context → Decision → Consequences → Alternatives |
-| Immutable after acceptance | New ADR with `Supersedes`; old marked `Deprecated` |
+| Immutable after acceptance | New record with a successor link; old one deprecated |
 | Monotonic numbering | `NNNN-<change-id>.md` |
-| Lightweight markdown | `docs/adr/`, validated by CI (`adr-sync-check`) |
+| Lightweight markdown | Validated by continuous integration |
 | Record of alternatives | Parsed from spec alternatives |
+
+> **Pattern: One Decision, One Immutable Record**
+> Record every significant architectural decision as a short, numbered,
+> status-tracked document that states context, decision, consequences, and
+> alternatives — and never edit it after acceptance; supersede it instead.
+>
+> **Applies when**: a project accumulates decisions whose rationale must outlive
+> the people who made them.
+> **Doesn't apply**: reversible, low-stakes choices — a record per variable name
+> is bureaucracy, not history.
 
 ## ⚡ Bolt / 🛡 Sentinel lens
 
-The sync tool is a zero-dependency Go binary (<50ms for 39 specs) — ⚡ **Bolt**
-discipline for tooling too. The ADR *contract* is 🛡 **Sentinel** discipline:
-every accepted decision is honest about its trade-offs, and a decision cannot
-be silently changed — only superseded with a visible link.
+The sync tool is a zero-dependency Go binary that processes the whole set in
+under a minute — ⚡ **Bolt** discipline applied to tooling. The record *contract*
+is 🛡 **Sentinel** discipline: every accepted decision is honest about its
+trade-offs, and a decision cannot be silently changed — only superseded with a
+visible link.
 
-See [docs/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets,
-and `docs/adr/README.md` for the full process.
+See [docs/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
 
-## Related
+## References / Dig deeper
 
-Governance: [027](027-governance-ai-review-spec-first.md). Roadmap:
-[028](028-roadmap-and-research.md). Recent ratified decisions: [030](030-external-s3-client-replication-downgrade.md), [031](031-core-integrity-verification.md).
+- Process and records: `docs/adr/README.md`, `docs/adr/NNNN-<change-id>.md`.
+- Spec: `openspec/changes/plugin-seam-architecture`.
+- External: [Martin Fowler on ADRs](https://martinfowler.com/bliki/ArchitectureDecisionRecord.html),
+  [Michael Nygard's original](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions).
+- Sibling posts: governance [027](027-governance-ai-review-spec-first.md),
+  roadmap [028](028-roadmap-and-research.md),
+  recent decisions [030](030-external-s3-client-replication-downgrade.md),
+  [031](031-core-integrity-verification.md),
+  making the journal readable [050](050-making-the-journal-readable.md).

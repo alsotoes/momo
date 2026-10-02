@@ -14,63 +14,101 @@ related:
   - 034-s3-501-discipline-object-subresources
   - 008-s3-gateway-core
 ---
-The final sweep of unsupported S3 operations now return honest `501 NotImplemented` instead of misrouting.
+Two earlier sweeps taught momo's S3 gateway to say "not implemented" for
+unsupported bucket and object subresources. This is the last sweep: the handful of
+operations that were not subresources at all but still slipped through to the
+wrong handler. With these six fixed, every unsupported S3 operation we know of now
+fails honestly.
 
-## The Problem
+## The Real Problem
 
-Remaining unsupported operations fell through to existing handlers:
-- `SelectObjectContent` → fell to GetObject
-- `UploadPartCopy` → fell to UploadPart
-- `analytics`/`inventory`/`metrics`/`intelligent-tiering` (bucket config) → fell to ListObjects
-- All returned wrong data or silently ignored
+Three kinds of operation were still misrouting:
+
+- **`SelectObjectContent`** — a SQL-like query that filters an object's contents
+  and streams the matching rows back. Unsupported, it fell through to a plain
+  `GetObject` and returned the whole object.
+- **`UploadPartCopy`** — a server-side copy that uses an existing object as one
+  part of a multipart upload. Unsupported, it fell through to `UploadPart` and
+  treated the copy request as an ordinary data upload.
+- **Four bucket configuration subresources** — `analytics`, `inventory`,
+  `metrics`, and `intelligent-tiering` — that fell through to object listing.
+
+Each returned either the wrong data or a `200` over an operation that never
+happened.
+
+## Why the Obvious Fixes Failed
+
+There was no single mechanism to extend. `SelectObjectContent` is a query action
+on an object; `UploadPartCopy` is signalled by a request header, not a query
+parameter; the four configuration subresources are bucket-level. A fix had to
+cover all three shapes rather than lean on one router hook.
+
+The tempting shortcut was to reject anything that looked unusual. That would have
+broken supported features that share the same URLs and headers — multipart uploads
+in particular.
 
 ## The Solution: Complete 501 Coverage
 
-Extended both reject maps + `UploadPartCopy` intercept in PUT dispatch:
+We extended both rejection lists and added one targeted intercept:
 
-| Operation | Type | Location |
-|-----------|------|----------|
-| `SelectObjectContent` | Query | GET `/bucket/key?select&...` |
-| `UploadPartCopy` | Header | PUT `/bucket/key?uploadId&partNumber` + `X-Amz-Copy-Source` |
-| `analytics` | Bucket config | GET `/bucket?analytics` |
-| `inventory` | Bucket config | GET `/bucket?inventory` |
-| `metrics` | Bucket config | GET `/bucket?metrics` |
-| `intelligent-tiering` | Bucket config | GET `/bucket?intelligent-tiering` |
+| Operation | How it is signalled | Where it is rejected |
+|-----------|---------------------|----------------------|
+| `SelectObjectContent` | Query on an object | Object-level rejection |
+| `UploadPartCopy` | `X-Amz-Copy-Source` header on a multipart `PUT` | Dedicated check in the `PUT` dispatch, before the part-upload handler |
+| `analytics` | Bucket configuration subresource | Bucket-level rejection |
+| `inventory` | Bucket configuration subresource | Bucket-level rejection |
+| `metrics` | Bucket configuration subresource | Bucket-level rejection |
+| `intelligent-tiering` | Bucket configuration subresource | Bucket-level rejection |
 
-**Implementation**:
-- Extended `unsupportedBucketConfigSubresources` (4 new entries)
-- Extended `unsupportedObjectSubresources` (0 new — these are query actions, not subresources)
-- Added `UploadPartCopy` intercept in PUT dispatch before `UploadPart` block
-- All return `501 NotImplemented` (`syscall.ENOTSUP`)
+The four configuration subresources joined the existing bucket-level list.
+`SelectObjectContent` is a query *action*, not a subresource, so it needed its own
+branch rather than a list entry. `UploadPartCopy` is distinguished by a header, so
+it is checked in the `PUT` dispatch before the ordinary multipart part handler can
+claim it — the one ordering-sensitive part of the change.
 
-## Complete S3 501 Coverage Matrix
+## Complete 501 Coverage
 
-| Phase | Target | Count | Status |
-|-------|--------|-------|--------|
-| P1 | SSE-KMS / SSE-C | 2 | ✅ (011, 011) |
-| P3 | Bucket config subresources | 16 | ✅ (033) |
-| P4 | Object subresources | 5 | ✅ (034) |
-| P5 | Remaining ops | 6 | ✅ (035) |
-| **Total** | **All known unsupported** | **29** | **✅** |
+| Phase | Target | Count |
+|-------|--------|-------|
+| P1 | SSE-KMS / SSE-C | 2 |
+| P3 | Bucket configuration subresources | 16 |
+| P4 | Object-level subresources | 5 |
+| P5 | Remaining operations | 6 |
+| **Total** | **All known unsupported** | **29** |
 
-## Verification
+## How We Verified
 
-- All 6 operations → 501 NotImplemented
-- `UploadPartCopy` intercept before `UploadPart` → no collision
-- Existing multipart (`uploadId`/`partNumber`) untouched
-- Bucket config (`?versioning` etc.) still 501 (P3)
+- All six operations return `501 Not Implemented`.
+- The `UploadPartCopy` check runs before the part-upload handler, so there is no
+  collision.
+- Existing multipart operations (`uploadId`, `partNumber`) are untouched.
+- Bucket configuration subresources such as `?versioning` still return `501` from
+  the earlier phase.
 
-## Standards
+## Failure Modes
 
-Per [docs/STANDARDS.md](../../STANDARDS.md): 🛡 **Sentinel** (complete honest 501 coverage, no silent misrouting).
+| Risk | Guard |
+|------|-------|
+| `UploadPartCopy` intercepted after the wrong handler claims it | The check is placed before the part-upload branch in `PUT` dispatch |
+| Over-rejecting normal multipart uploads | The copy check requires the copy-source header; a normal part upload does not carry it |
+| A new unsupported operation slipping through | Both rejection lists and the dispatch intercept are the single place to add coverage |
 
-## Follow-ups
+## When NOT to Use This
 
-- Documentation: `ARCHITECTURE.md`, `COMPATIBILITY.md`, `PROTOCOL.md` updated
-- No further 501 phases planned — coverage complete
+- **For supported operations.** The lists contain only operations we do not
+  implement. Never add a supported one.
+- **As a substitute for implementation.** This is honest failure, not a feature.
+  When we implement one of these, it leaves the list.
 
-## Artifacts
+## Engineering Standards (🛡 Sentinel)
 
-- Spec: `openspec/changes/s3-p5-remaining-subresource-501/`
-- Issue: #920
-- PR: #... (merged)
+Per [docs/STANDARDS.md](../../STANDARDS.md): 🛡 **Sentinel** — complete, honest
+`501` coverage with no silent misrouting.
+
+## References / Dig deeper
+
+- Spec: `openspec/changes/s3-p5-remaining-subresource-501/`.
+- Issue: #920.
+- Related posts: [008: S3 Gateway Core](008-s3-gateway-core.md),
+  [033: Bucket Configuration Subresources](033-s3-501-discipline-bucket-config.md),
+  [034: Object-Level Subresources](034-s3-501-discipline-object-subresources.md).

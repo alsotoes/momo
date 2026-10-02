@@ -18,41 +18,66 @@ related:
   - 030-external-s3-client-replication-downgrade
   - 032-r5-metrics-phases-2-4
 ---
-Momo's cluster layer (`docs/P2P.md`) is a **masterless ring**: gossip for
-metadata, SWIM failure detection, scatter-gather for list, and lease consensus
-for its mutable metadata. This post covers the gossip/SWIM core; the lease/quorum
-side is [017](017-scatter-gather-lease-quorum.md).
+Momo's cluster has no leader. Nothing decides which machines exist, which are
+healthy, or where data belongs. Every node runs the same membership logic and
+converges on the same view of the ring — we call it a **masterless ring**. That
+view has to survive nodes joining, dying, and returning, and keeping it correct
+is the entire job of the gossip layer in this post.
 
-## SWIM: the failure-detection ring
+Two ideas do the work. **Gossip** is a rumor mill: each node periodically swaps
+small summaries with a random handful of peers, and any fact one node learns
+spreads through the cluster without a central broadcaster. **SWIM** (Scalable
+Weakly-consistent Infection-style Membership) is the failure-detection protocol
+layered on top: a node pings a peer to check it is alive, and if the ping goes
+unanswered it asks several *other* peers to ping on its behalf before declaring
+the target dead. That indirect step is the trick — one congested link can no
+longer produce a false death sentence.
 
 {{< diagram src="/diagrams/06-gossip-swim.svg" alt="P2P Gossip and SWIM" caption="P2P Gossip and SWIM" >}}
 
-- Nodes exchange **lifeheartbeat/ping/ack**, marking peers ALIVE/OFFLINE.
-- **Discovered peers actually get connected** — an early audit (issue #598)
-  caught that discovery produced peers nobody dialed (dynamic membership simply
-  *didn't work*). Fixed: discovery → dial → peer map.
-- **OFFLINE → ALIVE restoration** (#809): peers previously wedged in permanent
-  death can return on ping/ack/heartbeat — the ring self-heals without restart.
-- **Peer churn cleanup** (#808): closed connections and detached peers are
-  removed from `PeerMap`/conns, ending a memory-leak-on-disconnect class.
+## Failure detection, and the bugs that broke it
 
-## Why gossip, not a coordinator
+Nodes exchange heartbeats, pings, and acknowledgements, and mark each other
+ALIVE or OFFLINE. The design is simple; the interesting part was everything the
+first implementation got wrong.
 
-Every node computes the same placement from CRUSH + membership — no leader can
-evaluate "the config". Gossip is how membership (and thus CRUSH weights)
-converges; scatter-gather and lease rosters ride on top
-([017](017-scatter-gather-lease-quorum.md)).
+- **Discovery that never dialed.** An early audit caught that the discovery step
+  produced peers nobody actually connected to. Dynamic membership simply did not
+  work: a new node could be "known" and still be unreachable. The fix wired the
+  three steps together — discover, dial, then record the peer in the map.
+- **Peers stuck dead forever.** A peer that had been marked OFFLINE stayed
+  OFFLINE even after it recovered. The fix lets a ping, acknowledgement, or
+  heartbeat revive a peer, so the ring self-heals without a restart.
+- **Leaks on disconnect.** Closed connections and detached peers were never
+  removed from the in-memory peer and connection maps, leaking memory every time
+  a node left. The fix prunes both on disconnect.
 
-## ⚡ Bolt lens
+## Why gossip instead of a coordinator
 
-- `nextPingID` moved to `atomic.Uint64` (32-bit-safety, #896); `os.Hostname`
-  cached once (metrics not per-scrape); peer RNG auto-seeded securely for
-  unbiased shuffle (#897/#898).
-- Gossip fanout later went **adaptive** with cluster size
-  ([018](018-adaptive-scaling-peer-quality.md)) so a 100-node ring doesn't spam
-  a 3-node one.
+A coordinator would have to be authoritative, which means a leader election, a
+single point of failure, and a node whose view of "the config" everyone else
+trusts. Momo avoids that: every node computes data placement itself from the same
+deterministic placement function plus the current membership list. The only thing
+that has to converge is *membership*, and gossip is how it converges. Higher-level
+operations — listing metadata, acquiring leases — ride on top of that converged
+view rather than on a central server.
 
-## Related
+## Keeping it cheap
 
-Leases + quorum: [017](017-scatter-gather-lease-quorum.md). Adaptive:
-[018](018-adaptive-scaling-peer-quality.md).
+Membership runs on every node forever, so it is held to a tight allocation
+budget. The ping counter became a 64-bit atomic, avoiding a 32-bit wraparound;
+the hostname is cached once at startup instead of recomputed for every metrics
+scrape; and the random peer selection is seeded from a secure source so the
+shuffle is unbiased. Later, gossip fanout itself became adaptive to cluster size,
+covered in [018](018-adaptive-scaling-peer-quality.md), so a hundred-node ring
+does not flood a three-node lab cluster with traffic.
+
+## References / Dig deeper
+
+- Cluster design doc: [docs/P2P.md](../../P2P.md).
+- Spec: `openspec/changes/add-p2p-transport`.
+- Membership fixes: PR [#808](https://github.com/alsotoes/momo/pull/808),
+  PR [#809](https://github.com/alsotoes/momo/pull/809); discovery audit issue
+  [#598](https://github.com/alsotoes/momo/issues/598).
+- Sibling posts: [017: Scatter-Gather and Lease Consensus](017-scatter-gather-lease-quorum.md),
+  [018: Adaptive Scaling](018-adaptive-scaling-peer-quality.md).

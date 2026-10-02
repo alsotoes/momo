@@ -29,47 +29,70 @@ related:
 - 020-r2-degraded-read-self-heal
 - 032-r5-metrics-phases-2-4
 ---
-catter-Gather and Lease Consensus: Quorum Math
+Metadata in momo does not live in one database. Each node owns a slice — a
+*shard* — of the key space, so no single machine has the whole picture. That
+shapes two operations every S3-style cluster needs: listing objects, and
+protecting mutable shared state. They are two halves of the same problem.
 
-Metadata doesn't live in a database — it lives spread across the ring's shard
-owners. `GlobalList` and metadata writes use **scatter-gather**, and mutable
-leases use a **majority quorum**. Both required the audit treatment.
+**Scatter-gather** is the listing half. To answer "what objects exist under this
+prefix?", a node fans the question out to the shard owners, collects their partial
+answers, and merges them into one sorted, deduplicated list — scatter the
+request, gather the replies. **A lease** is the mutable-state half: a time-limited
+grant that lets exactly one node modify something like a rename or a reference
+count at a time. Granting a lease requires a **quorum**, a majority of the voting
+peers to agree, so two network partitions cannot both hand out the same lease and
+corrupt state — the failure mode known as **split-brain**.
 
 ## Scatter-gather listing
 
 {{< diagram src="/diagrams/03-scatter-gather-lease.svg" alt="Scatter-gather and lease quorum" caption="Scatter-gather and lease quorum" >}}
 
-`ListObjectsV2`/`GlobalList` fans out to shard owners, merges metadata lists,
-dedups by content hash (dropping alternate names), paginates. The momofs
-design later narrowed the fan-out to *prefix-relevant shard owners* only
-(`docs/momofs/IMPLEMENTATION.md §2.3`, implemented in `src/momofs`).
+A list request fans out to shard owners, merges their metadata lists, dedups by
+content hash (so the same bytes stored under two names appears once), and
+paginates the result. The filesystem layer later narrowed the fan-out to only the
+shard owners that can actually hold the requested prefix, turning a cluster-wide
+scatter into a handful of targeted requests.
 
 ## Leases and the majority-quorum bug class
 
-Leases protect mutable shared state (rename, refcount). Two audit-caught bugs:
+A lease protects mutable shared state, and the correctness of the whole scheme
+rests on one arithmetic rule: a lease is granted only when the number of votes is
+a strict majority of the peer count. For three peers the majority is two; for
+five it is three. Get that comparison wrong and the guarantee evaporates. Two
+bugs found by audit show how.
 
-- **#806** — the majority formula was **off by one** for odd peer counts: for
-  3 peers, `2` was required but code asked for a plain `> half` that sometimes
-  resolved too low. Correct: `votes > peers/2` computed on the right integer
-  basis.
-- **#810** — lease acquisition **succeeding with zero quorum during a network
-  partition** — the split-brain enabler. Now: fail closed; no quorum, no lease.
+- **The off-by-one majority.** The quorum test was written in a way that could
+  resolve too low for odd peer counts, accepting fewer votes than a true
+  majority. The fix is to require strictly more votes than half the peers,
+  computed on the correct integer basis — for three peers, more than one means
+  at least two.
+- **The zero-quorum lease.** Worse, lease acquisition could succeed with *no*
+  quorum at all while the cluster was partitioned — the split-brain enabler. The
+  fix is to fail closed: no quorum, no lease, even if that means the operation is
+  refused until the partition heals.
 
-## ⚡ Bolt lens
+## Keeping the hot paths allocation-free
 
-Scatter-gather merge + lease voting mutate shared state; both honor the
-zero-allocation merge discipline (merge by hash, stable-order) to keep list hot
-paths allocation-free. `EncodeFileMetadataList` gained length limits so a
-malicious oversized entry can't blow the message buffer (#851).
+Both operations mutate shared state, so both follow a merge discipline that
+avoids allocations on the request path: merge by content hash, in a stable order,
+with no intermediate copies. The metadata-list encoder also gained length limits,
+so a maliciously oversized entry cannot blow up the message buffer.
 
-## Sentinel + governance note
+## Why this is a security posture, not just a correctness fix
 
-Lease quorum is a *correctness* bug — but the fix (#810) is security-adjacent:
-a partition granting a lease is how a split ring corrupts refcounts. This is
-exactly the "fail-loud" Sentinel posture from
-[015](015-sentinel-security-audit.md).
+A partition that grants a lease is how a split ring silently corrupts reference
+counts, which is why the zero-quorum fix is treated as security-adjacent rather
+than as a routine bug. It is the same fail-loud stance we take elsewhere: when
+the system cannot prove it is safe to proceed, it refuses instead of guessing.
 
-## Related
+## References / Dig deeper
 
-Membership: [016](016-p2p-gossip-swim.md). Durability: [021](021-r3-write-durability-quorum.md).
-Audit: [015](015-sentinel-security-audit.md).
+- Lease/quorum fixes: PR [#806](https://github.com/alsotoes/momo/pull/806),
+  PR [#810](https://github.com/alsotoes/momo/pull/810).
+- Spec: `openspec/changes/gossip-scatter-lease`.
+- Filesystem listing design: `docs/momofs/IMPLEMENTATION.md`; implementation in
+  `src/momofs`.
+- Sibling posts: [016: Gossip, SWIM, and Membership](016-p2p-gossip-swim.md),
+  [021: R3 Write Durability and Quorum](021-r3-write-durability-quorum.md),
+  [015: Sentinel Security Audit](015-sentinel-security-audit.md),
+  [018: Adaptive Scaling](018-adaptive-scaling-peer-quality.md).

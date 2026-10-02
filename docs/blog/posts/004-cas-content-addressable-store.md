@@ -39,19 +39,31 @@ teaches:
   - "Bolt: zero-escape hashing"
   - "Sentinel: path traversal prevention"
 ---
-CAS: Content-Addressable Storage and Deduplication
+Our first object store named files by random UUID, kept metadata in a database,
+and treated deduplication as a cleanup job bolted on afterward. That design held
+up until it didn't, and the failure taught us the most important lesson in the
+storage core: the name of an object should be derived from its content, not
+assigned arbitrarily.
 
 ## The Real Problem
 
-We started with a traditional object store: files named by UUID, metadata in a database, deduplication as an afterthought. It worked — until it didn't.
-
-The breaking point: a customer uploaded the same 50GB dataset 3 times (different names, same content). We stored 150GB. The dedup job ran nightly, took 6 hours, and still missed cross-node duplicates. Worse: a bit-flip on disk silently corrupted a file, and we had no way to detect it without a separate checksum index.
+A customer uploaded the same 50 GB dataset three times under different names. We
+stored 150 GB. The nightly dedup job took six hours and still missed duplicates
+that landed on different nodes. Worse, when a bit flipped on disk and silently
+corrupted a file, we had no way to detect it without a separate checksum index
+that could itself drift out of sync.
 
 We asked: **what if the name *was* the checksum?**
+
+That idea is **content-addressable storage** (CAS): instead of inventing an
+identifier, hash the object's bytes and use the hash as its address. SHA-256 is
+the hash momo uses. Two identical byte streams necessarily produce the same
+hash, so identical uploads collide *on purpose* and deduplicate for free.
 
 ## Why Obvious Solutions Failed
 
 **Application-level dedup (separate index)**
+
 ```go
 // REJECTED: index grows unbounded, eventual consistency = stale dedup
 // Also: race between upload and dedup scan = double storage temporarily
@@ -59,6 +71,7 @@ type DedupIndex map[string]string // hash -> blobID
 ```
 
 **Content hash as metadata only**
+
 ```go
 // REJECTED: still need separate integrity check on read
 // "Verify-on-read" becomes a separate code path = bugs
@@ -69,14 +82,19 @@ type ObjectMetadata struct {
 ```
 
 **File-system level dedup (ZFS/Btrfs)**
+
 ```go
 // REJECTED: not portable, no cross-node dedup, opaque to application
 // Can't enforce "validate → write" at application level
 ```
 
+Each of these keeps the identifier and the integrity check as two separate
+things that can disagree. Content addressing fuses them.
+
 ## The Solution — Content Addressing
 
-**Pivotal decision**: Store objects by their SHA-256 content hash. Names become metadata pointing at a blob address.
+**Pivotal decision:** store objects by their SHA-256 content hash. Names become
+metadata pointing at a blob address.
 
 ```go
 // The write chokepoint — ALL paths funnel through this
@@ -96,15 +114,19 @@ func (s *Store) Write(data io.Reader) (BlobID, error) {
 }
 ```
 
-**Key insight**: The hash *is* the key. Two identical uploads → same hash → same blob ID → same stored bytes. Dedup by construction, no background job needed.
+**Key insight:** the hash *is* the key. Two identical uploads yield the same
+hash, therefore the same blob ID, therefore the same stored bytes. Dedup happens
+by construction — no background job, no window where duplicates coexist.
 
 ## Principle Callout
 
 > **Pattern: Content-Addressable Write Chokepoint**
-> Hash on ingest → hash is the key → validate → write. All paths (PUT, S3, replication, FUSE) funnel through ONE function.
+> Hash on ingest → hash is the key → validate → write. Every write path (native
+> PUT, S3 gateway, replication, FUSE mount) funnels through ONE function.
 > 
-> **Applies when**: You need dedup, integrity, and a single trust boundary
-> **Doesn't apply**: Mutable objects, append-only logs, when content isn't immutable
+> **Applies when**: you need dedup, integrity, and a single trust boundary.
+> **Doesn't apply**: mutable objects, append-only logs, or any case where the
+> content is not immutable.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -144,11 +166,15 @@ func hashStream(r io.Reader) (BlobID, error) {
 }
 ```
 
-See [024](024-bolt-performance-engineering.md) for the full zero-escape pattern.
+`h.Sum` normally allocates a fresh slice for the digest. Passing a stack-array
+slice with length zero lets the hash write into memory that never escapes to the
+heap — zero bytes allocated per object. See
+[024](024-bolt-performance-engineering.md) for the full zero-escape pattern.
 
 ### Sentinel: Path Traversal & Injection Prevention
 
-The chokepoint is where security checks belong:
+The chokepoint is the natural place for security checks, because every write
+passes through it:
 
 ```go
 func (s *Store) Write(data io.Reader) (BlobID, error) {
@@ -168,7 +194,10 @@ func (s *Store) Write(data io.Reader) (BlobID, error) {
 }
 ```
 
-See [015](015-sentinel-security-audit.md) for CRLF injection, request smuggling, and raw-store traversal findings.
+Because the backend is handed a validated hash and never a user-supplied name,
+there is no filename for an attacker to traverse with `../` or to smuggle CRLF
+into. See [015](015-sentinel-security-audit.md) for the CRLF injection, request
+smuggling, and raw-store traversal findings that hardened this path.
 
 ## Verification
 
@@ -185,16 +214,25 @@ See [015](015-sentinel-security-audit.md) for CRLF injection, request smuggling,
 |------|------------|
 | Hash collision (SHA-256) | 2^256 space — practically impossible; monitor for research breaks |
 | Backend corruption | Verify-on-read hashes every block on GET |
-| Metadata/Blob drift | GC reconciles bbolt metadata with blob files ([007](007-at-rest-integrity-and-gc.md)) |
+| Metadata/Blob drift | GC reconciles metadata with blob files ([007](007-at-rest-integrity-and-gc.md)) |
 
 ## When NOT to Use Content Addressing
 
-- **Mutable objects** — content changes = new hash = new blob (use versioning instead)
-- **Append-only logs** — sequential writes, not content-addressed
-- **When content isn't immutable** — e.g., user-editable documents
+- **Mutable objects** — a content change means a new hash and a new blob; use
+  versioning instead.
+- **Append-only logs** — these are written sequentially, not looked up by
+  content.
+- **When content isn't immutable** — e.g. user-editable documents that change
+  in place.
 
-See [docs/STANDARDS.md](../../STANDARDS.md) (`docs/STANDARDS.md`) for the ⚡ Bolt / 🛡 Sentinel mindsets.
+See [docs/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
 
-## Related
+## References / Dig deeper
 
-Parent: [001](001-origin-and-genesis.md). Edges: [005](005-crush-placement.md), [006](006-pluggable-storage-backends.md), [007](007-at-rest-integrity-and-gc.md), [022](022-momofs-posix-core.md).
+- Spec: `openspec/changes/add-cas-storage`.
+- Pull request #838; tracking issue #820.
+- Parent: [001: Origin and Genesis](001-origin-and-genesis.md). Edges:
+  [005](005-crush-placement.md), [006](006-pluggable-storage-backends.md),
+  [007](007-at-rest-integrity-and-gc.md), [022](022-momofs-posix-core.md).
+- Further reading: [015](015-sentinel-security-audit.md),
+  [024](024-bolt-performance-engineering.md).

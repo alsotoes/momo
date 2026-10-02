@@ -18,42 +18,71 @@ related:
   - 029-fuse-go-fuse-v2-migration
   - 041-architecture-decision-records
 ---
-Issue #928 ratified the **production-readiness roadmap** (`prod-ready-roadmap`);
-`docs/ROADMAP.md` gates production behind phased deliverables. This post is the
-forward look — and the nod to the research that seeded the ideas.
+
+Every system that wants to be taken seriously has to answer a boring question:
+*what is left before someone can run this in production?* For a long time our
+answer was a mental list. This post is the moment we wrote the list down, ordered
+it, and started checking items off — and the reading list that fed the ideas in
+the first place.
 
 ## Where the arc stands
 
 {{< diagram src="/diagrams/15-roadmap-timeline.svg" alt="Momo roadmap R1-R6" caption="Momo roadmap R1-R6" >}}
 
-The **P0 correctness/durability track is done**: R1 failure domains
-([019](019-r1-failure-domain-placement.md)) → R2 degraded-read + self-heal
-([020](020-r2-degraded-read-self-heal.md)) → R3 write durability
-([021](021-r3-write-durability-quorum.md)) → R4 mountable POSIX
-([022](022-momofs-posix-core.md), [023](023-momofs-fuse-transport.md)).
+The **P0 track — correctness and durability** — is done. We worked through it in
+order, each rung depending on the last:
 
-Next, **P1 (operability, multi-tenancy, security)** and **P2 (S3 breadth)**:
+- **R1 — failure domains**: place replicas so that one rack or machine going
+  dark does not take every copy of an object with it.
+- **R2 — degraded reads and self-heal**: when a replica is missing, serve from
+  what remains and repair the gap in the background instead of failing the read.
+- **R3 — write durability and quorum**: a write is acknowledged only once enough
+  replicas hold it, so an acknowledged write survives a node loss.
+- **R4 — mountable POSIX filesystem**: expose the object store as a normal
+  filesystem mount, first in userspace, then over a faster transport.
+
+With the correctness floor in place, the remaining work splits into two tracks:
+**P1** (operability, multi-tenancy, security) and **P2** (S3 API breadth).
 
 | ID | Item |
 |----|------|
 | R5 | Metrics 2–4 + dashboards/alerts (seed: [026](026-metrics-observability.md)) |
 | R6 | Metadata catalog HA + backup/recovery |
-| R7 | Error model & ops (ENOSPC surfacing, exit codes) |
+| R7 | Error model & ops (out-of-space surfacing, exit codes) |
 | R8 | Multi-tenancy + authorization + audit |
 | R9 | Secrets management + key rotation |
 | R10 | S3 lifecycle/versioning/notification/lock breadth |
 | R11 | Auto-rebalance on membership change |
 
+Some of these deserve a gloss. **Metadata catalog HA** means the index that maps
+object names to locations must survive a node loss and be restorable from
+backup. **Out-of-space surfacing** means turning a raw disk-full error into a
+clear, actionable signal instead of a mysterious failure. **Auto-rebalance**
+means that when a node joins or leaves, the cluster moves data to restore the
+placement guarantees without an operator running a script by hand.
+
 ## The research guide
 
-`docs/RESEARCH_PAPERS.md` is the reading list that seeded much of the design —
-quorum theory, SWIM/gossip, CRUSH/RADOS, private-set-membership (OPRF), and
-filesystem semantics for momofs. This journal's durable lens: **code is the
-implementation; research is the why; specs are the contract; posts are the
-narrative** (Rule 76 keeps the last one evergreen).
+None of this was invented in a vacuum. The design leans on published work:
+**quorum** theory (when is a write durable?), **SWIM/gossip** (how do peers
+detect failure without a central monitor?), **CRUSH/RADOS** (how do you place
+data deterministically without a directory?), **private set membership** using an
+oblivious pseudorandom function (how do you check membership without revealing
+the query?), and filesystem semantics for the mount layer. We keep a curated
+reading list so the "why" behind each mechanism is one hop away.
 
-## Related
+Our durable lens, stated once: **code is the implementation; research is the
+why; specs are the contract; posts are the narrative.** Each artifact has a job,
+and this journal is the one that explains rather than specifies.
 
-Governance that gates this: [027](027-governance-ai-review-spec-first.md). The
-completed P0 stack links back through [019](019-r1-failure-domain-placement.md)
-and [021](021-r3-write-durability-quorum.md).
+## References / Dig deeper
+
+- Roadmap: [docs/ROADMAP.md](../../ROADMAP.md).
+- Research reading list: [docs/RESEARCH_PAPERS.md](../../RESEARCH_PAPERS.md).
+- Spec: `openspec/changes/prod-ready-roadmap`.
+- Completed P0 stack: [019](019-r1-failure-domain-placement.md),
+  [020](020-r2-degraded-read-self-heal.md),
+  [021](021-r3-write-durability-quorum.md),
+  [022](022-momofs-posix-core.md),
+  [023](023-momofs-fuse-transport.md).
+- Governance that gates this: [027](027-governance-ai-review-spec-first.md).

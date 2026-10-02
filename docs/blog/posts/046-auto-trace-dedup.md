@@ -14,68 +14,89 @@ related:
   - 015-sentinel-security-audit
   - 024-bolt-performance-engineering
 ---
-Automated governance is only as good as its ability to fail *once*. When the AI reviewer
-hit a PR whose body lacked an issue link, it was supposed to create one tracking issue
-(Rule 11) and move on. Instead, it created **52**.
+Automated governance is only as good as its ability to fail *once*. An **idempotent**
+operation is one you can run repeatedly and get the same result — running it twice
+does not create a second copy of anything. Our AI reviewer was supposed to be
+idempotent. When it saw a pull request whose description lacked a link to a tracking
+issue, it was meant to open exactly one tracking issue (an **auto-trace** issue,
+created automatically to trace the change) and move on. Instead, it opened **52**.
 
-## The Incident
+## The incident
 
-PR #996 ("Path Traversal Bypass via Sanitization") triggered the reviewer on every push
-(`synchronize` event). Each run saw a PR body without a `Resolves` link, decided "Rule 11
-violation", and created a new `[Auto-Trace]` issue. Three defects compounded:
+The trigger was a pull request titled "Path Traversal Bypass via Sanitization." The
+reviewer runs on every `synchronize` event, which GitHub fires each time a new commit
+is pushed. Every one of those runs looked at the PR description, found no tracking
+link, concluded a governance rule had been violated, and created a fresh
+`[Auto-Trace]` issue. Three separate defects compounded:
 
-1. **No concurrency control** — parallel workflow runs for the same PR raced; each created
-   its own issue.
-2. **No dedup search** — `create_missing_issue` never asked whether a tracking issue for
-   this PR already existed.
-3. **Stale event payload** — the issue-link check read the PR body from the webhook event,
-   which lags behind `gh pr edit`. Even after a run appended `Resolves <url>`, the next
-   `synchronize` still saw the old body.
+1. **No concurrency control.** Workflow runs for the same pull request executed in
+   parallel and raced. Each run independently decided to create an issue, and none
+   knew the others existed.
+2. **No dedup search.** The creation path never asked whether a tracking issue for
+   this pull request already existed. It simply created another one.
+3. **A stale event payload.** The check that looked for a tracking link read the PR
+   description from the webhook event that triggered the run. That payload is a
+   snapshot taken when the event fired; it lags behind edits made through the
+   GitHub UI or API. So even after an earlier run appended a tracking link, the
+   next `synchronize` event still carried the old, link-less description and created
+   yet another issue.
 
-Result: issues #997–#1054, 52 identical auto-trace entries cluttering the tracker.
+The result was issues #997 through #1054 — 52 identical auto-trace entries cluttering
+the tracker and drowning the signal in noise.
 
-## The Fix
+## The fix
+
+We fixed all three defects, because fixing only one would leave the flood possible.
 
 ### 1. Search before creating
 
-`ai_reviewer.py` now has `find_existing_auto_trace(pr_number, pr_title)` — it searches
-OPEN auto-trace issues matching `[Auto-Trace] <PR title>` (or a body referencing
-`for PR #<n>`) and returns the canonical number. `create_missing_issue` reuses it and
-links the PR body with `Resolves #<canonical>`, creating a new issue **only** when none
-exists.
+The reviewer now searches open auto-trace issues for one matching the PR — by title,
+or by a body that references this pull request number — and returns the canonical
+issue if it finds one. The creation path reuses that canonical issue and links the PR
+to it, and only creates a new issue when the search comes back empty. Creation is now
+conditional on absence, which is what makes it idempotent.
 
-### 2. Live PR body, not event payload
+### 2. Read the live PR body, not the event payload
 
-`get_current_pr_body(pr_number)` fetches the current body from the GitHub API. The
-`has_issue_link` check now sees links added by previous runs, so a subsequent
-`synchronize` short-circuits.
+Instead of trusting the webhook snapshot, the reviewer fetches the current PR
+description from the GitHub API at check time. Now a link added by a previous run is
+visible, so a later `synchronize` event short-circuits: it sees the link, decides
+there is nothing to do, and exits. This closes the staleness window that produced
+most of the duplicates.
 
 ### 3. Serialize runs
 
-`gemini_reviewer.yml` gained a `concurrency` block (`cancel-in-progress: true`, keyed per
-PR): a new push cancels the in-progress review, so only the latest commit is evaluated.
+The review workflow gained a concurrency block keyed per pull request, with
+cancel-in-progress enabled. A new push cancels the in-progress review, so only the
+latest commit is evaluated and two runs cannot race to create the same issue.
 
-## Rule 90
+## The rule
 
-All three behaviors are codified as **Rule 90 (Auto-Trace Issue Deduplication —
-Mandatory)** in `openspec/config.yaml`:
+All three behaviors are codified as a mandatory governance rule so a future edit
+cannot silently remove one. The rule states: never create a second auto-trace issue
+for a PR that already has one — reuse the canonical; use the current PR body from
+the API, not the stale event payload; and rely on workflow concurrency to serialize
+parallel pushes.
 
-- Never create a second auto-trace issue for a PR that already has one — reuse the canonical.
-- Use the current PR body from the API, not the stale event payload.
-- Rely on workflow `concurrency` to serialize parallel pushes.
+## The cleanup
 
-## The Cleanup
+The 52 duplicates were closed as duplicates of the canonical issue, and the original
+pull request was linked to it. Only four legitimate auto-trace trackers remained open,
+each for a distinct pull request. We verified the fix by running the dedup search
+against the offending PR: it returned the existing issue number, proving that the
+flood would now be impossible.
 
-The 52 duplicates were closed as duplicates of canonical #997 (Rule 20), and PR #996 was
-linked `Resolves #997`. Only four legitimate auto-trace trackers remain open — each for a
-distinct PR. Verification: `find_existing_auto_trace` against PR #996 returns an existing
-issue number, proving the dedup would have prevented the flood.
-
-Governance tooling that creates noise is worse than no tooling. Rule 90 keeps the reviewer
-honest, silent, and *idempotent* — the automation posture in
+Governance tooling that creates noise is worse than no tooling. This rule keeps the
+reviewer honest, silent, and idempotent — the automation posture in
 [docs/STANDARDS.md](../../STANDARDS.md).
 
-## Related
+## References / Dig deeper
 
-Sentinel posture: [015](015-sentinel-security-audit.md). Performance discipline:
-[024](024-bolt-performance-engineering.md).
+- Spec: `openspec/changes/steering-rule-90-auto-trace-dedup`.
+- The mandatory rule lives in `openspec/config.yaml`.
+- Tracking issue: [#1057](https://github.com/alsotoes/momo/issues/1057).
+- Fix pull request: [#1058](https://github.com/alsotoes/momo/pull/1058).
+- Reviewer logic: `ai_reviewer.py` (`find_existing_auto_trace`,
+  `get_current_pr_body`, `create_missing_issue`) and `.github/workflows/gemini_reviewer.yml`.
+- Sibling posts: [015: The Sentinel Sweep](015-sentinel-security-audit.md),
+  [024: Bolt Performance Engineering](024-bolt-performance-engineering.md).
