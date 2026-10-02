@@ -20,42 +20,62 @@ related:
   - 030-external-s3-client-replication-downgrade
   - 044-plugin-seam-architecture
 ---
-Momo doesn't tune itself with one knob — it grows three independent feedback
-loops that learn the cluster shape at runtime.
+Momo does not tune itself with a single knob. It grows three independent
+feedback loops, each watching one signal and adjusting one decision at runtime,
+so the cluster adapts to its own size, its own memory budget, and its own
+slowest members. None of them change behavior for requests already in flight;
+they change what the *next* request does.
 
-## Gossip fanout scales with cluster size (#835)
+## Gossip fanout scales with cluster size
 
-Fixed fanout either floods small rings or starves large ones. Fanout target now
-scales with a (bounded) function of node count — a 100-node ring gossip ring
-doesn't drown a 3-node lab cluster. Ratified in
-`openspec/changes/add-adaptive-gossip-scale/`.
+**Gossip fanout** is how many peers a node contacts per gossip round. A fixed
+number is wrong at both ends: pick it high enough for a large ring and a tiny lab
+cluster drowns in redundant traffic; pick it low enough for the small cluster and
+news takes too long to reach every node in a big one. The fix scales the fanout
+target with a bounded function of node count — enough to spread information in a
+hundred-node ring, capped so a three-node cluster stays quiet.
 
-## Streaming cipher chunk size adapts (#834)
+## Streaming cipher chunk size adapts
 
-Streaming E2EE encryption has a framing choice: small chunks = tighter memory +
-finer granularity but more framing overhead. The cipher chunk size adapts to
-`StreamVersion`/memory profile at runtime (bounded allocation, stable semantics
-— Rule 74 era "seam" discipline). See
-`openspec/changes/add-adaptive-streaming-chunk-size/`.
+When momo streams encrypted data, the cipher has to frame the byte stream into
+**chunks**, the units it encrypts and authenticates. Small chunks mean tighter
+memory use and finer granularity, but more per-chunk framing overhead; large
+chunks mean less overhead but bigger buffers. The chunk size is chosen at runtime
+from the stream format version and the node's memory profile, keeping allocation
+bounded and the on-the-wire semantics unchanged. The choice is a *seam*: a single
+policy point that selects a compiled-in strategy rather than one that alters the
+byte format itself.
 
-## Peer quality feeds quorum selection (#833)
+## Peer quality feeds quorum selection
 
-Lease/OPRF/scatter-gather picks ranked peers by **quality signal**, not faster
-one-rule policies: reorder candidates by a quality metric so slow/flaky peers
-lose quorum weight and the system self-self selects reliable replicas. Directly
-feeds the degraded-read survivor choice in [020](020-r2-degraded-read-self-heal.md)
-for R2. See `openspec/changes/add-peer-quality-quorum-selection/`.
+Lease voting, confidential deduplication (built on an oblivious pseudorandom
+function, or OPRF), and scatter-gather all have to choose *which* peers to ask.
+Instead of a one-rule policy like "fastest first", the system ranks candidates by
+a quality signal, so slow or flaky peers lose quorum weight and reliable replicas
+win. That ranking also feeds the survivor choice for degraded reads in
+[020](020-r2-degraded-read-self-heal.md), so the node that answers a degraded read
+is the one most likely to have good data.
 
-## ⚡ Bolt lens
+## Keeping decisions off the byte path
 
-Each adaptive loop is a *decision* point, dispatched away from the byte flow
-(**Rule 74**): measurement happens off the hot path, and selection updates a
-compile-time predicate. No runtime reflection, no plugins — a declarative
-policy feeding a compiled-in registry.
+Each adaptive loop is a *decision* point, deliberately separated from the flow of
+bytes: measurement happens off the hot path, and the selection updates a
+compile-time predicate. There is no runtime reflection and no dynamic plugin
+loading — a declarative policy feeds a registry that was compiled in. This keeps
+the adaptive machinery cheap enough to run on every node, and keeps its cost from
+touching the request path. See [docs/STANDARDS.md](../../STANDARDS.md) for the
+⚡ Bolt and 🛡 Sentinel mindsets behind that split.
 
-See [docs/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
+## References / Dig deeper
 
-## Related
-
-Gossip: [016](016-p2p-gossip-swim.md). Leases/quorum: [017](017-scatter-gather-lease-quorum.md).
-Resilience: [020](020-r2-degraded-read-self-heal.md).
+- Adaptive gossip spec: `openspec/changes/add-adaptive-gossip-scale`;
+  PR [#835](https://github.com/alsotoes/momo/pull/835).
+- Adaptive streaming chunk spec:
+  `openspec/changes/add-adaptive-streaming-chunk-size`;
+  PR [#834](https://github.com/alsotoes/momo/pull/834).
+- Peer-quality quorum spec:
+  `openspec/changes/add-peer-quality-quorum-selection`;
+  PR [#833](https://github.com/alsotoes/momo/pull/833).
+- Sibling posts: [016: Gossip, SWIM, and Membership](016-p2p-gossip-swim.md),
+  [017: Scatter-Gather and Lease Consensus](017-scatter-gather-lease-quorum.md),
+  [020: Degraded Read Self-Heal](020-r2-degraded-read-self-heal.md).
