@@ -901,3 +901,34 @@ details.toc a:hover {
     padding: 0.1rem 0.35rem;
 }
 
+
+/* Footer links: docs mirror + repository */
+.footer-links {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+    font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    font-size: 0.8rem;
+    letter-spacing: 0.02em;
+}
+
+.footer-links a {
+    color: var(--primary);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.footer-links a:hover,
+.footer-links a:focus-visible {
+    color: var(--accent, #4F46E5);
+    border-bottom-color: var(--accent, #4F46E5);
+}
+
+.footer-links .footer-sep {
+    color: var(--secondary);
+    opacity: 0.6;
+}
