@@ -5,6 +5,7 @@ on:
     paths:
       - "docs/blog/**"
       - ".github/scripts/blog_check.py"
+      - ".github/scripts/test_blog_check.py"
       - "openspec/changes/**"
   push:
     branches: ["master"]
@@ -24,6 +25,8 @@ jobs:
           python-version: "3.12"
       - name: Install PyYAML
         run: pip install pyyaml
+      - name: Unit-test the blog validators
+        run: python .github/scripts/test_blog_check.py
       - name: Validate blog posts (Rule 76)
         run: python .github/scripts/blog_check.py
       - name: Validate blog SVG diagrams

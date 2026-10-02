@@ -1,5 +1,28 @@
 # Writing Educational Blog Posts — Momo Engineering Journal
 
+## The Prime Rule: Self-Contained
+
+**A post must be understandable on its own.** Explain the concept *in the post*.
+Do not use a repository location as the explanation.
+
+A reader arriving from the website has not opened the repo. If understanding your
+post requires them to open `openspec/changes/…`, read `src/…`, or follow a link to
+a spec, the post has failed — no matter how accurate it is.
+
+- **Explain first, name later.** State the problem and the approach in plain
+  language before naming internal files, types, spec paths, or rule numbers.
+- **Define jargon on first use.** "Splay", "CRUSH", "OPRF", "seam", "tombstone" —
+  one sentence a newcomer can follow.
+- **References are for depth, not comprehension.** Every repository/spec/PR/doc
+  pointer belongs in the final `References / Dig deeper` section. The narrative
+  body must stand without them.
+- **No unrendered markup.** The site has no math renderer — write expressions as
+  prose or code, never `$…$` LaTeX.
+
+> **Test:** delete every link and repository path from the body. If the post still
+> teaches the idea, it is self-contained. If it collapses into "see the spec",
+> rewrite it.
+
 ## The Goal
 
 Posts should be **teachable narratives**: a reader should come away understanding not just *what* we did, but *why* it matters, *how* to recognize when to apply the pattern, and *what trade-offs* to weigh. The journal is for us (history) AND for others (learning).
@@ -67,8 +90,12 @@ Every post MUST include these sections (in order):
 - Explicitly state the limits — prevents cargo-culting
 - "Don't use this for request IDs, user-facing dates, or low-frequency paths"
 
-### 8. Related & References
-- Link to specs, PRs, issues, sibling posts (existing `related` field)
+### 8. References / Dig deeper
+This is the **only** place repository/spec/PR/doc pointers belong. By the time the
+reader reaches it, the post has already explained the idea; these links are for
+going deeper.
+- Specs, PRs, issues, sibling posts (the front-matter `artifacts`/`related` fields)
+- Source files and design docs worth reading
 - External references (Go blog posts, papers, prior art)
 
 ---
@@ -120,6 +147,7 @@ teaches:
 
 ## Checklist Before Publishing
 
+- [ ] **Self-contained: understandable without opening any repository file**
 - [ ] Opens with a concrete problem/pain point (not "we optimized")
 - [ ] Shows what was tried and rejected (teaches trade-offs)
 - [ ] Code has inline comments explaining *why*, not *what*
@@ -127,5 +155,6 @@ teaches:
 - [ ] Shows measurements (benchmarks, profiles, prod metrics)
 - [ ] Lists failure modes and how they're handled
 - [ ] Explicitly states when NOT to use the pattern
-- [ ] Links to source artifacts (spec, PR, issue, benchmark code)
+- [ ] All repository/spec/PR/doc pointers live in `References / Dig deeper`
+- [ ] No `$…$` LaTeX (the site has no math renderer)
 - [ ] Tone is human ("we", "our", "I") not institutional
