@@ -18,11 +18,48 @@ related:
   - 043-reduce-read-verify-hashing
 ---
 
-When support for AWS S3 additive integrity checksums (`x-amz-checksum-crc32`, `crc32c`, `sha1`, `sha256`) initially shipped in PR #902, the verification logic was implemented directly inside `src/transport/s3_communicator.go`. While functional for standard AWS SDK clients, this created a dangerous architectural flaw: **integrity was treated as a transport feature rather than a storage invariant**.
+A **checksum** is a short fingerprint of a stream of bytes: recompute it on the
+other side and you know whether the data survived the trip. When we first
+supported AWS S3's additive integrity checksums, we implemented the verification
+inside the S3 transport adapter — the code that speaks the S3 HTTP protocol. It
+worked, for S3 clients. It was also a trap.
 
-If an upload bypassed the S3 HTTP layer—arriving instead via momo's native binary TCP or QUIC protocols, or forwarded across nodes during cluster replication—integrity validation was skipped entirely. Even worse, if a corrupted primary node accepted bad bytes, it would happily replicate those corrupted bytes to secondary nodes, poisoning the entire cluster.
+The trap: **integrity was treated as a transport feature rather than a storage
+invariant.** If an upload arrived over momo's native binary protocol, or was
+forwarded between nodes during replication, it bypassed the S3 layer entirely —
+and with it, every integrity check. Worse, a corrupted primary node would happily
+replicate its corrupted bytes to secondary replicas, spreading the poison across
+the cluster. Verification that only runs on one of several front doors is not
+verification; it is a coincidence.
 
-In issue #903 and PR #911, momo refactored this model around the **Commodity Protocol Principle**: transport adapters are disposable commodities; all integrity verification must reside in the centralized storage ingest core.
+## The Real Problem
+
+Storage systems have many doors. S3 clients come in through HTTP; native clients
+come in over a binary protocol; other nodes come in during replication. If each
+door decides for itself whether to check integrity, then the guarantee depends on
+which door you used. We wanted a single, unavoidable checkpoint: no matter how
+bytes enter, they are verified before they are committed.
+
+## Why the Obvious Solutions Failed
+
+**"Add the check to each transport."** This is duplication with a drift problem.
+Each adapter re-implements the same logic against different header names and
+status codes, and the next protocol someone adds silently misses the check.
+
+**"Trust the primary to verify before replicating."** This makes every replica
+trust the primary's memory and network card. A single faulty node then becomes a
+cluster-wide data-corruption event.
+
+**"Buffer the upload, verify, then store."** Correct, but it doubles memory and
+latency: you hold the whole object before committing it.
+
+## The Solution: Verification at the Core, in One Pass
+
+We adopted a principle we call the **Commodity Protocol Principle**: transport
+adapters are disposable commodities, and all integrity verification belongs in
+the centralized storage ingest core. The core defines a protocol-agnostic
+**seam** — a small interface that any transport can implement to describe what
+checksums it expects and how to report a mismatch.
 
 ```
 ========================================================================================
@@ -63,11 +100,13 @@ In issue #903 and PR #911, momo refactored this model around the **Commodity Pro
                                                  3. Return 400 BadDigest / EBADMSG
 ```
 
----
-
-## 1. The Protocol-Agnostic Seam: `ChecksumProvider`
-
-To decouple the core ingest pipeline from S3-specific headers and status codes, `src/common/checksum.go` introduces a generic checksum representation:
+Concretely, the server's ingest routine asks the active connection for a
+**checksum provider** — the seam. If the connection offers expectations, the core
+verifies the incoming stream against them. The stream flows through a tee: one
+branch goes to the physical blob store, the other to streaming hash engines that
+compute CRC32, CRC32C, SHA-1, and SHA-256 as the bytes arrive. There is no
+intermediate buffer and no temporary spool file — the digest is computed in
+flight.
 
 ```go
 type ChecksumAlgorithm string
@@ -85,26 +124,22 @@ type ChecksumRef struct {
 }
 
 type ChecksumSet []ChecksumRef
-```
 
-The server ingest routine in `src/server/file.go` queries the active transport connection for the `ChecksumProvider` interface:
-
-```go
+// The seam every transport implements so the core can verify without
+// knowing which protocol delivered the bytes.
 type ChecksumProvider interface {
     ChecksumExpectations() common.ChecksumSet
     OnChecksumMismatch(err error) error
 }
 ```
 
-During `getFile()`, the server reads from the network socket through an `io.TeeReader` that feeds both the physical blob storage and the streaming hash engines simultaneously. Once the stream terminates:
-
 ```go
-// server/file.go
+// server/file.go — ingest verifies, then commits or rolls back.
 if provider, ok := comm.(transport.ChecksumProvider); ok {
     expectations := provider.ChecksumExpectations()
     if len(expectations) > 0 {
         if err := verifier.Verify(expectations); err != nil {
-            // Rollback: immediately purge partially written blob
+            // Rollback: immediately purge the partially written blob.
             _ = s.store.Delete(meta.Hash)
             return provider.OnChecksumMismatch(err)
         }
@@ -112,44 +147,47 @@ if provider, ok := comm.(transport.ChecksumProvider); ok {
 }
 ```
 
-If a mismatch is detected, the store immediately deletes the uncommitted blob from disk and calls `OnChecksumMismatch`. The S3 adapter translates this error into an AWS-compliant `400 BadDigest` XML error, while native TCP/QUIC connections return `syscall.EBADMSG`.
+On a mismatch the core aborts the stream, deletes the partially written blob,
+and returns a transport-appropriate error: the S3 adapter translates it into an
+AWS-compliant `400 BadDigest`, while native connections return the operating
+system's "bad message" code. The rollback is part of the invariant, not an
+afterthought.
 
----
+**Replicas re-verify.** The other half of the design is zero trust between nodes.
+When a node forwards a replicated stream, it encodes the expected checksum
+manifest into a small metadata header. The receiving node runs the *same* core
+ingest pipeline, extracts the manifest, and independently verifies the bytes
+against the original client's fingerprint. A faulty sender is caught at the
+receiver before the bad data is indexed.
 
-## 2. Cluster-Wide Protection: Peer Re-Verification
-
-A critical vulnerability in distributed storage is replica trust: Node A receives data, verifies it, and forwards it to Node B. If Node A's memory or network interface is faulty, Node B blindly accepts corrupted bytes.
-
-In momo's centralized architecture, Node A encodes the expected checksum manifest into a base64 header:
-```
-X-Momo-S3-Meta: {"checksums":[{"algo":"CRC32C","val":"4a2f8b=="}]}
-```
-When Node B receives the forwarded replication stream, its own `getFile()` pipeline extracts the header, initializes independent streaming hashers, and verifies the incoming bytes against the original client manifest. Corrupted nodes are isolated before bad data can spread.
-
----
-
-## 3. Tradeoff Analysis: Surface vs. Centralized Core Verification
+## Tradeoff Analysis: Surface vs. Centralized Core Verification
 
 | Dimension | Surface-Level Verification (Old) | Centralized Core Ingest (New) |
 |---|---|---|
-| **Architectural Purity** | Coupled: Transport layers dictate storage logic | **Decoupled**: Core enforces invariants; transports are adapters |
-| **Multi-Protocol Safety** | Only S3 uploads were protected | **All protocols** (S3, TCP, QUIC, Replicas) are protected |
-| **Cluster Blast Radius** | Corrupt primary poisons all secondary replicas | **Zero-trust**: Replicas independently verify every byte |
-| **Rollback Reliability** | Ad-hoc cleanup left orphaned temp files | **Guaranteed atomicity**: Immediate `store.Delete` on mismatch |
-| **CPU Overhead** | $O(1)$ pass on primary only | $O(1)$ single-pass pipeline executed concurrently across replicas |
+| **Architectural Purity** | Coupled: transport layers dictate storage logic | **Decoupled**: core enforces invariants; transports are adapters |
+| **Multi-Protocol Safety** | Only S3 uploads were protected | **All protocols** (S3, TCP, QUIC, replicas) are protected |
+| **Cluster Blast Radius** | Corrupt primary poisons all secondary replicas | **Zero-trust**: replicas independently verify every byte |
+| **Rollback Reliability** | Ad-hoc cleanup left orphaned temp files | **Guaranteed atomicity**: immediate delete on mismatch |
+| **CPU Overhead** | Single pass on the primary only | Single pass executed concurrently across replicas |
 
----
-
-## 4. Engineering Standards
+## Engineering Standards
 
 In accordance with [docs/STANDARDS.md](../../STANDARDS.md):
-- ⚡ **Bolt (Zero Extra Copies)**: `io.TeeReader` computes CRC32/SHA256 digests in-flight as network buffers pass directly into disk storage. No intermediate memory buffer or temporary spool file is required.
-- 🛡 **Sentinel (Fail-Closed Core)**: Core ingest never trusts transport guarantees. Any digest mismatch triggers an immediate rollback and purges the blob address before it can be indexed into Bbolt.
 
-## Related
+- ⚡ **Bolt (Zero Extra Copies)**: the tee computes CRC32/SHA-256 digests in
+  flight as network buffers pass directly into disk storage. No intermediate
+  memory buffer or temporary spool file is required.
+- 🛡 **Sentinel (Fail-Closed Core)**: core ingest never trusts transport
+  guarantees. Any digest mismatch triggers an immediate rollback and purges the
+  blob address before it can be indexed.
 
-- S3 checksum specification: [012](012-s3-integrity-checksums.md)
-- Storage verify-on-read & GC: [007](007-at-rest-integrity-and-gc.md)
-- Content-addressable foundation: [004](004-cas-content-addressable-store.md)
-- ADR framework: [041](041-architecture-decision-records.md)
-- Read verification optimization: [043](043-reduce-read-verify-hashing.md)
+## References / Dig deeper
+
+- Spec: `openspec/changes/core-integrity-verification`.
+- Source: `src/common/checksum.go`, `src/server/file.go`,
+  `src/transport/s3_communicator.go`.
+- Sibling posts: S3 checksum specification [012](012-s3-integrity-checksums.md),
+  storage verify-on-read & GC [007](007-at-rest-integrity-and-gc.md),
+  content-addressable foundation [004](004-cas-content-addressable-store.md),
+  ADR framework [041](041-architecture-decision-records.md),
+  read verification optimization [043](043-reduce-read-verify-hashing.md).
