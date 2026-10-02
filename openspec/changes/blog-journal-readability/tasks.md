@@ -47,5 +47,5 @@
 - [x] PR body includes `Resolves #1116` (Rule 11)
 
 ## Post-merge (operational, not part of the change)
-- Cloudflare Pages deploy of the rewritten journal
-- Live-site spot-check at https://momo.apps.headup.ws/
+- [x] Cloudflare Pages deploy of the rewritten journal
+- [x] Live-site spot-check at https://momo.apps.headup.ws/
