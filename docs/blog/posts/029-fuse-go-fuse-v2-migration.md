@@ -14,66 +14,165 @@ related:
   - 004-cas-content-addressable-store
   - 028-roadmap-and-research
 ---
-The momofs FUSE mount started as a thin bazil.org/fuse adapter over the CAS
-store: directories are content-addressed JSON manifests, files are CAS blobs,
-and the kernel's byte-range model is reconciled by buffering handle writes and
-materializing one blob per file on flush. The adapter itself was hand-rolled —
-fine for a prototype, but it re-implemented a lot of wire protocol that a
-battle-tested library already owns.
+The first version of our FUSE mount worked. Directories were content-addressed
+JSON manifests, files were content-addressed blobs, and a hand-rolled adapter
+reconciled the kernel's byte-range writes with our write-whole-file model. It also
+re-implemented a surprising amount of FUSE wire protocol — mount negotiation,
+lookup reference counting, kernel coordination — that we had no business owning.
+The adapter was fine as a prototype and wrong as a foundation. This is the story
+of trading it for a library that already knows the protocol.
 
-Issue #980 and the ratified `add-fuse-implementation` OpenSpec change picked a
-migration path. This post documents what actually shipped (PR #984).
+## The Real Problem
 
-## Why go-fuse/v2
+**FUSE** is the kernel bridge that lets a userspace program be a filesystem: the
+kernel forwards file operations to your process over `/dev/fuse`. The bridge has a
+precise wire protocol with sharp edges. Get mount negotiation subtly wrong and the
+mount hangs or dies at a bad moment. Mishandle lookup reference counting and the
+kernel forgets an inode your process still believes in, or never forgets one you
+released. These are not bugs you find in testing; they are bugs you find in
+production, intermittently.
 
-`hanwen/go-fuse/v2` provides a high-level `fs` package on top of the raw FUSE
-wire protocol: inode-based trees, kernel-managed node lifetimes, and syscall
-errno returns from node callbacks. It owns the error-prone parts (mount
-negotiation, `WaitMount`, lookup refcounting, splice) that the prior custom
-adapter had to get right by hand.
+Our adapter had implemented all of this by hand against the raw protocol. It was
+correct enough to mount and pass round-trips, but every edge was ours to maintain,
+and the effort bought us nothing a mature library could not provide. Meanwhile
+the filesystem needed to grow: 22 node callbacks, each one a place to get the
+protocol details wrong.
 
-## What changed
+## Why the Obvious Solutions Failed
 
-- **`src/momofs/fuse.go`** — the bazil node model (`fs.Node`, `fs.Handle`,
-  `*fuse.Attr`) was replaced with go-fuse/v2 `fs` interfaces. The full prior
-  callback set maps to go-fuse equivalents: `Lookup`/`Getattr`/`Setattr`/
-  `Mkdir`/`Create`/`Unlink`/`Rmdir`/`Rename`/`Link`/`Opendir`/`Readdir`/`Open`/
-  `Read`/`Write`/`Flush`/`Release`/`Statfs`/`OnForget`. `ServeFUSE` and
-  `UnmountFUSE` keep their signatures (the CLI and e2e test call them
-  unchanged), and `UnmountFUSE` now tracks live servers by mountpoint.
-- **Error mapping** — go-fuse wants `syscall.Errno` returns. The adapter
-  preserves the errno the momofs core already picks (`ENOENT`/`EISDIR`/
-  `EINVAL`/...) and maps anything else to `EIO`; a panic guard (two-line
-  recover → `EIO`) keeps a stray panic from tearing down the whole mount.
-- **`[momofs]` config section** — new optional section. `consistency=cached`
-  is deprecated: kernel-level DAX/VirtioFS consistency makes it redundant, so
-  it is ignored with an AUDIT log and any other value is rejected at config
-  load.
-- **Dependency swap** — `bazil.org/fuse` removed from the module and vendor
-  tree; `github.com/hanwen/go-fuse/v2 v2.11.0` added as a direct dependency.
+**Keep hardening the hand-rolled adapter.** This is the sunk-cost answer, and it
+is sometimes right. It was wrong here because the protocol work was pure
+duplication — the same negotiation and refcounting every FUSE filesystem needs —
+so every hour spent on it was an hour not spent on storing bytes correctly.
 
-## Read path and splice
+**Adopt a low-level binding.** There are FUSE libraries that expose the raw
+protocol as opaque byte operations: you get the messages, but you still own inodes,
+lookups, and error semantics yourself. That would have traded one hand-written
+protocol layer for another with fancier types, and left the hard bookkeeping
+intact.
 
-The momofs core is a hash-addressed blob reader — reads flow through
-`FS.ReadAt` into a memory view, so the natural go-fuse return is
-`fuse.ReadResultData` rather than a kernel-splice `ReadResultFd` (there is no
-backing fd to splice from). The zero-copy splice path is a documented follow-up
-for blob backends that expose raw fds.
+**Switch transports entirely (e.g. VirtioFS on every platform).** On macOS,
+Docker Desktop already serves files through the kernel's VirtioFS, and no momofs
+FUSE process is needed at all. But on bare-metal Linux we still need a userspace
+mount, so "use VirtioFS everywhere" is only half a plan. We kept both: VirtioFS
+where the platform provides it, and a real FUSE transport on Linux.
 
-## Verification
+## The Solution: Move to go-fuse/v2's High-Level API
 
-- `make test` (vet + race + cover) green across all 9 modules.
-- `TestFuseE2E_MountRoundTrip` passed against a real `/dev/fuse` mount:
-  native writes surfaced in the mount and mount writes surfaced natively.
-- `go vet`, `gofmt -l`, and `go work vendor` parity clean; bazil is gone from
-  `go.mod` and `vendor/`.
+`hanwen/go-fuse/v2` is a mature Go FUSE implementation. Its `fs` package provides
+a **high-level, inode-based API**: you describe a tree of nodes and implement
+methods on them, and the library owns the protocol underneath — mount negotiation,
+kernel-managed node lifetimes, and translating returned errors into the codes the
+kernel expects. That is exactly the division of labor we wanted.
 
-Follow-ups tracked on #980: cross-platform fallback (macOS VirtioFS warning)
-and Phase-5 load measurements.
+Issue #980, with the ratified `add-fuse-implementation` spec, chose this path.
+Pull request #984 is what shipped.
 
-## Standards
+The migration was mostly a re-expression of what we already had:
 
-Per [docs/STANDARDS.md](../../STANDARDS.md), the transport layers follow the ⚡ Bolt
-(performance, minimize syscalls/copies) and 🛡 Sentinel (fail-closed, honest
-error semantics) mindsets; the go-fuse/v2 migration keeps the momofs core
-protocol-agnostic so no momofs wire format is locked to the transport.
+- **The node model was replaced.** Our previous node and handle types, and their
+  attribute structs, were rewritten as the go-fuse `fs` interfaces. The full prior
+  callback set — lookup, getattr, setattr, mkdir, create, unlink, rmdir, rename,
+  link, opendir, readdir, open, read, write, flush, release, statfs, forget — now
+  maps one-to-one onto go-fuse methods. Crucially, the public entry points the CLI
+  and end-to-end test call kept their signatures, so nothing above the adapter
+  changed: the mount command and its tests were untouched. Unmount now tracks live
+  servers by mount point, so cleanup is per-mount rather than global.
+- **Error mapping got explicit.** go-fuse wants methods to return a system error
+  code. The adapter preserves the precise code the core already chooses — "not
+  found," "is a directory," "invalid argument" — and maps anything unknown to a
+  generic I/O error. We also added a panic guard: a two-line recover converts a
+  stray panic into an I/O error, so one bad operation cannot tear down the whole
+  mount.
+
+```go
+// go-fuse wants a syscall.Errno back. Preserve the specific code the core picked
+// (so "no such file" stays ENOENT, not a vague failure), and fail closed to EIO
+// for anything unexpected. The deferred recover means a panic in a callback
+// returns EIO for that one call instead of killing the mount for every process.
+func toErrno(err error) syscall.Errno {
+    if err == nil {
+        return 0
+    }
+    var errno syscall.Errno
+    if errors.As(err, &errno) {
+        return errno // ENOENT, EISDIR, EINVAL, ... — as the core intended
+    }
+    return syscall.EIO
+}
+```
+
+- **A new `[momofs]` config section.** The old `consistency=cached` setting is
+  **deprecated.** It used to let the mount cache aggressively, but kernel-level
+  consistency mechanisms (DAX, and VirtioFS on macOS) make that redundant — the
+  kernel already guarantees what the flag was emulating. Setting it now logs an
+  audit message and is ignored; any other value is rejected when the config loads,
+  so a typo cannot silently change caching behavior.
+- **The dependency was swapped.** The previous binding was removed from both the
+  module and the vendored tree, and go-fuse/v2 was added as a direct dependency.
+
+## The Read Path and splice
+
+There is a zero-copy read path in FUSE called **splice**, where the kernel copies
+data directly from a file descriptor into a socket without bouncing through
+userspace. It only helps when there is a real file descriptor to splice from. Our
+core is a hash-addressed blob reader: reads flow into a memory view, so there is
+no backing descriptor to hand the kernel. The natural return is therefore "here is
+the data," not "here is the descriptor." The zero-copy splice path is documented
+as a follow-up for blob backends that *can* expose raw descriptors — we chose the
+honest implementation over a nominal optimization.
+
+## How We Verified
+
+- The full test target (vet, race detector, coverage) passed across all modules.
+- The end-to-end mount test ran against a real `/dev/fuse` mount and passed:
+  writes made natively surfaced inside the mount, and writes made through the
+  mount surfaced natively.
+- `go vet` and formatting checks were clean, the vendored tree stayed consistent,
+  and the old binding was confirmed gone from the module.
+
+Remaining follow-ups are tracked on issue #980: a cross-platform fallback (the
+macOS VirtioFS guidance) and load measurements for the new path.
+
+## Implemented vs. Planned (Honesty Note)
+
+The go-fuse/v2 migration and the `consistency=cached` deprecation are shipped.
+Still planned, per the spec's task list: a cross-platform FUSE fallback, splice
+support for descriptor-backed blob stores, and the Phase-5 load and memory
+measurements. Treat those as open work, not delivered behavior.
+
+## ⚡ Bolt + 🛡 Sentinel Lens
+
+Per [docs/STANDARDS.md](../../STANDARDS.md), the transport follows two mindsets:
+
+- **⚡ Bolt**: go-fuse owns the syscall-heavy protocol work, and the core stays
+  protocol-agnostic, so no momofs wire format is locked to the transport — we can
+  improve the byte path without renegotiating FUSE.
+- **🛡 Sentinel**: failing closed is explicit. Unknown errors become a generic I/O
+  error rather than optimism, the panic guard isolates a bad callback, and a
+  deprecated config value is rejected instead of silently reinterpreted.
+
+## Failure Modes
+
+| Risk | Guard |
+|------|-------|
+| A panic in one callback kills the mount | `recover` converts it to an I/O error for that call |
+| Unknown error leaks as success | Unmapped errors fail closed to `EIO` |
+| `consistency=cached` silently changes behavior | Deprecated: logged, ignored, other values rejected at load |
+| Inode never forgotten → leak | go-fuse owns node lifetimes and forget handling |
+| Public entry points changed under callers | `Serve`/`Unmount` signatures preserved; CLI e2e untouched |
+
+## When NOT to Use This
+
+- **When you need kernel-level zero-copy today.** Our blob reader has no descriptor
+  to splice from, so splice is not a win until a backing store exposes one.
+- **Non-Linux hosts.** This transport targets Linux FUSE; macOS uses VirtioFS
+  through Docker Desktop and needs no momofs FUSE process.
+
+## References / Dig deeper
+
+- Spec: `openspec/changes/add-fuse-implementation`.
+- Issue #980; pull request #984.
+- The core it mounts: [004: Content-Addressable Storage](004-cas-content-addressable-store.md).
+- Where the migration sits: [028: Roadmap and Research](028-roadmap-and-research.md).
+- The transport it replaced: [023: momofs FUSE Transport](023-momofs-fuse-transport.md).
