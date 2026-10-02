@@ -31,189 +31,149 @@ teaches:
   - "Bolt: zero-allocation checksum on read path"
   - "Sentinel: verify-on-read honesty"
 ---
-S3 Integrity Checksums: x-amz-checksum-*
+A checksum is a short digest computed from a block of data: change one byte and
+the digest changes, so anyone can recompute it and compare. The S3 protocol
+carries checksums as `x-amz-checksum-*` response headers. This post is about
+moving integrity from something the server does privately to something the client
+can verify for itself.
 
 ## The Real Problem
 
-We had integrity *inside* the store (verify-on-read, CAS hashing). But clients had to **trust us**. 
+We already had strong integrity *inside* the store. Objects are
+content-addressed — an object's identity is the hash of its bytes — and every
+read re-hashes the data and compares it against that identity before returning
+it. If bits rotted on disk, the store noticed and failed loudly.
 
-A security review asked: "If your server is compromised, how does the client know?" The answer was: they didn't. The checksum was an internal implementation detail, not a client contract.
+But clients could not see any of that. They had to **trust us**. A security
+reviewer asked the uncomfortable question: "If your server is compromised, how
+does the client know the bytes it received are the bytes it asked for?" The
+honest answer was: it doesn't. The checksum was an internal implementation
+detail, not a client contract.
 
-We needed to surface integrity to the wire protocol — make it **client-verifiable**.
+That is a real gap. Integrity only the server can check is integrity the client
+must take on faith. We needed to surface it on the wire so the client could
+verify independently.
 
-## Why Obvious Solutions Failed
+## Why the Obvious Solutions Failed
 
-**Custom header with proprietary format**
-```go
-// REJECTED: not interoperable, SDKs won't understand it
-// "X-Momo-Checksum: sha256:abc123..." — only our SDK works
-w.Header().Set("X-Momo-Checksum", "sha256:"+hash)
-```
+**A custom header with a proprietary format.** We could invent
+`X-Momo-Checksum: sha256:...`, but no SDK understands it. Only our own client
+would verify it, which defeats the point of an S3-compatible gateway. Rejected:
+not interoperable.
 
-**ETag with checksum**
-```go
-// REJECTED: ETag is opaque, semantics unclear (strong vs weak)
-// S3 uses ETag for conditional requests, not integrity
-w.Header().Set("ETag", `"`+hash+`"`)
-```
+**Reusing the ETag.** The ETag is an opaque identifier S3 uses for conditional
+requests and caching; its meaning is not a promise about content integrity.
+Overloading it would confuse clients that already depend on it. Rejected: wrong
+semantics.
 
-**Separate verification API**
-```go
-// REJECTED: extra round-trip, clients won't call it
-// GET /verify/{key} → {hash} — adds latency, breaks streaming
-```
+**A separate verification API.** We could expose an endpoint that returns the
+hash for a key. But that adds a round-trip, and clients will not call it — the
+point is to verify the bytes already received, not to ask a second request about
+them. Rejected: extra latency, breaks streaming.
 
-## The Solution — S3 Native Checksum Headers
+## The Solution: Native S3 Checksum Headers
 
 {{< diagram src="/diagrams/13-s3-checksums.svg" alt="S3 integrity checksums flow" caption="S3 integrity checksums flow" >}}
 
-S3 defines `x-amz-checksum-*` headers for exactly this. We implement them natively:
+S3 already defines the right mechanism: `x-amz-checksum-*` headers. We implement
+them natively. The lifecycle is:
+
+1. **On upload**, the server hashes the incoming bytes as they stream to the
+   store — the hasher runs alongside the write, so the whole object never sits in
+   memory.
+2. If the client supplied a checksum, the server **compares** it against the
+   computed digest and rejects a mismatch instead of storing bad data.
+3. The computed checksum is **cached with the object's metadata**, so it never
+   needs to be recomputed.
+4. **On download**, the server echoes the cached checksum in the response
+   headers, and the client compares it against its own hash of the body it
+   received.
+
+Here is the shape of that path, illustratively:
 
 ```go
-// PUT: client sends or requests checksum
-func (h *S3Handler) PutObject(w http.ResponseWriter, r *http.Request) {
-    // 1. Client may provide checksum (x-amz-checksum-sha256)
-    clientHash := r.Header.Get("x-amz-checksum-sha256")
-    
-    // 2. Stream data through hasher (zero-copy)
-    hasher := sha256.New()
-    tee := io.TeeReader(r.Body, hasher)
-    
-    // 3. Write to CAS (hash = key)
-    blobID, err := h.store.Write(tee)
-    if err != nil {
-        h.error(w, err)
-        return
-    }
-    
-    // 4. If client provided checksum, VERIFY
-    if clientHash != "" && clientHash != hex.EncodeToString(hasher.Sum(nil)) {
-        h.error(w, ErrChecksumMismatch)
-        return
-    }
-    
-    // 5. Echo checksum back — client verifies
-    w.Header().Set("x-amz-checksum-sha256", hex.EncodeToString(hasher.Sum(nil)))
-    w.WriteHeader(http.StatusOK)
-}
+// Illustrative pseudo-code — the real handler is wired through the store.
+// On PUT, hash while streaming so the object never sits in memory.
+hasher := sha256.New()
+tee := io.TeeReader(r.Body, hasher)
+blobID, err := store.Write(tee) // content-addressed: blobID is the hash
 
-// GET: return stored checksum (cached with metadata)
-func (h *S3Handler) GetObject(w http.ResponseWriter, r *http.Request) {
-    meta, err := h.store.GetMetadata(key)
-    if err != nil {
-        h.error(w, err)
-        return
-    }
-    
-    // Checksum cached with metadata — zero allocation on read path
-    w.Header().Set("x-amz-checksum-sha256", meta.ChecksumSHA256)
-    // ... stream body ...
+// If the client declared a checksum, reject a mismatch now.
+if declared != "" && declared != hex(hasher.Sum(nil)) {
+    return checksumMismatch
 }
+meta.ChecksumSHA256 = hex(hasher.Sum(nil)) // cached with the object
+
+// On GET, the cached digest is echoed — no re-hashing on the read path.
+w.Header().Set("x-amz-checksum-sha256", meta.ChecksumSHA256)
 ```
+
+Because the checksum is captured at write time and stored beside the object, the
+read path stays allocation-free: echoing a cached string costs nothing.
 
 ## Principle Callout
 
 > **Pattern: Client-Verifiable Integrity via Native Protocol Headers**
-> Use the protocol's native checksum mechanism (S3: `x-amz-checksum-*`). Compute once on ingest, cache with metadata, echo on read. Zero trust — client verifies.
-> 
-> **Applies when**: Protocol has native checksum support (S3, HTTP digest, TLS)
-> **Doesn't apply**: Protocols without checksum semantics (raw TCP, custom protocols)
+> Use the protocol's own integrity mechanism (S3: `x-amz-checksum-*`). Compute
+> once on ingest, cache with metadata, echo on read. The client verifies; the
+> server does not ask to be trusted.
+>
+> **Applies when**: the protocol has native checksum support (S3, HTTP digests,
+> TLS records).
+> **Doesn't apply**: protocols without checksum semantics — do not invent a
+> custom header and call it integrity.
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    INTEGRITY FLOW                               │
-├─────────────────────────────────────────────────────────────────┤
-│  PUT                                    GET                    │
-│  ────                                   ────                   │
-│  Client sends                          Server returns          │
-│  x-amz-checksum-sha256    ──────►       x-amz-checksum-sha256  │
-│       │                                       │                │
-│       ▼                                       ▼                │
-│  Server hashes          ◄──────        Client compares        │
-│  on ingest (CAS)                          with local hash     │
-│       │                                       │                │
-│       ▼                                       ▼                │
-│  If mismatch: 400                    Mismatch = corruption    │
-│  Bad Request                              detection            │
-└─────────────────────────────────────────────────────────────────┘
-```
+## ⚡ Bolt & 🛡 Sentinel
 
-## ⚡ Bolt + 🛡 Sentinel Overlap
+🛡 **Sentinel: the honesty guarantee.** An echoed checksum is only as honest as
+the machinery behind it. Verify-on-read means every read re-hashes the data and
+compares it against the object's content-addressed identity. If bits flipped on
+disk, the read fails loudly *before* the checksum is ever echoed. The header is
+backed by a check, not by a stored claim.
 
-### Sentinel: Honesty Guarantee
+⚡ **Bolt: zero allocation on the read path.** Because the checksum is cached with
+metadata, a `GET` sets the header from an existing string — no re-hashing, no
+allocation. The ingest path hashes once, streaming, so it never buffers the whole
+object.
 
-The echoed checksum is only as honest as the verify-on-read machinery:
+See [docs/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
 
-```go
-// Verify-on-read: EVERY read hashes and compares
-func (s *Store) Get(blobID BlobID) (io.Reader, error) {
-    data, err := s.backend.Get(blobID)
-    if err != nil {
-        return nil, err
-    }
-    
-    // Verify-on-read: hash matches blob ID (which IS the hash)
-    h := sha256.New()
-    if _, err := io.Copy(h, data); err != nil {
-        return nil, err
-    }
-    if BlobID(h.Sum(nil)) != blobID {
-        return nil, ErrCorruptionDetected  // 🛡 Sentinel: fail loud
-    }
-    
-    // Checksum cached with metadata — already verified
-    return data, nil
-}
-```
+## How We Verified
 
-The `x-amz-checksum-sha256` header returns `meta.ChecksumSHA256` which **came from the verified write path**. If bits flipped on disk, verify-on-read catches it before the checksum is ever echoed.
-
-### Bolt: Zero-Allocation Checksum on Read Path
-
-```go
-// Checksum cached with metadata — no re-hashing on GET
-type ObjectMetadata struct {
-    Size           int64
-    ChecksumSHA256 string  // pre-computed, cached
-    // ...
-}
-
-// GET handler — zero allocation for checksum
-func (h *S3Handler) GetObject(w http.ResponseWriter, r *http.Request) {
-    meta := h.store.GetMetadata(key)  // includes cached checksum
-    w.Header().Set("x-amz-checksum-sha256", meta.ChecksumSHA256)
-    // ... stream from verified backend ...
-}
-```
-
-See [024](024-bolt-performance-engineering.md) for the zero-escape pattern; [007](007-at-rest-integrity-and-gc.md) for verify-on-read.
-
-## Verification
-
-| Test | Result |
-|------|--------|
-| Client provides correct checksum | 200 OK, checksum echoed |
-| Client provides wrong checksum | 400 Bad Request |
-| Server corruption (bit-flip) | Verify-on-read catches, 500 before echo |
+| Test | Expected result |
+|------|-----------------|
+| Client provides the correct checksum | `200 OK`, checksum echoed |
+| Client provides the wrong checksum | `400 Bad Request`, nothing stored |
+| Server corruption (a flipped bit) | Verify-on-read fails before the echo |
 | AWS SDK compatibility | `aws s3 cp` validates automatically |
-| Allocation on GET | 0 B/op for checksum (cached) |
+| Allocation on `GET` | Zero allocation for the checksum (cached) |
 
 ## Failure Modes
 
 | Risk | Mitigation |
 |------|------------|
-| Client doesn't verify | SDK default behavior; document explicitly |
-| Checksum header stripped by proxy | Use TLS (enforced per [011](011-s3-https-tls-enforcement.md)) |
-| Multipart upload checksum | Aggregated per [009](009-s3-multipart-and-breadth.md) |
+| Client does not verify | SDK default behaviour; documented explicitly |
+| A proxy strips the checksum header | TLS is enforced, so the header cannot be rewritten in transit ([011](011-s3-https-tls-enforcement.md)) |
+| Multipart upload checksum | Parts are aggregated into one checksum at completion ([009](009-s3-multipart-and-breadth.md)) |
 
 ## When NOT to Use This
 
-- **Internal-only APIs** where trust boundary is the network (use mTLS instead)
-- **Protocols without checksum semantics** — don't invent custom headers
-- **When compute cost > value** — CRC32C for large objects, SHA256 for small
+- **Internal-only APIs** where the network itself is the trust boundary — mutual
+  TLS is the stronger tool there.
+- **Protocols without checksum semantics** — do not invent a custom header and
+  pretend it is a standard.
+- **When compute cost outweighs the value** — a fast checksum such as CRC32 is
+  enough for large objects, while a cryptographic hash such as SHA-256 is worth
+  it for small, security-sensitive ones.
 
-See [docs/STANDARDS.md](../../STANDARDS.md) (`docs/STANDARDS.md`) for the ⚡ Bolt / 🛡 Sentinel mindsets.
+## References / Dig deeper
 
-## Related
-
-Integrity core: [007](007-at-rest-integrity-and-gc.md). Gateway: [008](008-s3-gateway-core.md). Performance: [024](024-bolt-performance-engineering.md).
+- Integrity core: [007](007-at-rest-integrity-and-gc.md). Gateway:
+  [008](008-s3-gateway-core.md). Multipart:
+  [009](009-s3-multipart-and-breadth.md). Performance:
+  [024](024-bolt-performance-engineering.md). Transport security:
+  [011](011-s3-https-tls-enforcement.md).
+- Core integrity verification: [031](031-core-integrity-verification.md).
+- The `Last-Modified` header optimization: [045](045-bolt-lastmodified-header.md).
+- Checksum spec and pull request: `openspec/changes/s3-integrity-checksums`
+  (PR #902).
