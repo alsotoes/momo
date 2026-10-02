@@ -19,6 +19,9 @@ var (
 	issueLinkRe = regexp.MustCompile(`github\.com/[^/]+/[^/]+/issues/(\d+)`)
 	prLinkRe    = regexp.MustCompile(`github\.com/[^/]+/[^/]+/pull/(\d+)`)
 	issueRefRe  = regexp.MustCompile(`#(\d{2,})`)
+	// adrFileNameRe matches NNNN-<specID>.md where specID may contain dots
+	// (e.g. "go-1.26-upgrade"). Greedy capture up to the final ".md".
+	adrFileNameRe = regexp.MustCompile(`^(\d{4})-(.+)\.md$`)
 )
 
 func main() {
@@ -157,23 +160,43 @@ func main() {
 // existingADRNumbers maps each specID that already has an ADR file in
 // docs/adr/ (NNNN-<specID>.md) to its assigned number. Used for stable
 // numbering so inserting a new spec never renumbers existing ADRs.
+//
+// The specID may contain dots (e.g. "go-1.26-upgrade"), so the capture group is
+// greedy up to the final ".md". `.no-blog.md` justification files are skipped.
+// When a spec has duplicate ADR files (a historical tooling bug), the LOWEST
+// number wins — the first assignment is the immutable one.
 func existingADRNumbers() map[string]int {
 	existing := make(map[string]int)
 	adrFiles, _ := filepath.Glob(filepath.Join("docs", "adr", "*.md"))
-	numRe := regexp.MustCompile(`^(\d{4})-([a-z0-9-]+)\.md$`)
 	for _, f := range adrFiles {
-		base := filepath.Base(f)
-		m := numRe.FindStringSubmatch(base)
-		if m == nil {
+		specID, n, ok := parseADRFileName(filepath.Base(f))
+		if !ok {
 			continue
 		}
-		n, err := strconv.Atoi(m[1])
-		if err != nil {
-			continue
+		if prev, ok := existing[specID]; !ok || n < prev {
+			existing[specID] = n
 		}
-		existing[m[2]] = n
 	}
 	return existing
+}
+
+// parseADRFileName parses "NNNN-<specID>.md" into its number and spec ID.
+// The spec ID may contain dots; `.no-blog.md` justification files are rejected.
+// Returns ok=false for anything that is not a numbered ADR file.
+func parseADRFileName(base string) (specID string, num int, ok bool) {
+	m := adrFileNameRe.FindStringSubmatch(base)
+	if m == nil {
+		return "", 0, false
+	}
+	specID = m[2]
+	if strings.HasSuffix(specID, ".no-blog") {
+		return "", 0, false
+	}
+	n, err := strconv.Atoi(m[1])
+	if err != nil {
+		return "", 0, false
+	}
+	return specID, n, true
 }
 
 func buildDecisionFromSpec(spec model.SpecDoc) string {
