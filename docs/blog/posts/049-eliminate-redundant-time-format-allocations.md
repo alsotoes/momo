@@ -12,6 +12,7 @@ artifacts:
     type: spec
 related:
   - 024-bolt-performance-engineering
+  - 051-bolt-aws-chunked-zero-alloc
 ---
 
 Signing an AWS request is not a place you expect to find waste. The signing code

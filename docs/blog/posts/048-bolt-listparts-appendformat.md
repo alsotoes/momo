@@ -14,7 +14,7 @@ summary: "How we eliminated the final per-response heap allocation in S3 XML ren
 artifacts:
   - type: spec
     path: openspec/changes/bolt-listparts-appendformat
-related: ["024-bolt-performance-engineering", "047-bolt-s3-copyresult-time-alloc", "045-bolt-lastmodified-header"]
+related: ["024-bolt-performance-engineering", "047-bolt-s3-copyresult-time-alloc", "045-bolt-lastmodified-header", "051-bolt-aws-chunked-zero-alloc"]
 difficulty: "intermediate"
 pattern: "zero-alloc"
 teaches:

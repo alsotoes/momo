@@ -13,6 +13,7 @@ related:
   - 010-s3-auth-presigned-sigv4
   - 039-signed-payload-sse-s3
   - 008-s3-gateway-core
+  - 051-bolt-aws-chunked-zero-alloc
 ---
 A signed upload has a chicken-and-egg problem: the signature covers the body, but
 you cannot know the body's hash until you have read it all, and reading it all

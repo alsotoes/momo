@@ -41,3 +41,15 @@ func BenchmarkAWSChunkedReaderUnsigned(b *testing.B) {
 		}
 	}
 }
+
+// BenchmarkParseAWSChunkHeader measures the per-chunk header parse cost and
+// allocation count (the zero-allocation optimization on the ingest hot path).
+func BenchmarkParseAWSChunkHeader(b *testing.B) {
+	line := "10000;chunk-signature=" + docChunk1
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		if _, _, err := parseAWSChunkHeader(line); err != nil {
+			b.Fatalf("parse failed: %v", err)
+		}
+	}
+}

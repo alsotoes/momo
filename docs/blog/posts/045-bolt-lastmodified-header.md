@@ -29,6 +29,7 @@ related:
 - 012-s3-integrity-checksums
 - 047-bolt-s3-copyresult-time-alloc
 - 048-bolt-listparts-appendformat
+- 051-bolt-aws-chunked-zero-alloc
 ---
 
 One allocation per request is invisible until it is not. Every S3 `GET`, `HEAD`,
