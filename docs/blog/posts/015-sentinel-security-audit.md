@@ -30,7 +30,6 @@ related:
 - 010-s3-auth-presigned-sigv4
 - 007-at-rest-integrity-and-gc
 - 014-confidential-dedup-oprf
-- 046-auto-trace-dedup
 - 017-scatter-gather-lease-quorum
 - 026-metrics-observability
 - 037-zero-crash-hardening-patterns
@@ -116,5 +115,4 @@ See [docs/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel min
   [014: Confidential Dedup via OPRF](014-confidential-dedup-oprf.md),
   [017: Scatter-Gather Lease Quorum](017-scatter-gather-lease-quorum.md),
   [026: Metrics and Observability](026-metrics-observability.md),
-  [037: Zero-Crash Hardening](037-zero-crash-hardening-patterns.md),
-  [046: Auto-Trace Deduplication](046-auto-trace-dedup.md).
+  [037: Zero-Crash Hardening](037-zero-crash-hardening-patterns.md).

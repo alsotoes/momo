@@ -12,7 +12,6 @@ artifacts:
 related:
   - 016-p2p-gossip-swim
   - 018-adaptive-scaling-peer-quality
-  - 041-architecture-decision-records
 ---
 An `aws-cli` upload and a momo-client upload look almost identical on the wire:
 both are S3 `PUT` requests. They are not, however, equally capable of keeping your
@@ -132,6 +131,5 @@ Per [docs/STANDARDS.md](../../STANDARDS.md):
 - Spec: `openspec/changes/add-external-client-replication/`.
 - Issue: #258.
 - Related posts: [016: P2P Gossip and SWIM](016-p2p-gossip-swim.md),
-  [018: Adaptive Scaling and Peer Quality](018-adaptive-scaling-peer-quality.md),
-  [041: Architecture Decision Records](041-architecture-decision-records.md).
+  [018: Adaptive Scaling and Peer Quality](018-adaptive-scaling-peer-quality.md).
 - Replication strategies: [002](002-replication-strategies-polymorphic.md).

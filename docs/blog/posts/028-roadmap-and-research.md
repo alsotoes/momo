@@ -12,11 +12,9 @@ artifacts:
   - {type: doc, path: docs/ROADMAP.md}
   - {type: doc, path: docs/RESEARCH_PAPERS.md}
 related:
-  - 027-governance-ai-review-spec-first
   - 021-r3-write-durability-quorum
   - 023-momofs-fuse-transport
   - 029-fuse-go-fuse-v2-migration
-  - 041-architecture-decision-records
 ---
 
 Every system that wants to be taken seriously has to answer a boring question:
@@ -85,4 +83,3 @@ and this journal is the one that explains rather than specifies.
   [021](021-r3-write-durability-quorum.md),
   [022](022-momofs-posix-core.md),
   [023](023-momofs-fuse-transport.md).
-- Governance that gates this: [027](027-governance-ai-review-spec-first.md).

@@ -14,7 +14,6 @@ related:
   - 012-s3-integrity-checksums
   - 007-at-rest-integrity-and-gc
   - 004-cas-content-addressable-store
-  - 041-architecture-decision-records
   - 043-reduce-read-verify-hashing
 ---
 
@@ -189,5 +188,4 @@ In accordance with [docs/STANDARDS.md](../../STANDARDS.md):
 - Sibling posts: S3 checksum specification [012](012-s3-integrity-checksums.md),
   storage verify-on-read & GC [007](007-at-rest-integrity-and-gc.md),
   content-addressable foundation [004](004-cas-content-addressable-store.md),
-  ADR framework [041](041-architecture-decision-records.md),
   read verification optimization [043](043-reduce-read-verify-hashing.md).

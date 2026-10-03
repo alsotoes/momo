@@ -14,7 +14,6 @@ artifacts:
   - {type: spec, path: openspec/changes/steering-three-dot-diff-gate}
 related:
   - 024-bolt-performance-engineering
-  - 027-governance-ai-review-spec-first
   - 042-perf-profiling-baseline
 ---
 A performance rule with no teeth is a suggestion. We had a pile of
@@ -102,7 +101,6 @@ See [docs/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel min
 
 - Mindset standards: [docs/STANDARDS.md](../../STANDARDS.md).
 - The Bolt engineering post this gate protects: [024](024-bolt-performance-engineering.md).
-- Governance and three-dot review: [027](027-governance-ai-review-spec-first.md).
 - Profiling baseline: [042](042-perf-profiling-baseline.md).
 - The performance document: `docs/PERFORMANCE.md`; benchmark history:
   `.github/data/benchmark_history.csv`; the gate workflow:
