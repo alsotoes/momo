@@ -175,15 +175,41 @@ func TestAWSChunkedReaderHeaderLineTooLong(t *testing.T) {
 }
 
 func TestParseAWSChunkHeader(t *testing.T) {
-	size, sig, err := parseAWSChunkHeader("10000;chunk-signature=" + docChunk1)
-	if err != nil {
-		t.Fatalf("parse failed: %v", err)
+	cases := []struct {
+		name    string
+		line    string
+		wantSz  int64
+		wantSig string
+		wantErr bool
+	}{
+		{"signed", "10000;chunk-signature=" + docChunk1, 65536, docChunk1, false},
+		{"size only", "10000", 65536, "", false},
+		{"trailing semicolon", "10000;", 65536, "", false},
+		{"empty field before sig", "10000;;chunk-signature=abc", 65536, "abc", false},
+		{"extension around sig", "10000;x=1;chunk-signature=abc;y=2", 65536, "abc", false},
+		{"whitespace around size", " 10000 ;chunk-signature=abc", 65536, "abc", false},
+		{"multiple signatures last wins", "10000;chunk-signature=first;chunk-signature=last", 65536, "last", false},
+		{"empty sig", "10000;chunk-signature=", 65536, "", false},
+		{"empty size", ";chunk-signature=abc", 0, "", true},
+		{"non-hex size", "zzz;chunk-signature=x", 0, "", true},
+		{"negative size", "-1;chunk-signature=x", 0, "", true},
 	}
-	if size != 65536 || sig != docChunk1 {
-		t.Fatalf("got size=%d sig=%s", size, sig)
-	}
-	if _, _, err := parseAWSChunkHeader("zzz;chunk-signature=x"); err == nil {
-		t.Fatal("expected error for non-hex size")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			size, sig, err := parseAWSChunkHeader(tc.line)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error for %q", tc.line)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parse failed: %v", err)
+			}
+			if size != tc.wantSz || sig != tc.wantSig {
+				t.Fatalf("got size=%d sig=%q, want size=%d sig=%q", size, sig, tc.wantSz, tc.wantSig)
+			}
+		})
 	}
 }
 

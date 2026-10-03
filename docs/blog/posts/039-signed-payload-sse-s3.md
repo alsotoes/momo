@@ -12,6 +12,7 @@ artifacts:
 related:
   - 010-s3-auth-presigned-sigv4
   - 008-s3-gateway-core
+  - 051-bolt-aws-chunked-zero-alloc
   - 040-aws-chunked-streaming
 ---
 S3 requests are signed, and the signature is supposed to cover the request body.

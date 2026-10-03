@@ -216,3 +216,7 @@
 ## 2026-09-22 - Zero-Allocation SigV4 Header Parsing
 **Learning:** High-throughput network endpoints like S3 gateways suffer from GC pressure due to `strings.Split` and `strings.TrimSpace` during mandatory authentication parsing.
 **Action:** Replace standard library string split functions on hot paths with manual `strings.IndexByte` and slice indexing to eliminate heap allocations entirely.
+
+## 2026-10-01 - Zero-Allocation AWS Chunked Header Parsing
+**Learning:** `strings.Split` on the aws-chunked chunk-header line allocates a slice header and backing array on every chunk — and `strings.TrimPrefix` allocates again on each `chunk-signature=` match. Both are pure GC pressure on the S3 ingest hot path, where a body is framed as many chunks.
+**Action:** On hot paths, replace `strings.Split` with a `strings.IndexByte` scan that slices the original string (zero copies), and replace `strings.TrimPrefix` with a length-bound slice (`s[len(prefix):]`). Preserve semantics exactly (e.g. last `chunk-signature=` wins) and cover edge cases (no `;`, trailing `;`, `;;`, multiple fields) in tests.

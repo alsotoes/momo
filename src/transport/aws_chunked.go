@@ -328,18 +328,40 @@ func (r *awsChunkedReader) readHeaderLine() (string, error) {
 
 // parseAWSChunkHeader parses "hex-size[;chunk-signature=<sig>][;ext=v]".
 func parseAWSChunkHeader(line string) (int64, string, error) {
-	parts := strings.Split(line, ";")
-	size, err := strconv.ParseInt(strings.TrimSpace(parts[0]), 16, 64)
+	// ⚡ Bolt: parse the header with strings.IndexByte slicing instead of
+	// strings.Split. Split allocates a slice header plus a backing array on
+	// every chunk of an aws-chunked body — pure GC pressure on the ingest hot
+	// path. Slicing the original string is allocation-free.
+	var sizeStr, rest string
+	if idx := strings.IndexByte(line, ';'); idx != -1 {
+		sizeStr = line[:idx]
+		rest = line[idx+1:]
+	} else {
+		sizeStr = line
+	}
+
+	size, err := strconv.ParseInt(strings.TrimSpace(sizeStr), 16, 64)
 	if err != nil || size < 0 {
 		return 0, "", fmt.Errorf("malformed aws-chunked chunk size %q: %w", line, syscall.EBADMSG)
 	}
 	if size > maxAWSChunkSize {
 		return 0, "", fmt.Errorf("aws-chunked chunk size %d exceeds maximum %d: %w", size, maxAWSChunkSize, syscall.EBADMSG)
 	}
+
 	sig := ""
-	for _, part := range parts[1:] {
+	for len(rest) > 0 {
+		var part string
+		if idx := strings.IndexByte(rest, ';'); idx != -1 {
+			part = rest[:idx]
+			rest = rest[idx+1:]
+		} else {
+			part = rest
+			rest = ""
+		}
 		if strings.HasPrefix(part, awsChunkSigField) {
-			sig = strings.TrimPrefix(part, awsChunkSigField)
+			// ⚡ Bolt: slice off the field prefix instead of strings.TrimPrefix,
+			// which allocates a new string on every match.
+			sig = part[len(awsChunkSigField):]
 			if len(sig) > 64 {
 				return 0, "", fmt.Errorf("malformed aws-chunked signature length: %w", syscall.EBADMSG)
 			}
