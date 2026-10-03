@@ -36,6 +36,9 @@ This document is governed by the steering rules in [`openspec/config.yaml`](../o
 - **Rule 79**: No Direct Push to Master — all changes go through issue → branch → PR (`Resolves #ISSUE_ID`) → CI → reviewer → merge `--merge --delete-branch`. Doc-only / pre-commit-regen / trivial-refactor / CI-fix / emergency-hotfix exceptions may bypass, but must be tagged in the commit message
 - **Rule 89**: MemPalace Knowledge Grounding — run `mempalace mine .` from repo root + `npx repomix` to refresh context, then query `mempalace search "<topic>" --wing momo` BEFORE reading source files / re-investigating architecture. Reuse indexed project knowledge instead of re-loading files to cut token burn.
 - **Rule 90**: Auto-Trace Issue Deduplication — the AI reviewer MUST NEVER create duplicate auto-trace issues for the same PR: search existing OPEN auto-trace issues first and reuse the canonical, use the CURRENT PR body from the API (not the stale event payload), and rely on workflow `concurrency` (`cancel-in-progress: true`) to serialize pushes. Prevents the #1057 duplicate-issue incident.
+- **Rule 91**: Tool Selection Strategy — targeted tools (glob/grep/read) by default; `mempalace search` before reading files; `repomix` only for whole-repo analysis.
+- **Rule 92**: Educational Blog Posts — every post must be a teachable narrative (Real Problem → Why Obvious Solutions Failed → Solution → Principle → Verification → Failure Modes → When NOT to Use), not a changelog.
+- **Rule 93**: Duplicate Jules PR/Branch Consolidation — when Jules opens multiple PRs/branches for the same task, keep the merged canonical PR, close the duplicate with `--delete-branch`, close its auto-trace issue as superseded, and prune the remote. Complements Rule 80 (one PR rebuild) and Rule 90 (reviewer-created issues). Incident: #1112 (merged) vs #1114 (closed).
 
 ## Pre-Flight Checklist
 
@@ -738,6 +741,10 @@ If any runs are `in_progress` or `queued`, wait. If any failed, fix `master` fir
 **Solution**: Immediately consolidate to one canonical issue (lowest number, OPEN), close dups with `gh issue close <dups> --comment "Duplicate of #<canonical> (canonical tracker for PR #<N>). Closed per Rule 20."`, update PR body with `Resolves #<canonical>`. If new auto-trace appears during takeover (stale reviewer read), close it immediately.
 
 **Automated-duplicate variant (Rule 90):** When the AI reviewer itself creates 50+ duplicate auto-trace issues for one PR (e.g., #997–#1054 for PR #996), the root cause is the reviewer script — no dedup search, stale event payload, and no workflow concurrency. Fix `ai_reviewer.py` (`find_existing_auto_trace` + `get_current_pr_body`) and add `concurrency: cancel-in-progress: true` to `gemini_reviewer.yml`; then bulk-close the duplicates with the canonical message. Do NOT just close duplicates and leave the script broken — the next synchronize will re-create them.
+
+### Duplicate Jules PRs for the Same Task (Rule 93)
+**Pitfall**: Jules opens more than one PR/branch for the same task across parallel runs (e.g., #1112 and #1114 both implementing the aws-chunked zero-alloc parse). You merge one, and the twin lingers open with its own auto-trace issue and a stale branch.
+**Solution**: After merging the canonical PR, list open PRs (`gh pr list --state open`), identify the duplicate by title/diff, close it with an explanatory comment (`gh pr close <dup> --delete-branch` referencing the canonical PR/commit), close its auto-trace issue as superseded (pointing at the canonical tracking issue), then `git fetch --prune` to drop the remote branch. Confirm no related PRs remain open.
 
 ### Monolithic Feature in One PR (Rule 81)
 **Pitfall**: Attempting to implement a large feature (e.g., R6 metadata HA) in a single massive PR. The diff is unreadable, reviewer cannot verify, CI timeout risk, all-or-nothing merge risk.

@@ -25,6 +25,7 @@ related:
 - 047-bolt-s3-copyresult-time-alloc
 - 045-bolt-lastmodified-header
 - 051-bolt-aws-chunked-zero-alloc
+- 052-rule-93-duplicate-jules-prs
 - 003-transport-tcp-to-quic
 - 025-benchmark-benchstat-gate
 - 007-at-rest-integrity-and-gc

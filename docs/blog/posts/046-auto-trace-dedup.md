@@ -13,6 +13,7 @@ artifacts:
 related:
   - 015-sentinel-security-audit
   - 024-bolt-performance-engineering
+  - 052-rule-93-duplicate-jules-prs
 ---
 Automated governance is only as good as its ability to fail *once*. An **idempotent**
 operation is one you can run repeatedly and get the same result — running it twice
