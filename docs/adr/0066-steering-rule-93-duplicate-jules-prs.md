@@ -44,11 +44,11 @@ None documented.
 - **Code**: Done
 - **Tests**: Done
 - **Docs**: Planned
-- **Blog post**: 
+- **Blog post**: docs/blog/posts/052-rule-93-duplicate-jules-prs.md
 
 ## References
 - Issue: #1121
 - PR: 
 - Spec: `openspec/changes/steering-rule-93-duplicate-jules-prs/`
-- Blog: 
+- Blog: docs/blog/posts/052-rule-93-duplicate-jules-prs.md
 
