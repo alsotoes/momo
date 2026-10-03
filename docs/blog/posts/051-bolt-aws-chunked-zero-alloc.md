@@ -15,7 +15,7 @@ summary: "How we removed the last heap allocation from the aws-chunked ingest pa
 artifacts:
   - type: spec
     path: openspec/changes/bolt-aws-chunked-zero-alloc
-related: ["024-bolt-performance-engineering", "039-signed-payload-sse-s3", "040-aws-chunked-streaming", "045-bolt-lastmodified-header", "047-bolt-s3-copyresult-time-alloc", "048-bolt-listparts-appendformat", "049-eliminate-redundant-time-format-allocations"]
+related: ["024-bolt-performance-engineering", "039-signed-payload-sse-s3", "040-aws-chunked-streaming", "045-bolt-lastmodified-header", "047-bolt-s3-copyresult-time-alloc", "048-bolt-listparts-appendformat", "049-eliminate-redundant-time-format-allocations", "052-rule-93-duplicate-jules-prs"]
 difficulty: "intermediate"
 pattern: "zero-alloc"
 teaches:
