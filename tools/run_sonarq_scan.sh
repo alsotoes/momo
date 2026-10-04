@@ -33,18 +33,23 @@ for arg in "$@"; do
             echo "  -h, --help         Show this help message"
             exit 0
             ;;
+        *)
+            echo "Unknown option: $arg" >&2
+            echo "Use --help for usage information." >&2
+            exit 1
+            ;;
     esac
 done
 
-if [ "$RUN_TESTS" = true ]; then
+if [[ "$RUN_TESTS" == true ]]; then
     echo "=== Running Go Tests & Generating Coverage (coverage.out) ==="
     make coverage
-elif [ ! -f "coverage.out" ]; then
+elif [[ ! -f "coverage.out" ]]; then
     echo "INFO: coverage.out not found. Run with -t / --with-tests to generate coverage reports."
 fi
 
 # Automatically load token from ~/.bashrc if not already in environment
-if [ -f "$HOME/.bashrc" ] && [ -z "$SONAR_TOKEN" ] && [ -z "$SONARQUBE_TOKEN_HEADUP" ]; then
+if [[ -f "$HOME/.bashrc" && -z "$SONAR_TOKEN" && -z "$SONARQUBE_TOKEN_HEADUP" ]]; then
     eval "$(grep -E '^[[:space:]]*export[[:space:]]+(SONARQUBE_TOKEN_HEADUP|SONAR_TOKEN)=' "$HOME/.bashrc" 2>/dev/null || true)"
 fi
 
@@ -53,15 +58,15 @@ export SONAR_TOKEN="${SONAR_TOKEN:-${SONARQUBE_TOKEN_HEADUP:-}}"
 export SONAR_SCANNER_VERSION="8.1.0.6389"
 export SONAR_HOST_URL="https://sonarcloud.io"
 
-if [ -z "$SONAR_TOKEN" ]; then
+if [[ -z "$SONAR_TOKEN" ]]; then
     echo "ERROR: Sonar token is not set. Please export SONAR_TOKEN or SONARQUBE_TOKEN_HEADUP." >&2
     exit 1
 fi
 
 # Cache scanner download locally
-if [ ! -d "$HOME/.sonar/sonar-scanner-${SONAR_SCANNER_VERSION}-linux-x64" ]; then
+if [[ ! -d "$HOME/.sonar/sonar-scanner-${SONAR_SCANNER_VERSION}-linux-x64" ]]; then
     echo "=== Downloading SonarCloud CLI ==="
-    curl -sSLo "$HOME/.sonar/sonar-scanner.zip" "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${SONAR_SCANNER_VERSION}-linux-x64.zip"
+    curl --proto '=https' --tlsv1.2 -sSLo "$HOME/.sonar/sonar-scanner.zip" "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${SONAR_SCANNER_VERSION}-linux-x64.zip"
     unzip -o "$HOME/.sonar/sonar-scanner.zip" -d "$HOME/.sonar/"
 fi
 
@@ -70,11 +75,11 @@ export PATH="$PATH:$HOME/.sonar/sonar-scanner-${SONAR_SCANNER_VERSION}-linux-x64
 echo "=== Running SonarCloud Scanner ==="
 SCANNER_FLAGS=("-Dproject.settings=./sonar-project.properties")
 
-if [ "$DEBUG_MODE" = true ]; then
+if [[ "$DEBUG_MODE" == true ]]; then
     SCANNER_FLAGS+=("-X")
 fi
 
-if [ "$WAIT_FOR_QG" = true ]; then
+if [[ "$WAIT_FOR_QG" == true ]]; then
     SCANNER_FLAGS+=("-Dsonar.qualitygate.wait=true")
 else
     SCANNER_FLAGS+=("-Dsonar.qualitygate.wait=false")
