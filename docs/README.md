@@ -56,6 +56,9 @@ It is designed around a small, auditable core: CRUSH-lite placement, a pluggable
 | `conf/` | Example configurations (`momo.conf`, `smoke.conf`, `pentest.conf`) |
 | `pentest/` | Security pentest toolkit — DotDotPwn fuzzing + Python exploit scripts |
 | `hooks/` | Git hooks (pre-commit benchmark/doc regeneration) |
+| `tools/` | Internal developer tooling and helper scripts (e.g. `adr-sync`, `run_sonarq_scan.sh`) |
+| `.jules/` | Learning files (`bolt.md`, `sentinel.md`) and instructions for Jules agent (`instructions.md`) |
+| `JULES.md` | Autonomous agent instruction pointer for Google Labs Jules |
 | `sonar-project.properties` | SonarCloud/SonarQube static analysis and test coverage configuration |
 
 ## Getting Started

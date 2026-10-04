@@ -423,6 +423,13 @@ Rationale: PR comments appear in the conversation timeline and trigger notificat
 
 ## Jules PR Detection & Reviewer Protocol (Rules 68, 69)
 
+### Jules Steering Rules Ingestion (`.jules/instructions.md` & `JULES.md`)
+
+Google Labs Jules automatically ingests markdown files located in `.jules/` and root-level `AGENTS.md` / `JULES.md`. To ensure Jules understands and respects Momo's steering rules without violating Rule 39 (Single Source of Truth):
+- **`.jules/instructions.md`**: Directs Jules to read [`openspec/config.yaml`](../openspec/config.yaml) (under `context`, "Project Steering Rules") before planning or executing tasks, highlighting key constraints (Rule 44 append-only knowledge files, Rules 4 & 37 zero-crash panic recovery, Rules 5 & 40 concurrency and ephemeral ports, Rules 25 & 26 formatting and vendoring).
+- **`JULES.md`**: Root-level entry point pointing Jules to `openspec/config.yaml` and `.jules/instructions.md`.
+- **`.jules/bolt.md` & `.jules/sentinel.md`**: Cumulative learning files carrying explicit action directives to always review `openspec/config.yaml` first.
+
 ### Detecting Jules-Created PRs (Rule 68)
 
 Jules-created PRs are identified by either of these phrases in the PR's first comment or PR body:

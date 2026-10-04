@@ -162,3 +162,7 @@
 **Vulnerability:** The `SendMetadata` methods in MomoTCP, MomoQUIC, and S3Communicator validated path traversal by splitting the wireName on `/` and checking each part. An attacker could bypass this by URL-encoding the path separator (`..%2ffile`), which passes the split-based check (no literal `/` to split on) and `HasPathTraversalChars` (which only rejects literal `/`, `\`, and exact `..`).
 **Learning:** Path traversal validation must handle URL-encoded bypasses. Simply splitting on literal `/` is insufficient when user input may be URL-encoded. The fix URL-decodes the wireName using `url.PathUnescape` before validation, ensuring encoded path separators (`%2f`, `%2F`, `%5c`, `%5C`) are properly decoded and caught by the existing `HasPathTraversalChars` check.
 **Prevention:** Always URL-decode user-supplied path strings before path traversal validation. Apply `url.PathUnescape` to the raw wire input, then validate the decoded string using the existing split-based `HasPathTraversalChars` check. This catches both literal and URL-encoded path traversal attempts.
+
+## 2026-10-04 - [Mandatory Compliance with Project Steering Rules]
+**Learning:** Operating on the Momo codebase without checking `openspec/config.yaml` bypasses crucial security, path-traversal, panic recovery, and protocol-stability steering rules.
+**Action:** Always read `openspec/config.yaml` (under Project Steering Rules) and `.jules/instructions.md` prior to executing tasks or creating PRs.

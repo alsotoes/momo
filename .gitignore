@@ -34,9 +34,10 @@ test.sh
 *_bench*.txt
 empty.txt
 
-# Coverage and profiles
+# Coverage, profiles, and Sonar scanner
 *.out
 *.prof
+.scannerwork/
 
 # Compiled binaries and executable overrides
 momo
