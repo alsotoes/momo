@@ -1,0 +1,6 @@
+interface:
+  display_name: "Momo"
+  short_description: "Repo-specific patterns and workflows for momo"
+  default_prompt: "Use the momo repo skill to follow existing architecture, testing, and workflow conventions."
+policy:
+  allow_implicit_invocation: true
