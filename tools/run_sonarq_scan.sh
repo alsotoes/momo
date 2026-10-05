@@ -1,4 +1,7 @@
 #!/bin/bash
+# Developer helper for local/manual troubleshooting only.
+# Automated scans are executed in CI via .github/workflows/go.yml.
+#
 # Exit on error
 set -e
 

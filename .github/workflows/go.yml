@@ -8,6 +8,7 @@ on:
       - 'go.mod'
       - 'go.sum'
       - 'Makefile'
+      - 'sonar-project.properties'
   pull_request:
     branches: [ "master" ]
     paths:
@@ -15,12 +16,15 @@ on:
       - 'go.mod'
       - 'go.sum'
       - 'Makefile'
+      - 'sonar-project.properties'
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
     - name: Set up Go
       uses: actions/setup-go@v7
       with:
@@ -67,3 +71,13 @@ jobs:
       with:
         name: coverage-report
         path: coverage.out
+
+    - name: SonarQube Cloud Scan
+      if: ${{ secrets.SONAR_TOKEN != '' }}
+      uses: SonarSource/sonarqube-scan-action@v8
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      with:
+        args: >
+          -Dsonar.host.url=https://sonarcloud.io

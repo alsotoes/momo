@@ -796,3 +796,8 @@ SonarCloud is configured (via both `sonar-project.properties` and `.sonarcloud.p
 - **Git Submodules**: `docs/blog/themes/**` (`PaperMod`), `**/.gitmodules`, and any external submodules are explicitly excluded and ignored by SCM exclusions.
 - **Tests**: `**/*_test.go`, `**/testing.go`, `tests/**` (chaos & k6 tests).
 - **Non-application assets**: All tooling, documentation, pentest scripts, and configurations are excluded by targeting `src/` directly.
+
+### Automated CI Analysis vs Local Troubleshooting
+
+- **Automated CI Analysis**: Executed automatically on every push to `master` and pull request in `.github/workflows/go.yml` via `SonarSource/sonarqube-scan-action`. Tests run through `make coverage`, generating `coverage.out` which is uploaded directly to SonarCloud.
+- **Local Troubleshooting**: Developer script [`tools/run_sonarq_scan.sh`](file:///home/alvaro/code/momo/tools/run_sonarq_scan.sh) is reserved for local, on-demand debugging.
