@@ -166,3 +166,8 @@
 ## 2026-10-04 - [Mandatory Compliance with Project Steering Rules]
 **Learning:** Operating on the Momo codebase without checking `openspec/config.yaml` bypasses crucial security, path-traversal, panic recovery, and protocol-stability steering rules.
 **Action:** Always read `openspec/config.yaml` (under Project Steering Rules) and `.jules/instructions.md` prior to executing tasks or creating PRs.
+
+## 2026-10-04 - Path Traversal via Absolute Paths in Query Handlers
+**Vulnerability:** Query handlers (`handleGet`, `handleDelete`, `DecodeFileMetadataList`) checked for `..` but did not validate against absolute paths starting with `/`.
+**Learning:** Checking for `..` is insufficient for path traversal validation when absolute paths are also a threat. A malicious user could provide an absolute path to read or delete arbitrary files on the system if the underlying storage layer trusts the name.
+**Prevention:** Always normalize paths using `path.Clean()` and explicitly reject paths that are absolute (start with `/`), equal to `.` or `..`, or traverse upwards (start with `../`). Also continue to reject Windows-style backslashes `\` if applicable.

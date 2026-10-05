@@ -1,11 +1,14 @@
 package server
 
 import (
+	"errors"
 	"reflect"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/storage"
 )
 
 func TestEncodeDecodeFileMetadataList_ModTime(t *testing.T) {
@@ -126,3 +129,131 @@ func TestMergeFileMetadataLists_KeepsAliasNames(t *testing.T) {
 		}
 	}
 }
+
+func TestQueryHandler_PathTraversalRejection(t *testing.T) {
+	h := NewStorageQueryHandler(nil)
+
+	traversalNames := []string{
+		"/etc/passwd",
+		"/root/.ssh/id_rsa",
+		"../foo",
+		"foo/../../bar",
+		"..",
+		"dir\\file.txt",
+	}
+
+	for _, name := range traversalNames {
+		t.Run("handleGet_"+name, func(t *testing.T) {
+			_, err := h.handleGet([]byte(name))
+			if err == nil {
+				t.Fatalf("expected error for handleGet(%q), got nil", name)
+			}
+			if !errors.Is(err, syscall.EBADMSG) {
+				t.Errorf("expected syscall.EBADMSG for handleGet(%q), got: %v", name, err)
+			}
+		})
+
+		t.Run("handleDelete_"+name, func(t *testing.T) {
+			_, err := h.handleDelete([]byte(name))
+			if err == nil {
+				t.Fatalf("expected error for handleDelete(%q), got nil", name)
+			}
+			if !errors.Is(err, syscall.EBADMSG) {
+				t.Errorf("expected syscall.EBADMSG for handleDelete(%q), got: %v", name, err)
+			}
+		})
+	}
+
+	t.Run("handleGet_empty", func(t *testing.T) {
+		_, err := h.handleGet([]byte(""))
+		if err == nil || !errors.Is(err, syscall.EINVAL) {
+			t.Errorf("expected syscall.EINVAL for empty handleGet, got: %v", err)
+		}
+	})
+
+	t.Run("handleDelete_empty", func(t *testing.T) {
+		_, err := h.handleDelete([]byte(""))
+		if err == nil || !errors.Is(err, syscall.EINVAL) {
+			t.Errorf("expected syscall.EINVAL for empty handleDelete, got: %v", err)
+		}
+	})
+
+	t.Run("DecodeFileMetadataList_traversal", func(t *testing.T) {
+		for _, name := range traversalNames {
+			badList := []common.FileMetadata{
+				{Name: name, Hash: "validhash", Size: 10},
+			}
+			encoded := EncodeFileMetadataList(badList)
+			_, err := DecodeFileMetadataList(encoded)
+			if err == nil {
+				t.Fatalf("expected error decoding list with traversal name %q, got nil", name)
+			}
+			if !errors.Is(err, syscall.EBADMSG) {
+				t.Errorf("expected syscall.EBADMSG decoding traversal name %q, got: %v", name, err)
+			}
+		}
+	})
+
+	t.Run("handleGet_oversized", func(t *testing.T) {
+		oversized := strings.Repeat("a", common.FileInfoLength+1)
+		_, err := h.handleGet([]byte(oversized))
+		if err == nil || !errors.Is(err, syscall.EBADMSG) {
+			t.Errorf("expected syscall.EBADMSG for oversized handleGet, got: %v", err)
+		}
+	})
+
+	t.Run("handleDelete_oversized", func(t *testing.T) {
+		oversized := strings.Repeat("a", common.FileInfoLength+1)
+		_, err := h.handleDelete([]byte(oversized))
+		if err == nil || !errors.Is(err, syscall.EBADMSG) {
+			t.Errorf("expected syscall.EBADMSG for oversized handleDelete, got: %v", err)
+		}
+	})
+
+	t.Run("handleGet_crlf", func(t *testing.T) {
+		_, err := h.handleGet([]byte("file\r\n.txt"))
+		if err == nil || !errors.Is(err, syscall.EBADMSG) {
+			t.Errorf("expected syscall.EBADMSG for crlf handleGet, got: %v", err)
+		}
+	})
+
+	t.Run("handleDelete_crlf", func(t *testing.T) {
+		_, err := h.handleDelete([]byte("file\n.txt"))
+		if err == nil || !errors.Is(err, syscall.EBADMSG) {
+			t.Errorf("expected syscall.EBADMSG for crlf handleDelete, got: %v", err)
+		}
+	})
+
+	t.Run("handleGet_and_handleDelete_valid", func(t *testing.T) {
+		hValid := NewStorageQueryHandler(&queryMockStore{})
+		res, err := hValid.handleGet([]byte("valid/path.txt"))
+		if err != nil {
+			t.Fatalf("unexpected error for valid handleGet: %v", err)
+		}
+		if len(res) == 0 {
+			t.Errorf("expected non-empty result for valid handleGet")
+		}
+
+		resDel, err := hValid.handleDelete([]byte("valid/path.txt"))
+		if err != nil {
+			t.Fatalf("unexpected error for valid handleDelete: %v", err)
+		}
+		if len(resDel) == 0 || resDel[0] != 1 {
+			t.Errorf("expected success byte for valid handleDelete")
+		}
+	})
+}
+
+type queryMockStore struct {
+	storage.Store
+}
+
+func (m *queryMockStore) GetMeta(name string) (common.FileMetadata, error) {
+	return common.FileMetadata{Name: name, Hash: "hash", Size: 100}, nil
+}
+
+func (m *queryMockStore) Delete(name string) error {
+	return nil
+}
+
+

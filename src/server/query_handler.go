@@ -48,6 +48,25 @@ func (h *StorageQueryHandler) handleList() ([]byte, error) {
 	return EncodeFileMetadataList(files), nil
 }
 
+// parseAndValidateName parses and validates a file name from query data.
+func parseAndValidateName(data []byte) (string, error) {
+	if len(data) == 0 {
+		return "", fmt.Errorf("empty file name: %w", syscall.EINVAL)
+	}
+	name := string(data)
+	if len(name) > common.FileInfoLength {
+		return "", fmt.Errorf("name exceeds max length %d: %w", common.FileInfoLength, syscall.EBADMSG)
+	}
+	if strings.ContainsAny(name, "\r\n") {
+		return "", fmt.Errorf("invalid characters in name: %w", syscall.EBADMSG)
+	}
+	// 🛡️ Sentinel: Sanitize name to prevent path traversal using common validation logic.
+	if err := common.ValidatePath(name); err != nil {
+		return "", err
+	}
+	return name, nil
+}
+
 // handleGet returns metadata for a specific file.
 func (h *StorageQueryHandler) handleGet(data []byte) (result []byte, err error) {
 	defer func() {
@@ -57,17 +76,9 @@ func (h *StorageQueryHandler) handleGet(data []byte) (result []byte, err error) 
 		}
 	}()
 
-	if len(data) == 0 {
-		return nil, fmt.Errorf("empty file name: %w", syscall.EINVAL)
-	}
-	name := string(data)
-	if strings.ContainsAny(name, "\r\n") {
-		return nil, fmt.Errorf("invalid characters in name: %w", syscall.EBADMSG)
-	}
-	// 🛡️ Sentinel: Sanitize name to prevent path traversal. Allow forward slashes
-	// for full virtual paths (e.g., "dirA/file.txt") but reject ".." and backslashes.
-	if strings.Contains(name, "..") || strings.Contains(name, "\\") {
-		return nil, fmt.Errorf("invalid name: %w", syscall.EBADMSG)
+	name, err := parseAndValidateName(data)
+	if err != nil {
+		return nil, err
 	}
 	// Only metadata is needed for a QueryGet; use GetMeta so the content
 	// stream is not opened unnecessarily on large blobs/S3 backends (issue #660).
@@ -119,17 +130,9 @@ func (h *StorageQueryHandler) handleDelete(data []byte) (result []byte, err erro
 		}
 	}()
 
-	if len(data) == 0 {
-		return nil, fmt.Errorf("empty file name: %w", syscall.EINVAL)
-	}
-	name := string(data)
-	if strings.ContainsAny(name, "\r\n") {
-		return nil, fmt.Errorf("invalid characters in name: %w", syscall.EBADMSG)
-	}
-	// 🛡️ Sentinel: Sanitize name to prevent path traversal. Allow forward slashes
-	// for full virtual paths (e.g., "dirA/file.txt") but reject ".." and backslashes.
-	if strings.Contains(name, "..") || strings.Contains(name, "\\") {
-		return nil, fmt.Errorf("invalid name: %w", syscall.EBADMSG)
+	name, err := parseAndValidateName(data)
+	if err != nil {
+		return nil, err
 	}
 	if err := h.store.Delete(name); err != nil {
 		return nil, err
@@ -278,8 +281,8 @@ func DecodeFileMetadataList(data []byte) (result []common.FileMetadata, err erro
 		if common.HasPathTraversalChars(hash) {
 			return nil, fmt.Errorf("invalid hash at entry %d: %w", i, syscall.EBADMSG)
 		}
-		if strings.Contains(name, "..") || strings.Contains(name, "\\") {
-			return nil, fmt.Errorf("invalid name at entry %d: %w", i, syscall.EBADMSG)
+		if err := common.ValidatePath(name); err != nil {
+			return nil, fmt.Errorf("invalid name at entry %d: %w", i, err)
 		}
 		if fileSize < 0 || fileSize > common.MaxFileSize {
 			return nil, fmt.Errorf("invalid file size at entry %d: %w", i, syscall.EBADMSG)
