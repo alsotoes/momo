@@ -9,6 +9,7 @@ on:
       - 'go.sum'
       - 'Makefile'
       - 'sonar-project.properties'
+      - '.github/workflows/go.yml'
   pull_request:
     branches: [ "master" ]
     paths:
@@ -17,6 +18,7 @@ on:
       - 'go.sum'
       - 'Makefile'
       - 'sonar-project.properties'
+      - '.github/workflows/go.yml'
 
 jobs:
   build:
