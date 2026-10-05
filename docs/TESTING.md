@@ -765,7 +765,6 @@ The only phase 2-4 metric not yet implemented is `momo_lease_contentions_total`.
 
 ## Static Analysis & Code Quality (SonarCloud)
 
-<a href="https://sonarcloud.io/summary/new_code?id=alsotoes_momo"><img src="https://sonarcloud.io/images/project_badges/sonarcloud-dark.svg" alt="SonarQube Cloud" height="20" /></a>
 <a href="https://sonarcloud.io/summary/new_code?id=alsotoes_momo"><img src="https://sonarcloud.io/api/project_badges/measure?project=alsotoes_momo&metric=alert_status" alt="Quality gate status" height="20" /></a>
 <a href="https://sonarcloud.io/summary/new_code?id=alsotoes_momo"><img src="https://sonarcloud.io/api/project_badges/ai_code_assurance?project=alsotoes_momo" alt="AI Code Assurance" height="20" /></a>
 
