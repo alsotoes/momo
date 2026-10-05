@@ -794,5 +794,5 @@ Momo integrates with SonarCloud for continuous static code analysis, vulnerabili
 SonarCloud is configured (via both `sonar-project.properties` and `.sonarcloud.properties`) to focus strictly on production Go code in `src/`. Non-application code is excluded:
 - **Dependencies & Vendor**: `vendor/**` is entirely excluded.
 - **Git Submodules**: `docs/blog/themes/**` (`PaperMod`), `**/.gitmodules`, and any external submodules are explicitly excluded and ignored by SCM exclusions.
-- **Tests**: `**/*_test.go`, `pad_test.go`, `**/testing.go`, `tests/**` (chaos & k6 tests).
+- **Tests**: `**/*_test.go`, `**/testing.go`, `tests/**` (chaos & k6 tests).
 - **Non-application assets**: All tooling, documentation, pentest scripts, and configurations are excluded by targeting `src/` directly.
