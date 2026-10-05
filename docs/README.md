@@ -13,6 +13,7 @@
   <a href="https://sonarcloud.io/summary/new_code?id=alsotoes_momo"><img src="https://sonarcloud.io/api/project_badges/measure?project=alsotoes_momo&metric=security_rating" alt="Security Rating" height="20" /></a>
   <a href="https://sonarcloud.io/summary/new_code?id=alsotoes_momo"><img src="https://sonarcloud.io/api/project_badges/measure?project=alsotoes_momo&metric=vulnerabilities" alt="Vulnerabilities" height="20" /></a>
   <a href="https://sonarcloud.io/summary/new_code?id=alsotoes_momo"><img src="https://sonarcloud.io/api/project_badges/measure?project=alsotoes_momo&metric=bugs" alt="Bugs" height="20" /></a>
+  <a href="https://sonarcloud.io/summary/new_code?id=alsotoes_momo"><img src="https://sonarcloud.io/api/project_badges/measure?project=alsotoes_momo&metric=coverage" alt="Coverage" height="20" /></a>
 </p>
 
 <p align="center">
