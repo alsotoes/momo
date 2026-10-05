@@ -2,7 +2,6 @@
 
 <p align="center">
   <a href="https://github.com/alsotoes/momo/actions/workflows/go.yml"><img src="https://github.com/alsotoes/momo/actions/workflows/go.yml/badge.svg" alt="Go CI" height="20" /></a>
-  <a href="https://goreportcard.com/report/github.com/alsotoes/momo"><img src="https://goreportcard.com/badge/github.com/alsotoes/momo" alt="Go Report Card" height="20" /></a>
   <a href="https://pkg.go.dev/github.com/alsotoes/momo"><img src="https://pkg.go.dev/badge/github.com/alsotoes/momo.svg" alt="Go Reference" height="20" /></a>
   <a href="https://github.com/alsotoes/momo/blob/master/go.mod"><img src="https://img.shields.io/github/go-mod/go-version/alsotoes/momo" alt="Go Version" height="20" /></a>
   <a href="https://github.com/alsotoes/momo/blob/master/LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPL v3" height="20" /></a>
@@ -14,7 +13,6 @@
   <a href="https://sonarcloud.io/summary/new_code?id=alsotoes_momo"><img src="https://sonarcloud.io/api/project_badges/measure?project=alsotoes_momo&metric=security_rating" alt="Security Rating" height="20" /></a>
   <a href="https://sonarcloud.io/summary/new_code?id=alsotoes_momo"><img src="https://sonarcloud.io/api/project_badges/measure?project=alsotoes_momo&metric=vulnerabilities" alt="Vulnerabilities" height="20" /></a>
   <a href="https://sonarcloud.io/summary/new_code?id=alsotoes_momo"><img src="https://sonarcloud.io/api/project_badges/measure?project=alsotoes_momo&metric=bugs" alt="Bugs" height="20" /></a>
-  <a href="https://sonarcloud.io/summary/new_code?id=alsotoes_momo"><img src="https://sonarcloud.io/api/project_badges/measure?project=alsotoes_momo&metric=coverage" alt="Coverage" height="20" /></a>
 </p>
 
 <p align="center">
