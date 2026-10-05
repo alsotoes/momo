@@ -1,9 +1,9 @@
 # Momo
 
-[![SonarQube Cloud](https://sonarcloud.io/images/project_badges/sonarcloud-dark.svg)](https://sonarcloud.io/summary/new_code?id=alsotoes_momo)
-[![Quality gate status](https://sonarcloud.io/api/project_badges/measure?project=alsotoes_momo&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=alsotoes_momo)
-[![AI Code Assurance](https://sonarcloud.io/api/project_badges/ai_code_assurance?project=alsotoes_momo)](https://sonarcloud.io/summary/new_code?id=alsotoes_momo)
-![Visitors](https://visitor-badge.laobi.icu/badge?page_id=alsotoes.momo)
+<a href="https://sonarcloud.io/summary/new_code?id=alsotoes_momo"><img src="https://sonarcloud.io/images/project_badges/sonarcloud-dark.svg" alt="SonarQube Cloud" height="20" /></a>
+<a href="https://sonarcloud.io/summary/new_code?id=alsotoes_momo"><img src="https://sonarcloud.io/api/project_badges/measure?project=alsotoes_momo&metric=alert_status" alt="Quality gate status" height="20" /></a>
+<a href="https://sonarcloud.io/summary/new_code?id=alsotoes_momo"><img src="https://sonarcloud.io/api/project_badges/ai_code_assurance?project=alsotoes_momo" alt="AI Code Assurance" height="20" /></a>
+<img src="https://visitor-badge.laobi.icu/badge?page_id=alsotoes.momo" alt="Visitors" height="20" />
 
 Momo is a high-performance, transport-agnostic **distributed object storage system** written in Go. It stores content-addressed blobs (SHA-256) with server-side deduplication, replicates them across a cluster using pluggable replication strategies, and exposes multiple access surfaces: a native TCP/QUIC protocol and an S3-compatible REST gateway, plus a FUSE filesystem (`momofs`) for POSIX access.
 
