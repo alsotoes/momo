@@ -767,6 +767,7 @@ The only phase 2-4 metric not yet implemented is `momo_lease_contentions_total`.
 
 [![SonarQube Cloud](https://sonarcloud.io/images/project_badges/sonarcloud-dark.svg)](https://sonarcloud.io/summary/new_code?id=alsotoes_momo)
 [![Quality gate status](https://sonarcloud.io/api/project_badges/measure?project=alsotoes_momo&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=alsotoes_momo)
+[![AI Code Assurance](https://sonarcloud.io/api/project_badges/ai_code_assurance?project=alsotoes_momo)](https://sonarcloud.io/summary/new_code?id=alsotoes_momo)
 
 Momo integrates with SonarCloud for continuous static code analysis, vulnerability scanning, and code coverage tracking configured via `sonar-project.properties`.
 
