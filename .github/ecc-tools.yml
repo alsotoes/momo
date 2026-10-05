@@ -1,0 +1,25 @@
+# ECC Tools GitHub App configuration (repo-scoped).
+#
+# NOTE: this schema originates from the earlier ECC "skill-creator" app
+# generation. The current ECC Tools app may not honor every key; it is kept
+# here as the declared intent and is verified against the app's behaviour.
+# Tracking: https://github.com/alsotoes/momo/issues/1125
+
+skills:
+  enabled: true
+  minCommits: 5
+  minConfidence: 0.7
+
+# Do not open unsolicited bundle PRs on push; onboarding is driven explicitly
+# via the `/ecc-tools setup` and `/ecc-tools analyze` comment commands.
+autoPR:
+  enabled: false
+
+# Paths the analyzer should ignore: vendored code, the generated journal,
+# generated godoc HTML, benchmark dumps, and the repomix bundle.
+exclude:
+  - "vendor/**"
+  - "docs/blog/**"
+  - "docs/html/**"
+  - "**/*_bench*.txt"
+  - "repomix-output.*"
