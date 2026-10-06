@@ -86,3 +86,7 @@ plan.md
 mempalace.yaml
 entities.json
 .agents/skills/adr-skill/
+
+# Local environment / secrets — never commit tokens (opencode.json references
+# context7 via {env:CONTEXT7_API_KEY}; keep the value in the shell or a local .env)
+.env
