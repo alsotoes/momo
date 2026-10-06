@@ -1,10 +1,10 @@
 # 0004-adaptive-systems-foundations
 
 ## Status
-Proposed
+Accepted
 
 ## Confidence
-Low
+High
 
 ## Context
 Momo's operational architecture contains rigid, static points that compromise resilience under dynamic real-world workloads and constrained hardware:
@@ -32,9 +32,9 @@ These rigidities directly violate the biological design principles established i
 None documented.
 
 ## Implementation Status
-- **Code**: Planned
-- **Tests**: Planned
-- **Docs**: Planned
+- **Code**: Done
+- **Tests**: Done
+- **Docs**: Done
 - **Blog post**: 
 
 ## References

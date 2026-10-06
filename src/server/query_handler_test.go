@@ -255,5 +255,3 @@ func (m *queryMockStore) GetMeta(name string) (common.FileMetadata, error) {
 func (m *queryMockStore) Delete(name string) error {
 	return nil
 }
-
-

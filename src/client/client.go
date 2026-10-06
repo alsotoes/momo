@@ -10,6 +10,7 @@ import (
 	"os"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/alsotoes/momo/src/common"
 	momocrypto "github.com/alsotoes/momo/src/crypto"
@@ -605,4 +606,99 @@ func Download(cfg common.Configuration, encryptedName string, contentHash string
 	}
 
 	return nil
+}
+
+// DownloadWithFallback retrieves a file using CRUSH placement and Ant Colony
+// Pheromone routing to select the healthiest replica, falling back to sibling
+// replicas if any node fails or returns an error.
+func DownloadWithFallback(cfg common.Configuration, encryptedName string, contentHash string, serverId int, dst io.Writer) error {
+	return DownloadWithFallbackRouter(cfg, encryptedName, contentHash, serverId, dst, DefaultRouter)
+}
+
+// DownloadWithFallbackRouter retrieves a file using the specified PheromoneRouter.
+func DownloadWithFallbackRouter(cfg common.Configuration, encryptedName string, contentHash string, serverId int, dst io.Writer, router PheromoneRouter) (err error) {
+	// 🛡️ Zero-Crash: Unified panic recovery for all network-facing methods (Rule 37/43).
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in client.DownloadWithFallback: %v", r)
+			err = fmt.Errorf("panic in DownloadWithFallback: %v: %w", r, syscall.EIO)
+		}
+	}()
+
+	daemons := cfg.Daemons
+	if len(daemons) == 0 {
+		return fmt.Errorf("no daemons configured: %w", syscall.EINVAL)
+	}
+	if router == nil {
+		router = DefaultRouter
+	}
+
+	// 1. Resolve candidate replicas via CRUSH placement.
+	factor := cfg.Global.ReplicationFactor
+	if factor <= 0 {
+		factor = 1
+	}
+
+	nodes := make([]*common.Node, len(daemons))
+	for i, d := range daemons {
+		nodes[i] = &common.Node{ID: i, Weight: 1, Addr: d.Host, Domain: d.FailureDomain}
+	}
+	cmap := &common.ClusterMap{Nodes: nodes}
+
+	var candidates []*common.Node
+	if contentHash != "" {
+		placement, pErr := cmap.Placement(contentHash, factor)
+		if pErr == nil && len(placement) > 0 {
+			candidates = placement
+		}
+	}
+
+	// If CRUSH placement was unable to provide candidates, default to serverId if valid.
+	if len(candidates) == 0 {
+		if serverId >= 0 && serverId < len(daemons) {
+			candidates = []*common.Node{nodes[serverId]}
+		} else {
+			return fmt.Errorf("server ID %d out of range: %w", serverId, syscall.EINVAL)
+		}
+	}
+
+	// 2. Order candidates using PheromoneRouter.
+	ordered, pErr := router.PrioritizeReplicas(candidates)
+	if pErr != nil || len(ordered) == 0 {
+		ordered = candidates
+	}
+
+	// Check if dst is seekable (e.g. *os.File or bytes.Buffer via wrapper) to allow clean rollback
+	seeker, isSeeker := dst.(io.Seeker)
+	var startOffset int64
+	if isSeeker {
+		if cur, sErr := seeker.Seek(0, io.SeekCurrent); sErr == nil {
+			startOffset = cur
+		} else {
+			isSeeker = false
+		}
+	}
+
+	var lastErr error
+	for _, candidate := range ordered {
+		start := time.Now()
+		// If seekable, rewind to start offset before each attempt
+		if isSeeker {
+			_, _ = seeker.Seek(startOffset, io.SeekStart)
+		}
+
+		err = Download(cfg, encryptedName, contentHash, candidate.ID, dst)
+		if err == nil {
+			// Success! Strengthen pheromone trail
+			router.RecordSuccess(candidate.ID, time.Since(start))
+			return nil
+		}
+
+		// Failure! Penalize sick or failing node
+		router.RecordFailure(candidate.ID)
+		lastErr = err
+		log.Printf("AUDIT: Download from replica %d failed (%v), trying sibling replica...", candidate.ID, err)
+	}
+
+	return fmt.Errorf("all %d replica downloads failed (last error: %v): %w", len(ordered), lastErr, syscall.EHOSTUNREACH)
 }

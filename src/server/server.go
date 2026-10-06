@@ -215,9 +215,10 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 		}
 	}
 
-	// 🛡️ Sentinel: Enforce a limit on concurrent connections to prevent resource exhaustion (DoS).
-	const maxConcurrentConnections = 1000
-	sem := make(chan struct{}, maxConcurrentConnections)
+	// 🛡️ Epigenetics & Homeostasis (Principles 6 & 10 in ADAPTIVE_SYSTEMS.md):
+	// Probe host constraints on boot and dynamically control connection admission.
+	concurrencyCtrl := NewAdaptiveConcurrencyController()
+	log.Printf("Epigenetic Concurrency Initialized: capacity=%d slots", concurrencyCtrl.Capacity())
 
 	// Accept loop: server.Accept() returns errors, not panics. Per-connection
 	// goroutines below each have their own recover() block (Rule 37) for panic safety.
@@ -236,17 +237,17 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 			}
 		}
 
-		// Acquire semaphore slot before spinning up a new goroutine; if the slot
-		// cannot be acquired because the server is shutting down, close the
-		// accepted connection before returning (resource-leak prevention).
-		if !acquireConnectionSlot(ctx, sem) {
+		// Acquire slot before spinning up a new goroutine; if the slot
+		// cannot be acquired because the server is shutting down or under heavy pressure,
+		// close the accepted connection before returning (resource-leak prevention).
+		if !concurrencyCtrl.AcquireSlot(ctx) {
 			connection.Close()
 			return syscall.ECANCELED
 		}
 		handlersWG.Add(1)
 		go func(comm transport.Communicator) {
 			defer handlersWG.Done()
-			defer func() { <-sem }()
+			defer concurrencyCtrl.ReleaseSlot()
 			// 🛡️ Zero-Crash Hardening: Recover from any unexpected panics in the connection handler
 			// to ensure the daemon remains stable and available for other clients.
 			defer func() {
