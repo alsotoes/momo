@@ -1,0 +1,50 @@
+name: ECC Bundle Triage
+
+# Direction 3 (issue #1134): the ECC Tools GitHub App can open unsolicited
+# "ECC bundle" PRs that target harnesses momo does not use (Claude Code / Codex).
+# autoPR is already disabled in .github/ecc-tools.yml; this is defense-in-depth
+# so a stray bundle PR is closed automatically with a rationale.
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ecc-bundle-triage-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  triage:
+    if: contains(github.event.pull_request.user.login, 'ecc-tools')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close unsolicited ECC bundle PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$PR_TITLE" | grep -qi "ECC bundle"; then
+            echo "Not an ECC bundle PR; leaving untouched."
+            exit 0
+          fi
+          gh pr comment "$PR_NUMBER" --body "$(cat <<'EOF'
+          Closing automatically — momo does not adopt ECC's auto-generated bundles.
+
+          The generated bundle targets harnesses this project does not use
+          (`.claude/` → Claude Code, `.codex/` → Codex); momo runs **OpenCode** and
+          keeps a curated `.agents/skills/` set. Auto-generated bundles also overlap
+          our OpenSpec / ADR / AI-reviewer governance.
+
+          This is enforced by `.github/ecc-tools.yml` (`autoPR.enabled: false`) and
+          issue #1134. The app's advisory **PR audits** remain welcome — only the
+          generated bundle PRs are declined.
+          EOF
+          )"
+          gh pr close "$PR_NUMBER"
+          echo "Closed ECC bundle PR #$PR_NUMBER"

@@ -5,6 +5,79 @@ import http.client
 import sys
 import re
 
+# ECC Tools PR-audit comment marker (issue #1134):
+#   <!-- ecc-tools:pr-audit:ECC Tools / <dimension>:<sha> -->
+ECC_AUDIT_MARKER_RE = re.compile(
+    r"<!--\s*ecc-tools:pr-audit:ECC Tools\s*/\s*([^:>]+?):([0-9a-zA-Z]+)\s*-->"
+)
+
+def _ecc_status_emoji(status):
+    return {
+        "success": "✅",
+        "neutral": "⚠️",
+        "warning": "⚠️",
+        "failure": "❌",
+        "action_required": "❌",
+        "error": "❌",
+    }.get((status or "").lower(), "•")
+
+
+def parse_ecc_audit_summary(comments):
+    """Pure parser: given a list of PR comment dicts, return the advisory ECC
+    audit summary (latest verdict per dimension), or "" if none are present."""
+    latest = {}  # dimension -> (createdAt, status, phrase)
+    for c in comments or []:
+        login = (c.get("author") or {}).get("login", "")
+        if "ecc" not in login.lower():
+            continue
+        body = c.get("body", "")
+        m = ECC_AUDIT_MARKER_RE.search(body)
+        if not m:
+            continue
+        dimension = m.group(1).strip()
+        verdict = re.search(r"\*\*(.+?)\*\*\s*\(([a-z_]+)\)", body)
+        if verdict:
+            phrase, status = verdict.group(1).strip(), verdict.group(2).strip()
+        else:
+            phrase, status = "reported", ""
+        created = c.get("createdAt", "")
+        prev = latest.get(dimension)
+        if prev is None or created > prev[0]:
+            latest[dimension] = (created, status, phrase)
+
+    if not latest:
+        return ""
+
+    order = [
+        "Security Evidence",
+        "PR Risk Taxonomy",
+        "Reference Set Readiness",
+        "Hosted Promotion Readiness",
+    ]
+    dims = [d for d in order if d in latest] + [d for d in latest if d not in order]
+    parts = [f"{d}: {_ecc_status_emoji(latest[d][1])} {latest[d][2]}" for d in dims]
+    return "**ECC audit** (advisory) — " + " · ".join(parts)
+
+
+def get_ecc_audit_summary(pr_number):
+    """Read the ECC Tools PR-audit comments and return a compact advisory summary
+    of the latest verdict per audit dimension (issue #1134).
+
+    Returns "" when there are no ECC comments or on any error. Advisory only:
+    never influences the approve/merge decision.
+    """
+    if not pr_number:
+        return ""
+    try:
+        cmd = ["gh", "pr", "view", str(pr_number), "--json", "comments"]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        comments = json.loads(result.stdout).get("comments", [])
+    except Exception as e:
+        print(f"ECC audit lookup skipped: {e}", file=sys.stderr)
+        return ""
+    return parse_ecc_audit_summary(comments)
+
+
 def get_filtered_diff():
     # 🛡️ Rule 15: Strictly limit diff size to prevent token exhaustion.
     max_diff_lines = 1000
@@ -423,6 +496,12 @@ INSTRUCTIONS:
     review = call_gemini(api_key, model, prompt)
     if review:
         is_approved = review.strip().startswith("✅")
+
+        # Issue #1134: append ECC Tools' advisory PR-audit verdicts. This is
+        # appended AFTER is_approved is computed and never changes the decision.
+        ecc_summary = get_ecc_audit_summary(pr_number)
+        if ecc_summary:
+            review = review.rstrip() + "\n\n---\n" + ecc_summary
 
         # Rule 69: For Jules PRs with actionable findings, post directly as
         # alsotoes (GITHUB_TOKEN = PAT) so Jules can recognize and act on it.
