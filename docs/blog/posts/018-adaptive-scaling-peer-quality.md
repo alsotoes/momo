@@ -19,6 +19,7 @@ related:
   - 020-r2-degraded-read-self-heal
   - 030-external-s3-client-replication-downgrade
   - 044-plugin-seam-architecture
+  - 052-adaptive-systems-foundations
 ---
 Momo does not tune itself with a single knob. It grows three independent
 feedback loops, each watching one signal and adjusting one decision at runtime,

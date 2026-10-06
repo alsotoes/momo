@@ -28,6 +28,7 @@ related:
 - 003-transport-tcp-to-quic
 - 025-benchmark-benchstat-gate
 - 007-at-rest-integrity-and-gc
+- 052-adaptive-systems-foundations
 - 005-crush-placement
 - 026-metrics-observability
 - 032-r5-metrics-phases-2-4

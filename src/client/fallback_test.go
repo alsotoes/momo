@@ -192,3 +192,94 @@ func TestDownloadWithFallback_CorruptedReplicaFallsBack(t *testing.T) {
 		t.Fatalf("expected %q, got %q", string(expectedData), dst.String())
 	}
 }
+
+type mockSeekWriter struct {
+	buf    []byte
+	offset int64
+}
+
+func (s *mockSeekWriter) Write(p []byte) (n int, err error) {
+	end := int(s.offset) + len(p)
+	if end > len(s.buf) {
+		newBuf := make([]byte, end)
+		copy(newBuf, s.buf)
+		s.buf = newBuf
+	}
+	copy(s.buf[s.offset:], p)
+	s.offset += int64(len(p))
+	return len(p), nil
+}
+
+func (s *mockSeekWriter) Seek(offset int64, whence int) (int64, error) {
+	switch whence {
+	case io.SeekStart:
+		s.offset = offset
+	case io.SeekCurrent:
+		s.offset += offset
+	case io.SeekEnd:
+		s.offset = int64(len(s.buf)) + offset
+	default:
+		return 0, syscall.EINVAL
+	}
+	return s.offset, nil
+}
+
+func TestDownloadWithFallback_DirectAPIAndSeeker(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	// Node 0 fails, Node 1 succeeds
+	addr0, ln0 := startMockGetServer(t, "testtoken", '1', nil)
+	defer ln0.Close()
+
+	expectedData := []byte("seeker recovered data")
+	addr1, ln1 := startMockGetServer(t, "testtoken", '0', expectedData)
+	defer ln1.Close()
+
+	cfg := common.Configuration{
+		Global: common.ConfigurationGlobal{
+			AuthToken:         "testtoken",
+			ReplicationFactor: 2,
+			Protocol:          "momo-tcp",
+		},
+		Daemons: []*common.Daemon{
+			{Host: addr0},
+			{Host: addr1},
+		},
+	}
+
+	seeker := &mockSeekWriter{}
+	hash := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+	// Tests DownloadWithFallback (wrapper around DefaultRouter) with Seekable destination
+	err := DownloadWithFallback(cfg, "testfile.txt", hash, 0, seeker)
+	if err != nil {
+		t.Fatalf("DownloadWithFallback failed: %v", err)
+	}
+
+	if !bytes.Equal(seeker.buf[:seeker.offset], expectedData) {
+		t.Fatalf("expected %q, got %q", string(expectedData), string(seeker.buf[:seeker.offset]))
+	}
+}
+
+func TestDownloadWithFallback_InvalidConfigs(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	var dst bytes.Buffer
+
+	// Empty daemons
+	cfgEmpty := common.Configuration{}
+	err := DownloadWithFallback(cfgEmpty, "test.txt", "hash", 0, &dst)
+	if !errors.Is(err, syscall.EINVAL) {
+		t.Fatalf("expected EINVAL for empty daemons, got: %v", err)
+	}
+
+	// Server ID out of bounds without hash
+	cfg := common.Configuration{
+		Daemons: []*common.Daemon{{Host: "127.0.0.1:9999"}},
+	}
+	err = DownloadWithFallback(cfg, "test.txt", "", 5, &dst)
+	if !errors.Is(err, syscall.EINVAL) {
+		t.Fatalf("expected EINVAL for invalid serverId, got: %v", err)
+	}
+}
+

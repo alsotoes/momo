@@ -550,7 +550,43 @@ func Download(cfg common.Configuration, encryptedName string, contentHash string
 
 	// ⚡ Bolt: Stream content directly from network to decryptor to output.
 	// No intermediate buffer allocation — peak memory is chunk-sized.
-	limited := io.LimitReader(comm, size)
+	return decryptAndStreamPayload(cfg, comm, size, contentHash, serverId, dst)
+}
+
+func createContentCipher(cfg common.Configuration, contentHash string, serverId int) (*momocrypto.Cipher, error) {
+	if cfg.Global.OPRFEnabled {
+		// The content key is derived from the dedup tag H(plaintext) via the
+		// threshold OPRF, matching the upload path. Fail closed on quorum miss.
+		oprfKey, dErr := deriveOPRFContentKey(cfg, contentHash, serverId)
+		if dErr != nil {
+			return nil, dErr
+		}
+		cipher, dErr := momocrypto.NewCipher(oprfKey)
+		if dErr != nil {
+			return nil, fmt.Errorf("failed to create OPRF decryption cipher: %w", dErr)
+		}
+		return cipher, nil
+	}
+
+	// Derive the tenant content key (DomainContent) to match the upload
+	// cipher, rather than the raw master key.
+	masterKey, dErr := hex.DecodeString(cfg.Global.EncryptionKey)
+	if dErr != nil {
+		return nil, fmt.Errorf("failed to decode encryption key: %w", dErr)
+	}
+	tenantKey, dErr := momocrypto.DeriveKey(masterKey, cfg.Global.EncryptionTenant, momocrypto.DomainContent)
+	if dErr != nil {
+		return nil, fmt.Errorf("failed to derive tenant key: %w", dErr)
+	}
+	cipher, dErr := momocrypto.NewCipher(tenantKey)
+	if dErr != nil {
+		return nil, fmt.Errorf("failed to create decryption cipher: %w", dErr)
+	}
+	return cipher, nil
+}
+
+func decryptAndStreamPayload(cfg common.Configuration, r io.Reader, size int64, contentHash string, serverId int, dst io.Writer) error {
+	limited := io.LimitReader(r, size)
 	if cfg.Global.E2EEKey != "" {
 		// Envelope E2EE (zero-trust): the wire bytes are a self-describing
 		// envelope whose data key is wrapped by the client-held E2EE master
@@ -566,45 +602,21 @@ func Download(cfg common.Configuration, encryptedName string, contentHash string
 		if _, dErr := momocrypto.DecryptEnvelope(limited, dst, masterKey); dErr != nil {
 			return fmt.Errorf("failed to decrypt envelope content: %w", dErr)
 		}
-	} else if cfg.Global.EncryptionEnabled {
-		var cipher *momocrypto.Cipher
-		if cfg.Global.OPRFEnabled {
-			// The content key is derived from the dedup tag H(plaintext) via the
-			// threshold OPRF, matching the upload path. Fail closed on quorum miss.
-			oprfKey, dErr := deriveOPRFContentKey(cfg, contentHash, serverId)
-			if dErr != nil {
-				return dErr
-			}
-			cipher, dErr = momocrypto.NewCipher(oprfKey)
-			if dErr != nil {
-				return fmt.Errorf("failed to create OPRF decryption cipher: %w", dErr)
-			}
-		} else {
-			// Derive the tenant content key (DomainContent) to match the upload
-			// cipher, rather than the raw master key.
-			masterKey, dErr := hex.DecodeString(cfg.Global.EncryptionKey)
-			if dErr != nil {
-				return fmt.Errorf("failed to decode encryption key: %w", dErr)
-			}
-			tenantKey, dErr := momocrypto.DeriveKey(masterKey, cfg.Global.EncryptionTenant, momocrypto.DomainContent)
-			if dErr != nil {
-				return fmt.Errorf("failed to derive tenant key: %w", dErr)
-			}
-			cipher, dErr = momocrypto.NewCipher(tenantKey)
-			if dErr != nil {
-				return fmt.Errorf("failed to create decryption cipher: %w", dErr)
-			}
+		return nil
+	}
+	if cfg.Global.EncryptionEnabled {
+		cipher, err := createContentCipher(cfg, contentHash, serverId)
+		if err != nil {
+			return err
 		}
-		limited := io.LimitReader(comm, size)
 		if err := cipher.DecryptStream(limited, dst); err != nil {
 			return fmt.Errorf("failed to decrypt content: %w", err)
 		}
-	} else {
-		if _, err := io.CopyN(dst, comm, size); err != nil {
-			return fmt.Errorf("failed to read content: %w", err)
-		}
+		return nil
 	}
-
+	if _, err := io.CopyN(dst, r, size); err != nil {
+		return fmt.Errorf("failed to read content: %w", err)
+	}
 	return nil
 }
 
@@ -625,15 +637,29 @@ func DownloadWithFallbackRouter(cfg common.Configuration, encryptedName string, 
 		}
 	}()
 
-	daemons := cfg.Daemons
-	if len(daemons) == 0 {
-		return fmt.Errorf("no daemons configured: %w", syscall.EINVAL)
+	candidates, err := resolveCRUSHCandidates(cfg, contentHash, serverId)
+	if err != nil {
+		return err
 	}
+
 	if router == nil {
 		router = DefaultRouter
 	}
 
-	// 1. Resolve candidate replicas via CRUSH placement.
+	ordered, pErr := router.PrioritizeReplicas(candidates)
+	if pErr != nil || len(ordered) == 0 {
+		ordered = candidates
+	}
+
+	return tryReplicaDownloads(cfg, encryptedName, contentHash, ordered, dst, router)
+}
+
+func resolveCRUSHCandidates(cfg common.Configuration, contentHash string, serverId int) ([]*common.Node, error) {
+	daemons := cfg.Daemons
+	if len(daemons) == 0 {
+		return nil, fmt.Errorf("no daemons configured: %w", syscall.EINVAL)
+	}
+
 	factor := cfg.Global.ReplicationFactor
 	if factor <= 0 {
 		factor = 1
@@ -643,32 +669,22 @@ func DownloadWithFallbackRouter(cfg common.Configuration, encryptedName string, 
 	for i, d := range daemons {
 		nodes[i] = &common.Node{ID: i, Weight: 1, Addr: d.Host, Domain: d.FailureDomain}
 	}
-	cmap := &common.ClusterMap{Nodes: nodes}
 
-	var candidates []*common.Node
 	if contentHash != "" {
+		cmap := &common.ClusterMap{Nodes: nodes}
 		placement, pErr := cmap.Placement(contentHash, factor)
 		if pErr == nil && len(placement) > 0 {
-			candidates = placement
+			return placement, nil
 		}
 	}
 
-	// If CRUSH placement was unable to provide candidates, default to serverId if valid.
-	if len(candidates) == 0 {
-		if serverId >= 0 && serverId < len(daemons) {
-			candidates = []*common.Node{nodes[serverId]}
-		} else {
-			return fmt.Errorf("server ID %d out of range: %w", serverId, syscall.EINVAL)
-		}
+	if serverId >= 0 && serverId < len(daemons) {
+		return []*common.Node{nodes[serverId]}, nil
 	}
+	return nil, fmt.Errorf("server ID %d out of range: %w", serverId, syscall.EINVAL)
+}
 
-	// 2. Order candidates using PheromoneRouter.
-	ordered, pErr := router.PrioritizeReplicas(candidates)
-	if pErr != nil || len(ordered) == 0 {
-		ordered = candidates
-	}
-
-	// Check if dst is seekable (e.g. *os.File or bytes.Buffer via wrapper) to allow clean rollback
+func tryReplicaDownloads(cfg common.Configuration, encryptedName, contentHash string, candidates []*common.Node, dst io.Writer, router PheromoneRouter) error {
 	seeker, isSeeker := dst.(io.Seeker)
 	var startOffset int64
 	if isSeeker {
@@ -680,14 +696,13 @@ func DownloadWithFallbackRouter(cfg common.Configuration, encryptedName string, 
 	}
 
 	var lastErr error
-	for _, candidate := range ordered {
+	for _, candidate := range candidates {
 		start := time.Now()
-		// If seekable, rewind to start offset before each attempt
 		if isSeeker {
 			_, _ = seeker.Seek(startOffset, io.SeekStart)
 		}
 
-		err = Download(cfg, encryptedName, contentHash, candidate.ID, dst)
+		err := Download(cfg, encryptedName, contentHash, candidate.ID, dst)
 		if err == nil {
 			// Success! Strengthen pheromone trail
 			router.RecordSuccess(candidate.ID, time.Since(start))
@@ -700,5 +715,5 @@ func DownloadWithFallbackRouter(cfg common.Configuration, encryptedName string, 
 		log.Printf("AUDIT: Download from replica %d failed (%v), trying sibling replica...", candidate.ID, err)
 	}
 
-	return fmt.Errorf("all %d replica downloads failed (last error: %v): %w", len(ordered), lastErr, syscall.EHOSTUNREACH)
+	return fmt.Errorf("all %d replica downloads failed (last error: %v): %w", len(candidates), lastErr, syscall.EHOSTUNREACH)
 }

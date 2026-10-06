@@ -143,3 +143,33 @@ func TestAdaptiveConcurrency_ConcurrentAccess(t *testing.T) {
 		t.Fatalf("expected 0 active slots after concurrent workers finished, got %d", ctrl.Active())
 	}
 }
+
+func TestAdaptiveConcurrency_EdgeCases(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	// Zero or negative capacity defaults to 1
+	ctrlZero := NewAdaptiveConcurrencyControllerWithCapacity(0)
+	if ctrlZero.Capacity() != 1 {
+		t.Fatalf("expected capacity 1 for 0 input, got %d", ctrlZero.Capacity())
+	}
+
+	// ReleaseSlot on empty controller should not panic or underflow
+	ctrlZero.ReleaseSlot()
+	if ctrlZero.Active() != 0 {
+		t.Fatalf("expected active 0 after release on empty, got %d", ctrlZero.Active())
+	}
+
+	// Dynamic limits bounded at minimum
+	ctrlSmall := NewAdaptiveConcurrencyControllerWithCapacity(2)
+	ctrlSmall.UpdateMetrics(99.0, 99.0)
+	if ctrlSmall.CurrentLimit() < 1 {
+		t.Fatalf("expected limit >= 1, got %d", ctrlSmall.CurrentLimit())
+	}
+
+	// probeAvailableRAM direct check
+	ram := probeAvailableRAM()
+	if ram <= 0 {
+		t.Fatalf("expected positive RAM bytes, got %d", ram)
+	}
+}
+

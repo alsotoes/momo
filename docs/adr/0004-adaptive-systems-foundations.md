@@ -35,11 +35,11 @@ None documented.
 - **Code**: Done
 - **Tests**: Done
 - **Docs**: Done
-- **Blog post**: 
+- **Blog post**: docs/blog/posts/052-adaptive-systems-foundations.md
 
 ## References
 - Issue: #1129
 - PR: 
 - Spec: `openspec/changes/adaptive-systems-foundations/`
-- Blog: 
+- Blog: docs/blog/posts/052-adaptive-systems-foundations.md
 

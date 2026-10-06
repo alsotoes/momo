@@ -161,12 +161,24 @@ func (r *antColonyRouter) SelectReplica(replicas []*common.Node) (selected *comm
 	}
 
 	r.mu.Lock()
-	// Trigger lazy evaporation if interval elapsed
 	if time.Since(r.lastEvaporate) >= EvaporationInterval {
 		r.evaporateLocked()
 	}
+	total := r.sumPheromonesLocked(replicas)
+	r.mu.Unlock()
 
-	// Calculate total pheromone sum across candidates
+	if total <= 0 {
+		return replicas[0], nil
+	}
+
+	pick := rand.Float64() * total
+
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.sampleReplicaLocked(replicas, pick), nil
+}
+
+func (r *antColonyRouter) sumPheromonesLocked(replicas []*common.Node) float64 {
 	total := 0.0
 	for _, n := range replicas {
 		if n == nil {
@@ -179,19 +191,11 @@ func (r *antColonyRouter) SelectReplica(replicas []*common.Node) (selected *comm
 		}
 		total += p
 	}
-	r.mu.Unlock()
+	return total
+}
 
-	if total <= 0 {
-		return replicas[0], nil
-	}
-
-	// Roulette wheel selection
-	pick := rand.Float64() * total
+func (r *antColonyRouter) sampleReplicaLocked(replicas []*common.Node, pick float64) *common.Node {
 	running := 0.0
-
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
 	for _, n := range replicas {
 		if n == nil {
 			continue
@@ -202,11 +206,10 @@ func (r *antColonyRouter) SelectReplica(replicas []*common.Node) (selected *comm
 		}
 		running += p
 		if pick <= running {
-			return n, nil
+			return n
 		}
 	}
-
-	return replicas[0], nil
+	return replicas[0]
 }
 
 // PrioritizeReplicas orders the candidates from highest weighted priority to lowest,

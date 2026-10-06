@@ -42,7 +42,7 @@ type AdaptiveConcurrencyController interface {
 	Active() int
 
 	// UpdateMetrics adjusts the dynamic admission limit homeostatically based on host load.
-	UpdateMetrics(cpuPercent float64, memUsedPercent float64)
+	UpdateMetrics(cpuPercent, memUsedPercent float64)
 }
 
 // epigeneticController implements AdaptiveConcurrencyController.
@@ -133,7 +133,7 @@ func (c *epigeneticController) ReleaseSlot() {
 }
 
 // UpdateMetrics homeostatically scales the connection limit under system pressure.
-func (c *epigeneticController) UpdateMetrics(cpuPercent float64, memUsedPercent float64) {
+func (c *epigeneticController) UpdateMetrics(cpuPercent, memUsedPercent float64) {
 	limit := int64(c.capacity)
 
 	if cpuPercent > 90.0 || memUsedPercent > 90.0 {

@@ -1,8 +1,10 @@
 package client
 
 import (
+	"errors"
 	"math"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -189,3 +191,42 @@ func BenchmarkPheromoneSelectReplica(b *testing.B) {
 		_, _ = router.SelectReplica(candidates)
 	}
 }
+
+func TestPheromone_EdgeCases(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	router := NewPheromoneRouter()
+
+	// Empty slice
+	if _, err := router.SelectReplica(nil); !errors.Is(err, syscall.EINVAL) {
+		t.Fatalf("expected EINVAL for nil replicas in SelectReplica, got: %v", err)
+	}
+	if _, err := router.PrioritizeReplicas(nil); !errors.Is(err, syscall.EINVAL) {
+		t.Fatalf("expected EINVAL for nil replicas in PrioritizeReplicas, got: %v", err)
+	}
+
+	// Single replica
+	node1 := &common.Node{ID: 1, Addr: "127.0.0.1:8001"}
+	sel, err := router.SelectReplica([]*common.Node{node1})
+	if err != nil || sel != node1 {
+		t.Fatalf("expected single replica returned, got %v (err: %v)", sel, err)
+	}
+	prio, err := router.PrioritizeReplicas([]*common.Node{node1})
+	if err != nil || len(prio) != 1 || prio[0] != node1 {
+		t.Fatalf("expected single replica prioritized, got %v (err: %v)", prio, err)
+	}
+
+	// Slice of all nils
+	if _, err := router.PrioritizeReplicas([]*common.Node{nil, nil}); !errors.Is(err, syscall.EINVAL) {
+		t.Fatalf("expected EINVAL for all nil replicas in PrioritizeReplicas, got: %v", err)
+	}
+
+	// Slice with mixed nil and non-nil
+	node2 := &common.Node{ID: 2, Addr: "127.0.0.1:8002"}
+	mixed := []*common.Node{nil, node1, nil, node2}
+	selMixed, err := router.SelectReplica(mixed)
+	if err != nil || selMixed == nil {
+		t.Fatalf("expected valid node selected from mixed, got: %v (err: %v)", selMixed, err)
+	}
+}
+
