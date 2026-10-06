@@ -283,3 +283,38 @@ func TestReplaceCRLF(t *testing.T) {
 		})
 	}
 }
+
+func TestValidatePath(t *testing.T) {
+	tests := []struct {
+		name    string
+		path    string
+		wantErr bool
+	}{
+		{"Valid simple filename", "file.txt", false},
+		{"Valid nested path", "dir/file.txt", false},
+		{"Valid deeply nested path", "a/b/c/d.txt", false},
+		{"Valid file with double dots in name", "file..txt", false},
+		{"Rejects empty string", "", true},
+		{"Rejects single dot", ".", true},
+		{"Rejects double dot", "..", true},
+		{"Rejects upward traversal prefix", "../file.txt", true},
+		{"Rejects upward traversal nested", "dir/../../file.txt", true},
+		{"Rejects absolute root", "/", true},
+		{"Rejects absolute path", "/etc/passwd", true},
+		{"Rejects backslash", "dir\\file.txt", true},
+		{"Rejects backslash traversal", "..\\win32", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidatePath(tt.path)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidatePath(%q) error = %v, wantErr %v", tt.path, err, tt.wantErr)
+			}
+			if tt.wantErr && err != nil && !errors.Is(err, syscall.EBADMSG) {
+				t.Errorf("ValidatePath(%q) error should wrap syscall.EBADMSG, got %v", tt.path, err)
+			}
+		})
+	}
+}
+

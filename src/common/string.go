@@ -124,6 +124,16 @@ func TrimNullBytesString(b []byte) string {
 	return string(b)
 }
 
+// ValidatePath strictly validates a virtual path name (e.g. wireName or metadata.Name)
+// to prevent directory traversal and absolute path injection (Rule 33).
+func ValidatePath(name string) error {
+	cleaned := path.Clean(name)
+	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") || strings.HasPrefix(cleaned, "/") || strings.Contains(cleaned, "\\") {
+		return fmt.Errorf("path traversal attempt or absolute path detected: %w", syscall.EBADMSG)
+	}
+	return nil
+}
+
 // TrimNullBytesFromString finds the first null byte and returns a substring up to that byte
 // using strings.IndexByte. This is significantly faster than strings.TrimRight.
 func TrimNullBytesFromString(s string) string {
