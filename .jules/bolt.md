@@ -224,3 +224,7 @@
 ## 2026-10-04 - [Mandatory Compliance with Project Steering Rules]
 **Learning:** Performing modifications without referencing Momo's centralized steering rules leads to formatting violations, broken concurrency guarantees, and CI/review failures.
 **Action:** Always read `openspec/config.yaml` (under Project Steering Rules) and `.jules/instructions.md` before planning or modifying code.
+
+## 2026-10-06 - Zero-Allocation ETag Header Parsing
+**Learning:** Using `strings.Split` to parse comma-separated HTTP headers like `If-Match` or `If-None-Match` (ETag lists) allocates a slice header and backing array on every conditional request.
+**Action:** Replace `strings.Split` on hot paths with a `strings.IndexByte` scan that slices the original string (zero copies). Preserve the parsing semantics exactly and cover the edge cases (quoted tags, `W/` weak tags, `*`, spaces, trailing comma) in tests.

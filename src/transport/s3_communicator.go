@@ -3041,7 +3041,19 @@ func parseS3Range(rangeHeader string, size int64) (start, end int64, serveRange,
 // matches the given etag (a raw hash without quotes). "*" matches every object.
 // Weak comparison prefixes (W/) and surrounding double quotes are tolerated.
 func etagMatches(header, etag string) bool {
-	for _, item := range strings.Split(header, ",") {
+	// ⚡ Bolt: scan with strings.IndexByte instead of strings.Split so parsing
+	// the comma-separated ETag list allocates nothing on this hot path, which
+	// runs on every If-Match / If-None-Match conditional request.
+	for len(header) > 0 {
+		var item string
+		if idx := strings.IndexByte(header, ','); idx == -1 {
+			item = header
+			header = ""
+		} else {
+			item = header[:idx]
+			header = header[idx+1:]
+		}
+
 		item = strings.TrimSpace(item)
 		if item == "*" {
 			return true
