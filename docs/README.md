@@ -51,6 +51,7 @@ It is designed around a small, auditable core: CRUSH-lite placement, a pluggable
 | [PENTESTING](PENTESTING.md) | Security pentest overview — DotDotPwn fuzzing + Python exploit scripts (points to `pentest/README.md` for reproduction) |
 | [BLOG](blog/README.md) | Engineering journal (Hugo-format posts) — journey, research, architecture decisions, changes |
 | [ADR](adr/README.md) | Architecture Decision Records (Fowler pattern) — one per ratified OpenSpec change, auto-synced from specs |
+| [ECC_TOOLS](ECC_TOOLS.md) | ECC Tools GitHub App — advisory PR audits, reviewer integration, bundle triage |
 
 ## Key Features
 
