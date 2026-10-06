@@ -1476,23 +1476,30 @@ func TestS3Communicator_ParseS3Range(t *testing.T) {
 }
 
 func TestS3Communicator_EtagMatches(t *testing.T) {
-	if !etagMatches(`"etag123"`, "etag123") {
-		t.Error("quoted exact etag should match")
+	cases := []struct {
+		name   string
+		header string
+		etag   string
+		want   bool
+	}{
+		{"quoted exact", `"etag123"`, "etag123", true},
+		{"list matches", `"aaa", "etag123"`, "etag123", true},
+		{"wildcard", "*", "etag123", true},
+		{"wildcard in list", `"aaa", *`, "etag123", true},
+		{"weak etag", `W/"etag123"`, "etag123", true},
+		{"weak with space", `W/ "etag123"`, "etag123", true},
+		{"unquoted", `etag123`, "etag123", true},
+		{"leading/trailing spaces", `  "etag123"  `, "etag123", true},
+		{"trailing comma", `"aaa", "etag123",`, "etag123", true},
+		{"different etag", `"etag123"`, "etag456", false},
+		{"empty object etag", `"etag123"`, "", false},
+		{"empty header", "", "etag123", false},
+		{"not in list", `"aaa", "bbb"`, "etag123", false},
 	}
-	if !etagMatches(`"aaa", "etag123"`, "etag123") {
-		t.Error("list should match")
-	}
-	if !etagMatches("*", "etag123") {
-		t.Error("wildcard should match")
-	}
-	if !etagMatches(`W/"etag123"`, "etag123") {
-		t.Error("weak etag should match")
-	}
-	if etagMatches(`"etag123"`, "etag456") {
-		t.Error("different etag must not match")
-	}
-	if etagMatches(`"etag123"`, "") {
-		t.Error("empty object etag must not match a specific tag")
+	for _, tc := range cases {
+		if got := etagMatches(tc.header, tc.etag); got != tc.want {
+			t.Errorf("%s: etagMatches(%q, %q) = %v, want %v", tc.name, tc.header, tc.etag, got, tc.want)
+		}
 	}
 }
 
