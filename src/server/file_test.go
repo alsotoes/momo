@@ -144,6 +144,7 @@ func TestGetMetadataInvalidNames(t *testing.T) {
 	invalidNames := []string{
 		"C:\\Windows\\System32\\cmd.exe",
 		"foo\\bar.txt",
+		"/etc/passwd",
 	}
 
 	for _, fileName := range invalidNames {
