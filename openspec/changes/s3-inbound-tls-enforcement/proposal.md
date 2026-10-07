@@ -11,7 +11,7 @@ The `s3-tcp` inbound gateway serves S3 REST requests over raw TCP. Without a con
   - If `tls_insecure = true` → log prominent warning and accept cleartext.
 - **`momo-tcp` unchanged.** The momo protocol carries its own authentication and does not require TLS.
 - **QUIC self-signed fallback warning added.** For `momo-quic`/`s3-quic` without configured certs, log a warning that the connection is encrypted but the server identity is unauthenticated.
-- **`docs/PROTOCOL.md` updated.** Documents the inbound gateway TLS requirements per protocol.
+- **`docs/REFERENCE/PROTOCOL.md` updated.** Documents the inbound gateway TLS requirements per protocol.
 
 ## Non-Goals
 - No change to `momo-tcp`/`momo-quic` clients (their auth is independent of TLS).

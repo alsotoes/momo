@@ -16,7 +16,7 @@ artifacts:
 - type: pr
   id: '795'
 - type: doc
-  path: docs/STANDARDS.md
+  path: docs/CORE/STANDARDS.md
 - type: spec
   path: openspec/changes/perf-profiling-baseline
 related:
@@ -68,7 +68,7 @@ request spends waiting. A **hot path** is code that runs on nearly every
 request. A **syscall** is a call from the program into the operating-system
 kernel; each one pays a context-switch cost.
 
-`docs/STANDARDS.md` codifies the two engineering mindsets; this post is the
+`docs/CORE/STANDARDS.md` codifies the two engineering mindsets; this post is the
 ⚡ Bolt side — measured, profiled, allocation-light work on hot paths.
 
 ## Why the Obvious Solutions Failed
@@ -253,7 +253,7 @@ Bolt optimizes *inside* hot paths but never *at the expense* of invariants:
 
 ## References / Dig deeper
 
-- The two mindsets: [docs/STANDARDS.md](../../STANDARDS.md) — ⚡ Bolt and 🛡 Sentinel.
+- The two mindsets: [docs/CORE/STANDARDS.md](../../STANDARDS.md) — ⚡ Bolt and 🛡 Sentinel.
 - Measurement gate: [025: The Benchstat Gauntlet](025-benchmark-benchstat-gate.md).
 - Profiling baseline: [042: Perf Profiling Baseline](042-perf-profiling-baseline.md).
 - Integrity and verify-on-read: [007: At-Rest Integrity and GC](007-at-rest-integrity-and-gc.md).
@@ -264,6 +264,6 @@ Bolt optimizes *inside* hot paths but never *at the expense* of invariants:
   [045](045-bolt-lastmodified-header.md),
   [036](036-s3-listxml-appendformat-optimization.md).
 - Benchmark harness and history: the CI benchmark-compare workflow,
-  `docs/PERFORMANCE.md`, and the checked-in benchmark history data file.
+  `docs/REFERENCE/PERFORMANCE.md`, and the checked-in benchmark history data file.
 - The networked-profiler prohibition is recorded as Rule 75 in the steering
   rules; the profile-baseline spec is `openspec/changes/perf-profiling-baseline`.

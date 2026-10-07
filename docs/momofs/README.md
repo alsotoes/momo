@@ -7,11 +7,11 @@ The momofs core (CAS inode/metadata layer) and FUSE transport (`momo -imp fs`) a
 ## Elevated Foundational Principles
 
 The core architectural principles originally drafted here have been elevated to canonical top-level documentation:
-- [**Core Design Principles**](../DESIGN_PRINCIPLES.md) — 14 foundational tenets (Read From Any Node, Zero SPOF, HPC/Cloud Ready)
-- [**Adaptive Systems Architecture**](../ADAPTIVE_SYSTEMS.md) — 16 biological models (Ant Colony, Epigenetics, Homeostasis, Stigmergy)
-- [**Architectural Decisions (DD-1 to DD-6)**](../DESIGN_DECISIONS.md) — Fundamental decisions on BoltDB, dual rings, wrapper interfaces
-- [**Distributed Storage Comparison**](../COMPARISON.md) — Feature matrix vs Ceph, Lustre, ScyllaDB, IPFS
-- [**Lessons Learned**](../LESSONS_LEARNED.md) — Cross-system patterns and priorities
+- [**Core Design Principles**](../../CORE/DESIGN_PRINCIPLES.md) — 14 foundational tenets (Read From Any Node, Zero SPOF, HPC/Cloud Ready)
+- [**Adaptive Systems Architecture**](../../CORE/ADAPTIVE_SYSTEMS.md) — 16 biological models (Ant Colony, Epigenetics, Homeostasis, Stigmergy)
+- [**Architectural Decisions (DD-1 to DD-6)**](../../CORE/DESIGN_DECISIONS.md) — Fundamental decisions on BoltDB, dual rings, wrapper interfaces
+- [**Distributed Storage Comparison**](../../CORE/COMPARISON.md) — Feature matrix vs Ceph, Lustre, ScyllaDB, IPFS
+- [**Lessons Learned**](../../CORE/LESSONS_LEARNED.md) — Cross-system patterns and priorities
 
 ## MomoFS Subsystem Documents
 
@@ -47,7 +47,7 @@ The core architectural principles originally drafted here have been elevated to 
 ## Related Documents
 
 - [../ARCHITECTURE.md](../ARCHITECTURE.md) — Current Momo system architecture
-- [../REPLICATION_STRATEGIES.md](../REPLICATION_STRATEGIES.md) — Chain and Splay replication
-- [../P2P.md](../P2P.md) — Gossip membership, SWIM, lease consensus
-- [../CRUSH.md](../CRUSH.md) — Data placement algorithm
-- [../ROADMAP.md](../ROADMAP.md) — Existing project roadmap
+- [../../REFERENCE/REPLICATION_STRATEGIES.md](../../REFERENCE/REPLICATION_STRATEGIES.md) — Chain and Splay replication
+- [../../REFERENCE/P2P.md](../../REFERENCE/P2P.md) — Gossip membership, SWIM, lease consensus
+- [../../REFERENCE/CRUSH.md](../../REFERENCE/CRUSH.md) — Data placement algorithm
+- [../../GUIDES/ROADMAP.md](../../GUIDES/ROADMAP.md) — Existing project roadmap

@@ -75,7 +75,7 @@ footer) is unchanged from v3.
   legacy streams still decode; unsupported versions still rejected.
 - Truncation / footer-count / tamper tests carried over for v4.
 - Benchmarks for the v4 path at the default size (Rule 34) to confirm no
-  regression; `docs/PERFORMANCE.md` note.
+  regression; `docs/REFERENCE/PERFORMANCE.md` note.
 
 ## 5. Backward Compatibility
 

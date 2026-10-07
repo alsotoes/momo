@@ -10,7 +10,7 @@ artifacts:
   - {type: issue, id: "958"}
   - {type: issue, id: "960"}
   - {type: pr, id: "961"}
-  - {type: doc, path: docs/PERFORMANCE.md}
+  - {type: doc, path: docs/REFERENCE/PERFORMANCE.md}
   - {type: spec, path: openspec/changes/steering-three-dot-diff-gate}
 related:
   - 024-bolt-performance-engineering
@@ -95,14 +95,14 @@ itself needs hardening** — an honest gate is an auditable trust invariant. The
 ⚡ Bolt mindset supplies the performance bar; the 🛡 Sentinel mindset insists the
 bar be enforced by something auditable rather than by good intentions.
 
-See [docs/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
+See [docs/CORE/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
 
 ## References / Dig deeper
 
-- Mindset standards: [docs/STANDARDS.md](../../STANDARDS.md).
+- Mindset standards: [docs/CORE/STANDARDS.md](../../STANDARDS.md).
 - The Bolt engineering post this gate protects: [024](024-bolt-performance-engineering.md).
 - Profiling baseline: [042](042-perf-profiling-baseline.md).
-- The performance document: `docs/PERFORMANCE.md`; benchmark history:
+- The performance document: `docs/REFERENCE/PERFORMANCE.md`; benchmark history:
   `.github/data/benchmark_history.csv`; the gate workflow:
   `.github/workflows/benchmark_compare.yml`.
 - The three-dot diff governance spec: `openspec/changes/steering-three-dot-diff-gate`.

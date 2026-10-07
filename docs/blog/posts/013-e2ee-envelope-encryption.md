@@ -161,7 +161,7 @@ protocol rather than by weakening the encryption.
 
 ## 5. Security Invariants (🛡 Sentinel Mindset)
 
-In accordance with [docs/STANDARDS.md](../../STANDARDS.md):
+In accordance with [docs/CORE/STANDARDS.md](../../STANDARDS.md):
 
 - 🛡 **Sentinel (truncation defense).** Streaming AES-GCM carries an authenticated
   integrity footer. If an attacker truncates a file in transit or deletes trailing

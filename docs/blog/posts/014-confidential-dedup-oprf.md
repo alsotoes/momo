@@ -83,7 +83,7 @@ as a unit and never bypassed by a seam or a plugin. We pair it with an honest
 server-side-encryption and key posture, and with replay protection on the request
 path, so the protocol is not the only line of defense.
 
-See [docs/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
+See [docs/CORE/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
 
 ## References / Dig deeper
 

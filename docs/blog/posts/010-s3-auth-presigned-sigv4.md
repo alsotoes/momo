@@ -81,7 +81,7 @@ declared value — is part of the same story.
 ⚡ **Bolt.** Signing is compute-regular: stable, allocation-light hashing, with
 deadlines amortized across header reads rather than re-derived per field.
 
-See [docs/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
+See [docs/CORE/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
 
 ## References / Dig deeper
 
@@ -91,4 +91,4 @@ See [docs/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel min
   [039](039-signed-payload-sse-s3.md), [040](040-aws-chunked-streaming.md).
 - Auth spec and pull requests: `openspec/changes/signed-payload-and-sse`
   (PRs #789, #791, #885).
-- Pentest guidance: `docs/PENTESTING.md`.
+- Pentest guidance: `docs/GUIDES/PENTESTING.md`.

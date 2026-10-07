@@ -31,7 +31,7 @@ Second, peer selection and routing suffered from deterministic hot-spotting. Whe
 
 Third, server connection admission relied on a hardcoded constant: a semaphore capped at exactly 1,000 concurrent connections. On a constrained edge device or container with only 256 MB of RAM, 1,000 concurrent streaming uploads would trigger the kernel out-of-memory killer. On a high-throughput 64-core storage server with 256 GB of RAM, 1,000 connections left 90% of the hardware idle.
 
-Both mechanisms violated the core engineering principles documented in [docs/STANDARDS.md](../../STANDARDS.md): systems must maintain predictable performance under stress and gracefully absorb perturbations.
+Both mechanisms violated the core engineering principles documented in [docs/CORE/STANDARDS.md](../../STANDARDS.md): systems must maintain predictable performance under stress and gracefully absorb perturbations.
 
 ## Ant Colony Routing: Balancing Exploitation and Exploration
 
@@ -70,7 +70,7 @@ By combining ant-colony probabilistic routing with epigenetic host awareness, Mo
 
 ## References / Dig deeper
 
-- Standards and Bolt philosophy: [docs/STANDARDS.md](../../STANDARDS.md)
+- Standards and Bolt philosophy: [docs/CORE/STANDARDS.md](../../STANDARDS.md)
 - Adaptive Systems Vision: see the Adaptive Systems architectural specification in the architecture documentation.
 - Related blog posts:
   - [018 Adaptive Scaling and Peer Quality](018-adaptive-scaling-peer-quality.md)

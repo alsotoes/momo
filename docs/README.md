@@ -31,40 +31,40 @@ It is designed around a small, auditable core: CRUSH-lite placement, a pluggable
 
 Momo is engineered around two foundational philosophies that govern all subsystem designs:
 
-1. **[Core Design Principles](DESIGN_PRINCIPLES.md)** — 14 core tenets of Momo, centered on **Read From Any Node**, zero coordinator bottlenecks, customer-transparent complexity, self-healing, and cloud/HPC readiness.
-2. **[Adaptive Systems Design](ADAPTIVE_SYSTEMS.md)** — 16 biological models (Ant Colony Optimization, Epigenetics, Homeostasis, Stigmergy, Immune System, Apoptosis) enabling the cluster to self-tune and heal without human intervention.
-3. **[Engineering Standards (⚡ Bolt & 🛡️ Sentinel)](STANDARDS.md)** — Predictable zero-allocation performance and zero-trust defensive security invariants.
-4. **[Architectural Decisions (DD-1 to DD-6)](DESIGN_DECISIONS.md)** — Foundational trade-offs on embedded BoltDB, dual independent rings, and wrapper seams.
-5. **[Distributed Storage Comparison](COMPARISON.md) & [Lessons Learned](LESSONS_LEARNED.md)** — In-depth architectural analysis and lessons learned from Ceph, Lustre, ScyllaDB, and IPFS.
+1. **[Core Design Principles](CORE/DESIGN_PRINCIPLES.md)** — 14 core tenets of Momo, centered on **Read From Any Node**, zero coordinator bottlenecks, customer-transparent complexity, self-healing, and cloud/HPC readiness.
+2. **[Adaptive Systems Design](CORE/ADAPTIVE_SYSTEMS.md)** — 16 biological models (Ant Colony Optimization, Epigenetics, Homeostasis, Stigmergy, Immune System, Apoptosis) enabling the cluster to self-tune and heal without human intervention.
+3. **[Engineering Standards (⚡ Bolt & 🛡️ Sentinel)](CORE/STANDARDS.md)** — Predictable zero-allocation performance and zero-trust defensive security invariants.
+4. **[Architectural Decisions (DD-1 to DD-6)](CORE/DESIGN_DECISIONS.md)** — Foundational trade-offs on embedded BoltDB, dual independent rings, and wrapper seams.
+5. **[Distributed Storage Comparison](CORE/COMPARISON.md) & [Lessons Learned](CORE/LESSONS_LEARNED.md)** — In-depth architectural analysis and lessons learned from Ceph, Lustre, ScyllaDB, and IPFS.
 
 ## Documentation Index
 
 | Document | Description |
 |---|---|
-| [DESIGN_PRINCIPLES](DESIGN_PRINCIPLES.md) | 14 core tenets: Read From Any Node, zero SPOF, self-healing, HPC/Cloud ready |
-| [ADAPTIVE_SYSTEMS](ADAPTIVE_SYSTEMS.md) | 16 bio-inspired models: Ant Colony routing, Epigenetic concurrency, Homeostasis |
-| [STANDARDS](STANDARDS.md) | ⚡ Bolt (performance) and 🛡️ Sentinel (security) coding standards |
+| [DESIGN_PRINCIPLES](CORE/DESIGN_PRINCIPLES.md) | 14 core tenets: Read From Any Node, zero SPOF, self-healing, HPC/Cloud ready |
+| [ADAPTIVE_SYSTEMS](CORE/ADAPTIVE_SYSTEMS.md) | 16 bio-inspired models: Ant Colony routing, Epigenetic concurrency, Homeostasis |
+| [STANDARDS](CORE/STANDARDS.md) | ⚡ Bolt (performance) and 🛡️ Sentinel (security) coding standards |
 | [ARCHITECTURE](ARCHITECTURE.md) | System architecture, storage layer, replication, P2P, metrics |
-| [DESIGN_DECISIONS](DESIGN_DECISIONS.md) | Architectural Decision Records DD-1 to DD-6 (embedded DB, dual rings, seams) |
-| [COMPARISON](COMPARISON.md) | Feature matrix vs Ceph, Lustre, ScyllaDB, IPFS |
-| [LESSONS_LEARNED](LESSONS_LEARNED.md) | Architectural takeaways from mature distributed storage engines |
-| [CONFIGURATION](CONFIGURATION.md) | Complete configuration reference for `momo.conf` |
-| [PROTOCOL](PROTOCOL.md) | Wire protocol specification (handshake, metadata, replication) |
-| [REPLICATION_STRATEGIES](REPLICATION_STRATEGIES.md) | Chain, Splay, Primary-Splay replication modes |
-| [CRUSH](CRUSH.md) | CRUSH-lite placement algorithm (Weighted Rendezvous Hashing) |
-| [P2P](P2P.md) | P2P gossip, SWIM failure detection, scatter-gather, lease consensus |
+| [DESIGN_DECISIONS](CORE/DESIGN_DECISIONS.md) | Architectural Decision Records DD-1 to DD-6 (embedded DB, dual rings, seams) |
+| [COMPARISON](CORE/COMPARISON.md) | Feature matrix vs Ceph, Lustre, ScyllaDB, IPFS |
+| [LESSONS_LEARNED](CORE/LESSONS_LEARNED.md) | Architectural takeaways from mature distributed storage engines |
+| [CONFIGURATION](GUIDES/CONFIGURATION.md) | Complete configuration reference for `momo.conf` |
+| [PROTOCOL](REFERENCE/PROTOCOL.md) | Wire protocol specification (handshake, metadata, replication) |
+| [REPLICATION_STRATEGIES](REFERENCE/REPLICATION_STRATEGIES.md) | Chain, Splay, Primary-Splay replication modes |
+| [CRUSH](REFERENCE/CRUSH.md) | CRUSH-lite placement algorithm (Weighted Rendezvous Hashing) |
+| [P2P](REFERENCE/P2P.md) | P2P gossip, SWIM failure detection, scatter-gather, lease consensus |
 | [MOMOFS](momofs/README.md) | MomoFS FUSE/POSIX filesystem subsystem, mount user guide, CAS inode schema |
-| [TESTING](TESTING.md) | Test suites, CI pipeline, contract testing, E2E tests |
-| [CONTRIBUTING](CONTRIBUTING.md) | Contribution guidelines and PR workflow |
-| [ROADMAP](ROADMAP.md) | Project roadmap with milestones and GitHub issues |
-| [ERROR_CODES](ERROR_CODES.md) | POSIX error codes and exit statuses reference |
-| [PERFORMANCE](PERFORMANCE.md) | Auto-generated benchmark results and performance history |
-| [COMPATIBILITY](COMPATIBILITY.md) | Go version, platform compatibility, dependencies |
-| [CONTRACT_TESTING](CONTRACT_TESTING.md) | TCP wire protocol contract testing strategy |
-| [POLYMORPHIC_SYSTEM](POLYMORPHIC_SYSTEM.md) | Dynamic replication mode switching and polymorphic engine |
+| [TESTING](GUIDES/TESTING.md) | Test suites, CI pipeline, contract testing, E2E tests |
+| [CONTRIBUTING](GUIDES/CONTRIBUTING.md) | Contribution guidelines and PR workflow |
+| [ROADMAP](GUIDES/ROADMAP.md) | Project roadmap with milestones and GitHub issues |
+| [ERROR_CODES](REFERENCE/ERROR_CODES.md) | POSIX error codes and exit statuses reference |
+| [PERFORMANCE](REFERENCE/PERFORMANCE.md) | Auto-generated benchmark results and performance history |
+| [COMPATIBILITY](REFERENCE/COMPATIBILITY.md) | Go version, platform compatibility, dependencies |
+| [CONTRACT_TESTING](GUIDES/CONTRACT_TESTING.md) | TCP wire protocol contract testing strategy |
+| [POLYMORPHIC_SYSTEM](REFERENCE/POLYMORPHIC_SYSTEM.md) | Dynamic replication mode switching and polymorphic engine |
 | [AI_FLYING_SOLO](AI_FLYING_SOLO.md) | Autonomous development workflow for AI agents (bugs and features) |
-| [EXTERNAL_CLIENT_REPLICATION](EXTERNAL_CLIENT_REPLICATION.md) | External S3 client replication mode downgrade handling |
-| [PENTESTING](PENTESTING.md) | Security pentest overview — DotDotPwn fuzzing + Python exploit scripts (points to `pentest/README.md` for reproduction) |
+| [EXTERNAL_CLIENT_REPLICATION](GUIDES/EXTERNAL_CLIENT_REPLICATION.md) | External S3 client replication mode downgrade handling |
+| [PENTESTING](GUIDES/PENTESTING.md) | Security pentest overview — DotDotPwn fuzzing + Python exploit scripts (points to `pentest/README.md` for reproduction) |
 | [BLOG](blog/README.md) | Engineering journal (Hugo-format posts) — journey, research, architecture decisions, changes |
 | [ADR](adr/README.md) | Architecture Decision Records (Fowler pattern) — one per ratified OpenSpec change, auto-synced from specs |
 | [ECC_TOOLS](ECC_TOOLS.md) | ECC Tools GitHub App — advisory PR audits, reviewer integration, bundle triage |
@@ -109,7 +109,7 @@ make build     # build the momo binary
 make test      # run all unit + integration tests
 ```
 
-See [CONFIGURATION.md](CONFIGURATION.md) for `momo.conf` reference and `conf/momo.conf` for a working example. A 3-node cluster can be brought up with `docker compose up` (see [TESTING.md](TESTING.md) for the smoke/E2E matrix).
+See [GUIDES/CONFIGURATION.md](GUIDES/CONFIGURATION.md) for `momo.conf` reference and `conf/momo.conf` for a working example. A 3-node cluster can be brought up with `docker compose up` (see [GUIDES/TESTING.md](GUIDES/TESTING.md) for the smoke/E2E matrix).
 
 ## Verification
 
@@ -118,4 +118,4 @@ See [CONFIGURATION.md](CONFIGURATION.md) for `momo.conf` reference and `conf/mom
 - `make test-metrics` / `make test-contract` — metrics and wire-protocol contract E2E.
 - `make pentest` — security pentest (DotDotPwn + Python exploits).
 
-Full detail in [TESTING.md](TESTING.md); benchmark history in [PERFORMANCE.md](PERFORMANCE.md).
+Full detail in [GUIDES/TESTING.md](GUIDES/TESTING.md); benchmark history in [REFERENCE/PERFORMANCE.md](REFERENCE/PERFORMANCE.md).

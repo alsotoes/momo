@@ -44,4 +44,4 @@
 - [x] 5.3 Measure `/metrics` handler latency under 1000 concurrent uploads — document p99.
 - [x] 5.4 Measure memory overhead — document heap delta.
 - [x] 5.5 Measure GC pause duration delta — document if measurable.
-- [x] 5.6 Update `docs/TESTING.md` with metrics validation results.
+- [x] 5.6 Update `docs/GUIDES/TESTING.md` with metrics validation results.

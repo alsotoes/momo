@@ -171,7 +171,7 @@ receiver before the bad data is indexed.
 
 ## Engineering Standards
 
-In accordance with [docs/STANDARDS.md](../../STANDARDS.md):
+In accordance with [docs/CORE/STANDARDS.md](../../STANDARDS.md):
 
 - ⚡ **Bolt (Zero Extra Copies)**: the tee computes CRC32/SHA-256 digests in
   flight as network buffers pass directly into disk storage. No intermediate

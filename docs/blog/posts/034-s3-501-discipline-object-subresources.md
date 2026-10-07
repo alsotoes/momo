@@ -107,7 +107,7 @@ query parameters on an object URL:
 
 ## Engineering Standards (🛡 Sentinel)
 
-Per [docs/STANDARDS.md](../../STANDARDS.md): 🛡 **Sentinel** — honest error
+Per [docs/CORE/STANDARDS.md](../../STANDARDS.md): 🛡 **Sentinel** — honest error
 semantics, no silent misrouting. An unsupported operation says so.
 
 ## References / Dig deeper

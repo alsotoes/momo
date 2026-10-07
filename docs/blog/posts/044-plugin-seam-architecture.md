@@ -95,7 +95,7 @@ We codified the architecture as a steering rule with five commitments:
 pinned and auditable. Out-of-process code is allowed only as a read-only policy
 or control-plane feed, never in the compute plane.
 
-See [docs/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
+See [docs/CORE/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
 
 ## References / Dig deeper
 

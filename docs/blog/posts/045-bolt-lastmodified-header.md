@@ -22,7 +22,7 @@ artifacts:
 - type: issue
   id: '977'
 - type: doc
-  path: docs/STANDARDS.md
+  path: docs/CORE/STANDARDS.md
 related:
 - 024-bolt-performance-engineering
 - 036-s3-listxml-appendformat-optimization
@@ -99,7 +99,7 @@ to a single idiom for rendering HTTP times.
 
 ## References / Dig deeper
 
-- Mindset standards: [docs/STANDARDS.md](../../STANDARDS.md).
+- Mindset standards: [docs/CORE/STANDARDS.md](../../STANDARDS.md).
 - Bolt engineering overview: [024](024-bolt-performance-engineering.md).
 - The same pattern applied to XML responses:
   [047](047-bolt-s3-copyresult-time-alloc.md) and

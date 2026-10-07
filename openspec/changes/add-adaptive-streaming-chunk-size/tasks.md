@@ -27,11 +27,11 @@
 
 ## C: Docs, Benchmarks, Verification
 
-- [x] C1. Docs parity (Rule 27): `docs/PROTOCOL.md` (v4 header layout),
-  `docs/CONFIGURATION.md` (if exposed as config) or note default; ensure v3/v2
+- [x] C1. Docs parity (Rule 27): `docs/REFERENCE/PROTOCOL.md` (v4 header layout),
+  `docs/GUIDES/CONFIGURATION.md` (if exposed as config) or note default; ensure v3/v2
   legacy documented.
 - [x] C2. Benchmarks (Rule 34): default-size v4 path; note in
-  `docs/PERFORMANCE.md`.
+  `docs/REFERENCE/PERFORMANCE.md`.
 - [x] C3. `go build ./...`, `go test -race ./...` (incl. crypto),
   `go vet ./...`, `gofmt`.
 - [x] C4. Update `.github/scripts/test-e2e-encryption.sh` blob version assertion

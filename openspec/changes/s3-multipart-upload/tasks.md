@@ -24,7 +24,7 @@
 
 ## 4. Documentation
 - [x] 4.1 Create `openspec/changes/s3-multipart-upload/` (proposal, tasks).
-- [x] 4.2 Update `docs/PROTOCOL.md` — document multipart upload interception strategy.
+- [x] 4.2 Update `docs/REFERENCE/PROTOCOL.md` — document multipart upload interception strategy.
 
 ## 5. Validation
 - [x] 5.1 `gofmt`, `go vet`, full per-module test suites.

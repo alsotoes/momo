@@ -10,10 +10,10 @@ This document provides a high-level overview of the Momo architecture, its compo
 
 Momo's architecture is rooted in two foundational design documents:
 
-- **[14 Core Design Principles](DESIGN_PRINCIPLES.md)**: Centered on **Read From Any Node** (making the cluster appear as a unified system without central metadata coordination), zero single point of failure (Zero SPOF), customer-transparent complexity, self-healing, and cloud/HPC readiness.
-- **[16 Biological Adaptive Models](ADAPTIVE_SYSTEMS.md)**: Stigmergy (complex global order via simple local rules), Ant Colony optimization (pheromone-based replica routing), Epigenetics (boot-time host resource sensing), and Homeostasis (dynamic load shedding under memory/CPU pressure).
-- **[Engineering Standards (⚡ Bolt & 🛡️ Sentinel)](STANDARDS.md)**: Sub-microsecond zero-allocation paths and zero-trust defensive security boundaries.
-- **[Architectural Decisions (DD-1 to DD-6)](DESIGN_DECISIONS.md)**: Formal trade-off evaluations including embedded BoltDB, dual independent rings, and compile-time wrapper seams.
+- **[14 Core Design Principles](CORE/DESIGN_PRINCIPLES.md)**: Centered on **Read From Any Node** (making the cluster appear as a unified system without central metadata coordination), zero single point of failure (Zero SPOF), customer-transparent complexity, self-healing, and cloud/HPC readiness.
+- **[16 Biological Adaptive Models](CORE/ADAPTIVE_SYSTEMS.md)**: Stigmergy (complex global order via simple local rules), Ant Colony optimization (pheromone-based replica routing), Epigenetics (boot-time host resource sensing), and Homeostasis (dynamic load shedding under memory/CPU pressure).
+- **[Engineering Standards (⚡ Bolt & 🛡️ Sentinel)](CORE/STANDARDS.md)**: Sub-microsecond zero-allocation paths and zero-trust defensive security boundaries.
+- **[Architectural Decisions (DD-1 to DD-6)](CORE/DESIGN_DECISIONS.md)**: Formal trade-off evaluations including embedded BoltDB, dual independent rings, and compile-time wrapper seams.
 
 ## System Overview
 
@@ -68,7 +68,7 @@ Momo utilizes a **Shared-Nothing Partitioned Architecture** for its object stora
 - **Garbage Collection & Tombstones**: The `src/storage/gc.go` module implements reference-counted garbage collection with tombstone retention. When an object's refcount drops to zero, a tombstone is written with a configurable retention period (`tombstone_retention`, default 86400s). Tombstones are propagated across the cluster via P2P delete messages. GC runs periodically (`gc_interval`, default 300s) and reaps expired tombstones. See [P2P.md](P2P.md) for details on delete propagation.
 
 ### 4b. P2P Subsystem (Gossip & SWIM)
-Momo includes a fully decentralized P2P subsystem (`src/p2p/`) for cluster membership, failure detection, and coordinated operations. See [P2P.md](P2P.md) for the complete protocol specification.
+Momo includes a fully decentralized P2P subsystem (`src/p2p/`) for cluster membership, failure detection, and coordinated operations. See [REFERENCE/P2P.md](REFERENCE/P2P.md) for the complete protocol specification.
 
 - **Gossip Membership**: Each node maintains a peer table and exchanges heartbeat messages containing peer state (ALIVE/SUSPECT/OFFLINE) via the gossip protocol. Heartbeats carry up to `MaxPeersInHeartbeat=256` peer entries per message.
 - **SWIM Failure Detection**: Direct ping/ack probes with indirect ping (asking K random peers to probe the target) and adaptive RTT-based timeouts. Suspect marking is based on target ack timeout, not helper contact success.

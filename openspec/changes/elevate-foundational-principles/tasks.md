@@ -1,11 +1,11 @@
 # Tasks: Elevate Foundational Principles and Adaptive Architecture from momofs
 
 ## Phase 1: Elevate Documents to Top-Level docs/
-- [x] 1.1 Copy `docs/momofs/DESIGN_PRINCIPLES.md` to `docs/DESIGN_PRINCIPLES.md` and update internal links.
-- [x] 1.2 Copy `docs/momofs/ADAPTIVE_SYSTEMS.md` to `docs/ADAPTIVE_SYSTEMS.md` and update internal links.
-- [x] 1.3 Copy `docs/momofs/DESIGN_DECISIONS.md` to `docs/DESIGN_DECISIONS.md` and update internal links.
-- [x] 1.4 Copy `docs/momofs/COMPARISON.md` to `docs/COMPARISON.md` and update internal links.
-- [x] 1.5 Copy `docs/momofs/LESSONS_LEARNED.md` to `docs/LESSONS_LEARNED.md` and update internal links.
+- [x] 1.1 Copy `docs/momofs/DESIGN_PRINCIPLES.md` to `docs/CORE/DESIGN_PRINCIPLES.md` and update internal links.
+- [x] 1.2 Copy `docs/momofs/ADAPTIVE_SYSTEMS.md` to `docs/CORE/ADAPTIVE_SYSTEMS.md` and update internal links.
+- [x] 1.3 Copy `docs/momofs/DESIGN_DECISIONS.md` to `docs/CORE/DESIGN_DECISIONS.md` and update internal links.
+- [x] 1.4 Copy `docs/momofs/COMPARISON.md` to `docs/CORE/COMPARISON.md` and update internal links.
+- [x] 1.5 Copy `docs/momofs/LESSONS_LEARNED.md` to `docs/CORE/LESSONS_LEARNED.md` and update internal links.
 
 ## Phase 2: Add Pointer Stubs in docs/momofs/
 - [x] 2.1 Replace `docs/momofs/DESIGN_PRINCIPLES.md` with a clean forward pointer stub.

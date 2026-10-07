@@ -143,7 +143,7 @@ measurements. Treat those as open work, not delivered behavior.
 
 ## ⚡ Bolt + 🛡 Sentinel Lens
 
-Per [docs/STANDARDS.md](../../STANDARDS.md), the transport follows two mindsets:
+Per [docs/CORE/STANDARDS.md](../../STANDARDS.md), the transport follows two mindsets:
 
 - **⚡ Bolt**: go-fuse owns the syscall-heavy protocol work, and the core stays
   protocol-agnostic, so no momofs wire format is locked to the transport — we can

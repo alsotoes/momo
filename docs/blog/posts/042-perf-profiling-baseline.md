@@ -80,11 +80,11 @@ performance change is judged against by the benchstat gate.
 🛡 **Sentinel**: no profiler on the wire — fail closed rather than expose a
 remote-code-execution-class surface for convenience.
 
-See [docs/STANDARDS.md](../../STANDARDS.md).
+See [docs/CORE/STANDARDS.md](../../STANDARDS.md).
 
 ## References / Dig deeper
 
-- Mindset standards: [docs/STANDARDS.md](../../STANDARDS.md).
+- Mindset standards: [docs/CORE/STANDARDS.md](../../STANDARDS.md).
 - The benchstat gate that consumes this baseline:
   [025](025-benchmark-benchstat-gate.md).
 - Bolt engineering overview: [024](024-bolt-performance-engineering.md).

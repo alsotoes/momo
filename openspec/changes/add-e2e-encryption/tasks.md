@@ -9,7 +9,7 @@
 - [x] 1.7 Implement `ChallengeResponseClient(conn, authToken)` — read nonce, compute `HMAC-SHA256(authToken, nonce)`, send response.
 - [x] 1.8 Integrate challenge-response into `HandshakeServer` / `HandshakeClient` for momo-tcp and momo-quic.
 - [x] 1.9 Write unit tests: TLS handshake, challenge-response success/failure, nonce replay protection, backward compatibility (no TLS = plaintext).
-- [x] 1.10 Update `docs/PROTOCOL.md` with TLS and challenge-response handshake documentation.
+- [x] 1.10 Update `docs/REFERENCE/PROTOCOL.md` with TLS and challenge-response handshake documentation.
 - [x] 1.11 Run benchmarks to measure TLS handshake overhead.
 
 ## Phase 2: Crypto Package — AES-GCM-256, Convergent, Streaming
@@ -37,7 +37,7 @@
 - [x] 3.7 Server-side: no changes to storage logic (already content-addressable). Server stores encrypted name → convergent hash, convergent hash → encrypted content.
 - [x] 3.8 Ensure handshake metadata fields (filename, hash) are encrypted in `momo_tcp.go` and `momo_quic.go`.
 - [x] 3.9 Write integration tests: E2EE upload/download round-trip, E2EE LIST with decrypted names, E2EE dedup (same content, different names → one blob), server zero-knowledge verification.
-- [x] 3.10 Update `docs/PROTOCOL.md` with E2EE metadata encryption documentation.
+- [x] 3.10 Update `docs/REFERENCE/PROTOCOL.md` with E2EE metadata encryption documentation.
 
 ## Phase 4: SSE S3 Fallback — Server-Side Encryption at Rest
 
@@ -49,7 +49,7 @@
 - [x] 4.6 S3 metadata (filenames) remain plaintext — no changes to S3 key handling.
 - [x] 4.7 Dedup works on plaintext hash (server computes hash before encryption) — no convergent encryption for S3.
 - [x] 4.8 Write integration tests: SSE PUT/GET round-trip, SSE with S3 client (aws-cli compatible), SSE backward compatibility (disabled = plaintext).
-- [x] 4.9 Update `docs/PROTOCOL.md` with SSE fallback documentation.
+- [x] 4.9 Update `docs/REFERENCE/PROTOCOL.md` with SSE fallback documentation.
 
 ## Phase 5: Per-Tenant Key Derivation
 
@@ -61,10 +61,10 @@
 
 ## Cross-Cutting
 
-- [ ] 6.1 Update `docs/PENTESTING.md` — mark CVE-009 as fixed by E2EE Phase 1.
-- [ ] 6.2 Update `docs/ROADMAP.md` — add E2EE completion milestone.
+- [ ] 6.1 Update `docs/GUIDES/PENTESTING.md` — mark CVE-009 as fixed by E2EE Phase 1.
+- [ ] 6.2 Update `docs/GUIDES/ROADMAP.md` — add E2EE completion milestone.
 - [ ] 6.3 Update `docs/ARCHITECTURE.md` — document encryption layers and protocol matrix.
 - [ ] 6.4 Update `conf/momo.conf` example with new config fields (commented out).
-- [ ] 6.5 Run full benchmark suite and document performance overhead in `docs/PERFORMANCE.md`.
+- [ ] 6.5 Run full benchmark suite and document performance overhead in `docs/REFERENCE/PERFORMANCE.md`.
 - [ ] 6.6 Verify all 4 protocols work with and without encryption (protocol feature parity, Rule 33).
 - [ ] 6.7 Verify backward compatibility — all existing tests pass with `encryption_enabled = false`.

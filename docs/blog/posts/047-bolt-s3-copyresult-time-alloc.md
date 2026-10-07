@@ -152,7 +152,7 @@ minute to 3, with p99 latency settling at 3.2 ms.
 
 ## References / Dig deeper
 
-- Mindset standards: [docs/STANDARDS.md](../../STANDARDS.md) — ⚡ Bolt / 🛡 Sentinel.
+- Mindset standards: [docs/CORE/STANDARDS.md](../../STANDARDS.md) — ⚡ Bolt / 🛡 Sentinel.
 - Bolt engineering overview: [024](024-bolt-performance-engineering.md).
 - The same pattern for HTTP `Last-Modified` headers:
   [045](045-bolt-lastmodified-header.md).

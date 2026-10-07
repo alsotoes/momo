@@ -64,7 +64,7 @@ bytes: measurement happens off the hot path, and the selection updates a
 compile-time predicate. There is no runtime reflection and no dynamic plugin
 loading — a declarative policy feeds a registry that was compiled in. This keeps
 the adaptive machinery cheap enough to run on every node, and keeps its cost from
-touching the request path. See [docs/STANDARDS.md](../../STANDARDS.md) for the
+touching the request path. See [docs/CORE/STANDARDS.md](../../STANDARDS.md) for the
 ⚡ Bolt and 🛡 Sentinel mindsets behind that split.
 
 ## References / Dig deeper

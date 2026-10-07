@@ -55,5 +55,5 @@ checksums merged), which provides the `ChecksumFinalizer` extension point.
 - `server/file.go` (`getFile`): invoke the generic verifier.
 - `transport/communicator.go` (`ChecksumFinalizer` seam), `transport/s3_communicator.go`
   (adapter mapping `x-amz-checksum-*` → `ChecksumRef`).
-- `docs/COMPATIBILITY.md`, `docs/ARCHITECTURE.md` parity updates.
+- `docs/REFERENCE/COMPATIBILITY.md`, `docs/ARCHITECTURE.md` parity updates.
 - Tests: surface adapters, ingest verifier, replication re-verify, bit-rot `Get`.

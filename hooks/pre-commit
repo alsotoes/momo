@@ -23,6 +23,6 @@ fi
 cp /tmp/new_bench_raw.txt /tmp/old_bench_raw.txt
 
 # Automatically stage the updated performance files so they are committed together
-git add docs/PERFORMANCE.md .github/data/benchmark_history.csv
+git add docs/REFERENCE/PERFORMANCE.md .github/data/benchmark_history.csv
 
 echo "✅ Benchmark metrics and PERFORMANCE.md successfully synced!"

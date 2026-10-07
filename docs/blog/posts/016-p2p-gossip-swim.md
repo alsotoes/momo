@@ -10,7 +10,7 @@ artifacts:
   - {type: spec, path: openspec/changes/add-p2p-transport}
   - {type: pr, id: "808"}
   - {type: pr, id: "809"}
-  - {type: doc, path: docs/P2P.md}
+  - {type: doc, path: docs/REFERENCE/P2P.md}
 related:
   - 004-cas-content-addressable-store
   - 017-scatter-gather-lease-quorum
@@ -74,7 +74,7 @@ does not flood a three-node lab cluster with traffic.
 
 ## References / Dig deeper
 
-- Cluster design doc: [docs/P2P.md](../../P2P.md).
+- Cluster design doc: [docs/REFERENCE/P2P.md](../../P2P.md).
 - Spec: `openspec/changes/add-p2p-transport`.
 - Membership fixes: PR [#808](https://github.com/alsotoes/momo/pull/808),
   PR [#809](https://github.com/alsotoes/momo/pull/809); discovery audit issue

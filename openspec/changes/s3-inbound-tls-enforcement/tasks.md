@@ -14,12 +14,12 @@
 - [x] 2.4 Fix `TestS3Communicator_FullFlow` (uses s3-tcp without TLS) to set `TLSInsecure: true`.
 
 ## 3. Phase 3: Docs
-- [x] 3.1 Update `docs/PROTOCOL.md` — document s3-tcp TLS requirement and QUIC self-signed warning.
+- [x] 3.1 Update `docs/REFERENCE/PROTOCOL.md` — document s3-tcp TLS requirement and QUIC self-signed warning.
 - [x] 3.2 Create `openspec/changes/s3-inbound-tls-enforcement/` (proposal, tasks) with `Resolves #775` links.
 
 ## 4. Validation
 - [x] 4.1 Run `gofmt`, `go vet`, and the full per-module test suites.
 - [x] 4.2 Verify `go work vendor` produces no diff (Rule 25).
-- [x] 4.3 Commit (pre-commit hook syncs `docs/PERFORMANCE.md`), Rule 58 branch check, push.
+- [x] 4.3 Commit (pre-commit hook syncs `docs/REFERENCE/PERFORMANCE.md`), Rule 58 branch check, push.
 - [x] 4.4 Open PR with `Resolves #775`, wait for checks, address review, merge, close issue, Rule 71 gate.
 

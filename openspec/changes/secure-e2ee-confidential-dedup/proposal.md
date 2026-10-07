@@ -146,8 +146,8 @@ while remaining **computationally hidden** from the server (confidentiality).
 2. Integration: E2EE upload/download round-trip, E2EE dedup (same content,
    different names → one blob), tenant isolation, fail-closed (fewer than `t`
    daemons → abort).
-3. Docs: rewrite `docs/PROTOCOL.md` E2EE + OPRF sections; update
-   `docs/CONFIGURATION.md`, `docs/ARCHITECTURE.md`; `README.md` parity (Rule 27).
+3. Docs: rewrite `docs/REFERENCE/PROTOCOL.md` E2EE + OPRF sections; update
+   `docs/GUIDES/CONFIGURATION.md`, `docs/ARCHITECTURE.md`; `README.md` parity (Rule 27).
 
 ## 4. Performance Analysis & Justification
 
@@ -160,7 +160,7 @@ while remaining **computationally hidden** from the server (confidentiality).
   is on the 32-byte dedup tag, not the payload, so it is constant-time
   regardless of file size.
 - **Measurement plan:** `make benchmark COUNT=10` against `master`, then with
-  E2EE + OPRF enabled; document overhead in `docs/PERFORMANCE.md`.
+  E2EE + OPRF enabled; document overhead in `docs/REFERENCE/PERFORMANCE.md`.
 
 ## 5. Security Properties Achieved
 

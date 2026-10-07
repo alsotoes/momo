@@ -165,7 +165,7 @@ packed one that does not.
 
 ## How We Verified
 
-In accordance with [docs/STANDARDS.md](../../STANDARDS.md):
+In accordance with [docs/CORE/STANDARDS.md](../../STANDARDS.md):
 
 - 🛡 **Sentinel (trust invariant)**: reliability claims that ignore failure
   domains are dishonest. A cluster configured with three copies across three

@@ -46,11 +46,11 @@
 
 ## Phase C: Closeout
 
-- [x] C1. Rewrite `docs/PROTOCOL.md` E2EE + OPRF sections (Rule 27).
-- [x] C2. Update `docs/CONFIGURATION.md` (`oprf_enabled`, `oprf_threshold`).
+- [x] C1. Rewrite `docs/REFERENCE/PROTOCOL.md` E2EE + OPRF sections (Rule 27).
+- [x] C2. Update `docs/GUIDES/CONFIGURATION.md` (`oprf_enabled`, `oprf_threshold`).
 - [x] C3. Update `docs/ARCHITECTURE.md` encryption/deoopy matrix + `README.md` parity.
 - [x] C4. Run `go build ./...`, `go test -race ./...`, `go vet ./...`, `gofmt`.
-- [x] C5. Run benchmark suite; document overhead in `docs/PERFORMANCE.md`.
+- [x] C5. Run benchmark suite; document overhead in `docs/REFERENCE/PERFORMANCE.md`.
 - [x] C6. Verify backward compat: all tests pass with `encryption_enabled = false`.
 
 ## Steering-Rule Compliance Notes

@@ -117,7 +117,7 @@ different capabilities can share one node and each get the right behavior.
 
 ## Engineering Standards (⚡ Bolt & 🛡 Sentinel)
 
-Per [docs/STANDARDS.md](../../STANDARDS.md):
+Per [docs/CORE/STANDARDS.md](../../STANDARDS.md):
 
 - ⚡ **Bolt**: the config list is parsed with the same zero-allocation CSV parser
   used elsewhere, and the downgrade is a single integer walk — no allocation on

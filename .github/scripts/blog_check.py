@@ -49,8 +49,8 @@ REFERENCES_HEADING_RE = re.compile(
 REPO_PATH_RE = re.compile(r"(?<![\w/.-])(openspec/|src/|docs/|\.github/)[A-Za-z0-9_./-]*")
 # Inline LaTeX `$...$` on one line (the site has no math renderer).
 INLINE_MATH_RE = re.compile(r"(?<![\w$])\$[^$\n]{1,120}\$(?![\w$])")
-# docs/STANDARDS.md is the required Bolt/Sentinel mindset link; allow it anywhere.
-REPO_PATH_ALLOW = ("docs/STANDARDS.md",)
+# docs/CORE/STANDARDS.md is the required Bolt/Sentinel mindset link; allow it anywhere.
+REPO_PATH_ALLOW = ("docs/CORE/STANDARDS.md",)
 # Known narrative-opening section headings (a lenient signal).
 NARRATIVE_HEADING_RE = re.compile(
     r"^#{1,6}\s+.*\b(real problem|the problem|the story|why|context|challenge|background)\b",
@@ -113,8 +113,8 @@ def check_post(path: Path, now: dt.datetime, errors: list[str]) -> None:
     tags = fm.get("tags", [])
     if "bolt" in tags or "sentinel" in tags:
         # Bolt/Sentinel mindset posts should link STANDARDS.md somewhere in body
-        if "docs/STANDARDS.md" not in path.read_text():
-            errors.append(f"{path.relative_to(ROOT)}: tagged bolt/sentinel but body misses docs/STANDARDS.md link")
+        if "docs/CORE/STANDARDS.md" not in path.read_text():
+            errors.append(f"{path.relative_to(ROOT)}: tagged bolt/sentinel but body misses docs/CORE/STANDARDS.md link")
 
     related = fm.get("related", [])
     for rel in related:

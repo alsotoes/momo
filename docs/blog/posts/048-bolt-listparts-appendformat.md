@@ -112,7 +112,7 @@ applied that rule to the timestamp in the `ListParts` handler.
 
 ## References / Dig deeper
 
-- Mindset standards: [docs/STANDARDS.md](../../STANDARDS.md) — ⚡ Bolt / 🛡 Sentinel.
+- Mindset standards: [docs/CORE/STANDARDS.md](../../STANDARDS.md) — ⚡ Bolt / 🛡 Sentinel.
 - Bolt engineering overview: [024](024-bolt-performance-engineering.md).
 - The prior XML and header changes:
   [047](047-bolt-s3-copyresult-time-alloc.md),

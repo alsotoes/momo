@@ -9,7 +9,7 @@ status.
 
 An ADR is a short, immutable record of a decision: *what we decided, why, and what it
 cost us*. ADRs are **decision records** — the "why" history of the project. The living
-reference documentation (`docs/ARCHITECTURE.md`, `docs/CONFIGURATION.md`, etc.) is the
+reference documentation (`docs/ARCHITECTURE.md`, `docs/GUIDES/CONFIGURATION.md`, etc.) is the
 *current state*; ADRs are the *decision log* that produced it.
 
 ## How ADRs are generated (Rules 77/78)

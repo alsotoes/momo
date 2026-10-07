@@ -136,7 +136,7 @@ metadata, a `GET` sets the header from an existing string — no re-hashing, no
 allocation. The ingest path hashes once, streaming, so it never buffers the whole
 object.
 
-See [docs/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
+See [docs/CORE/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
 
 ## How We Verified
 

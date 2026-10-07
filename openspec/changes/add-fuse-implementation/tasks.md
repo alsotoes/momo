@@ -16,7 +16,7 @@
 ## Phase 3: consistency=cached Deprecation (1-2 days)
 - [x] 3.1 Add deprecation AUDIT log in config reload path when `consistency = "cached"` is set
 - [x] 3.2 Remove `consistency` from the public config schema (keep internal only with warning)
-- [ ] 3.3 Update `docs/TESTING.md` with deprecation test results
+- [ ] 3.3 Update `docs/GUIDES/TESTING.md` with deprecation test results
 - [x] 3.4 Verify no behavioral change when flag is set/unset
 
 ## Phase 4: Cross-Platform Fallback (2-3 days)
@@ -31,7 +31,7 @@
 - [ ] 5.4 Measure memory overhead delta vs prior implementation
 - [x] 5.5 Run integration test: mount, 1000 upload/download cycles, data integrity verify
 - [ ] 5.6 On macOS: verify Docker VirtioFS is in use (no momofs FUSE process); `consistency=cached` logged and ignored
-- [ ] 5.7 Update `docs/TESTING.md` and `docs/COMPATIBILITY.md` with new FUSE matrix
+- [ ] 5.7 Update `docs/GUIDES/TESTING.md` and `docs/REFERENCE/COMPATIBILITY.md` with new FUSE matrix
 
 ## Definition of Done
 

@@ -88,7 +88,7 @@ confidentiality-safe.
 a connection is established, the same allocation-light streaming rules apply as
 before; enforcing TLS does not add per-object overhead.
 
-See [docs/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
+See [docs/CORE/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
 
 ## References / Dig deeper
 
@@ -98,5 +98,5 @@ See [docs/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel min
 - Daemon transport TLS/QUIC: [003](003-transport-tcp-to-quic.md).
 - Gateway and inbound TLS specs: `openspec/changes/s3-https-enforcement`,
   `openspec/changes/s3-inbound-tls-enforcement` (PRs #792, #793).
-- Configuration keys and pentest guidance: `docs/CONFIGURATION.md`,
-  `docs/PENTESTING.md`.
+- Configuration keys and pentest guidance: `docs/GUIDES/CONFIGURATION.md`,
+  `docs/GUIDES/PENTESTING.md`.

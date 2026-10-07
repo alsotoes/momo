@@ -90,7 +90,7 @@ post that depends on or explains another (e.g. CRUSH post ↔ CAS post, P2P post
    artifact via `gh`, not the commit.
 3. Explain the subject in the body; put openspec/PR/issue/doc pointers in the
    final `References / Dig deeper` section.
-4. Tag ⚡ `bolt` / 🛡 `sentinel` where relevant and link `docs/STANDARDS.md`.
+4. Tag ⚡ `bolt` / 🛡 `sentinel` where relevant and link `docs/CORE/STANDARDS.md`.
 5. Add/refresh `related` in sibling posts.
 6. CI (`blog_check.yml`) validates front-matter schema + `related` existence.
 

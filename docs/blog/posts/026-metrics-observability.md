@@ -131,14 +131,14 @@ history.
 - **Sub-millisecond, per-event latency tracing** is better served by distributed
   tracing than by histogram buckets.
 
-See [docs/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
+See [docs/CORE/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
 
 ## References / Dig deeper
 
 - Specs: `openspec/changes/add-metrics-exporter`,
   `openspec/changes/metrics-per-node-binding`,
   `openspec/changes/r5-metrics-p2`.
-- Performance history: [docs/PERFORMANCE.md](../../PERFORMANCE.md).
+- Performance history: [docs/REFERENCE/PERFORMANCE.md](../../PERFORMANCE.md).
 - Sibling posts: controller origin [002](002-replication-strategies-polymorphic.md),
   performance arc [024](024-bolt-performance-engineering.md),
   security audit [015](015-sentinel-security-audit.md),

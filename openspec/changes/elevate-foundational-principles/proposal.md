@@ -18,11 +18,11 @@ As a consequence:
 ## 2. Proposed Solution
 
 1. **Promote Foundational Principles to Top-Level Documentation (`docs/`)**:
-   - `docs/DESIGN_PRINCIPLES.md`: 14 Core Principles (Read From Any Node, Zero SPOF, Self-Healing, HPC Ready, Cloud Ready...)
-   - `docs/ADAPTIVE_SYSTEMS.md`: 16 Biological Principles (Ant Colony, Epigenetics, Homeostasis, Stigmergy, Immune System...)
-   - `docs/DESIGN_DECISIONS.md`: Foundational Decisions DD-1 to DD-6
-   - `docs/COMPARISON.md`: Industry comparisons vs Ceph, Lustre, ScyllaDB, IPFS
-   - `docs/LESSONS_LEARNED.md`: Actionable patterns from distributed storage systems
+   - `docs/CORE/DESIGN_PRINCIPLES.md`: 14 Core Principles (Read From Any Node, Zero SPOF, Self-Healing, HPC Ready, Cloud Ready...)
+   - `docs/CORE/ADAPTIVE_SYSTEMS.md`: 16 Biological Principles (Ant Colony, Epigenetics, Homeostasis, Stigmergy, Immune System...)
+   - `docs/CORE/DESIGN_DECISIONS.md`: Foundational Decisions DD-1 to DD-6
+   - `docs/CORE/COMPARISON.md`: Industry comparisons vs Ceph, Lustre, ScyllaDB, IPFS
+   - `docs/CORE/LESSONS_LEARNED.md`: Actionable patterns from distributed storage systems
 2. **Preserve Link Integrity**:
    - Maintain forward pointer stubs in `docs/momofs/` pointing to the elevated documents in `docs/` so no existing links break.
 3. **Primary Indexing (`docs/README.md`)**:
@@ -30,7 +30,7 @@ As a consequence:
 4. **Architecture Grounding (`docs/ARCHITECTURE.md`)**:
    - Weave the 14 core and 16 biological principles directly into `docs/ARCHITECTURE.md`.
 5. **Agent Onboarding (`AGENTS.md` & `openspec/config.yaml`)**:
-   - Require all AI agents and contributors to ground architectural proposals in `docs/DESIGN_PRINCIPLES.md` and `docs/ADAPTIVE_SYSTEMS.md`.
+   - Require all AI agents and contributors to ground architectural proposals in `docs/CORE/DESIGN_PRINCIPLES.md` and `docs/CORE/ADAPTIVE_SYSTEMS.md`.
 
 ## 3. Scope & Boundaries
 

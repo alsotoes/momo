@@ -23,8 +23,8 @@
 ## C: Tests, Docs, Verification
 
 - [x] C1. 3-node integration test using default (unset) fanout still converges.
-- [x] C2. Docs parity (Rule 27): `docs/CONFIGURATION.md` (`fanout` semantics),
-  `docs/P2P.md` (adaptive fanout note).
+- [x] C2. Docs parity (Rule 27): `docs/GUIDES/CONFIGURATION.md` (`fanout` semantics),
+  `docs/REFERENCE/P2P.md` (adaptive fanout note).
 - [x] C3. `go build ./...`, `go test -race ./...` (incl. `src/p2p`),
   `go vet ./...`, `gofmt`.
 

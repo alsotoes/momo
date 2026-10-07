@@ -670,7 +670,7 @@ gh pr comment PR_N --body "..."
 If no script change is needed, add a PR comment explaining why.
 
 ### Pre-Commit Hooks Updating Benchmark Docs
-**Pitfall**: The pre-commit hook regenerates `docs/PERFORMANCE.md` and `.github/data/benchmark_history.csv`, adding unexpected files to the commit.
+**Pitfall**: The pre-commit hook regenerates `docs/REFERENCE/PERFORMANCE.md` and `.github/data/benchmark_history.csv`, adding unexpected files to the commit.
 **Solution**: This is expected behavior. Include these files in the commit. Do NOT revert them. Per Rule 61, when rebasing, resolve these by taking the master version (`--theirs`) since they are regenerated.
 
 ### Benchstat Check Timing & Frozen Check Status
@@ -705,7 +705,7 @@ gh pr comment PR_N --body "..."
 If no script change is needed, add a PR comment explaining why.
 
 ### Pre-Commit Hooks Updating Benchmark Docs
-**Pitfall**: The pre-commit hook regenerates `docs/PERFORMANCE.md` and `.github/data/benchmark_history.csv`, adding unexpected files to the commit.
+**Pitfall**: The pre-commit hook regenerates `docs/REFERENCE/PERFORMANCE.md` and `.github/data/benchmark_history.csv`, adding unexpected files to the commit.
 **Solution**: This is expected behavior. Include these files in the commit. Do NOT revert them. Per Rule 61, when rebasing, resolve these by taking the master version (`--theirs`) since they are regenerated.
 
 ### Benchstat Check Timing & Frozen Check Status

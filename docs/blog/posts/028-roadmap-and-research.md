@@ -9,7 +9,7 @@ summary: "After R1–R4: the P0 hardening done, the P1/P2 tracks (metrics, HA me
 artifacts:
   - {type: issue, id: "928"}
   - {type: spec, path: openspec/changes/prod-ready-roadmap}
-  - {type: doc, path: docs/ROADMAP.md}
+  - {type: doc, path: docs/GUIDES/ROADMAP.md}
   - {type: doc, path: docs/RESEARCH_PAPERS.md}
 related:
   - 021-r3-write-durability-quorum
@@ -75,7 +75,7 @@ and this journal is the one that explains rather than specifies.
 
 ## References / Dig deeper
 
-- Roadmap: [docs/ROADMAP.md](../../ROADMAP.md).
+- Roadmap: [docs/GUIDES/ROADMAP.md](../../ROADMAP.md).
 - Research reading list: [docs/RESEARCH_PAPERS.md](../../RESEARCH_PAPERS.md).
 - Spec: `openspec/changes/prod-ready-roadmap`.
 - Completed P0 stack: [019](019-r1-failure-domain-placement.md),

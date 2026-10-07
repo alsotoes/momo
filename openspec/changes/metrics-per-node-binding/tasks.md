@@ -19,7 +19,7 @@
 - [x] goleak + `-race` (MPC-T5)
 
 ## 4. Docs (Rule 27)
-- [x] `docs/CONFIGURATION.md`: `[metrics] prometheus_bind_host`,
+- [x] `docs/GUIDES/CONFIGURATION.md`: `[metrics] prometheus_bind_host`,
       `[daemon.N] metrics_host`/`metrics_port`
 - [x] `conf/momo.conf` example
 - [x] `docs/ARCHITECTURE.md` metrics section note

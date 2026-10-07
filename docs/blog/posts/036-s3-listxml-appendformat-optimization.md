@@ -107,7 +107,7 @@ intermediate string. Two more details mattered:
 
 ## Engineering Standards (⚡ Bolt)
 
-Per [docs/STANDARDS.md](../../STANDARDS.md): ⚡ **Bolt** — zero-allocation hot
+Per [docs/CORE/STANDARDS.md](../../STANDARDS.md): ⚡ **Bolt** — zero-allocation hot
 paths, stack buffers, and pre-allocated reuse.
 
 ## References / Dig deeper

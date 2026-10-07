@@ -145,7 +145,7 @@ points at the parser.
 
 ## References / Dig deeper
 
-- The standard: [docs/STANDARDS.md](../../STANDARDS.md)
+- The standard: [docs/CORE/STANDARDS.md](../../STANDARDS.md)
 - Related Bolt posts: [024](024-bolt-performance-engineering.md) performance
   mindset, [045](045-bolt-lastmodified-header.md) header formatting,
   [047](047-bolt-s3-copyresult-time-alloc.md) XML timestamps,

@@ -4,7 +4,7 @@
 - [x] Proposal written (`proposal.md`) with P0/P1/P2 phases, item table, DoD
 - [x] Specification written (`spec.md`) with REQ-1..REQ-11 + phase gates
 - [x] Link each item to its OpenSpec change + GitHub issue
-- [ ] docs/ROADMAP.md updated with the production-readiness tiers (Rule 27)
+- [ ] docs/GUIDES/ROADMAP.md updated with the production-readiness tiers (Rule 27)
 - [ ] Mirror to GitHub: create parent roadmap issue + sub-issue chain R1–R11
       (labels `enhancement` + `automation`, assignee `alsotoes`) — Rule 11/49
 

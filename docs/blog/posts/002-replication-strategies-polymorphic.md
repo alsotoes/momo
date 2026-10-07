@@ -7,7 +7,7 @@ tags: [go, replication, architecture, bolt, sentinel]
 categories: [origin]
 summary: "Chain, Splay, and Primary-Splay replication — and the metrics-driven controller that switches between them at runtime."
 artifacts:
-  - {type: doc, path: docs/REPLICATION_STRATEGIES.md}
+  - {type: doc, path: docs/REFERENCE/REPLICATION_STRATEGIES.md}
   - {type: spec, path: openspec/changes/add-replication-durability-floor}
 related:
   - 001-origin-and-genesis
@@ -149,7 +149,7 @@ pick one forever.
 
 ## 5. Engineering Standards (⚡ Bolt & 🛡 Sentinel)
 
-In accordance with [docs/STANDARDS.md](../../STANDARDS.md):
+In accordance with [docs/CORE/STANDARDS.md](../../STANDARDS.md):
 
 - ⚡ **Bolt**: strategy selection is a lightweight control-plane decision. The
   data plane uses pooled stack buffers and bounded semaphores so replication
@@ -160,7 +160,7 @@ In accordance with [docs/STANDARDS.md](../../STANDARDS.md):
 
 ## References / Dig deeper
 
-- Replication design doc: [docs/REPLICATION_STRATEGIES.md](../../REPLICATION_STRATEGIES.md).
+- Replication design doc: [docs/REFERENCE/REPLICATION_STRATEGIES.md](../../REPLICATION_STRATEGIES.md).
 - Spec: `openspec/changes/add-replication-durability-floor`.
 - Sibling posts: [001: Origin and Genesis](001-origin-and-genesis.md),
   [003: TCP → QUIC Transport](003-transport-tcp-to-quic.md),

@@ -89,7 +89,7 @@ verification, the guarantee would be only as strong as the weakest backend.
   [024](024-bolt-performance-engineering.md), so verification does not allocate
   per object.
 
-See [docs/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
+See [docs/CORE/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
 
 ## References / Dig deeper
 

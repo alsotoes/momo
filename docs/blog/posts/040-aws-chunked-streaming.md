@@ -91,7 +91,7 @@ The server decodes that framing and verifies each chunk before accepting it:
 
 ## Engineering Standards (⚡ Bolt & 🛡 Sentinel)
 
-Per [docs/STANDARDS.md](../../STANDARDS.md):
+Per [docs/CORE/STANDARDS.md](../../STANDARDS.md):
 
 - ⚡ **Bolt**: bounded memory. The server never buffers more than one chunk.
 - 🛡 **Sentinel**: per-chunk integrity with honest, precise mismatch errors.

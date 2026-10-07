@@ -15,7 +15,7 @@
 ## 3. Docs (Rule 27 / Rule 73)
 - [x] Author `openspec/changes/s3-listxml-appendformat/{proposal,spec,tasks}` linked
       to issue #900
-- [x] `docs/PERFORMANCE.md` benchmarks table updated by pre-commit hook (Rule 61)
+- [x] `docs/REFERENCE/PERFORMANCE.md` benchmarks table updated by pre-commit hook (Rule 61)
 
 ## 4. Validation
 - [x] `go vet`, `go build` in `src/transport`

@@ -152,7 +152,7 @@ parser.
 
 ## References / Dig deeper
 
-- The standard: [docs/STANDARDS.md](../../STANDARDS.md)
+- The standard: [docs/CORE/STANDARDS.md](../../STANDARDS.md)
 - Related Bolt posts: [024](024-bolt-performance-engineering.md) performance
   mindset, [048](048-bolt-listparts-appendformat.md) the last XML allocation,
   [051](051-bolt-aws-chunked-zero-alloc.md) streaming-header parsing.

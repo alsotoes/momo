@@ -102,7 +102,7 @@ claim it — the one ordering-sensitive part of the change.
 
 ## Engineering Standards (🛡 Sentinel)
 
-Per [docs/STANDARDS.md](../../STANDARDS.md): 🛡 **Sentinel** — complete, honest
+Per [docs/CORE/STANDARDS.md](../../STANDARDS.md): 🛡 **Sentinel** — complete, honest
 `501` coverage with no silent misrouting.
 
 ## References / Dig deeper

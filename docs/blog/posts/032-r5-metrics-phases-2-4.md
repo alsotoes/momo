@@ -148,7 +148,7 @@ OpenTelemetry for distributed tracing.
 
 ## Standards
 
-See [docs/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
+See [docs/CORE/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
 
 ## References / Dig deeper
 
@@ -157,4 +157,4 @@ See [docs/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel min
   peer gossip [016](016-p2p-gossip-swim.md),
   scatter-gather and leases [017](017-scatter-gather-lease-quorum.md),
   performance engineering [024](024-bolt-performance-engineering.md).
-- Performance history: [docs/PERFORMANCE.md](../../PERFORMANCE.md).
+- Performance history: [docs/REFERENCE/PERFORMANCE.md](../../PERFORMANCE.md).

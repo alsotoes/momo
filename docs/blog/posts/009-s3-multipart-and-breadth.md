@@ -90,7 +90,7 @@ pagination discipline as `ListObjectsV2`.
 operations is explicit, synchronized, and testable, so "unsupported" can never
 masquerade as "done".
 
-See [docs/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
+See [docs/CORE/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
 
 ## References / Dig deeper
 
@@ -98,7 +98,7 @@ See [docs/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel min
   [012](012-s3-integrity-checksums.md).
 - 501 discipline in depth: [033](033-s3-501-discipline-bucket-config.md).
 - Compatibility matrix and the 501 catalog:
-  `docs/COMPATIBILITY.md`,
+  `docs/REFERENCE/COMPATIBILITY.md`,
   `openspec/changes/s3-p5-remaining-subresource-501/`.
 - Multipart spec and pull requests: `openspec/changes/s3-multipart-upload`
   (PRs #801, #913, #915, #921).

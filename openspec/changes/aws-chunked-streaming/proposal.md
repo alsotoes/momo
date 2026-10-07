@@ -52,7 +52,7 @@ gateway is effectively unusable for them.
   `aws-chunked` under `UNSIGNED-PAYLOAD`): de-frame and skip per-chunk
   verification, documenting the security posture; integrity is provided by the
   content-addressing hash computed during decode.
-- **Docs**: update `docs/PROTOCOL.md` with the streaming wire format, the
+- **Docs**: update `docs/REFERENCE/PROTOCOL.md` with the streaming wire format, the
   security posture, and why the outbound `S3BlobStore` may keep using
   `UNSIGNED-PAYLOAD`.
 
@@ -65,7 +65,7 @@ aws-java-sdk-v1 `AwsChunkedEncodingInputStream`, the aws-sdk-net
 ## Impact
 - Affected specs: `streaming`
 - Affected code: `src/transport/s3_communicator.go`, `src/transport/sigv4.go`,
-  `src/transport/aws_chunked.go` (new), `docs/PROTOCOL.md`
+  `src/transport/aws_chunked.go` (new), `docs/REFERENCE/PROTOCOL.md`
 - No changes to `src/server`, `src/storage`, or the momo wire protocol — the
   gateway decodes/de-frames at the transport boundary and the standard
   PUT/replication pipeline is preserved.

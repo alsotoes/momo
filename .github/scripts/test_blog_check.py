@@ -51,10 +51,10 @@ class ReadabilityTest(unittest.TestCase):
 
     def test_standards_link_allowed(self):
         body = (
-            "We hit a wall.\n\nSee docs/STANDARDS.md for the mindsets.\n\n"
+            "We hit a wall.\n\nSee docs/CORE/STANDARDS.md for the mindsets.\n\n"
             "## References\n\n- spec\n"
         )
-        self.assertFalse(any("docs/STANDARDS.md" in p for p in _problems(body)))
+        self.assertFalse(any("docs/CORE/STANDARDS.md" in p for p in _problems(body)))
 
     def test_latex_flagged(self):
         body = (

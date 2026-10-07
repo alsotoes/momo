@@ -36,7 +36,7 @@ but undocumented as a story.
    (openspec change dirs, PRs, issues) and `related` cross-links to sibling
    posts (e.g. CRUSH post ↔ CAS post), forming a navigable web.
 6. **Bolt/Sentinel embedded:** each post where perf or security drove the design
-   MUST tag and narrate the ⚡/🛡 aspects, linking `docs/STANDARDS.md`.
+   MUST tag and narrate the ⚡/🛡 aspects, linking `docs/CORE/STANDARDS.md`.
 
 ## Out of scope
 - Building/publishing a Hugo site; adding hugo.toml/theme; generating posts

@@ -22,9 +22,9 @@
 - [x] 2.6 All existing tests pass unchanged.
 
 ## 3. Documentation
-- [x] 3.1 Update `docs/CONFIGURATION.md` with backend field + examples.
+- [x] 3.1 Update `docs/GUIDES/CONFIGURATION.md` with backend field + examples.
 - [x] 3.2 Update `docs/ARCHITECTURE.md` with BlobStore/MetadataStore split.
-- [x] 3.3 Update `docs/STANDARDS.md` with backend interface contract.
+- [x] 3.3 Update `docs/CORE/STANDARDS.md` with backend interface contract.
 - [x] 3.4 Update `docs/README.md` features list.
 - [x] 3.5 Update `conf/momo.conf` with backend examples.
 - [x] 3.6 Create `openspec/changes/add-pluggable-storage/` spec.

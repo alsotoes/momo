@@ -45,7 +45,7 @@ Two integrity/security gaps in the S3 boundary:
 - **`x-amz-sdk-checksum-algorithm` is accepted and documented** (aws-cli v2
   sends it by default; rejecting it would break real clients). momo does not
   compute AWS additive checksums — integrity is content-addressed SHA-256 plus
-  AEAD at rest — and this is documented in `docs/PROTOCOL.md`.
+  AEAD at rest — and this is documented in `docs/REFERENCE/PROTOCOL.md`.
 
 ## Non-Goals
 - No KMS integration, no customer-provided-key support, no AWS additive

@@ -15,12 +15,12 @@
 
 ### Origin & transport
 - [ ] 001 origin-and-genesis (go.mod `a8114af4`, 2025-09-09) — playground → object store
-- [ ] 002 replication-strategies-polymorphic (docs/REPLICATION_STRATEGIES.md, cad3663b, 2026-05-04) — chain/splay/primary-splay
+- [ ] 002 replication-strategies-polymorphic (docs/REFERENCE/REPLICATION_STRATEGIES.md, cad3663b, 2026-05-04) — chain/splay/primary-splay
 - [ ] 003 transport-tcp-to-quic (PRs #763/#818, 2026-08-11) — QUIC, TLS, 0-RTT
 
 ### Storage core
 - [ ] 004 cas-content-addressable-store (add-cas-storage 53000eea, 2026-03-11; PR #838 2026-08-16) — dedup, SHA-256
-- [ ] 005 crush-placement (docs/CRUSH.md 37363f09, 2026-06-30; PRs #872/#873 2026-08-19) — weighted rendezvous
+- [ ] 005 crush-placement (docs/REFERENCE/CRUSH.md 37363f09, 2026-06-30; PRs #872/#873 2026-08-19) — weighted rendezvous
 - [ ] 006 pluggable-storage-backends (add-pluggable-storage 45ca8fdf, 2026-07-26) — local/nfs/s3/raw
 - [ ] 007 at-rest-integrity-and-gc (PRs #911/#925, 2026-08-24/25) — verify-on-read, tombstones
 
@@ -51,8 +51,8 @@
 - [ ] 023 momofs-fuse-transport (PR #963, 2026-08-28; issue #962, 2026-08-28) — bazil.org/fuse, mount
 
 ### Performance & governance (⚡ Bolt)
-- [ ] 024 bolt-performance-engineering (docs/STANDARDS.md 1597efdf, 2026-06-30; PR #795, 2026-08-12) — zero-alloc, deadlines
-- [ ] 025 benchmark-benchstat-gate (docs/PERFORMANCE.md auto; PRs #958/#960/#961, 2026-08-28) — three-dot gate, allowlists
+- [ ] 024 bolt-performance-engineering (docs/CORE/STANDARDS.md 1597efdf, 2026-06-30; PR #795, 2026-08-12) — zero-alloc, deadlines
+- [ ] 025 benchmark-benchstat-gate (docs/REFERENCE/PERFORMANCE.md auto; PRs #958/#960/#961, 2026-08-28) — three-dot gate, allowlists
 - [ ] 026 metrics-observability (PR #942, 2026-08-25; add-metrics-exporter a5be9c21, 2026-07-24) — per-node bind, scrape
 - [ ] 027 governance-ai-review-spec-first (add-ai-reviewer ed6798ff, 2026-06-09; PRs #909/#945, 2026-08-24/26) — Rule 73, reviewer, three-dot
 - [ ] 028 roadmap-and-research (prod-ready-roadmap; issue #928, 2026-08-25; RESEARCH_PAPERS bf993e48, 2026-08-04) — R5–R11, research guide

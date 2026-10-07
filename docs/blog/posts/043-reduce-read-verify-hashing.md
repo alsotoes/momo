@@ -197,7 +197,7 @@ BenchmarkTrustedBlobRead/1MiB-4   10000     416,210 ns/op   2402.63 MB/s     11 
   allocations per operation regardless of payload size — 1 MiB, 64 MiB, or 256
   MiB — because the crypto engine is simply absent from the warm path.
 
-See [docs/STANDARDS.md](../../STANDARDS.md) for the Bolt and Sentinel engineering
+See [docs/CORE/STANDARDS.md](../../STANDARDS.md) for the Bolt and Sentinel engineering
 principles.
 
 ## What Could Go Wrong

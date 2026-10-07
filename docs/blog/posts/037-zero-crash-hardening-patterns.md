@@ -129,7 +129,7 @@ at ownership boundaries, not on every value.
 
 ## Standards
 
-Per [docs/STANDARDS.md](../../STANDARDS.md): 🛡 **Sentinel** (fail-closed,
+Per [docs/CORE/STANDARDS.md](../../STANDARDS.md): 🛡 **Sentinel** (fail-closed,
 panic-to-error, no silent corruption), ⚡ **Bolt** (bounded allocations, zero-copy
 defensive patterns).
 

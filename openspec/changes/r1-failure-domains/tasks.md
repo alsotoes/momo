@@ -13,7 +13,7 @@
 
 ## 3. Config
 - [x] Add `FailureDomain` to `ConfigurationDaemon` + load in `loadDaemonConfig`
-- [x] `conf/momo.conf` + `docs/CONFIGURATION.md` (Rule 27)
+- [x] `conf/momo.conf` + `docs/GUIDES/CONFIGURATION.md` (Rule 27)
 
 ## 4. Tests (`src/common/crush_test.go`)
 - [x] R1-T1 same/multi/partial-domain optimum
@@ -24,4 +24,4 @@
 ## 5. Validation
 - [x] `go fmt`, `go vet`, `go build`, `go test` (common)
 - [x] `go work sync` + vendor parity
-- [x] Docs: `docs/CRUSH.md` updated (Rule 27)
+- [x] Docs: `docs/REFERENCE/CRUSH.md` updated (Rule 27)

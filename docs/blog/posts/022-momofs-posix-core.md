@@ -134,7 +134,7 @@ planned, not shipped, and should not be read as available.
 
 ## ⚡ Bolt + 🛡 Sentinel Lens
 
-Per [docs/STANDARDS.md](../../STANDARDS.md):
+Per [docs/CORE/STANDARDS.md](../../STANDARDS.md):
 
 - **⚡ Bolt**: manifests are small, hot, and read constantly, so metadata handling
   is written to be dense and allocation-light; the byte path rides the existing

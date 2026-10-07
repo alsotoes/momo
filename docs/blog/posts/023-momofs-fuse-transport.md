@@ -131,7 +131,7 @@ byte-range follow-up.
 
 ## ⚡ Bolt + 🛡 Sentinel Lens
 
-Per [docs/STANDARDS.md](../../STANDARDS.md):
+Per [docs/CORE/STANDARDS.md](../../STANDARDS.md):
 
 - **⚡ Bolt**: per-handle write buffers are bounded, so memory does not grow without
   limit during large in-flight writes; reads stream rather than copy the blob into

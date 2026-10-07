@@ -18,7 +18,7 @@ This change adds the **measurement harness only**. It ships no optimization.
 ## What
 
 1. **Benchmark segments**, benchstat-compatible and benchmem-aware, recorded to
-   `.github/data/benchmark_history.csv` + `docs/PERFORMANCE.md` by the standard
+   `.github/data/benchmark_history.csv` + `docs/REFERENCE/PERFORMANCE.md` by the standard
    pre-commit hook / `make benchmark`:
    - `BenchmarkHashBytes` / `BenchmarkHashFile` — SHA-256 content hashing.
    - `BenchmarkLocalWrite` — 64KB-buffered local blobstore write.

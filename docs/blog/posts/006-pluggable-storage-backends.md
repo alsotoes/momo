@@ -68,12 +68,12 @@ bytes can live on NFS, in an S3 bucket, or on a raw block device.
   sit *under* the backend seam transparently
   ([013](013-e2ee-envelope-encryption.md)) — a seam earning its keep.
 
-See [docs/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
+See [docs/CORE/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
 
 ## References / Dig deeper
 
 - Configuration reference (the `[storage]` section):
-  [docs/CONFIGURATION.md](../../CONFIGURATION.md).
+  [docs/GUIDES/CONFIGURATION.md](../../CONFIGURATION.md).
 - Spec: `openspec/changes/add-pluggable-storage`; tracking issue #820.
 - Related: [004](004-cas-content-addressable-store.md) → this post →
   [008](008-s3-gateway-core.md), [011](011-s3-https-tls-enforcement.md),

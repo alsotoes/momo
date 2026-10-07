@@ -8,12 +8,12 @@ Momo is a Go distributed object storage system. The current code and docs point 
 
 | Momo area | Code and docs | Research themes |
 |---|---|---|
-| Algorithmic object placement | `src/common/crush.go`, `docs/CRUSH.md` | CRUSH, rendezvous hashing, consistent hashing, decentralized placement |
+| Algorithmic object placement | `src/common/crush.go`, `docs/REFERENCE/CRUSH.md` | CRUSH, rendezvous hashing, consistent hashing, decentralized placement |
 | Object storage engine | `src/storage/`, `docs/ARCHITECTURE.md`, `docs/momofs/CURRENT_ARCHITECTURE.md` | Content-addressable storage, deduplication, local storage backend design |
-| Replication modes | `src/server/replication.go`, `src/client/client.go`, `docs/REPLICATION_STRATEGIES.md` | Chain replication, fan-out replication, quorum and consistency trade-offs |
-| Adaptive replication | `src/metrics/`, `docs/POLYMORPHIC_SYSTEM.md` | Self-adaptive systems, autonomic control loops, runtime reconfiguration |
-| P2P coordination | `src/p2p/`, `docs/P2P.md` | Gossip, SWIM membership, failure detectors, scatter-gather, leases |
-| Transport protocols | `src/transport/`, `docs/PROTOCOL.md` | TCP framing, QUIC, S3-compatible REST gateways |
+| Replication modes | `src/server/replication.go`, `src/client/client.go`, `docs/REFERENCE/REPLICATION_STRATEGIES.md` | Chain replication, fan-out replication, quorum and consistency trade-offs |
+| Adaptive replication | `src/metrics/`, `docs/REFERENCE/POLYMORPHIC_SYSTEM.md` | Self-adaptive systems, autonomic control loops, runtime reconfiguration |
+| P2P coordination | `src/p2p/`, `docs/REFERENCE/P2P.md` | Gossip, SWIM membership, failure detectors, scatter-gather, leases |
+| Transport protocols | `src/transport/`, `docs/REFERENCE/PROTOCOL.md` | TCP framing, QUIC, S3-compatible REST gateways |
 | Secure E2EE and confidential deduplication | `src/crypto/`, `openspec/changes/secure-e2ee-confidential-dedup/` | Message-locked encryption, OPRF/VOPRF, Shamir secret sharing, HKDF, AES-GCM nonce safety |
 | Future MomoFS roadmap | `docs/momofs/*.md` | Distributed metadata, self-healing, multi-tenancy, GDPR, fast recovery, AI search, erasure coding, HPC/cloud readiness |
 

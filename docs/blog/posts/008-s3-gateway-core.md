@@ -111,7 +111,7 @@ Inbound TLS enforcement followed ([011](011-s3-https-tls-enforcement.md)).
 gateway, so a series of allocation optimizations attacked exactly there
 ([024](024-bolt-performance-engineering.md)).
 
-See [docs/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
+See [docs/CORE/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
 
 ## References / Dig deeper
 

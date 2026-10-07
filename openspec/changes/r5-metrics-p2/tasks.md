@@ -30,6 +30,6 @@
 ## 5. Validation
 - [x] `make build` + `make test` green (all modules)
 - [x] Live smoke: boot daemon with histograms enabled, curl `/metrics` (blob/disk/cluster/swim/lease/histogram lines present)
-- [x] Update `docs/CONFIGURATION.md` + `docs/TESTING.md` metric tables
+- [x] Update `docs/GUIDES/CONFIGURATION.md` + `docs/GUIDES/TESTING.md` metric tables
 - [x] Blog post per Rule 76 (`docs/blog/posts/026-metrics-observability.md` updated)
 - [x] OpenSpec change `r5-metrics-p2` (proposal/spec/tasks, links #933)

@@ -23,7 +23,7 @@ artifacts:
 - type: issue
   id: '889'
 - type: doc
-  path: docs/PENTESTING.md
+  path: docs/GUIDES/PENTESTING.md
 related:
 - 013-e2ee-envelope-encryption
 - 011-s3-https-tls-enforcement
@@ -97,11 +97,11 @@ Three rules fell out of the sweep and became permanent:
   leak. A storage node that crashes on malformed input is a denial-of-service
   waiting to happen.
 
-See [docs/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
+See [docs/CORE/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
 
 ## References / Dig deeper
 
-- Pentest toolkit and write-ups: `docs/PENTESTING.md`, `pentest/`.
+- Pentest toolkit and write-ups: `docs/GUIDES/PENTESTING.md`, `pentest/`.
 - Tracking issues: [#593](https://github.com/alsotoes/momo/issues/593),
   [#811](https://github.com/alsotoes/momo/issues/811),
   [#859](https://github.com/alsotoes/momo/issues/859),

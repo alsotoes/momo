@@ -20,7 +20,7 @@
 
 ## 4. Config
 - [x] `durability` enum (default `"fsync"`, invalid → EINVAL), `write_quorum` (default 1)
-- [x] `conf/momo.conf` + `docs/CONFIGURATION.md` + `docs/ARCHITECTURE.md` (Rule 27)
+- [x] `conf/momo.conf` + `docs/GUIDES/CONFIGURATION.md` + `docs/ARCHITECTURE.md` (Rule 27)
 
 ## 5. Tests
 - [x] R3-T1 durability profile modes (mock store): fsync / group-commit / none

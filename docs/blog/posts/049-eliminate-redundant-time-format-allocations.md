@@ -90,7 +90,7 @@ free.
 
 ## References / Dig deeper
 
-- Mindset standards: [docs/STANDARDS.md](../../STANDARDS.md).
+- Mindset standards: [docs/CORE/STANDARDS.md](../../STANDARDS.md).
 - Bolt engineering overview: [024](024-bolt-performance-engineering.md).
 - The change spec: `openspec/changes/bolt-optimize-datestamp`.
 - The signing code lives in `src/storage/s3_blobstore.go`.

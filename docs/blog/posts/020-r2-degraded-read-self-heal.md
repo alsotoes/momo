@@ -195,7 +195,7 @@ watching a video never sees the failure.
 
 ## How We Verified
 
-Per [docs/STANDARDS.md](../../STANDARDS.md):
+Per [docs/CORE/STANDARDS.md](../../STANDARDS.md):
 
 - 🛡 **Sentinel (verify-before-use)**: `Fetch()` enforces strict streaming
   verification. A survivor's bytes are never accepted or written to local disk

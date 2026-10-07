@@ -18,7 +18,7 @@
 ## 3. Config
 - [x] `rebuild_interval` (300), `degraded_read` (true), `rebuild_workers` (4) in
       `[storage]` — R2-G1
-- [x] `conf/momo.conf` + `docs/CONFIGURATION.md` (Rule 27)
+- [x] `conf/momo.conf` + `docs/GUIDES/CONFIGURATION.md` (Rule 27)
 
 ## 4. Tests (`src/storage/rebuild_test.go`)
 - [x] R2-T1 survivor read + mark-and-hold + replace

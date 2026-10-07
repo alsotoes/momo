@@ -130,4 +130,4 @@ you are willing to give up centralized coordination.
   [005: CRUSH Placement](005-crush-placement.md),
   [028: Roadmap and Research](028-roadmap-and-research.md).
 - The "seam over plugins" mindset and the project's engineering standards:
-  [docs/STANDARDS.md](../../STANDARDS.md).
+  [docs/CORE/STANDARDS.md](../../STANDARDS.md).

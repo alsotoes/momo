@@ -36,8 +36,8 @@
 
 - [x] C1. Integration test exercising the threshold then lockout via a real
   `net.Pipe`/`127.0.0.1:0` handshake with the limiter enabled (Rule 40).
-- [x] C2. Docs parity (Rule 27): update `docs/CONFIGURATION.md` with
-  `auth_backoff_delay`; note throttling in `docs/PROTOCOL.md`/security notes.
+- [x] C2. Docs parity (Rule 27): update `docs/GUIDES/CONFIGURATION.md` with
+  `auth_backoff_delay`; note throttling in `docs/REFERENCE/PROTOCOL.md`/security notes.
 - [x] C3. `go build ./...`, `go test -race ./...`, `go vet ./...`, `gofmt`.
 - [x] C4. Confirm `auth_backoff_delay=0` leaves all existing handshake tests
   unchanged (backward compatibility).

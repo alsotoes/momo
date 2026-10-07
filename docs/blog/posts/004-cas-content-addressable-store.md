@@ -225,7 +225,7 @@ smuggling, and raw-store traversal findings that hardened this path.
 - **When content isn't immutable** — e.g. user-editable documents that change
   in place.
 
-See [docs/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
+See [docs/CORE/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
 
 ## References / Dig deeper
 

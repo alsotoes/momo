@@ -10,7 +10,7 @@ artifacts:
   - {type: pr, id: "763"}
   - {type: pr, id: "818"}
   - {type: spec, path: openspec/changes/add-quic-protocol}
-  - {type: doc, path: docs/PROTOCOL.md}
+  - {type: doc, path: docs/REFERENCE/PROTOCOL.md}
 related:
   - 002-replication-strategies-polymorphic
   - 011-s3-https-tls-enforcement
@@ -61,11 +61,11 @@ computing deadline windows in bulk instead of per-operation. The same
 pooling-and-buffer principles apply to the transfer payload ring. The full story
 is in [024](024-bolt-performance-engineering.md).
 
-See [docs/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
+See [docs/CORE/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
 
 ## References / Dig deeper
 
-- Wire protocol doc: [docs/PROTOCOL.md](../../PROTOCOL.md).
+- Wire protocol doc: [docs/REFERENCE/PROTOCOL.md](../../PROTOCOL.md).
 - Spec: `openspec/changes/add-quic-protocol`.
 - Pull requests: #763 (QUIC listener identity), #818 (idempotent close).
 - Chained reads: [002](002-replication-strategies-polymorphic.md) →

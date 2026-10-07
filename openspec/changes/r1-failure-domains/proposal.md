@@ -31,5 +31,5 @@ Production durability requires copying to be spread across independent failure d
 
 ## References
 
-- `docs/CRUSH.md` (placement algorithm), `src/common/crush.go`
+- `docs/REFERENCE/CRUSH.md` (placement algorithm), `src/common/crush.go`
 - Roadmap REQ-1: `prod-ready-roadmap`

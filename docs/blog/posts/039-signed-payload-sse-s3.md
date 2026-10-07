@@ -102,7 +102,7 @@ long-running job on one connection.
 
 ## Engineering Standards (🛡 Sentinel)
 
-Per [docs/STANDARDS.md](../../STANDARDS.md): 🛡 **Sentinel** — verify what you
+Per [docs/CORE/STANDARDS.md](../../STANDARDS.md): 🛡 **Sentinel** — verify what you
 sign, with no trust gaps and an honest mismatch error.
 
 ## References / Dig deeper

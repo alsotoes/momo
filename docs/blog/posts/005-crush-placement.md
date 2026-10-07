@@ -14,7 +14,7 @@ categories:
 summary: 'Weighted rendezvous hashing picks replicas deterministically and peer-equally without a central allocator — later hardened for failure domains. Teaches: content-hash-based placement, weighted rendezvous hashing, deterministic stable sort, failure domain filtering.'
 artifacts:
 - type: doc
-  path: docs/CRUSH.md
+  path: docs/REFERENCE/CRUSH.md
 - type: pr
   id: '872'
 - type: pr
@@ -231,11 +231,11 @@ coordinator overhead.
   operator or scheduler outside the storage layer.
 - **Non-content-addressed storage** — there is no content hash to key on.
 
-See [docs/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
+See [docs/CORE/STANDARDS.md](../../STANDARDS.md) for the ⚡ Bolt / 🛡 Sentinel mindsets.
 
 ## References / Dig deeper
 
-- Design doc: [docs/CRUSH.md](../../CRUSH.md).
+- Design doc: [docs/REFERENCE/CRUSH.md](../../CRUSH.md).
 - Spec: `openspec/changes/r1-failure-domains`.
 - Pull requests: #872 (stable sort), #873 (52-bit fold).
 - Upstream: [004](004-cas-content-addressable-store.md). Downstream:

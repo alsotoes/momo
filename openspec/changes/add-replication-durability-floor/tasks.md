@@ -29,7 +29,7 @@
   no-op, timeout-fallback held at floor.
 - [x] C2. Config tests: default 0, parsed positive, negative / too-large
   rejected.
-- [x] C3. Docs parity (Rule 27): `docs/CONFIGURATION.md`
+- [x] C3. Docs parity (Rule 27): `docs/GUIDES/CONFIGURATION.md`
   (`minimum_durability_factor`); note in `docs/ARCHITECTURE.md` how the
   controller holds at the floor.
 - [x] C4. `go build ./...`, `go test -race ./...`, `go vet ./...`, `gofmt`.

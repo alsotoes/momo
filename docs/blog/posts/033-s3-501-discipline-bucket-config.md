@@ -125,7 +125,7 @@ features here, and they must keep working:
 
 ## Engineering Standards (🛡 Sentinel)
 
-Per [docs/STANDARDS.md](../../STANDARDS.md): 🛡 **Sentinel** — honest error
+Per [docs/CORE/STANDARDS.md](../../STANDARDS.md): 🛡 **Sentinel** — honest error
 semantics and fail-closed behavior. Unsupported means `501`, never a wrong `200`
 or a misleading `404`.
 

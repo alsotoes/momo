@@ -31,10 +31,10 @@
 - [x] 4.4 Benchmark the de-framer (large payload) for the performance hook; record before/after ns/op and allocations.
 
 ## 5. Docs
-- [x] 5.1 Update `docs/PROTOCOL.md` (S3 section): streaming variants supported, de-framing at gateway boundary, chunk signature algorithm, unsigned-streaming security posture.
+- [x] 5.1 Update `docs/REFERENCE/PROTOCOL.md` (S3 section): streaming variants supported, de-framing at gateway boundary, chunk signature algorithm, unsigned-streaming security posture.
 - [x] 5.2 Add the outbound `S3BlobStore` `UNSIGNED-PAYLOAD` justification note.
 
 ## 6. Validation
 - [x] 6.1 Run `go vet`, `gofmt`, and the full per-module test suites (`src/root`, `common`, `transport`, `client`, `server`, `storage`, `metrics`, `crypto`, `p2p`).
-- [x] 6.2 Run the performance hook and commit the `docs/PERFORMANCE.md` / `.github/data/benchmark_history.csv` updates (pre-commit hook syncs these).
+- [x] 6.2 Run the performance hook and commit the `docs/REFERENCE/PERFORMANCE.md` / `.github/data/benchmark_history.csv` updates (pre-commit hook syncs these).
 - [x] 6.3 Open PR with `Resolves #773`, wait for checks, address the `github-actions` review, merge `--merge --delete-branch`, close the issue, run the Rule 71 master gate.
