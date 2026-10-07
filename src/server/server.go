@@ -449,7 +449,13 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 
 			// 🛡️ Sentinel: Sanitize and normalize fileName to prevent path traversal attacks (Rule 4).
 			rawFileName := metadata.Name
-			if rawFileName == "" || rawFileName == "." || rawFileName == ".." || strings.Contains(rawFileName, "../") || strings.Contains(rawFileName, "\\") {
+			if rawFileName == "" {
+				log.Printf("AUDIT: Invalid filename received from %s: empty", remoteAddr)
+				success = false
+				metricsCollector.IncErrors()
+				return
+			}
+			if err := common.ValidatePath(rawFileName); err != nil {
 				log.Printf("AUDIT: Invalid filename received from %s: %v", remoteAddr, common.SanitizeLog(rawFileName))
 				success = false
 				metricsCollector.IncErrors()
@@ -459,12 +465,6 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 			fileName := filepath.Base(rawFileName)
 			if strings.Contains(rawFileName, "/") {
 				remotePath = filepath.Dir(rawFileName)
-			}
-			if fileName == "" || fileName == "." || fileName == ".." || fileName == "/" || fileName == "\\" {
-				log.Printf("AUDIT: Invalid filename received from %s: %v", remoteAddr, common.SanitizeLog(fileName))
-				success = false
-				metricsCollector.IncErrors()
-				return
 			}
 			storageKey := rawFileName
 

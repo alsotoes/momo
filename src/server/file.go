@@ -10,7 +10,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -73,12 +72,9 @@ func getMetadata(r io.Reader) (metadata common.FileMetadata, err error) {
 		return metadata, fmt.Errorf("invalid characters in rawFileName: %w", syscall.EBADMSG)
 	}
 
-	if rawFileName == "." || rawFileName == ".." || strings.Contains(rawFileName, "../") || strings.Contains(rawFileName, "\\") {
+	// 🛡️ Sentinel: Use centralized path validation to prevent traversal and absolute paths.
+	if err := common.ValidatePath(rawFileName); err != nil {
 		return metadata, &os.PathError{Op: "getMetadata", Path: rawFileName, Err: os.ErrInvalid}
-	}
-	fileName := filepath.Base(rawFileName)
-	if fileName == "." || fileName == ".." || fileName == "/" || fileName == "\\" {
-		return metadata, &os.PathError{Op: "getMetadata", Path: fileName, Err: os.ErrInvalid}
 	}
 
 	// ⚡ Bolt: Parse integer directly from pre-allocated buffer padding.

@@ -12,7 +12,6 @@ import (
 	"net"
 	"net/url"
 	"os"
-	"path"
 	"strconv"
 	"strings"
 	"syscall"
@@ -782,9 +781,8 @@ func (m *MomoTCPCommunicator) ReceiveMetadata() (meta common.FileMetadata, err e
 	}
 
 	// 🛡️ Sentinel: Validate name for path traversal (allow virtual directories via /)
-	cleaned := path.Clean(metadata.Name)
-	if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") || strings.HasPrefix(cleaned, "/") {
-		return common.FileMetadata{}, fmt.Errorf("invalid name: path traversal: %w", syscall.EBADMSG)
+	if err := common.ValidatePath(metadata.Name); err != nil {
+		return common.FileMetadata{}, fmt.Errorf("invalid name: %w", err)
 	}
 
 	size, err := common.SafeParseInt(buffer[hashLength+common.FileInfoLength:])
