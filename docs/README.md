@@ -27,17 +27,33 @@ Momo is a high-performance, transport-agnostic **distributed object storage syst
 
 It is designed around a small, auditable core: CRUSH-lite placement, a pluggable `BlobStore` backend layer, P2P gossip membership, and runtime-reconfigurable replication (a "polymorphic" system driven by live metrics).
 
+## Foundational Principles & Architecture
+
+Momo is engineered around two foundational philosophies that govern all subsystem designs:
+
+1. **[Core Design Principles](DESIGN_PRINCIPLES.md)** — 14 core tenets of Momo, centered on **Read From Any Node**, zero coordinator bottlenecks, customer-transparent complexity, self-healing, and cloud/HPC readiness.
+2. **[Adaptive Systems Design](ADAPTIVE_SYSTEMS.md)** — 16 biological models (Ant Colony Optimization, Epigenetics, Homeostasis, Stigmergy, Immune System, Apoptosis) enabling the cluster to self-tune and heal without human intervention.
+3. **[Engineering Standards (⚡ Bolt & 🛡️ Sentinel)](STANDARDS.md)** — Predictable zero-allocation performance and zero-trust defensive security invariants.
+4. **[Architectural Decisions (DD-1 to DD-6)](DESIGN_DECISIONS.md)** — Foundational trade-offs on embedded BoltDB, dual independent rings, and wrapper seams.
+5. **[Distributed Storage Comparison](COMPARISON.md) & [Lessons Learned](LESSONS_LEARNED.md)** — In-depth architectural analysis and lessons learned from Ceph, Lustre, ScyllaDB, and IPFS.
+
 ## Documentation Index
 
 | Document | Description |
 |---|---|
-| [ARCHITECTURE](ARCHITECTURE.md) | System architecture, storage layer, replication, P2P, metrics |
-| [CONFIGURATION](CONFIGURATION.md) | Complete configuration reference for `momo.conf` |
+| [DESIGN_PRINCIPLES](DESIGN_PRINCIPLES.md) | 14 core tenets: Read From Any Node, zero SPOF, self-healing, HPC/Cloud ready |
+| [ADAPTIVE_SYSTEMS](ADAPTIVE_SYSTEMS.md) | 16 bio-inspired models: Ant Colony routing, Epigenetic concurrency, Homeostasis |
 | [STANDARDS](STANDARDS.md) | ⚡ Bolt (performance) and 🛡️ Sentinel (security) coding standards |
+| [ARCHITECTURE](ARCHITECTURE.md) | System architecture, storage layer, replication, P2P, metrics |
+| [DESIGN_DECISIONS](DESIGN_DECISIONS.md) | Architectural Decision Records DD-1 to DD-6 (embedded DB, dual rings, seams) |
+| [COMPARISON](COMPARISON.md) | Feature matrix vs Ceph, Lustre, ScyllaDB, IPFS |
+| [LESSONS_LEARNED](LESSONS_LEARNED.md) | Architectural takeaways from mature distributed storage engines |
+| [CONFIGURATION](CONFIGURATION.md) | Complete configuration reference for `momo.conf` |
 | [PROTOCOL](PROTOCOL.md) | Wire protocol specification (handshake, metadata, replication) |
 | [REPLICATION_STRATEGIES](REPLICATION_STRATEGIES.md) | Chain, Splay, Primary-Splay replication modes |
 | [CRUSH](CRUSH.md) | CRUSH-lite placement algorithm (Weighted Rendezvous Hashing) |
 | [P2P](P2P.md) | P2P gossip, SWIM failure detection, scatter-gather, lease consensus |
+| [MOMOFS](momofs/README.md) | MomoFS FUSE/POSIX filesystem subsystem, mount user guide, CAS inode schema |
 | [TESTING](TESTING.md) | Test suites, CI pipeline, contract testing, E2E tests |
 | [CONTRIBUTING](CONTRIBUTING.md) | Contribution guidelines and PR workflow |
 | [ROADMAP](ROADMAP.md) | Project roadmap with milestones and GitHub issues |
