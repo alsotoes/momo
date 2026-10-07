@@ -178,6 +178,13 @@ func TestQueryHandler_PathTraversalRejection(t *testing.T) {
 		}
 	})
 
+	t.Run("handleHas_empty", func(t *testing.T) {
+		_, err := h.handleHas([]byte(""))
+		if err == nil || !errors.Is(err, syscall.EINVAL) {
+			t.Errorf("expected syscall.EINVAL for empty handleHas, got: %v", err)
+		}
+	})
+
 	t.Run("DecodeFileMetadataList_traversal", func(t *testing.T) {
 		for _, name := range traversalNames {
 			badList := []common.FileMetadata{
@@ -207,6 +214,14 @@ func TestQueryHandler_PathTraversalRejection(t *testing.T) {
 		_, err := h.handleDelete([]byte(oversized))
 		if err == nil || !errors.Is(err, syscall.EBADMSG) {
 			t.Errorf("expected syscall.EBADMSG for oversized handleDelete, got: %v", err)
+		}
+	})
+
+	t.Run("handleHas_oversized", func(t *testing.T) {
+		oversized := strings.Repeat("a", common.FileInfoLength+1)
+		_, err := h.handleHas([]byte(oversized))
+		if err == nil || !errors.Is(err, syscall.EBADMSG) {
+			t.Errorf("expected syscall.EBADMSG for oversized handleHas, got: %v", err)
 		}
 	})
 

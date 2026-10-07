@@ -40,7 +40,14 @@ func (h *StorageQueryHandler) HandleQuery(qt p2p.QueryType, data []byte) ([]byte
 }
 
 // handleList returns all local files as binary-encoded FileMetadata list.
-func (h *StorageQueryHandler) handleList() ([]byte, error) {
+func (h *StorageQueryHandler) handleList() (result []byte, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in handleList: %v", r)
+			err = fmt.Errorf("panic in handleList: %v: %w", r, syscall.EIO)
+		}
+	}()
+
 	files, err := h.store.List()
 	if err != nil {
 		return nil, err
@@ -99,9 +106,12 @@ func (h *StorageQueryHandler) handleHas(data []byte) (result []byte, err error) 
 	}()
 
 	if len(data) == 0 {
-		return nil, fmt.Errorf("empty hash")
+		return nil, fmt.Errorf("empty hash: %w", syscall.EINVAL)
 	}
 	hash := string(data)
+	if len(hash) > common.FileInfoLength {
+		return nil, fmt.Errorf("hash exceeds max length %d: %w", common.FileInfoLength, syscall.EBADMSG)
+	}
 	if strings.ContainsAny(hash, "\r\n") {
 		return nil, fmt.Errorf("invalid characters in hash: %w", syscall.EBADMSG)
 	}
