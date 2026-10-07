@@ -4,27 +4,31 @@ MomoFS is a **distributed masterless ring architecture** supporting multi-region
 
 The momofs core (CAS inode/metadata layer) and FUSE transport (`momo -imp fs`) are **implemented** (openspec/changes/r4-momofs/, #932 → #963); see [MOUNT_USER_GUIDE.md](MOUNT_USER_GUIDE.md). The remaining design docs below cover the full roadmap and future phases.
 
-## Document Index
+## Elevated Foundational Principles
 
-| Document | Description | Lines |
-|----------|-------------|-------|
-| [CURRENT_ARCHITECTURE.md](CURRENT_ARCHITECTURE.md) | Current BoltDB schema, buckets, what's shared vs. local | ~70 |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Masterless ring topology, data flow, consistency model, multi-region, storage engine comparison | ~290 |
-| [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md) | 6 formal design decisions (DD-1 to DD-6) + Ceph comparison | ~180 |
-| [DESIGN_PRINCIPLES.md](DESIGN_PRINCIPLES.md) | 14 design principles, Read From Any, HPC Ready, Cloud Ready | ~160 |
-| [IMPLEMENTATION.md](IMPLEMENTATION.md) | Four Pillars implementation: Go interfaces, protocols, 100-node walkthrough, config, Phase 1 tasks | ~1016 |
-| [LIMITATIONS.md](LIMITATIONS.md) | Current gaps and architecture transition (local → distributed) | ~80 |
-| [SCRUB_HEALING.md](SCRUB_HEALING.md) | Shallow/deep scrub, repair queue, self-healing design | ~60 |
-| [MULTI_TENANCY.md](MULTI_TENANCY.md) | Tenant model, per-tenant auth/quotas/encryption, BoltDB schema changes | ~60 |
-| [GDPR.md](GDPR.md) | Right to erasure, portability, data residency, encryption at rest | ~30 |
-| [AI_SEARCH.md](AI_SEARCH.md) | Vector embeddings, content classification, semantic search, multi-modal search | ~80 |
-| [RECOVERY.md](RECOVERY.md) | WAL journaling, Merkle trees, erasure coding, directory operations | ~80 |
-| [ADAPTIVE_SYSTEMS.md](ADAPTIVE_SYSTEMS.md) | Biological inspiration: stigmergy, immune system, neuroplasticity, etc. | ~400 |
-| [PERFORMANCE_SECURITY.md](PERFORMANCE_SECURITY.md) | ⚡ Bolt & 🛡️ Sentinel applied to every MomoFS feature | ~400 |
-| [COMPARISON.md](COMPARISON.md) | Feature comparison: MomoFS vs Ceph, Lustre, ScyllaDB, IPFS | ~250 |
-| [LESSONS_LEARNED.md](LESSONS_LEARNED.md) | Actionable features to adopt from Ceph, Lustre, ScyllaDB, IPFS | ~280 |
-| [ROADMAP.md](ROADMAP.md) | 8-phase roadmap, BoltDB evolution summary, SPOF checklist | ~120 |
-| [MOUNT_USER_GUIDE.md](MOUNT_USER_GUIDE.md) | FUSE mount (`-imp fs`) operation, flags, consistency, limitations | ~90 |
+The core architectural principles originally drafted here have been elevated to canonical top-level documentation:
+- [**Core Design Principles**](../DESIGN_PRINCIPLES.md) — 14 foundational tenets (Read From Any Node, Zero SPOF, HPC/Cloud Ready)
+- [**Adaptive Systems Architecture**](../ADAPTIVE_SYSTEMS.md) — 16 biological models (Ant Colony, Epigenetics, Homeostasis, Stigmergy)
+- [**Architectural Decisions (DD-1 to DD-6)**](../DESIGN_DECISIONS.md) — Fundamental decisions on BoltDB, dual rings, wrapper interfaces
+- [**Distributed Storage Comparison**](../COMPARISON.md) — Feature matrix vs Ceph, Lustre, ScyllaDB, IPFS
+- [**Lessons Learned**](../LESSONS_LEARNED.md) — Cross-system patterns and priorities
+
+## MomoFS Subsystem Documents
+
+| Document | Description |
+|----------|-------------|
+| [MOUNT_USER_GUIDE.md](MOUNT_USER_GUIDE.md) | FUSE mount (`momo -imp fs`) operation, flags, consistency, limitations |
+| [CURRENT_ARCHITECTURE.md](CURRENT_ARCHITECTURE.md) | Current BoltDB schema, buckets, what's shared vs. local |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Masterless ring topology, data flow, consistency model, multi-region |
+| [IMPLEMENTATION.md](IMPLEMENTATION.md) | Four Pillars implementation: Go interfaces, protocols, 100-node walkthrough |
+| [LIMITATIONS.md](LIMITATIONS.md) | Current gaps and architecture transition (local → distributed) |
+| [SCRUB_HEALING.md](SCRUB_HEALING.md) | Shallow/deep scrub, repair queue, self-healing design |
+| [MULTI_TENANCY.md](MULTI_TENANCY.md) | Tenant model, per-tenant auth/quotas/encryption, BoltDB schema |
+| [GDPR.md](GDPR.md) | Right to erasure, portability, data residency, encryption at rest |
+| [AI_SEARCH.md](AI_SEARCH.md) | Vector embeddings, content classification, semantic search |
+| [RECOVERY.md](RECOVERY.md) | WAL journaling, Merkle trees, erasure coding, directory operations |
+| [PERFORMANCE_SECURITY.md](PERFORMANCE_SECURITY.md) | ⚡ Bolt & 🛡️ Sentinel applied across filesystem operations |
+| [ROADMAP.md](ROADMAP.md) | 8-phase roadmap, BoltDB evolution summary, SPOF checklist |
 
 ## Quick Links
 

@@ -1,12 +1,19 @@
 # Momo Architecture
-# Architecture Decision Records
 
-All architectural decisions are documented as **Architecture Decision Records (ADRs)** in `docs/adr/`. Each ADR corresponds to an OpenSpec change under `openspec/changes/`. See `docs/adr/README.md` for the index and process.
+All architectural decisions are documented as **Architecture Decision Records (ADRs)** in [`docs/adr/`](adr/README.md). Each ADR corresponds to an OpenSpec change under `openspec/changes/`.
 
 ---
 
-
 This document provides a high-level overview of the Momo architecture, its components, and the replication strategies it supports.
+
+## Guiding Architectural Principles
+
+Momo's architecture is rooted in two foundational design documents:
+
+- **[14 Core Design Principles](DESIGN_PRINCIPLES.md)**: Centered on **Read From Any Node** (making the cluster appear as a unified system without central metadata coordination), zero single point of failure (Zero SPOF), customer-transparent complexity, self-healing, and cloud/HPC readiness.
+- **[16 Biological Adaptive Models](ADAPTIVE_SYSTEMS.md)**: Stigmergy (complex global order via simple local rules), Ant Colony optimization (pheromone-based replica routing), Epigenetics (boot-time host resource sensing), and Homeostasis (dynamic load shedding under memory/CPU pressure).
+- **[Engineering Standards (⚡ Bolt & 🛡️ Sentinel)](STANDARDS.md)**: Sub-microsecond zero-allocation paths and zero-trust defensive security boundaries.
+- **[Architectural Decisions (DD-1 to DD-6)](DESIGN_DECISIONS.md)**: Formal trade-off evaluations including embedded BoltDB, dual independent rings, and compile-time wrapper seams.
 
 ## System Overview
 
