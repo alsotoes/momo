@@ -539,13 +539,13 @@ Effort: Medium. Temporal indexing + time-travel. Phase 6-8.
 
 ### Phase 1-2 (Foundation + Self-Healing)
 
-| # | Feature | Bio Inspiration | Effort |
-|---|---------|----------------|--------|
-| 3 | Pheromone-based replica selection | Ant colony | ~100 lines |
-| 10 | Homeostatic feedback loops | Homeostasis | Low |
-| 4 | Apoptosis (self-decommissioning) | Apoptosis | Medium |
-| 6 | Epigenetic environment detection | Epigenetics | Low |
-| 11 | Swarm-based mode propagation | Swarm intelligence | Low (extends existing) |
+| # | Feature | Bio Inspiration | Effort | Status |
+|---|---------|----------------|--------|--------|
+| 3 | Pheromone-based replica selection | Ant colony | ~100 lines | Implemented (Phase 1, #1129) |
+| 6 | Epigenetic environment detection | Epigenetics | Low | Implemented (Phase 1, #1129) |
+| 10 | Homeostatic feedback loops | Homeostasis | Low | Implemented: Admission Backpressure (Phase 1, #1129) |
+| 4 | Apoptosis (self-decommissioning) | Apoptosis | Medium | Planned (Phase 3) |
+| 11 | Swarm-based mode propagation | Swarm intelligence | Low (extends existing) | Planned (Phase 2) |
 
 ### Phase 2-5 (Intelligence)
 
