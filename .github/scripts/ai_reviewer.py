@@ -78,6 +78,101 @@ def get_ecc_audit_summary(pr_number):
     return parse_ecc_audit_summary(comments)
 
 
+# ── REST-based PR/issue mutations (issue #1140) ──────────────────────────────
+# `gh pr edit` / `gh issue edit` run GraphQL queries that request org-scoped
+# fields (login/name/slug) and therefore fail when the token only has the
+# `repo` scope:
+#   GraphQL: The 'login' field requires ['read:org'], but your token has only
+#   been granted: ['repo']
+# Every label/assignee/body mutation silently failed as a result. These helpers
+# use the REST API instead, which the `repo` scope covers.
+
+def _repo_slug():
+    return os.environ.get("GITHUB_REPOSITORY", "alsotoes/momo")
+
+
+def _gh_api(method, path, payload=None):
+    """Call `gh api` with an optional JSON body. Returns the CompletedProcess."""
+    cmd = ["gh", "api", "-X", method, path]
+    if payload is not None:
+        cmd += ["--input", "-"]
+        return subprocess.run(cmd, input=json.dumps(payload),
+                              capture_output=True, text=True, check=True)
+    return subprocess.run(cmd, capture_output=True, text=True, check=True)
+
+
+def add_pr_labels(pr_number, labels):
+    """Add labels to a PR via REST (PR labels live on the issues endpoint)."""
+    labels = sorted({l for l in (labels or []) if l})
+    if not pr_number or not labels:
+        return
+    try:
+        _gh_api("POST", f"repos/{_repo_slug()}/issues/{pr_number}/labels",
+                {"labels": labels})
+        print(f"Added labels to PR #{pr_number}: {labels}")
+    except Exception as e:
+        print(f"Failed to add labels {labels} to PR #{pr_number}: {e}", file=sys.stderr)
+
+
+def assign_pr(pr_number, user):
+    """Assign a user to a PR via REST."""
+    if not pr_number or not user:
+        return
+    try:
+        _gh_api("POST", f"repos/{_repo_slug()}/issues/{pr_number}/assignees",
+                {"assignees": [user]})
+        print(f"Assigned {user} to PR #{pr_number}")
+    except Exception as e:
+        print(f"Failed to assign {user} to PR #{pr_number}: {e}", file=sys.stderr)
+
+
+def set_pr_body(pr_number, body):
+    """Set the PR description via REST."""
+    if not pr_number:
+        return
+    try:
+        _gh_api("PATCH", f"repos/{_repo_slug()}/pulls/{pr_number}", {"body": body})
+        print(f"Updated body of PR #{pr_number}")
+    except Exception as e:
+        print(f"Failed to update body of PR #{pr_number}: {e}", file=sys.stderr)
+
+
+def create_issue_rest(title, body, labels, assignee):
+    """Create an issue via REST. Returns the issue number, or None."""
+    payload = {"title": title, "body": body, "labels": sorted(set(labels or []))}
+    if assignee:
+        payload["assignees"] = [assignee]
+    try:
+        result = _gh_api("POST", f"repos/{_repo_slug()}/issues", payload)
+        return json.loads(result.stdout).get("number")
+    except Exception as e:
+        print(f"Failed to create issue: {e}", file=sys.stderr)
+        return None
+
+
+def review_is_approved(review):
+    """Return True if the reviewer's text signals approval (issue #1140).
+
+    The old check required the review to START with "✅". Jules reviews are
+    prefixed with "@google-labs-jules" and/or structured headings, so approved
+    Jules PRs never auto-merged. Detect the approval marker robustly, ignore any
+    appended ECC advisory block, and never treat an explicit blocker as approval.
+    """
+    if not review:
+        return False
+    # Drop any appended ECC advisory block (added after approval is computed).
+    core = review.split("**ECC audit**")[0]
+    # A blocker is a line that STARTS with a warning marker (optionally after a
+    # bullet/quote). Merely mentioning the markers in prose (e.g. describing the
+    # rules) must NOT block approval.
+    if re.search(r"(?m)^[\s\-\*>]*[🚨🛑]", core):
+        return False
+    # Strip a leading Jules mention so a prefixed "@google-labs-jules" does not
+    # hide the approval marker.
+    core = re.sub(r"^\s*@google-labs-jules\b[^\n]*\n+", "", core.strip()).strip()
+    return core.startswith("✅") or "✅ All Project Steering Rules" in core
+
+
 def get_filtered_diff():
     # 🛡️ Rule 15: Strictly limit diff size to prevent token exhaustion.
     max_diff_lines = 1000
@@ -154,14 +249,7 @@ def check_jules_first_comment(pr_number):
 
 def add_jules_label(pr_number):
     """Rule 68: Add the 'jules' label to Jules-created PRs."""
-    if not pr_number:
-        return
-    try:
-        subprocess.run(["gh", "pr", "edit", pr_number, "--add-label", "jules"],
-                       capture_output=True, text=True, check=True)
-        print("Added 'jules' label (Rule 68)")
-    except Exception as e:
-        print(f"Failed to add jules label: {e}", file=sys.stderr)
+    add_pr_labels(pr_number, ["jules"])
 
 def sync_pr_labels_and_assignee(pr_number, pr_title, pr_body):
     """Sync labels from linked issues to the PR and assign the git user.
@@ -192,8 +280,7 @@ def sync_pr_labels_and_assignee(pr_number, pr_title, pr_body):
 
     for issue_num in issue_nums:
         try:
-            cmd = ["gh", "issue", "view", issue_num, "--json", "labels"]
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            result = _gh_api("GET", f"repos/{_repo_slug()}/issues/{issue_num}")
             data = json.loads(result.stdout)
             for label in data.get("labels", []):
                 labels_to_add.add(label["name"])
@@ -208,20 +295,10 @@ def sync_pr_labels_and_assignee(pr_number, pr_title, pr_body):
 
     # Apply labels
     if labels_to_add:
-        try:
-            cmd = ["gh", "pr", "edit", pr_number, "--add-label", ",".join(sorted(labels_to_add))]
-            subprocess.run(cmd, capture_output=True, text=True, check=True)
-            print(f"Synced labels to PR #{pr_number}: {sorted(labels_to_add)}")
-        except Exception as e:
-            print(f"Failed to sync labels: {e}", file=sys.stderr)
+        add_pr_labels(pr_number, labels_to_add)
 
     # Assign git user to every PR
-    try:
-        subprocess.run(["gh", "pr", "edit", pr_number, "--add-assignee", git_user],
-                       capture_output=True, text=True, check=True)
-        print(f"Assigned {git_user} to PR #{pr_number}")
-    except Exception as e:
-        print(f"Failed to assign {git_user}: {e}", file=sys.stderr)
+    assign_pr(pr_number, git_user)
 
 def pr_has_label(pr_number, label):
     """Return True if the PR carries the given label (e.g. 'enhancement')."""
@@ -313,31 +390,30 @@ def create_missing_issue(pr_number, pr_title, pr_body):
             print(f"Rule 90: Reusing existing auto-trace issue #{existing} for PR #{pr_number} (no duplicate created)")
             # Ensure the PR body links the canonical issue
             if f"Resolves #{existing}" not in pr_body and f"resolves #{existing}" not in pr_body.lower():
-                try:
-                    subprocess.run(["gh", "pr", "edit", str(pr_number),
-                                    "--body", f"{pr_body}\n\nResolves #{existing}"], check=True)
-                    print(f"Linked existing issue #{existing} to PR #{pr_number}")
-                except Exception as e:
-                    print(f"Failed to link existing issue: {e}", file=sys.stderr)
+                set_pr_body(pr_number, f"{pr_body}\n\nResolves #{existing}")
             return True
 
         print(f"Rule 11 Violation detected. Autonomously creating tracking issue for PR #{pr_number}...")
-        
+
         issue_title = f"[Auto-Trace] {pr_title}"
         issue_body = f"This issue was created autonomously to satisfy Rule 11 (Traceability) for PR #{pr_number}.\n\n### Original PR Description:\n{pr_body}"
-        
+
         # Create the issue (assignee from git config)
         try:
             git_user = subprocess.run(["git", "config", "user.name"], capture_output=True, text=True, check=True).stdout.strip()
         except Exception:
             git_user = "alsotoes"
-        cmd = ["gh", "issue", "create", "--title", issue_title, "--body", issue_body, "--label", "enhancement", "--label", "automation", "--assignee", git_user]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        issue_url = result.stdout.strip()
-        
+
+        # Issue #1140: Sentinel (security/bug) PRs get 'bug'; everything else
+        # gets 'enhancement'. Always tag 'automation'.
+        category = "bug" if "sentinel" in (pr_title or "").lower() else "enhancement"
+        issue_number = create_issue_rest(issue_title, issue_body, [category, "automation"], git_user)
+        if not issue_number:
+            return False
+
         # Link the issue back to the PR using the 'Resolves' keyword
-        subprocess.run(["gh", "pr", "edit", pr_number, "--body", f"{pr_body}\n\nResolves {issue_url}"], check=True)
-        print(f"Successfully created and linked issue: {issue_url}")
+        set_pr_body(pr_number, f"{pr_body}\n\nResolves #{issue_number}")
+        print(f"Successfully created and linked issue #{issue_number}")
         return True
     except Exception as e:
         print(f"Failed to create autonomous issue: {e}", file=sys.stderr)
@@ -395,7 +471,14 @@ def main():
     sync_pr_labels_and_assignee(pr_number, pr_title, pr_body)
 
     # Rule 68: Detect Jules PRs by author, body, or first comment
-    is_jules_pr = "jules" in pr_author.lower() or "jules" in pr_body.lower() or check_jules_first_comment(pr_number)
+    # Rule 68: Detect Jules PRs by author, the Jules-generated body marker, or
+    # the first comment. Do NOT match a bare "jules" substring in the body — that
+    # misfires on PRs that merely discuss Jules (issue #1140).
+    is_jules_pr = (
+        "jules" in pr_author.lower()
+        or "PR created automatically by Jules" in pr_body
+        or check_jules_first_comment(pr_number)
+    )
     
     # 🛡️ Rule 11: Check for Issue-Spec Traceability
     # Detect both the full URL format (github.com/alsotoes/momo/issues/NNN)
@@ -440,11 +523,9 @@ def main():
         if is_jules_pr:
             add_jules_label(pr_number)
             if "sentinel" in pr_title.lower():
-                subprocess.run(["gh", "pr", "edit", pr_number, "--add-label", "bug"],
-                               capture_output=True, text=True)
+                add_pr_labels(pr_number, ["bug"])
             elif "bolt" in pr_title.lower():
-                subprocess.run(["gh", "pr", "edit", pr_number, "--add-label", "enhancement"],
-                               capture_output=True, text=True)
+                add_pr_labels(pr_number, ["enhancement"])
 
     jules_commits = get_jules_commit_count()
     max_jules_pushes = 3
@@ -495,7 +576,7 @@ INSTRUCTIONS:
 
     review = call_gemini(api_key, model, prompt)
     if review:
-        is_approved = review.strip().startswith("✅")
+        is_approved = review_is_approved(review)
 
         # Issue #1134: append ECC Tools' advisory PR-audit verdicts. This is
         # appended AFTER is_approved is computed and never changes the decision.
