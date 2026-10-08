@@ -457,6 +457,113 @@ This section controls the Content-Addressable Storage (CAS) engine, including ba
     -   **Type:** String
     -   **Default:** (none; falls back to `daemon.drive`)
 
+### [secrets] (optional, R9 #937)
+
+This section controls the external secret sourcing and automated key rotation system (R9, issue #937). When disabled (default), the application uses static configuration values directly from `momo.conf`. When enabled, secrets are resolved through a configurable chain of providers, and keys are versioned in a local BoltDB registry with automated rotation capabilities.
+
+**Key Concepts:**
+
+- **Provider Chain:** Secrets are resolved by trying each configured source in order until one returns a value. Default order: `env` (environment variables), then `file` (config file). Additional providers like Vault, AWS Secrets Manager, GCP Secret Manager, and Azure Key Vault are supported (Phase 2+).
+- **Key Registry:** All keys are stored in a local BoltDB bucket (`key_registry`) with versioning, status tracking (`active`, `retired`, `compromised`, `pending_rotation`), and per-purpose isolation (`encryption`, `auth`, `e2ee`, `oprf`).
+- **Rotation:** Scheduled (via `rotation_interval`) or manual (`momo rotate-secrets --purpose`). New keys are generated, marked `pending_rotation`, activated on reload, and old keys are retired after a grace period (`rotation_grace_period`, default 24h) but remain available for decryption.
+- **Audit Trail:** Every rotation (success or failure) is logged to the `audit_log` BoltDB bucket with timestamp, purpose, old/new key IDs, operator, trigger type (`scheduled`/`manual`), success status, and error details.
+
+**Configuration:**
+
+-   **`enabled`**
+    -   **Description:** Enables or disables the secrets management system. When `false` (default), the application uses static config values directly.
+    -   **Type:** Boolean (`true` or `false`)
+    -   **Default:** `false`
+
+-   **`sources`**
+    -   **Description:** Comma-separated ordered list of secret sources to try. The first source that returns a value wins. Supported sources: `env` (environment variables), `file` (config file), `vault` (HashiCorp Vault), `aws-sm` (AWS Secrets Manager), `gcp-sm` (GCP Secret Manager), `azure-kv` (Azure Key Vault).
+    -   **Type:** Comma-separated list of strings
+    -   **Default:** `env,file`
+
+-   **`rotation_interval`**
+    -   **Description:** Interval for automatic key rotation (e.g., `90d`, `24h`). Empty disables scheduled rotation.
+    -   **Type:** Duration string
+    -   **Default:** (empty — disabled)
+
+-   **`rotation_grace_period`**
+    -   **Description:** How long old keys remain active after rotation before being marked `retired`. Default 24h.
+    -   **Type:** Duration string
+    -   **Default:** `24h`
+
+-   **`env_prefix`** (deprecated, use `[secrets.env].prefix`)
+    -   **Description:** Prefix for environment variables. Default `MOMO_`.
+    -   **Type:** String
+    -   **Default:** `MOMO_`
+
+-   **`file_path`** (deprecated, use `[secrets.file].path`)
+    -   **Description:** Path to the config file for the `file` provider.
+    -   **Type:** String (file path)
+    -   **Default:** `conf/momo.conf`
+
+-   **`source_configs`** (mapping of source name to config, under `[secrets.<name>]`)
+    -   **Description:** Per-source configuration. See below for each source.
+
+    **`[secrets.env]`** (Environment Variables)
+    -   **`prefix`**: Environment variable prefix (default: `MOMO_`). Secret name `encryption_key` becomes `MOMO_ENCRYPTION_KEY`.
+
+    **`[secrets.file]`** (Config File)
+    -   **`path`**: Path to the config file (default: `conf/momo.conf`).
+
+    **`[secrets.vault]`** (HashiCorp Vault) — *Phase 2*
+    -   `address`: Vault server address (e.g., `http://vault:8200`)
+    -   `token`: Vault authentication token
+    -   `path`: Secret path (e.g., `secret/data/momo`)
+    -   `mount`: Vault mount path (default: `secret`)
+
+    **`[secrets.aws-sm]`** (AWS Secrets Manager) — *Phase 2*
+    -   `region`: AWS region (e.g., `us-east-1`)
+    -   `secret_name`: Name of the secret in AWS Secrets Manager
+
+    **`[secrets.gcp-sm]`** (GCP Secret Manager) — *Phase 2*
+    -   `project_id`: GCP project ID
+    -   `secret_id`: Secret ID in Secret Manager
+    -   `version`: Secret version (optional, default: `latest`)
+
+    **`[secrets.azure-kv]`** (Azure Key Vault) — *Phase 2*
+    -   `vault_url`: Key Vault URL (e.g., `https://myvault.vault.azure.net/`)
+    -   `secret_name`: Secret name
+    -   `version`: Secret version (optional)
+
+**Example:**
+
+```ini
+[secrets]
+enabled = true
+sources = env, file
+rotation_interval = 90d
+rotation_grace_period = 24h
+
+[secrets.env]
+prefix = MOMO_
+
+[secrets.file]
+path = conf/momo.conf
+
+# Phase 2 providers (not yet implemented):
+# [secrets.vault]
+# address = http://vault:8200
+# token = your-vault-token
+# path = secret/data/momo
+# mount = secret
+
+# [secrets.aws-sm]
+# region = us-east-1
+# secret_name = momo/encryption-key
+
+# [secrets.gcp-sm]
+# project_id = my-project
+# secret_id = momo/encryption-key
+
+# [secrets.azure-kv]
+# vault_url = https://myvault.vault.azure.net/
+# secret_name = encryption-key
+```
+
 ### [momofs] (optional)
 
 This section controls the momofs FUSE filesystem. It is entirely optional; the

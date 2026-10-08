@@ -60,7 +60,7 @@ func TestStartMetricsServer_HostPort(t *testing.T) {
 	mc := NewMetricsCollector()
 
 	done := make(chan struct{})
-	go func() { StartMetricsServer(ctx, "127.0.0.1", port, mc); close(done) }()
+	go func() { StartMetricsServer(ctx, "127.0.0.1", port, mc, nil); close(done) }()
 
 	// /health 200 + "OK".
 	code, body := httpGetPort(t, port, "/health")
@@ -105,7 +105,7 @@ func TestStartMetricsServer_DistinctSameHostPorts(t *testing.T) {
 	var wg sync.WaitGroup
 	for _, p := range []int{p1, p2} {
 		wg.Add(1)
-		go func(pp int) { defer wg.Done(); StartMetricsServer(ctx, "127.0.0.1", pp, NewMetricsCollector()) }(p)
+		go func(pp int) { defer wg.Done(); StartMetricsServer(ctx, "127.0.0.1", pp, NewMetricsCollector(), nil) }(p)
 	}
 
 	// Both must respond.
@@ -132,7 +132,7 @@ func TestStartMetricsServer_PortCollisionNoPanic(t *testing.T) {
 	defer cancel()
 
 	done := make(chan struct{})
-	go func() { StartMetricsServer(ctx, "127.0.0.1", port, NewMetricsCollector()); close(done) }()
+	go func() { StartMetricsServer(ctx, "127.0.0.1", port, NewMetricsCollector(), nil); close(done) }()
 
 	select {
 	case <-done:

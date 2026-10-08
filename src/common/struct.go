@@ -304,6 +304,112 @@ type ConfigurationStorage struct {
 	RawDevicePath string
 }
 
+// SecretsSource represents the source type for secret resolution.
+type SecretsSource string
+
+const (
+	// SecretsSourceEnv reads secrets from environment variables (MOMO_<NAME>).
+	SecretsSourceEnv SecretsSource = "env"
+	// SecretsSourceFile reads secrets from a config file (e.g., momo.conf).
+	SecretsSourceFile SecretsSource = "file"
+	// SecretsSourceVault reads secrets from HashiCorp Vault.
+	SecretsSourceVault SecretsSource = "vault"
+	// SecretsSourceAWS reads secrets from AWS Secrets Manager.
+	SecretsSourceAWS SecretsSource = "aws-sm"
+	// SecretsSourceGCP reads secrets from GCP Secret Manager.
+	SecretsSourceGCP SecretsSource = "gcp-sm"
+	// SecretsSourceAzure reads secrets from Azure Key Vault.
+	SecretsSourceAzure SecretsSource = "azure-kv"
+)
+
+// SecretsSourceConfig holds configuration for a single secret source.
+type SecretsSourceConfig struct {
+	// Source is the type of secret source.
+	Source SecretsSource
+	// EnvPrefix is the prefix for environment variables (default: "MOMO_").
+	EnvPrefix string
+	// FilePath is the path to the config file for file source.
+	FilePath string
+	// Vault configuration
+	VaultAddress string
+	VaultToken   string
+	VaultPath    string
+	VaultMount   string
+	// AWS Secrets Manager configuration
+	AWSRegion    string
+	AWSSecretName string
+	// GCP Secret Manager configuration
+	GCPProjectID  string
+	GCPSecretID   string
+	GCPVersion    string
+	// Azure Key Vault configuration
+	AzureVaultURL string
+	AzureSecretName string
+	AzureVersion   string
+}
+
+// SecretsConfig holds the configuration for secret management.
+type SecretsConfig struct {
+	// Enabled controls whether the secrets management system is active.
+	// When false, static config values are used directly.
+	Enabled bool
+	// Sources is the ordered list of secret sources to try (first hit wins).
+	// Example: ["env", "file", "vault"]
+	Sources []SecretsSource
+	// SourceConfigs holds per-source configuration.
+	SourceConfigs map[SecretsSource]SecretsSourceConfig
+	// RotationInterval is the interval for automatic key rotation (e.g., "90d").
+	// Empty disables scheduled rotation.
+	RotationInterval time.Duration
+	// RotationGracePeriod is how long old keys remain active after rotation.
+	// Default 24h. Keys are marked retired after this period.
+	RotationGracePeriod time.Duration
+	// EnvPrefix is the prefix for environment variables (default: "MOMO_").
+	// Deprecated: use SourceConfigs[env].EnvPrefix instead.
+	EnvPrefix string
+	// FilePath is the path to the config file for file source.
+	// Deprecated: use SourceConfigs[file].FilePath instead.
+	FilePath string
+}
+
+// KeyStatus represents the lifecycle status of a key.
+type KeyStatus string
+
+const (
+	// KeyStatusActive is the currently active key for encryption/signing.
+	KeyStatusActive KeyStatus = "active"
+	// KeyStatusRetired is a retired key kept for decryption of existing data.
+	KeyStatusRetired KeyStatus = "retired"
+	// KeyStatusCompromised marks a key as compromised (emergency rotation).
+	KeyStatusCompromised KeyStatus = "compromised"
+	// KeyStatusPendingRotation is a key generated but not yet activated.
+	KeyStatusPendingRotation KeyStatus = "pending_rotation"
+)
+
+// KeyEntry represents a versioned key in the registry.
+type KeyEntry struct {
+	// KeyID is the unique identifier for this key version (UUID v4).
+	KeyID string
+	// Purpose is the key's purpose: "encryption", "auth", "e2ee", "oprf".
+	Purpose string
+	// Version is the monotonically increasing version number.
+	Version int
+	// Material is the key material (plaintext for in-memory, encrypted at rest).
+	Material []byte
+	// Algorithm is the key algorithm: "AES-256-GCM", "HMAC-SHA256", "OPRF-Shamir".
+	Algorithm string
+	// Status is the lifecycle status of the key.
+	Status KeyStatus
+	// CreatedAt is when this key version was created.
+	CreatedAt time.Time
+	// RotatedAt is when this key was rotated out (nil if still active).
+	RotatedAt *time.Time
+	// TenantID is the tenant this key belongs to (empty for global keys).
+	TenantID string
+	// OPRFShareIndex is the Shamir share index for OPRF keys.
+	OPRFShareIndex int
+}
+
 // Configuration holds the overall configuration for the application.
 type Configuration struct {
 	// Daemons is a list of daemons in the system.
@@ -322,4 +428,6 @@ type Configuration struct {
 	Audit AuditConfig
 	// Momofs is the optional [momofs] FUSE configuration.
 	Momofs ConfigurationMomofs
+	// Secrets is the secrets management configuration (R9, #937).
+	Secrets SecretsConfig
 }

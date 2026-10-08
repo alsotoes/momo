@@ -596,7 +596,7 @@ func (m *MetricsCollector) detailedHealthHandler(w http.ResponseWriter, r *http.
 // StartMetricsServer starts an HTTP server exposing Prometheus metrics on the given
 // host and port (empty host binds all interfaces). It runs in a background goroutine
 // and returns immediately. The server is shut down when the provided context is canceled.
-func StartMetricsServer(ctx context.Context, host string, port int, collector *MetricsCollector) {
+func StartMetricsServer(ctx context.Context, host string, port int, collector *MetricsCollector, reloadFn func()) {
 	if port <= 0 {
 		return
 	}
@@ -608,6 +608,17 @@ func StartMetricsServer(ctx context.Context, host string, port int, collector *M
 		w.Write([]byte("OK"))
 	})
 	mux.HandleFunc("/health/detailed", collector.detailedHealthHandler)
+	if reloadFn != nil {
+		mux.HandleFunc("/reload-secrets", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			reloadFn()
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("Secrets reloaded\n"))
+		})
+	}
 
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
 	ln, err := net.Listen("tcp", addr)

@@ -19,6 +19,8 @@ import (
 	"syscall"
 	"time"
 
+	"go.etcd.io/bbolt"
+
 	"github.com/alsotoes/momo/src/client"
 	"github.com/alsotoes/momo/src/common"
 	momocrypto "github.com/alsotoes/momo/src/crypto"
@@ -163,6 +165,9 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 	if metricsPort == 0 {
 		metricsPort = cfg.Metrics.PrometheusPort
 	}
+	// 🛡️ R9: Initialize secrets management (key registry, rotation, audit).
+	var rotationMgr *common.RotationManager
+
 	// R5 phase 2: install scrape-time storage/CAS gauge source (blob count,
 	// stored bytes, disk, GC) when the store implements it.
 	if ssp, ok := store.(storageStatsProvider); ok {
@@ -170,22 +175,25 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 	}
 	// R5 phase 4: opt-in latency histograms (zero overhead when disabled).
 	metricsCollector.SetLatencyHistogramsEnabled(cfg.Metrics.EnableLatencyHistograms)
-	StartMetricsServer(ctx, metricsHost, metricsPort, metricsCollector)
+	// Pass reload function for /reload-secrets endpoint
+	reloadFn := func() {}
+	if rotationMgr != nil {
+		reloadFn = func() {
+			_ = rotationMgr.Reload(ctx)
+		}
+	}
+	StartMetricsServer(ctx, metricsHost, metricsPort, metricsCollector, reloadFn)
 
 	// 🛡️ Sentinel: Adaptive failed-auth backoff & temporary lockout (issue #821).
 	// Disabled (Allow always true) when auth_backoff_delay is 0.
-	authLimiter := common.NewAuthLimiter(time.Duration(cfg.Global.AuthBackoffDelay) * time.Millisecond)
 
 	// 🛡️ Zero-Crash: Log a warning if the cluster cannot meet the desired durability goal.
 	if cfg.Global.ReplicationFactor > len(daemons) {
 		log.Printf("⚠️ WARNING: Desired replication factor (%d) exceeds available node count (%d). Data will be stored in DEGRADED mode.", cfg.Global.ReplicationFactor, len(daemons))
-	}
+}
 
-	// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
-	expectedAuthToken := []byte(common.PadString(cfg.Global.AuthToken, common.AuthTokenLength))
-
-	// ⚡ Bolt: Pre-build the ClusterMap during boot to avoid per-request allocations.
-	nodes := make([]*common.Node, len(cfg.Daemons))
+// ⚡ Bolt: Pre-build the ClusterMap during boot to avoid per-request allocations.
+nodes := make([]*common.Node, len(cfg.Daemons))
 	for i, d := range cfg.Daemons {
 		nodes[i] = &common.Node{ID: i, Weight: 1, Addr: d.Host, Domain: d.FailureDomain}
 	}
@@ -274,7 +282,57 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 			// 🛡️ Sentinel: Capture remote address for audit logging and traceability
 			remoteAddr := common.SanitizeLog(comm.RemoteAddr().String())
 
-			// 🛡️ Sentinel: Adaptive failed-auth backoff & temporary lockout (issue #821).
+// 🛡️ Sentinel: Adaptive failed-auth backoff & temporary lockout (issue #821).
+	// Disabled (Allow always true) when auth_backoff_delay is 0.
+	authLimiter := common.NewAuthLimiter(time.Duration(cfg.Global.AuthBackoffDelay) * time.Millisecond)
+
+// 🛡️ Zero-Crash: Log a warning if the cluster cannot meet the desired durability goal.
+if cfg.Global.ReplicationFactor > len(daemons) {
+	log.Printf("⚠️ WARNING: Desired replication factor (%d) exceeds available node count (%d). Data will be stored in DEGRADED mode.", cfg.Global.ReplicationFactor, len(daemons))
+}
+
+// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
+expectedAuthToken := []byte(common.PadString(cfg.Global.AuthToken, common.AuthTokenLength))
+
+// 🛡️ R9: Initialize secrets management (key registry, rotation, audit).
+if cfg.Secrets.Enabled {
+		// Open the same BoltDB for key registry
+		dbPath := filepath.Join(daemons[serverId].Data, "momo.db")
+		keyDB, err := bbolt.Open(dbPath, 0600, nil)
+		if err != nil {
+			log.Printf("⚠️ Failed to open key registry DB: %v (secrets management disabled)", err)
+		} else {
+			keyRegistry, err := common.NewKeyRegistry(keyDB)
+			if err != nil {
+				log.Printf("⚠️ Failed to create key registry: %v (secrets management disabled)", err)
+			} else {
+				// Build provider chain from config
+				provider, err := common.BuildProviderChain(cfg.Secrets)
+				if err != nil {
+					log.Printf("⚠️ Failed to build secret provider chain: %v (secrets management disabled)", err)
+				} else {
+					gracePeriod := cfg.Secrets.RotationGracePeriod
+					if gracePeriod <= 0 {
+						gracePeriod = 24 * time.Hour
+					}
+					rotationMgr = common.NewRotationManager(keyRegistry, provider, gracePeriod)
+
+					// Register reload hook to update in-memory keys
+					rotationMgr.RegisterReloadHook(func() {
+						log.Println("R9: Secrets reloaded via hot reload")
+					})
+
+					// Start scheduled rotation if interval is configured
+					if cfg.Secrets.RotationInterval > 0 {
+						rotationMgr.Start(ctx, cfg.Secrets.RotationInterval)
+					}
+					log.Printf("R9: Secrets management enabled (sources: %v, rotation: %v)", cfg.Secrets.Sources, cfg.Secrets.RotationInterval)
+				}
+			}
+		}
+	}
+
+	// 🛡️ Sentinel: Adaptive failed-auth backoff & temporary lockout (issue #821).
 			// When enabled, reject a source that is under backoff/lockout BEFORE any
 			// crypto/network work to meter online brute-force attempts.
 			if authLimiter.Enabled() && !authLimiter.Allow(remoteAddr) {

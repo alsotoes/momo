@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -196,6 +197,10 @@ func Run() {
 		}
 		if err := runRestore(*restoreInputPtr, *restoreForcePtr); err != nil {
 			fatalExit(ExitStorageError, "Restore failed: %v", common.SanitizeLog(err.Error()))
+		}
+	case "rotate-secrets":
+		if err := runRotateSecrets(cfg, *serverIdPtr); err != nil {
+			fatalExit(ExitCryptoError, "Rotate secrets failed: %v", common.SanitizeLog(err.Error()))
 		}
 	default:
 		fatalExit(ExitConfigError, "*** ERROR: Option unknown: %s", common.SanitizeLog(*impersonationPtr))
@@ -409,6 +414,45 @@ func runRestore(inputPath string, force bool) error {
 		return fmt.Errorf("restore failed: %w", err)
 	}
 	log.Printf("Restore completed successfully")
+	return nil
+}
+
+// runRotateSecrets triggers a manual key rotation for the specified purpose.
+// It connects to the server's /reload-secrets endpoint to trigger a hot reload.
+func runRotateSecrets(cfg common.Configuration, serverId int) error {
+	if serverId < 0 || serverId >= len(cfg.Daemons) {
+		return fmt.Errorf("invalid server ID %d: %w", serverId, syscall.EINVAL)
+	}
+
+	daemon := cfg.Daemons[serverId]
+	metricsHost := daemon.MetricsBindHost
+	if metricsHost == "" {
+		metricsHost = "127.0.0.1"
+	}
+	metricsPort := daemon.MetricsBindPort
+	if metricsPort == 0 {
+		metricsPort = 9100
+	}
+
+	url := fmt.Sprintf("http://%s:%d/reload-secrets", metricsHost, metricsPort)
+	req, err := http.NewRequest("POST", url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to call /reload-secrets: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("/reload-secrets returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	log.Printf("Secrets rotation triggered successfully on %s:%d", metricsHost, metricsPort)
 	return nil
 }
 
