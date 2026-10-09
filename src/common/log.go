@@ -55,21 +55,12 @@ func hasControlByte(s string) bool {
 // AuditRotation logs a key rotation event to the audit log.
 // This is called by the RotationManager on every rotation attempt.
 // The entry is stored in the BoltDB audit_log bucket (R8, #936).
-func AuditRotation(ctx context.Context, db *bbolt.DB, purpose, oldKeyID, newKeyID, operator, trigger string, success bool, errMsg string) error {
+func AuditRotation(ctx context.Context, db *bbolt.DB, entry AuditRotationEntry) error {
+	_ = ctx // reserved for future deadline/cancellation; registry ops are synchronous
 	if db == nil {
 		return nil // audit DB not available, silently skip
 	}
-	entry := AuditRotationEntry{
-		Timestamp:  time.Now().UTC(),
-		Purpose:    purpose,
-		OldKeyID:   oldKeyID,
-		NewKeyID:   newKeyID,
-		Operator:   operator,
-		Trigger:    trigger, // "scheduled" or "manual"
-		Success:    success,
-		Error:      errMsg,
-		RetryCount: 0,
-	}
+	entry.Timestamp = time.Now().UTC()
 	data, err := json.Marshal(entry)
 	if err != nil {
 		return fmt.Errorf("failed to marshal audit entry: %w", err)

@@ -154,7 +154,7 @@ func (rm *RotationManager) Reload(ctx context.Context) (err error) {
 			secretName = purpose + "_key"
 		}
 
-		val, found, err := rm.provider.GetSecret(context.Background(), secretName)
+		val, found, err := rm.provider.GetSecret(ctx, secretName)
 		if err != nil {
 			log.Printf("Failed to fetch secret %s: %v", secretName, err)
 			continue
@@ -175,7 +175,7 @@ func (rm *RotationManager) Reload(ctx context.Context) (err error) {
 		}
 
 		// Store in registry (will create new version if changed)
-		keyID, err := rm.keyRegistry.StoreKey(context.Background(), purpose, material, "AES-256-GCM", "", KeyStatusActive, 0)
+		keyID, err := rm.keyRegistry.StoreKey(ctx, purpose, material, "AES-256-GCM", "", KeyStatusActive, 0)
 		if err != nil {
 			log.Printf("Failed to store key for %s: %v", purpose, err)
 			continue

@@ -9,7 +9,7 @@ import (
 )
 
 func TestAuditRotation_NilDB(t *testing.T) {
-	if err := AuditRotation(context.Background(), nil, "encryption", "old", "new", "system", "manual", true, ""); err != nil {
+	if err := AuditRotation(context.Background(), nil, AuditRotationEntry{Purpose: "encryption", OldKeyID: "old", NewKeyID: "new", Operator: "system", Trigger: "manual", Success: true}); err != nil {
 		t.Fatalf("AuditRotation(nil db) = %v, want nil", err)
 	}
 }
@@ -21,7 +21,7 @@ func TestAuditRotation_WritesEntry(t *testing.T) {
 	}
 	defer db.Close()
 
-	if err := AuditRotation(context.Background(), db, "encryption", "old-1", "new-2", "system", "scheduled", true, ""); err != nil {
+	if err := AuditRotation(context.Background(), db, AuditRotationEntry{Purpose: "encryption", OldKeyID: "old-1", NewKeyID: "new-2", Operator: "system", Trigger: "scheduled", Success: true}); err != nil {
 		t.Fatalf("AuditRotation: %v", err)
 	}
 

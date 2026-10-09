@@ -183,8 +183,8 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 	}
 	// R5 phase 4: opt-in latency histograms (zero overhead when disabled).
 	metricsCollector.SetLatencyHistogramsEnabled(cfg.Metrics.EnableLatencyHistograms)
-	// Pass reload function for /reload-secrets endpoint
-	reloadFn := func() {}
+	// Pass reload function for /reload-secrets endpoint (nil when R9 is disabled).
+	var reloadFn func()
 	if rotationMgr != nil {
 		reloadFn = func() {
 			_ = rotationMgr.Reload(ctx)
@@ -1069,6 +1069,21 @@ func initSecretsManager(ctx context.Context, cfg common.Configuration, dataDir s
 	rotationMgr := common.NewRotationManager(keyRegistry, provider, gracePeriod)
 	rotationMgr.RegisterReloadHook(func() {
 		log.Println("R9: Secrets reloaded via hot reload")
+	})
+	rotationMgr.RegisterRotationHook(func(purpose, oldKeyID, newKeyID, trigger string, success bool, hookErr error) {
+		errMsg := ""
+		if hookErr != nil {
+			errMsg = hookErr.Error()
+		}
+		_ = common.AuditRotation(ctx, keyDB, common.AuditRotationEntry{
+			Purpose:  purpose,
+			OldKeyID: oldKeyID,
+			NewKeyID: newKeyID,
+			Operator: "system",
+			Trigger:  trigger,
+			Success:  success,
+			Error:    errMsg,
+		})
 	})
 	if cfg.Secrets.RotationInterval > 0 {
 		rotationMgr.Start(ctx, cfg.Secrets.RotationInterval)
