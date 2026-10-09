@@ -187,6 +187,11 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 	var reloadFn func()
 	if rotationMgr != nil {
 		reloadFn = func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("CRITICAL: Panic recovered in /reload-secrets: %v", r)
+				}
+			}()
 			_ = rotationMgr.Reload(ctx)
 		}
 	}

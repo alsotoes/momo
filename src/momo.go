@@ -450,7 +450,7 @@ func runRotateSecrets(cfg common.Configuration, serverId int) error {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("/reload-secrets returned %d: %s", resp.StatusCode, string(body))
+		return fmt.Errorf("/reload-secrets returned %d: %s: %w", resp.StatusCode, common.SanitizeLog(string(body)), syscall.EIO)
 	}
 
 	log.Printf("Secrets rotation triggered successfully on %s:%d", metricsHost, metricsPort)
