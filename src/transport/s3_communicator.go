@@ -2083,12 +2083,13 @@ func extractS3BucketAndKey(req *http.Request) (bucket string, key string) {
 	if h, _, err := net.SplitHostPort(host); err == nil {
 		host = h
 	}
+	// ⚡ Bolt: replace strings.Split with zero-allocation manual parsing loop using strings.IndexByte
 	if strings.Contains(host, ".") {
-		parts := strings.Split(host, ".")
-		if len(parts) > 1 && parts[len(parts)-1] == "localhost" {
-			bucket = parts[0]
-		} else if strings.Contains(host, ".s3") {
-			idx := strings.Index(host, ".s3")
+		if strings.HasSuffix(host, "localhost") {
+			if idx := strings.IndexByte(host, '.'); idx != -1 {
+				bucket = host[:idx]
+			}
+		} else if idx := strings.Index(host, ".s3"); idx != -1 {
 			bucket = host[:idx]
 		}
 	}
@@ -2099,10 +2100,11 @@ func extractS3BucketAndKey(req *http.Request) (bucket string, key string) {
 
 	if bucket == "" {
 		if cleanPath != "" && cleanPath != "." {
-			parts := strings.SplitN(cleanPath, "/", 2)
-			bucket = parts[0]
-			if len(parts) > 1 {
-				key = parts[1]
+			if idx := strings.IndexByte(cleanPath, '/'); idx != -1 {
+				bucket = cleanPath[:idx]
+				key = cleanPath[idx+1:]
+			} else {
+				bucket = cleanPath
 			}
 		}
 	} else {

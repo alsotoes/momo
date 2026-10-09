@@ -228,3 +228,6 @@
 ## 2026-10-06 - Zero-Allocation ETag Header Parsing
 **Learning:** Using `strings.Split` to parse comma-separated HTTP headers like `If-Match` or `If-None-Match` (ETag lists) allocates a slice header and backing array on every conditional request.
 **Action:** Replace `strings.Split` on hot paths with a `strings.IndexByte` scan that slices the original string (zero copies). Preserve the parsing semantics exactly and cover the edge cases (quoted tags, `W/` weak tags, `*`, spaces, trailing comma) in tests.
+## 2026-10-09 - Zero-Allocation S3 Path Parsing
+**Learning:** Using `strings.Split` or `strings.SplitN` to extract bucket names and keys from S3 HTTP requests causes redundant heap allocations (32 bytes/op) and GC pressure on every single incoming S3 gateway request.
+**Action:** Replace `strings.Split` in S3 path extraction with zero-allocation slicing logic using `strings.HasSuffix` and `strings.IndexByte`. Avoid allocating intermediate string slices on the hot path for path routing.
