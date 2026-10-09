@@ -241,12 +241,7 @@ const s3OPRFEvalTimeout = 10 * time.Second
 // evaluation records back in the same wire layout the native protocols use, so
 // confidential dedup works uniformly across all four transports (issue #817).
 func (m *S3Communicator) SendOPRFEval(authToken string, timestamp int64, blinded []byte, threshold int) (results []OPRFEvalResult, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in S3 SendOPRFEval: %v", r)
-			err = fmt.Errorf("internal S3 OPRF protocol panic: %w", syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("S3 SendOPRFEval", &err)
 
 	if len(blinded) != 32 {
 		return nil, fmt.Errorf("oprf: blinded tag must be 32 bytes: %w", syscall.EINVAL)
@@ -351,12 +346,7 @@ func (m *S3Communicator) Read(p []byte) (n int, err error) {
 // #903): additive-checksum verification now lives centrally in the shared
 // ingest path (getFile) via ChecksumExpectations, not in the surface reader.
 func (m *S3Communicator) readUnderlying(p []byte) (n int, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in S3 Read: %v", r)
-			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("S3 Read", &err)
 	// A decoded aws-chunked payload is replayed from the spill file so the
 	// server pipeline (getFile/store.Put) consumes only de-framed content.
 	var r io.Reader = m.reader
@@ -419,23 +409,13 @@ func (m *S3Communicator) OnStorageError(err error) error {
 
 // Write writes to the underlying HTTP connection.
 func (m *S3Communicator) Write(p []byte) (n int, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in S3 Write: %v", r)
-			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("S3 Write", &err)
 	return m.conn.Write(p)
 }
 
 // Close closes the underlying connection.
 func (m *S3Communicator) Close() (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in S3 Close: %v", r)
-			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("S3 Close", &err)
 	if m.streamingSpill != nil {
 		name := m.streamingSpill.Name()
 		m.streamingSpill.Close()
@@ -450,12 +430,7 @@ func (m *S3Communicator) Close() (err error) {
 // SetAbsoluteDeadline sets a hard deadline for all subsequent operations
 // on the connection.
 func (m *S3Communicator) SetAbsoluteDeadline(t interface{}) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in S3 SetAbsoluteDeadline: %v", r)
-			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("S3 SetAbsoluteDeadline", &err)
 	deadline, ok := t.(time.Time)
 	if !ok {
 		return fmt.Errorf("invalid deadline type: expected time.Time")
@@ -466,12 +441,7 @@ func (m *S3Communicator) SetAbsoluteDeadline(t interface{}) (err error) {
 // HandshakeClient sends an OPTIONS preflight request to the server to
 // negotiate the effective replication mode for the S3 session.
 func (m *S3Communicator) HandshakeClient(authToken string, timestamp int64, requestedMode int) (finalMode int, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in S3 HandshakeClient: %v", r)
-			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("S3 HandshakeClient", &err)
 
 	m.clientAuthToken = authToken
 	m.clientTimestamp = timestamp
@@ -1120,12 +1090,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 	// metadata operation and must bypass momo framing (issue #765).
 	if req.Method == "HEAD" {
 		// 🛡️ Rule 37: Zero-Crash recovery for the HEAD interception block.
-		defer func() {
-			if r := recover(); r != nil {
-				log.Printf("CRITICAL: Panic recovered in S3 HEAD interceptor: %v", r)
-				err = fmt.Errorf("internal S3 HEAD panic: %w", syscall.EIO)
-			}
-		}()
+		defer common.RecoverErr("S3 HEAD interceptor", &err)
 
 		if m.store == nil {
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
@@ -1483,12 +1448,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 // shared across all four transports. Returns ErrRequestHandled so the daemon
 // closes the connection after the exchange.
 func (m *S3Communicator) handleOPRFEval(req *http.Request) (requestedMode int, timestamp int64, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in S3 handleOPRFEval: %v", r)
-			err = fmt.Errorf("internal S3 OPRF protocol panic: %w", syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("S3 handleOPRFEval", &err)
 
 	// 🛡️ Sentinel: bounded read of the 32-byte blinded tag from the request
 	// body (Rule 24). Reject a wrong-length body instead of trusting any
@@ -1549,12 +1509,7 @@ func (m *S3Communicator) handleOPRFEval(req *http.Request) (requestedMode int, t
 // hash/size. On failure it writes the appropriate S3 error response and
 // returns a POSIX-mapped error so the connection is torn down cleanly.
 func (m *S3Communicator) decodeStreamingPayload(req *http.Request) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in S3 decodeStreamingPayload: %v", r)
-			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("S3 decodeStreamingPayload", &err)
 
 	mode := streamingModeOf(req.Header.Get("X-Amz-Content-Sha256"), req.Header.Get("Content-Encoding"))
 	if mode == streamingNone {
@@ -1672,12 +1627,7 @@ func (m *S3Communicator) writeStreamingError(status int, code, msg, resource str
 // SendReplicationMode records the effective replication mode negotiated for
 // the S3 session.
 func (m *S3Communicator) SendReplicationMode(mode int) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in S3 SendReplicationMode: %v", r)
-			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("S3 SendReplicationMode", &err)
 	// 🛡️ Zero-Crash: Set a short write deadline to prevent stalled socket hanging
 	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	defer m.conn.SetWriteDeadline(time.Time{})
@@ -1703,12 +1653,7 @@ func (m *S3Communicator) SendReplicationMode(mode int) (err error) {
 // SendMetadata echoes the received metadata back with a send-payload status
 // (S3 requests carry the payload directly, so no transfer handshake applies).
 func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (status int, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in S3 SendMetadata: %v", r)
-			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("S3 SendMetadata", &err)
 	// 🛡️ Zero-Crash: Set a short write deadline to prevent stalled socket hanging
 	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	defer m.conn.SetWriteDeadline(time.Time{})
@@ -1828,12 +1773,7 @@ func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (status int, er
 
 // ReceiveMetadata returns the metadata extracted from the current S3 request.
 func (m *S3Communicator) ReceiveMetadata() (meta common.FileMetadata, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in S3 ReceiveMetadata: %v", r)
-			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("S3 ReceiveMetadata", &err)
 
 	// If HandshakeServer already parsed the PUT request (e.g., from AWS CLI),
 	// we just return it.
@@ -1899,12 +1839,7 @@ func (m *S3Communicator) ReceiveMetadata() (meta common.FileMetadata, err error)
 // SendMetadataStatus writes an HTTP 200 response carrying the dedup status in
 // the X-Momo-Metadata-Status header.
 func (m *S3Communicator) SendMetadataStatus(status int) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in S3 SendMetadataStatus: %v", r)
-			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("S3 SendMetadataStatus", &err)
 	// 🛡️ Zero-Crash: Set a short write deadline to prevent stalled socket hanging
 	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	defer m.conn.SetWriteDeadline(time.Time{})
@@ -1929,12 +1864,7 @@ func (m *S3Communicator) SendMetadataStatus(status int) (err error) {
 
 // SendACK sends the server acknowledgment for the S3 request.
 func (m *S3Communicator) SendACK(serverId int) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in S3 SendACK: %v", r)
-			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("S3 SendACK", &err)
 	// 🛡️ Zero-Crash: Set a short write deadline to prevent stalled socket hanging
 	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	defer m.conn.SetWriteDeadline(time.Time{})
@@ -1966,12 +1896,7 @@ func (m *S3Communicator) SendACK(serverId int) (err error) {
 
 // ReceiveACK waits for the server's acknowledgment of the S3 request.
 func (m *S3Communicator) ReceiveACK() (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in S3 ReceiveACK: %v", r)
-			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("S3 ReceiveACK", &err)
 	// 🛡️ Zero-Crash: Set a read deadline before reading the ACK response to
 	// prevent the client from blocking indefinitely on an unresponsive server (issue #620).
 	m.conn.SetReadDeadline(time.Now().Add(s3ReadHeaderTimeout))
@@ -3217,13 +3142,7 @@ func writeXMLResponse(w io.Writer, xmlBody []byte) (int, error) {
 // ─── CreateMultipartUpload ─────────────────────────────────────────────────
 
 func (m *S3Communicator) handleCreateMultipartUpload(bucket, key string) (requestedMode int, timestamp int64, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in S3 handleCreateMultipartUpload: %v", r)
-			m.conn.Close()
-			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
-		}
-	}()
+	defer common.RecoverErrClose("S3 handleCreateMultipartUpload", &err, m.conn)
 	uploadID := generateUploadID()
 
 	muUploads.Lock()
@@ -3251,13 +3170,7 @@ func (m *S3Communicator) handleCreateMultipartUpload(bucket, key string) (reques
 // ─── UploadPart ────────────────────────────────────────────────────────────
 
 func (m *S3Communicator) handleUploadPart(req *http.Request, bucket, key string) (requestedMode int, timestamp int64, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in S3 handleUploadPart: %v", r)
-			m.conn.Close()
-			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
-		}
-	}()
+	defer common.RecoverErrClose("S3 handleUploadPart", &err, m.conn)
 	q := req.URL.Query()
 	uploadID := q.Get("uploadId")
 	partStr := q.Get("partNumber")
@@ -3308,13 +3221,7 @@ func (m *S3Communicator) handleUploadPart(req *http.Request, bucket, key string)
 // ─── CompleteMultipartUpload ───────────────────────────────────────────────
 
 func (m *S3Communicator) handleCompleteMultipartUpload(req *http.Request, bucket, key string) (requestedMode int, timestamp int64, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in S3 handleCompleteMultipartUpload: %v", r)
-			m.conn.Close()
-			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
-		}
-	}()
+	defer common.RecoverErrClose("S3 handleCompleteMultipartUpload", &err, m.conn)
 	q := req.URL.Query()
 	uploadID := q.Get("uploadId")
 
@@ -3408,13 +3315,7 @@ func (m *S3Communicator) handleCompleteMultipartUpload(req *http.Request, bucket
 // ─── AbortMultipartUpload ─────────────────────────────────────────────────
 
 func (m *S3Communicator) handleAbortMultipartUpload(uploadID string) (requestedMode int, timestamp int64, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in S3 handleAbortMultipartUpload: %v", r)
-			m.conn.Close()
-			err = fmt.Errorf("internal S3 protocol panic: %w", syscall.EIO)
-		}
-	}()
+	defer common.RecoverErrClose("S3 handleAbortMultipartUpload", &err, m.conn)
 	muUploads.Lock()
 	delete(uploads, uploadID)
 	muUploads.Unlock()
@@ -3433,13 +3334,7 @@ func (m *S3Communicator) handleAbortMultipartUpload(uploadID string) (requestedM
 
 func (m *S3Communicator) handleListParts(bucket, key, uploadID string) (requestedMode int, timestamp int64, err error) {
 	// 🛡️ Rule 37 (Unified Observable Panic Recovery): Catch and log panics, returning mapped syscall error
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in S3 handleListParts: %v", r)
-			m.conn.Close()
-			err = syscall.EIO
-		}
-	}()
+	defer common.RecoverErrClose("S3 handleListParts", &err, m.conn)
 	muUploads.Lock()
 	up, ok := uploads[uploadID]
 	muUploads.Unlock()
@@ -3510,13 +3405,7 @@ func (m *S3Communicator) handleListParts(bucket, key, uploadID string) (requeste
 // ─── ListMultipartUploads ─────────────────────────────────────────────────
 
 func (m *S3Communicator) handleListMultipartUploads(bucket string) (requestedMode int, timestamp int64, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in S3 handleListMultipartUploads: %v", r)
-			m.conn.Close()
-			err = syscall.EIO
-		}
-	}()
+	defer common.RecoverErrClose("S3 handleListMultipartUploads", &err, m.conn)
 	muUploads.Lock()
 	type uploadEntry struct {
 		id  string

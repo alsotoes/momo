@@ -215,12 +215,7 @@ func (b *LocalBlobStore) PutBlob(hash string, content io.Reader) (err error) {
 
 // GetBlob opens a blob for reading by its content hash.
 func (b *LocalBlobStore) GetBlob(hash string) (rc io.ReadCloser, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in LocalBlobStore.GetBlob: %v", r)
-			err = fmt.Errorf("panic in GetBlob: %v: %w", r, syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("LocalBlobStore.GetBlob", &err)
 
 	if common.HasPathTraversalChars(hash) {
 		return nil, fmt.Errorf("storage error: invalid hash contains path traversal characters: %w", syscall.EINVAL)
@@ -237,12 +232,7 @@ func (b *LocalBlobStore) GetBlob(hash string) (rc io.ReadCloser, err error) {
 
 // DeleteBlob removes a blob by hash. Missing blobs are silently ignored.
 func (b *LocalBlobStore) DeleteBlob(hash string) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in LocalBlobStore.DeleteBlob: %v", r)
-			err = fmt.Errorf("panic in DeleteBlob: %v: %w", r, syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("LocalBlobStore.DeleteBlob", &err)
 
 	if common.HasPathTraversalChars(hash) {
 		return fmt.Errorf("storage error: invalid hash contains path traversal characters: %w", syscall.EINVAL)

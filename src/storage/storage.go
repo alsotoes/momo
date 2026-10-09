@@ -360,12 +360,7 @@ func (s *CASStore) Put(name string, hash string, size int64, remotePath string, 
 // Used by the metadata RPC handler for quorum writes.
 func (s *CASStore) PutWithMetadata(name string, hash string, size int64, remotePath string, content io.Reader, vectorClock []uint64, shardKey string, metadataReplicas []int32) (err error) {
 	// 🛡️ Zero-Crash: Recover from any unexpected panics in the storage backend.
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in CASStore.PutWithMetadata for %s: %v", name, r)
-			err = fmt.Errorf("internal storage panic: %w", syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("CASStore.PutWithMetadata", &err)
 
 	if common.HasPathTraversalChars(hash) {
 		return fmt.Errorf("hash contains path traversal characters: %w", syscall.EINVAL)
@@ -501,12 +496,7 @@ func (s *CASStore) PutWithMetadata(name string, hash string, size int64, remoteP
 // Get retrieves an object by its human-readable name.
 func (s *CASStore) Get(name string) (rc io.ReadCloser, meta common.FileMetadata, err error) {
 	// 🛡️ Zero-Crash: Recover from any unexpected panics during metadata parsing.
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in CASStore.Get for %s: %v", name, r)
-			err = fmt.Errorf("internal storage panic: %w", syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("CASStore.Get", &err)
 
 	var hash string
 	err = func() error {
@@ -592,12 +582,7 @@ func (s *CASStore) Get(name string) (rc io.ReadCloser, meta common.FileMetadata,
 // unnecessary blob open on large objects or remote S3 backends.
 func (s *CASStore) GetMeta(name string) (meta common.FileMetadata, err error) {
 	// 🛡️ Zero-Crash: Recover from any unexpected panics during metadata parsing.
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in CASStore.GetMeta for %s: %v", name, r)
-			err = fmt.Errorf("internal storage panic: %w", syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("CASStore.GetMeta", &err)
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -755,12 +740,7 @@ func (s *CASStore) GetS3Meta(name string) map[string]string {
 // Has checks if a content hash exists in the store.
 func (s *CASStore) Has(hash string) (exists bool, err error) {
 	// 🛡️ Zero-Crash: Recover from any unexpected panics.
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in CASStore.Has for %s: %v", hash, r)
-			err = fmt.Errorf("internal storage panic: %w", syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("CASStore.Has", &err)
 
 	if common.HasPathTraversalChars(hash) {
 		return false, fmt.Errorf("hash contains path traversal characters: %w", syscall.EINVAL)
@@ -785,12 +765,7 @@ func (s *CASStore) hasInternal(hash string) (bool, error) {
 // or syscall.ENOENT if the name does not exist in the namespace.
 // This is a lightweight metadata-only lookup that does not read the blob.
 func (s *CASStore) GetHashForName(name string) (hash string, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in CASStore.GetHashForName for %s: %v", name, r)
-			err = fmt.Errorf("internal storage panic: %w", syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("CASStore.GetHashForName", &err)
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -813,12 +788,7 @@ func (s *CASStore) GetHashForName(name string) (hash string, err error) {
 // and surfaced as EIO errors (zero-crash guarantee).
 func (s *CASStore) Delete(name string) (err error) {
 	// 🛡️ Zero-Crash: Recover from any unexpected panics.
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in CASStore.Delete for %s: %v", name, r)
-			err = fmt.Errorf("internal storage panic: %w", syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("CASStore.Delete", &err)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -907,12 +877,7 @@ func (s *CASStore) Delete(name string) (err error) {
 // List retrieves all file metadata entries in the store.
 func (s *CASStore) List() (list []common.FileMetadata, err error) {
 	// 🛡️ Zero-Crash: Recover from any unexpected panics.
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in CASStore.List: %v", r)
-			err = fmt.Errorf("internal storage panic: %w", syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("CASStore.List", &err)
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -984,12 +949,7 @@ func (s *CASStore) List() (list []common.FileMetadata, err error) {
 // Panics are recovered and surfaced as EIO errors (zero-crash guarantee).
 func (s *CASStore) GetBlobPath(name string) (path string, err error) {
 	// 🛡️ Zero-Crash: Recover from any unexpected panics.
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in CASStore.GetBlobPath for %s: %v", name, r)
-			err = fmt.Errorf("internal storage panic: %w", syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("CASStore.GetBlobPath", &err)
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()

@@ -98,12 +98,7 @@ func getMetadata(r io.Reader) (metadata common.FileMetadata, err error) {
 // getFile reads a file from a network connection and saves it to the storage store.
 func getFile(comm transport.Communicator, store storage.Store, fileName string, expectedHash string, fileSize int64, remotePath string) (err error) {
 	// 🛡️ Zero-Crash: Recover from any unexpected panics in the storage backend or hash calculation.
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in getFile for %s: %v", fileName, r)
-			err = fmt.Errorf("internal storage panic: %w", syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("getFile", &err)
 
 	if store == nil {
 		return fmt.Errorf("storage error: store is not initialized: %w", syscall.EIO)

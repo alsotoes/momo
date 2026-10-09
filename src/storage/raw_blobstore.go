@@ -33,12 +33,7 @@ type RawBlobStore struct {
 // from cfg.RawDevicePath, falling back to daemon.Drive. The allocation
 // table DB is stored in daemon.Data/raw_alloc.db.
 func NewRawBlobStore(cfg common.ConfigurationStorage, daemon *common.Daemon) (rbs *RawBlobStore, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in NewRawBlobStore: %v", r)
-			err = fmt.Errorf("raw: initialization panic: %v: %w", r, syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("NewRawBlobStore", &err)
 
 	devicePath := cfg.RawDevicePath
 	if devicePath == "" {
