@@ -1070,21 +1070,6 @@ func initSecretsManager(ctx context.Context, cfg common.Configuration, dataDir s
 	rotationMgr.RegisterReloadHook(func() {
 		log.Println("R9: Secrets reloaded via hot reload")
 	})
-	rotationMgr.RegisterRotationHook(func(purpose, oldKeyID, newKeyID, trigger string, success bool, hookErr error) {
-		errMsg := ""
-		if hookErr != nil {
-			errMsg = hookErr.Error()
-		}
-		_ = common.AuditRotation(ctx, keyDB, common.AuditRotationEntry{
-			Purpose:  purpose,
-			OldKeyID: oldKeyID,
-			NewKeyID: newKeyID,
-			Operator: "system",
-			Trigger:  trigger,
-			Success:  success,
-			Error:    errMsg,
-		})
-	})
 	if cfg.Secrets.RotationInterval > 0 {
 		rotationMgr.Start(ctx, cfg.Secrets.RotationInterval)
 	}
