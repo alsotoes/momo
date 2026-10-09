@@ -168,12 +168,9 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 
 		go func() {
 			defer func() { <-sem }() // Release semaphore slot when done
-			// 🛡️ Zero-Crash Hardening: Recover from any unexpected panics to keep the daemon running
-			defer func() {
-				if r := recover(); r != nil {
-					log.Printf("CRITICAL: Panic recovered in ChangeReplicationMode handler for %s: %v", connection.RemoteAddr(), r)
-				}
-			}()
+			// 🛡️ Zero-Crash Hardening: recover from panics and explicitly release the
+			// connection (Rule 43). Extracted so the panic-close path stays testable.
+			defer recoverChangeReplicationPanic(connection, connection.RemoteAddr().String())
 
 			comm := connection
 			defer comm.Close()
@@ -339,5 +336,21 @@ func ChangeReplicationModeClient(factory *transport.ProtocolFactory, replication
 func releasePayload(payload []byte) {
 	if cap(payload) == payloadPoolCapacity {
 		payloadPool.Put(payload[:payloadPoolCapacity])
+	}
+}
+
+// recoverChangeReplicationPanic logs a recovered panic from a
+// ChangeReplicationMode connection handler and explicitly closes the
+// connection (Rule 43: Panic-Safe Resource Releasing). The handler's deferred
+// comm.Close() may not be registered yet when the panic fires, so the socket
+// must be released here to avoid a file-descriptor leak (DoS vector).
+//
+// It must be used directly as a deferred function so recover() takes effect.
+func recoverChangeReplicationPanic(connection io.Closer, remoteAddr string) {
+	if r := recover(); r != nil {
+		log.Printf("CRITICAL: Panic recovered in ChangeReplicationMode handler for %s: %v", remoteAddr, r)
+		if connection != nil {
+			_ = connection.Close()
+		}
 	}
 }

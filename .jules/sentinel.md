@@ -181,3 +181,8 @@
 **Vulnerability:** Similar to query handlers, the `getMetadata`, `Daemon` and `ReceiveMetadata` for `momo_tcp.go` and `momo_quic.go` failed to block absolute paths starting with `/`, allowing attackers to read/write arbitrary files outside the intended directories.
 **Learning:** Checking for `..` is not enough to stop path traversal when dealing with direct paths if absolute path checks are missing.
 **Prevention:** Standardize all path validations using `common.ValidatePath` uniformly across network entry points to correctly intercept absolute paths starting with `/` while preserving safe virtual directories.
+
+## 2026-10-08 - Missing Connection Close on ChangeReplicationMode Panic Recovery
+**Vulnerability:** In `src/server/replication.go`, the connection handling goroutine for `ChangeReplicationModeServer` caught panics using `defer recover()`, but failed to call `connection.Close()` within the recover block.
+**Learning:** According to Rule 43 (Panic-Safe Resource Releasing), panics caught inside a connection handler must explicitly close the connection. Although a `defer comm.Close()` exists later in the goroutine, a panic occurring *before* that defer is registered would leave the connection open as a zombie socket, exhausting file descriptors (a DoS vector during a panic-inducing attack).
+**Prevention:** Always explicitly release the underlying socket/channel (e.g., `connection.Close()`) inside the `defer recover()` block when wrapping network connections, in parity with the Daemon handler in `server.go`. `Close()` is idempotent, so calling it alongside the normal-path defer is safe.
