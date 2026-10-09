@@ -2083,30 +2083,12 @@ func extractS3BucketAndKey(req *http.Request) (bucket string, key string) {
 	if h, _, err := net.SplitHostPort(host); err == nil {
 		host = h
 	}
-	// ⚡ Bolt: replace strings.Split with zero-allocation manual parsing loop using strings.IndexByte
-	if strings.Contains(host, ".") {
-		if strings.HasSuffix(host, "localhost") {
-			if idx := strings.IndexByte(host, '.'); idx != -1 {
-				bucket = host[:idx]
-			}
-		} else if idx := strings.Index(host, ".s3"); idx != -1 {
-			bucket = host[:idx]
-		}
-	}
 
-	pathStr := req.URL.Path
-	cleanPath := path.Clean(pathStr)
-	cleanPath = strings.TrimPrefix(cleanPath, "/")
+	bucket = bucketFromVirtualHost(host)
+	cleanPath := strings.TrimPrefix(path.Clean(req.URL.Path), "/")
 
 	if bucket == "" {
-		if cleanPath != "" && cleanPath != "." {
-			if idx := strings.IndexByte(cleanPath, '/'); idx != -1 {
-				bucket = cleanPath[:idx]
-				key = cleanPath[idx+1:]
-			} else {
-				bucket = cleanPath
-			}
-		}
+		bucket, key = splitPathBucketKey(cleanPath)
 	} else {
 		key = cleanPath
 	}
@@ -2115,6 +2097,37 @@ func extractS3BucketAndKey(req *http.Request) (bucket string, key string) {
 		key = ""
 	}
 	return bucket, key
+}
+
+// bucketFromVirtualHost extracts the bucket name from a virtual-host style S3
+// host (e.g. "mybucket.localhost" or "mybucket.s3.amazonaws.com"). It returns
+// "" for path-style hosts. ⚡ Bolt: uses IndexByte to avoid string allocations.
+func bucketFromVirtualHost(host string) string {
+	if !strings.Contains(host, ".") {
+		return ""
+	}
+	if strings.HasSuffix(host, "localhost") {
+		if idx := strings.IndexByte(host, '.'); idx != -1 {
+			return host[:idx]
+		}
+		return ""
+	}
+	if idx := strings.Index(host, ".s3"); idx != -1 {
+		return host[:idx]
+	}
+	return ""
+}
+
+// splitPathBucketKey splits a cleaned path into the bucket and the remaining key
+// for path-style requests. An empty or "." path yields no bucket or key.
+func splitPathBucketKey(cleanPath string) (bucket, key string) {
+	if cleanPath == "" || cleanPath == "." {
+		return "", ""
+	}
+	if idx := strings.IndexByte(cleanPath, '/'); idx != -1 {
+		return cleanPath[:idx], cleanPath[idx+1:]
+	}
+	return cleanPath, ""
 }
 
 // FormatListBucketsXML constructs an S3-compliant ListBuckets

@@ -611,6 +611,27 @@ func TestS3Communicator_URLParsing(t *testing.T) {
 			expectedBucket: "mybucket",
 			expectedKey:    "",
 		},
+		{
+			name:           "Path style bucket only",
+			host:           "localhost:4440",
+			path:           "/mybucket",
+			expectedBucket: "mybucket",
+			expectedKey:    "",
+		},
+		{
+			name:           "Path style root only",
+			host:           "localhost:4440",
+			path:           "/",
+			expectedBucket: "",
+			expectedKey:    "",
+		},
+		{
+			name:           "Nested subdomain with localhost suffix",
+			host:           "mybucket.s3.localhost",
+			path:           "/file.txt",
+			expectedBucket: "mybucket",
+			expectedKey:    "file.txt",
+		},
 	}
 
 	for _, tc := range tests {
