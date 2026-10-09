@@ -7,6 +7,7 @@ import (
 	"log"
 	"syscall"
 
+	"github.com/alsotoes/momo/src/common"
 	momocrypto "github.com/alsotoes/momo/src/crypto"
 )
 
@@ -70,12 +71,7 @@ func NewEncryptedBlobStore(inner BlobStore, encKeyHex string) (*EncryptedBlobSto
 // underlying BlobStore. The hash is the plaintext content hash, preserving
 // CAS dedup semantics.
 func (e *EncryptedBlobStore) PutBlob(hash string, content io.Reader) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in EncryptedBlobStore.PutBlob: %v", r)
-			err = fmt.Errorf("panic in PutBlob: %v: %w", r, syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("EncryptedBlobStore.PutBlob", &err)
 
 	// ⚡ Bolt: Stream encryption avoids loading the entire plaintext into
 	// memory. EncryptStream reads in 4KB chunks and writes to a pipe,
@@ -155,12 +151,7 @@ func (e *EncryptedBlobStore) GetBlob(hash string) (result io.ReadCloser, err err
 func (e *EncryptedBlobStore) DeleteBlob(hash string) (err error) {
 	// 🛡️ Zero-Crash (Rule 37): a panic in the underlying store must not
 	// escape through this passthrough.
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in EncryptedBlobStore.DeleteBlob: %v", r)
-			err = fmt.Errorf("panic in DeleteBlob: %v: %w", r, syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("EncryptedBlobStore.DeleteBlob", &err)
 
 	return e.inner.DeleteBlob(hash)
 }

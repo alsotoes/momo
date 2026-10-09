@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -128,12 +127,7 @@ func (rm *RotationManager) Stop() {
 // Reload triggers a hot reload of secrets from the provider.
 // It fetches fresh secrets and updates the key registry.
 func (rm *RotationManager) Reload(ctx context.Context) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in Reload: %v", r)
-			err = fmt.Errorf("reload panic: %w", syscall.EIO)
-		}
-	}()
+	defer RecoverErr("Reload", &err)
 	log.Println("Reloading secrets from provider...")
 	if err := rm.provider.Reload(ctx); err != nil {
 		return fmt.Errorf("provider reload failed: %w", err)
@@ -191,12 +185,7 @@ func (rm *RotationManager) Reload(ctx context.Context) (err error) {
 // It generates a new key, stores it as the active key (retiring the previous
 // one, which remains readable for decryption), and signals a hot reload.
 func (rm *RotationManager) Rotate(ctx context.Context, purpose string) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in Rotate: %v", r)
-			err = fmt.Errorf("rotate panic: %w", syscall.EIO)
-		}
-	}()
+	defer RecoverErr("Rotate", &err)
 	log.Printf("Manual rotation triggered for %s", purpose)
 
 	// Capture the current active key so the old/new IDs can be audited.
@@ -234,12 +223,7 @@ func (rm *RotationManager) Rotate(ctx context.Context, purpose string) (err erro
 
 // RotateAll rotates all known purposes.
 func (rm *RotationManager) RotateAll(ctx context.Context) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in RotateAll: %v", r)
-			err = fmt.Errorf("rotate-all panic: %w", syscall.EIO)
-		}
-	}()
+	defer RecoverErr("RotateAll", &err)
 	for _, purpose := range rotationPurposes {
 		if err := rm.Rotate(ctx, purpose); err != nil {
 			log.Printf("Rotation failed for %s: %v", purpose, err)

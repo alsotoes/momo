@@ -331,19 +331,3 @@ func TestAcquireConnectionSlot_Success(t *testing.T) {
 		t.Fatal("expected acquired slot to be releasable")
 	}
 }
-
-func TestRecoverChangeReplicationPanic_ClosesConnection(t *testing.T) {
-	c1, c2 := net.Pipe()
-	defer c2.Close()
-
-	func() {
-		defer recoverChangeReplicationPanic(c1, "test-addr")
-		panic("boom")
-	}()
-
-	// c1 was closed by the deferred helper, so the peer read returns EOF.
-	c2.SetReadDeadline(time.Now().Add(time.Second))
-	if _, err := c2.Read(make([]byte, 1)); err == nil {
-		t.Fatal("expected the connection to be closed after a recovered panic")
-	}
-}

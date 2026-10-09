@@ -486,12 +486,7 @@ func sendFileStream(comm transport.Communicator, content io.Reader, meta *common
 // If encryption is disabled, the content is written directly to dst.
 func Download(cfg common.Configuration, encryptedName string, contentHash string, serverId int, dst io.Writer) (err error) {
 	// 🛡️ Zero-Crash: Unified panic recovery for all network-facing methods (Rule 37/43).
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in client.Download: %v", r)
-			err = fmt.Errorf("panic in Download: %v: %w", r, syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("client.Download", &err)
 
 	daemons := cfg.Daemons
 	if serverId < 0 || serverId >= len(daemons) {
@@ -630,12 +625,7 @@ func DownloadWithFallback(cfg common.Configuration, encryptedName string, conten
 // DownloadWithFallbackRouter retrieves a file using the specified PheromoneRouter.
 func DownloadWithFallbackRouter(cfg common.Configuration, encryptedName string, contentHash string, serverId int, dst io.Writer, router PheromoneRouter) (err error) {
 	// 🛡️ Zero-Crash: Unified panic recovery for all network-facing methods (Rule 37/43).
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in client.DownloadWithFallback: %v", r)
-			err = fmt.Errorf("panic in DownloadWithFallback: %v: %w", r, syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("client.DownloadWithFallback", &err)
 
 	candidates, err := resolveCRUSHCandidates(cfg, contentHash, serverId)
 	if err != nil {

@@ -82,6 +82,24 @@ Any new `BlobStore` implementation MUST satisfy the following:
 - **Content-Addressed (Rule 12):** Object key = content hash. No name-based storage.
 - **Zero Dependencies (Rule 1):** Backends must use only Go stdlib (no external SDKs). The S3 backend uses a minimal SigV4 client (~200 lines of stdlib code).
 
+### 9. Unified Panic Recovery (Rules 37 & 43)
+All crash-safety `defer recover()` blocks MUST use the shared helpers in
+`src/common/recover.go` instead of hand-rolled inline closures:
+- **`common.RecoverErr(op, &err)`** — logs the panic to Stderr and assigns an
+  error wrapping `syscall.EIO` to the named return (Rule 37). Use
+  `common.RecoverErrWith(op, errno, &err)` when a different POSIX constant
+  applies (e.g. `syscall.EINVAL`).
+- **`common.RecoverErrClose(op, &err, closer)`** — as above, and also closes the
+  resource after the panic (Rule 43).
+- **`common.RecoverClose(op, closer)`** — for goroutine closures with no named
+  return: logs and closes the resource (Rule 43).
+
+These helpers call `recover()` **directly**, so they MUST be used directly as
+the deferred function (`defer common.RecoverErr("op", &err)`); wrapping them in
+another closure makes `recover()` return nil. `op` is passed by value, so the
+helpers add no heap allocation. Recoveries that need multi-resource cleanup or a
+per-object detail argument may remain explicit and inline.
+
 ---
 
 ## See Also

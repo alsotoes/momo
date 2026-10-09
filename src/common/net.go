@@ -106,12 +106,7 @@ func (c *IdleTimeoutConn) applyDeadlines(isRead bool) {
 
 // Read reads data from the connection and resets the read deadline.
 func (c *IdleTimeoutConn) Read(b []byte) (n int, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in IdleTimeoutConn.Read: %v", r)
-			err = fmt.Errorf("read panic: %w", syscall.EIO)
-		}
-	}()
+	defer RecoverErr("IdleTimeoutConn.Read", &err)
 
 	if c.broken.Load() {
 		return 0, fmt.Errorf("connection broken: %w", syscall.EIO)
@@ -133,12 +128,7 @@ func (c *IdleTimeoutConn) Read(b []byte) (n int, err error) {
 
 // Write writes data to the connection and resets the write deadline.
 func (c *IdleTimeoutConn) Write(b []byte) (n int, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in IdleTimeoutConn.Write: %v", r)
-			err = fmt.Errorf("write panic: %w", syscall.EIO)
-		}
-	}()
+	defer RecoverErr("IdleTimeoutConn.Write", &err)
 
 	if c.broken.Load() {
 		return 0, fmt.Errorf("connection broken: %w", syscall.EIO)
@@ -165,12 +155,7 @@ func DialSocket(servAddr string) (conn net.Conn, err error) {
 // DialSocketWithContext connects to the given address with a context-derived timeout.
 // If the context has a deadline, it is used; otherwise a 10s default is applied.
 func DialSocketWithContext(ctx context.Context, servAddr string) (conn net.Conn, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in DialSocketWithContext: %v", r)
-			err = fmt.Errorf("dial panic: %w", syscall.EIO)
-		}
-	}()
+	defer RecoverErr("DialSocketWithContext", &err)
 
 	dialer := net.Dialer{Timeout: 10 * time.Second}
 	connection, dErr := dialer.DialContext(ctx, "tcp", servAddr)

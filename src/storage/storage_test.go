@@ -211,48 +211,48 @@ func TestCASStore_EdgeCases(t *testing.T) {
 	if err == nil {
 		t.Errorf("Expected Get on nilStore to fail")
 	}
-	if !strings.Contains(err.Error(), "internal storage panic") {
-		t.Errorf("Expected internal storage panic error, got %v", err)
+	if !errors.Is(err, syscall.EIO) {
+		t.Errorf("Expected storage panic mapped to syscall.EIO, got %v", err)
 	}
 
 	err = nilStore.Put("test.txt", "hash", 10, "", bytes.NewReader([]byte("test")))
 	if err == nil {
 		t.Errorf("Expected Put on nilStore to fail")
 	}
-	if !strings.Contains(err.Error(), "internal storage panic") {
-		t.Errorf("Expected internal storage panic error, got %v", err)
+	if !errors.Is(err, syscall.EIO) {
+		t.Errorf("Expected storage panic mapped to syscall.EIO, got %v", err)
 	}
 
 	_, err = nilStore.Has("hash")
 	if err == nil {
 		t.Errorf("Expected Has on nilStore to fail")
 	}
-	if !strings.Contains(err.Error(), "internal storage panic") {
-		t.Errorf("Expected internal storage panic error, got %v", err)
+	if !errors.Is(err, syscall.EIO) {
+		t.Errorf("Expected storage panic mapped to syscall.EIO, got %v", err)
 	}
 
 	err = nilStore.Delete("test.txt")
 	if err == nil {
 		t.Errorf("Expected Delete on nilStore to fail")
 	}
-	if !strings.Contains(err.Error(), "internal storage panic") {
-		t.Errorf("Expected internal storage panic error, got %v", err)
+	if !errors.Is(err, syscall.EIO) {
+		t.Errorf("Expected storage panic mapped to syscall.EIO, got %v", err)
 	}
 
 	_, err = nilStore.GetBlobPath("test.txt")
 	if err == nil {
 		t.Errorf("Expected GetBlobPath on nilStore to fail")
 	}
-	if !strings.Contains(err.Error(), "internal storage panic") {
-		t.Errorf("Expected internal storage panic error, got %v", err)
+	if !errors.Is(err, syscall.EIO) {
+		t.Errorf("Expected storage panic mapped to syscall.EIO, got %v", err)
 	}
 
 	_, err = nilStore.List()
 	if err == nil {
 		t.Errorf("Expected List on nilStore to fail")
 	}
-	if !strings.Contains(err.Error(), "internal storage panic") {
-		t.Errorf("Expected internal storage panic error, got %v", err)
+	if !errors.Is(err, syscall.EIO) {
+		t.Errorf("Expected storage panic mapped to syscall.EIO, got %v", err)
 	}
 }
 

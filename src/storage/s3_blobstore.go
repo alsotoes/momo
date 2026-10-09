@@ -120,12 +120,7 @@ func (s *S3BlobStore) Close() error {
 // bounded-memory (OOM/DoS prevention). The spool file is always removed.
 // Oversized blobs are rejected before any upload occurs.
 func (s *S3BlobStore) PutBlob(hash string, content io.Reader) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in S3BlobStore.PutBlob: %v", r)
-			err = fmt.Errorf("panic in S3BlobStore.PutBlob: %v: %w", r, syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("S3BlobStore.PutBlob", &err)
 
 	spill, err := os.CreateTemp("", "momo-s3-put-*")
 	if err != nil {

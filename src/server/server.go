@@ -84,12 +84,7 @@ func forwardStream() forwardStreamFunc {
 //
 // The replication mode is determined by the client, and for secondary servers, it's influenced by the timestamp of the operation.
 func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in Daemon: %v", r)
-			err = syscall.EIO
-		}
-	}()
+	defer common.RecoverErr("Daemon", &err)
 
 	daemons := cfg.Daemons
 	if serverId < 0 || serverId >= len(daemons) {

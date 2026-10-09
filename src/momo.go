@@ -459,35 +459,20 @@ func runRotateSecrets(cfg common.Configuration, serverId int) error {
 
 // runMetricsLoop runs the metrics loop with panic recovery.
 func runMetricsLoop(ctx context.Context, cfg common.Configuration, serverId int) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in Metrics Loop: %v", r)
-			err = fmt.Errorf("metrics loop panic: %w", syscall.EINVAL)
-		}
-	}()
+	defer common.RecoverErrWith("Metrics Loop", syscall.EINVAL, &err)
 	metrics.GetMetrics(ctx, cfg, serverId)
 	return nil
 }
 
 // runReplicationServer runs the replication server with panic recovery.
 func runReplicationServer(ctx context.Context, cfg common.Configuration, serverId int, timestamp int64) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in Replication Server: %v", r)
-			err = fmt.Errorf("replication server panic: %w", syscall.ENETDOWN)
-		}
-	}()
+	defer common.RecoverErrWith("Replication Server", syscall.ENETDOWN, &err)
 	return server.ChangeReplicationModeServer(ctx, cfg, serverId, timestamp)
 }
 
 // runMainDaemon runs the main server daemon with panic recovery.
 func runMainDaemon(ctx context.Context, cfg common.Configuration, serverId int) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in Main Daemon: %v", r)
-			err = fmt.Errorf("main daemon panic: %w", syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("Main Daemon", &err)
 	return server.Daemon(ctx, cfg, serverId)
 }
 
@@ -502,12 +487,7 @@ func runServer(ctx context.Context, cfg common.Configuration, serverId int) (err
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in runServer: %v", r)
-			err = fmt.Errorf("runServer panic: %w", syscall.EIO)
-		}
-	}()
+	defer common.RecoverErr("runServer", &err)
 
 	errChan := make(chan error, 3)
 	var wg sync.WaitGroup
