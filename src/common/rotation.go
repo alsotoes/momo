@@ -72,7 +72,7 @@ func (rm *RotationManager) fireRotationHooks(purpose, oldKeyID, newKeyID, trigge
 	copy(hooks, rm.rotationHooks)
 	rm.mu.RUnlock()
 	for _, fn := range hooks {
-		fn(purpose, "", "", trigger, true, nil) // Note: old/new key IDs would be passed here in real impl
+		fn(purpose, oldKeyID, newKeyID, trigger, success, err)
 	}
 }
 
@@ -127,13 +127,16 @@ func (rm *RotationManager) Reload(ctx context.Context) error {
 	// Fetch fresh secrets for all known purposes
 	purposes := []string{"encryption", "auth", "e2ee", "oprf"}
 	for _, purpose := range purposes {
-		secretName := purpose + "_key"
-		if purpose == "auth" {
+		var secretName string
+		switch purpose {
+		case "auth":
 			secretName = "auth_token"
-		} else if purpose == "e2ee" {
+		case "e2ee":
 			secretName = "e2ee_key"
-		} else if purpose == "oprf" {
+		case "oprf":
 			secretName = "oprf_share"
+		default:
+			secretName = purpose + "_key"
 		}
 
 		val, found, err := rm.provider.GetSecret(context.Background(), secretName)
@@ -170,46 +173,41 @@ func (rm *RotationManager) Reload(ctx context.Context) error {
 }
 
 // Rotate triggers a manual rotation for a specific purpose.
-// It generates a new key, stores it, and triggers reload.
+// It generates a new key, stores it as the active key (retiring the previous
+// one, which remains readable for decryption), and signals a hot reload.
 func (rm *RotationManager) Rotate(ctx context.Context, purpose string) error {
 	log.Printf("Manual rotation triggered for %s", purpose)
 
-	// Get current active key
-	_, _, err := rm.keyRegistry.GetActiveKeyForPurpose(context.Background(), purpose)
+	// Capture the current active key so the old/new IDs can be audited.
+	oldKeyID, _, err := rm.keyRegistry.GetActiveKeyForPurpose(ctx, purpose)
 	if err != nil {
+		rm.fireRotationHooks(purpose, "", "", "manual", false, err)
 		return fmt.Errorf("failed to get active key: %w", err)
 	}
 
-	// Generate new key material
-	_, genErr := rm.generateKeyForPurpose(purpose)
-	if genErr != nil {
-		return fmt.Errorf("failed to generate new key: %w", genErr)
+	// Generate new key material.
+	material, err := rm.generateKeyForPurpose(purpose)
+	if err != nil {
+		rm.fireRotationHooks(purpose, oldKeyID, "", "manual", false, err)
+		return fmt.Errorf("failed to generate new key: %w", err)
 	}
 
-	// Store new key as pending rotation
-	newKeyID, err := rm.keyRegistry.StoreKey(context.Background(), purpose, []byte{}, "AES-256-GCM", "", KeyStatusPendingRotation, 0)
+	// Persist the new key as pending, then activate it (demotes the old one).
+	newKeyID, err := rm.keyRegistry.StoreKey(ctx, purpose, material, "AES-256-GCM", "", KeyStatusPendingRotation, 0)
 	if err != nil {
+		rm.fireRotationHooks(purpose, oldKeyID, "", "manual", false, err)
 		return fmt.Errorf("failed to store new key: %w", err)
 	}
-
-	// Update the pending key with actual material
-	// (In real impl, we'd update the entry; for now, just log)
-	log.Printf("Generated new key %s for %s (pending rotation)", newKeyID, purpose)
-
-	// Trigger reload to activate new key
-	if err := rm.Reload(context.Background()); err != nil {
-		_ = rm.keyRegistry.MarkCompromised(context.Background(), newKeyID)
-		return fmt.Errorf("reload failed after rotation: %w", err)
+	if err := rm.keyRegistry.SetActive(ctx, newKeyID); err != nil {
+		rm.fireRotationHooks(purpose, oldKeyID, newKeyID, "manual", false, err)
+		return fmt.Errorf("failed to activate new key: %w", err)
 	}
 
-	// Mark old key as retired after grace period
-	go func() {
-		time.Sleep(24 * time.Hour) // grace period
-		_ = rm.keyRegistry.MarkRetired(context.Background(), "") // Would need old key ID
-	}()
+	// Signal dependent components to re-read keys from the registry.
+	rm.fireReloadHooks()
 
-	rm.fireRotationHooks(purpose, "", "", "manual", true, nil)
-	log.Printf("Rotation completed for %s", purpose)
+	rm.fireRotationHooks(purpose, oldKeyID, newKeyID, "manual", true, nil)
+	log.Printf("Rotation completed for %s (grace period %v)", purpose, rm.gracePeriod)
 	return nil
 }
 

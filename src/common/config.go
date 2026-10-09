@@ -28,12 +28,12 @@ const (
 	sectionMomofs = "momofs"
 	// sectionTenants is the name of the [tenants] section in the configuration file (R8, #936).
 	sectionTenants = "tenants"
-// sectionAudit is the name of the [audit] section in the configuration file (R8, #936).
-sectionAudit = "audit"
-// sectionSecrets is the name of the [secrets] section in the configuration file (R9, #937).
-sectionSecrets = "secrets"
-// prefixDaemon is the prefix for daemon sections in the configuration file (e.g., [daemon.0]).
-prefixDaemon = "daemon."
+	// sectionAudit is the name of the [audit] section in the configuration file (R8, #936).
+	sectionAudit = "audit"
+	// sectionSecrets is the name of the [secrets] section in the configuration file (R9, #937).
+	sectionSecrets = "secrets"
+	// prefixDaemon is the prefix for daemon sections in the configuration file (e.g., [daemon.0]).
+	prefixDaemon = "daemon."
 	// prefixTenant is the prefix for tenant sections in the configuration file (e.g., [tenant.xxx]).
 	prefixTenant = "tenant."
 )
@@ -228,12 +228,12 @@ func GetConfig(path string) (Configuration, error) {
 	}
 
 	// Load [secrets] section (optional, R9 #937)
-	secretsSec, err := cfg.GetSection(sectionSecrets)
-	if err == nil {
-		config.Secrets, err = loadSecretsConfig(secretsSec)
+	if _, secErr := cfg.GetSection(sectionSecrets); secErr == nil {
+		secretsCfg, err := loadSecretsConfig(cfg)
 		if err != nil {
 			return Configuration{}, fmt.Errorf("failed to load [%s] section: %w", sectionSecrets, err)
 		}
+		config.Secrets = secretsCfg
 	} else {
 		config.Secrets = SecretsConfig{}
 	}
@@ -279,26 +279,30 @@ func loadAuditConfig(section *ini.Section) (AuditConfig, error) {
 }
 
 // loadSecretsConfig loads the [secrets] section from the configuration (R9, #937).
-func loadSecretsConfig(section *ini.Section) (SecretsConfig, error) {
+// Per-source options are read from child sections, e.g. [secrets.env], [secrets.file].
+func loadSecretsConfig(cfg *ini.File) (SecretsConfig, error) {
 	var secretsCfg SecretsConfig
+	section, err := cfg.GetSection(sectionSecrets)
+	if err != nil {
+		return secretsCfg, nil // no [secrets] section
+	}
+
 	secretsCfg.Enabled = section.Key("enabled").MustBool(false)
 	secretsCfg.EnvPrefix = section.Key("env_prefix").String()
 	secretsCfg.FilePath = section.Key("file_path").String()
 
-	// Parse rotation_interval (e.g., "90d", "24h")
-	rotationIntervalStr := section.Key("rotation_interval").String()
-	if rotationIntervalStr != "" {
-		d, err := time.ParseDuration(rotationIntervalStr)
+	// Rotate interval (Go duration string, e.g. "24h").
+	if v := section.Key("rotation_interval").String(); v != "" {
+		d, err := time.ParseDuration(v)
 		if err != nil {
 			return SecretsConfig{}, fmt.Errorf("invalid 'rotation_interval': %w", err)
 		}
 		secretsCfg.RotationInterval = d
 	}
 
-	// Parse rotation_grace_period (default 24h)
-	gracePeriodStr := section.Key("rotation_grace_period").String()
-	if gracePeriodStr != "" {
-		d, err := time.ParseDuration(gracePeriodStr)
+	// Grace period (default 24h).
+	if v := section.Key("rotation_grace_period").String(); v != "" {
+		d, err := time.ParseDuration(v)
 		if err != nil {
 			return SecretsConfig{}, fmt.Errorf("invalid 'rotation_grace_period': %w", err)
 		}
@@ -307,11 +311,9 @@ func loadSecretsConfig(section *ini.Section) (SecretsConfig, error) {
 		secretsCfg.RotationGracePeriod = 24 * time.Hour
 	}
 
-	// Parse sources (comma-separated)
-	sourcesStr := section.Key("sources").String()
-	if sourcesStr != "" {
-		parts := strings.Split(sourcesStr, ",")
-		for _, part := range parts {
+	// Sources (comma-separated, ordered).
+	if v := section.Key("sources").String(); v != "" {
+		for _, part := range strings.Split(v, ",") {
 			source := SecretsSource(strings.TrimSpace(part))
 			switch source {
 			case SecretsSourceEnv, SecretsSourceFile, SecretsSourceVault, SecretsSourceAWS, SecretsSourceGCP, SecretsSourceAzure:
@@ -322,41 +324,42 @@ func loadSecretsConfig(section *ini.Section) (SecretsConfig, error) {
 		}
 	}
 
-	// Parse per-source configs
+	// Per-source configs live in child sections: [secrets.<source>].
 	sourceConfigs := make(map[SecretsSource]SecretsSourceConfig)
 	for _, source := range secretsCfg.Sources {
-		prefix := string(source) + "."
 		sourceCfg := SecretsSourceConfig{Source: source}
-		if source == SecretsSourceEnv {
-			sourceCfg.EnvPrefix = section.Key(prefix + "prefix").String()
-			if sourceCfg.EnvPrefix == "" {
-				sourceCfg.EnvPrefix = "MOMO_"
+		if child, err := cfg.GetSection(sectionSecrets + "." + string(source)); err == nil {
+			switch source {
+			case SecretsSourceEnv:
+				sourceCfg.EnvPrefix = child.Key("prefix").String()
+			case SecretsSourceFile:
+				sourceCfg.FilePath = child.Key("path").String()
+			case SecretsSourceVault:
+				sourceCfg.VaultAddress = child.Key("address").String()
+				sourceCfg.VaultToken = child.Key("token").String()
+				sourceCfg.VaultPath = child.Key("path").String()
+				sourceCfg.VaultMount = child.Key("mount").String()
+			case SecretsSourceAWS:
+				sourceCfg.AWSRegion = child.Key("region").String()
+				sourceCfg.AWSSecretName = child.Key("secret_name").String()
+			case SecretsSourceGCP:
+				sourceCfg.GCPProjectID = child.Key("project_id").String()
+				sourceCfg.GCPSecretID = child.Key("secret_id").String()
+				sourceCfg.GCPVersion = child.Key("version").String()
+			case SecretsSourceAzure:
+				sourceCfg.AzureVaultURL = child.Key("vault_url").String()
+				sourceCfg.AzureSecretName = child.Key("secret_name").String()
+				sourceCfg.AzureVersion = child.Key("version").String()
 			}
-		} else if source == SecretsSourceFile {
-			sourceCfg.FilePath = section.Key(prefix + "path").String()
-			if sourceCfg.FilePath == "" {
-				sourceCfg.FilePath = "conf/momo.conf"
-			}
-		} else if source == SecretsSourceVault {
-			sourceCfg.VaultAddress = section.Key(prefix + "address").String()
-			sourceCfg.VaultToken = section.Key(prefix + "token").String()
-			sourceCfg.VaultPath = section.Key(prefix + "path").String()
-			sourceCfg.VaultMount = section.Key(prefix + "mount").String()
-		} else if source == SecretsSourceAWS {
-			sourceCfg.AWSRegion = section.Key(prefix + "region").String()
-			sourceCfg.AWSSecretName = section.Key(prefix + "secret_name").String()
-		} else if source == SecretsSourceGCP {
-			sourceCfg.GCPProjectID = section.Key(prefix + "project_id").String()
-			sourceCfg.GCPSecretID = section.Key(prefix + "secret_id").String()
-			sourceCfg.GCPVersion = section.Key(prefix + "version").String()
-		} else if source == SecretsSourceAzure {
-			sourceCfg.AzureVaultURL = section.Key(prefix + "vault_url").String()
-			sourceCfg.AzureSecretName = section.Key(prefix + "secret_name").String()
-			sourceCfg.AzureVersion = section.Key(prefix + "version").String()
 		}
-		if len(sourceCfg.Source) > 0 {
-			sourceConfigs[source] = sourceCfg
+		// Backward-compatible defaults.
+		if source == SecretsSourceEnv && sourceCfg.EnvPrefix == "" {
+			sourceCfg.EnvPrefix = "MOMO_"
 		}
+		if source == SecretsSourceFile && sourceCfg.FilePath == "" {
+			sourceCfg.FilePath = "conf/momo.conf"
+		}
+		sourceConfigs[source] = sourceCfg
 	}
 	secretsCfg.SourceConfigs = sourceConfigs
 

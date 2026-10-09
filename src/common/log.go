@@ -87,11 +87,11 @@ func AuditRotation(ctx context.Context, db *bbolt.DB, purpose, oldKeyID, newKeyI
 // AuditRotationEntry represents a key rotation audit log entry.
 type AuditRotationEntry struct {
 	Timestamp  time.Time `json:"timestamp"`
-	Purpose    string    `json:"purpose"`    // "encryption", "auth", "e2ee", "oprf"
+	Purpose    string    `json:"purpose"` // "encryption", "auth", "e2ee", "oprf"
 	OldKeyID   string    `json:"old_key_id"`
 	NewKeyID   string    `json:"new_key_id"`
-	Operator   string    `json:"operator"`   // "system" or user identifier
-	Trigger    string    `json:"trigger"`    // "scheduled" or "manual"
+	Operator   string    `json:"operator"` // "system" or user identifier
+	Trigger    string    `json:"trigger"`  // "scheduled" or "manual"
 	Success    bool      `json:"success"`
 	Error      string    `json:"error,omitempty"`
 	RetryCount int       `json:"retry_count"`

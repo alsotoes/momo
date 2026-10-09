@@ -166,7 +166,15 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 		metricsPort = cfg.Metrics.PrometheusPort
 	}
 	// 🛡️ R9: Initialize secrets management (key registry, rotation, audit).
-	var rotationMgr *common.RotationManager
+	// Must run before StartMetricsServer so the /reload-secrets hook is wired.
+	rotationMgr, keyDB := initSecretsManager(ctx, cfg, daemons[serverId].Data)
+	if keyDB != nil {
+		defer func() {
+			if cerr := keyDB.Close(); cerr != nil {
+				log.Printf("⚠️ Failed to close key registry DB: %v", cerr)
+			}
+		}()
+	}
 
 	// R5 phase 2: install scrape-time storage/CAS gauge source (blob count,
 	// stored bytes, disk, GC) when the store implements it.
@@ -190,10 +198,10 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 	// 🛡️ Zero-Crash: Log a warning if the cluster cannot meet the desired durability goal.
 	if cfg.Global.ReplicationFactor > len(daemons) {
 		log.Printf("⚠️ WARNING: Desired replication factor (%d) exceeds available node count (%d). Data will be stored in DEGRADED mode.", cfg.Global.ReplicationFactor, len(daemons))
-}
+	}
 
-// ⚡ Bolt: Pre-build the ClusterMap during boot to avoid per-request allocations.
-nodes := make([]*common.Node, len(cfg.Daemons))
+	// ⚡ Bolt: Pre-build the ClusterMap during boot to avoid per-request allocations.
+	nodes := make([]*common.Node, len(cfg.Daemons))
 	for i, d := range cfg.Daemons {
 		nodes[i] = &common.Node{ID: i, Weight: 1, Addr: d.Host, Domain: d.FailureDomain}
 	}
@@ -282,57 +290,19 @@ nodes := make([]*common.Node, len(cfg.Daemons))
 			// 🛡️ Sentinel: Capture remote address for audit logging and traceability
 			remoteAddr := common.SanitizeLog(comm.RemoteAddr().String())
 
-// 🛡️ Sentinel: Adaptive failed-auth backoff & temporary lockout (issue #821).
-	// Disabled (Allow always true) when auth_backoff_delay is 0.
-	authLimiter := common.NewAuthLimiter(time.Duration(cfg.Global.AuthBackoffDelay) * time.Millisecond)
+			// 🛡️ Sentinel: Adaptive failed-auth backoff & temporary lockout (issue #821).
+			// Disabled (Allow always true) when auth_backoff_delay is 0.
+			authLimiter := common.NewAuthLimiter(time.Duration(cfg.Global.AuthBackoffDelay) * time.Millisecond)
 
-// 🛡️ Zero-Crash: Log a warning if the cluster cannot meet the desired durability goal.
-if cfg.Global.ReplicationFactor > len(daemons) {
-	log.Printf("⚠️ WARNING: Desired replication factor (%d) exceeds available node count (%d). Data will be stored in DEGRADED mode.", cfg.Global.ReplicationFactor, len(daemons))
-}
-
-// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
-expectedAuthToken := []byte(common.PadString(cfg.Global.AuthToken, common.AuthTokenLength))
-
-// 🛡️ R9: Initialize secrets management (key registry, rotation, audit).
-if cfg.Secrets.Enabled {
-		// Open the same BoltDB for key registry
-		dbPath := filepath.Join(daemons[serverId].Data, "momo.db")
-		keyDB, err := bbolt.Open(dbPath, 0600, nil)
-		if err != nil {
-			log.Printf("⚠️ Failed to open key registry DB: %v (secrets management disabled)", err)
-		} else {
-			keyRegistry, err := common.NewKeyRegistry(keyDB)
-			if err != nil {
-				log.Printf("⚠️ Failed to create key registry: %v (secrets management disabled)", err)
-			} else {
-				// Build provider chain from config
-				provider, err := common.BuildProviderChain(cfg.Secrets)
-				if err != nil {
-					log.Printf("⚠️ Failed to build secret provider chain: %v (secrets management disabled)", err)
-				} else {
-					gracePeriod := cfg.Secrets.RotationGracePeriod
-					if gracePeriod <= 0 {
-						gracePeriod = 24 * time.Hour
-					}
-					rotationMgr = common.NewRotationManager(keyRegistry, provider, gracePeriod)
-
-					// Register reload hook to update in-memory keys
-					rotationMgr.RegisterReloadHook(func() {
-						log.Println("R9: Secrets reloaded via hot reload")
-					})
-
-					// Start scheduled rotation if interval is configured
-					if cfg.Secrets.RotationInterval > 0 {
-						rotationMgr.Start(ctx, cfg.Secrets.RotationInterval)
-					}
-					log.Printf("R9: Secrets management enabled (sources: %v, rotation: %v)", cfg.Secrets.Sources, cfg.Secrets.RotationInterval)
-				}
+			// 🛡️ Zero-Crash: Log a warning if the cluster cannot meet the desired durability goal.
+			if cfg.Global.ReplicationFactor > len(daemons) {
+				log.Printf("⚠️ WARNING: Desired replication factor (%d) exceeds available node count (%d). Data will be stored in DEGRADED mode.", cfg.Global.ReplicationFactor, len(daemons))
 			}
-		}
-	}
 
-	// 🛡️ Sentinel: Adaptive failed-auth backoff & temporary lockout (issue #821).
+			// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
+			expectedAuthToken := []byte(common.PadString(cfg.Global.AuthToken, common.AuthTokenLength))
+
+			// 🛡️ Sentinel: Adaptive failed-auth backoff & temporary lockout (issue #821).
 			// When enabled, reject a source that is under backoff/lockout BEFORE any
 			// crypto/network work to meter online brute-force attempts.
 			if authLimiter.Enabled() && !authLimiter.Allow(remoteAddr) {
@@ -1063,4 +1033,46 @@ func downgradeToServerSideMode(currentMode int, replicationOrder []int, clientSi
 	}
 
 	return common.ReplicationNone
+}
+
+// initSecretsManager initializes the R9 key registry and rotation manager.
+// When secrets management is disabled it returns (nil, nil). Otherwise it
+// returns the rotation manager and the registry's BoltDB handle, which the
+// caller must close. Any initialization failure degrades gracefully.
+func initSecretsManager(ctx context.Context, cfg common.Configuration, dataDir string) (*common.RotationManager, *bbolt.DB) {
+	if !cfg.Secrets.Enabled {
+		return nil, nil
+	}
+
+	keyDB, err := bbolt.Open(filepath.Join(dataDir, "momo.db"), 0600, nil)
+	if err != nil {
+		log.Printf("⚠️ Failed to open key registry DB: %v (secrets management disabled)", err)
+		return nil, nil
+	}
+
+	keyRegistry, err := common.NewKeyRegistry(keyDB)
+	if err != nil {
+		log.Printf("⚠️ Failed to create key registry: %v (secrets management disabled)", err)
+		return nil, keyDB
+	}
+
+	provider, err := common.BuildProviderChain(cfg.Secrets)
+	if err != nil {
+		log.Printf("⚠️ Failed to build secret provider chain: %v (secrets management disabled)", err)
+		return nil, keyDB
+	}
+
+	gracePeriod := cfg.Secrets.RotationGracePeriod
+	if gracePeriod <= 0 {
+		gracePeriod = 24 * time.Hour
+	}
+	rotationMgr := common.NewRotationManager(keyRegistry, provider, gracePeriod)
+	rotationMgr.RegisterReloadHook(func() {
+		log.Println("R9: Secrets reloaded via hot reload")
+	})
+	if cfg.Secrets.RotationInterval > 0 {
+		rotationMgr.Start(ctx, cfg.Secrets.RotationInterval)
+	}
+	log.Printf("R9: Secrets management enabled (sources: %v, rotation: %v)", cfg.Secrets.Sources, cfg.Secrets.RotationInterval)
+	return rotationMgr, keyDB
 }

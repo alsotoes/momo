@@ -222,3 +222,57 @@ func captureMetricsOutput(mc *MetricsCollector) string {
 	mc.writeMetrics(&buf)
 	return buf.String()
 }
+
+// TestStartMetricsServer_ReloadSecrets verifies the POST-only /reload-secrets
+// endpoint triggers the reload callback.
+func TestStartMetricsServer_ReloadSecrets(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	port := freePort(t)
+	mc := NewMetricsCollector()
+
+	reloaded := make(chan struct{}, 1)
+	reloadFn := func() {
+		select {
+		case reloaded <- struct{}{}:
+		default:
+		}
+	}
+
+	done := make(chan struct{})
+	go func() { StartMetricsServer(ctx, "127.0.0.1", port, mc, reloadFn); close(done) }()
+
+	// Wait until the server is listening.
+	httpGetPort(t, port, "/health")
+
+	// GET must be rejected with 405.
+	if code, _ := httpGetPort(t, port, "/reload-secrets"); code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected GET /reload-secrets 405, got %d", code)
+	}
+
+	// POST must trigger the callback and return 200.
+	url := "http://127.0.0.1:" + strconv.Itoa(port) + "/reload-secrets"
+	resp, err := http.Post(url, "text/plain", nil)
+	if err != nil {
+		t.Fatalf("POST /reload-secrets failed: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected POST /reload-secrets 200, got %d", resp.StatusCode)
+	}
+	select {
+	case <-reloaded:
+	case <-time.After(time.Second):
+		t.Fatal("reload callback was not invoked")
+	}
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("StartMetricsServer did not return after cancel")
+	}
+	time.Sleep(50 * time.Millisecond)
+	goleak.VerifyNone(t)
+}

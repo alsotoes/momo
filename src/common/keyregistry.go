@@ -223,13 +223,13 @@ func (kr *KeyRegistry) SetActive(ctx context.Context, keyID string) error {
 		if v == nil {
 			return fmt.Errorf("key %s not found", keyID)
 		}
-var target KeyEntry
-	if err := json.Unmarshal(v, &target); err != nil {
-		return err
-	}
+		var target KeyEntry
+		if err := json.Unmarshal(v, &target); err != nil {
+			return err
+		}
 
-	// Demote all other active keys for this purpose to retired
-	c := b.Cursor()
+		// Demote all other active keys for this purpose to retired
+		c := b.Cursor()
 		for k, v := c.First(); k != nil; k, v = c.Next() {
 			var entry KeyEntry
 			if err := json.Unmarshal(v, &entry); err != nil {
