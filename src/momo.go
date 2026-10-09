@@ -434,7 +434,8 @@ func runRotateSecrets(cfg common.Configuration, serverId int) error {
 		metricsPort = 9100
 	}
 
-	url := fmt.Sprintf("http://%s:%d/reload-secrets", metricsHost, metricsPort)
+	// The metrics endpoint is a localhost admin listener without TLS; plain HTTP is intentional.
+	url := fmt.Sprintf("http://%s:%d/reload-secrets", metricsHost, metricsPort) // NOSONAR
 	req, err := http.NewRequest("POST", url, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
@@ -449,7 +450,7 @@ func runRotateSecrets(cfg common.Configuration, serverId int) error {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("/reload-secrets returned %d: %s", resp.StatusCode, string(body))
+		return fmt.Errorf("/reload-secrets returned %d: %s: %w", resp.StatusCode, common.SanitizeLog(string(body)), syscall.EIO)
 	}
 
 	log.Printf("Secrets rotation triggered successfully on %s:%d", metricsHost, metricsPort)

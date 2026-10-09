@@ -183,10 +183,15 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 	}
 	// R5 phase 4: opt-in latency histograms (zero overhead when disabled).
 	metricsCollector.SetLatencyHistogramsEnabled(cfg.Metrics.EnableLatencyHistograms)
-	// Pass reload function for /reload-secrets endpoint
-	reloadFn := func() {}
+	// Pass reload function for /reload-secrets endpoint (nil when R9 is disabled).
+	var reloadFn func()
 	if rotationMgr != nil {
 		reloadFn = func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("CRITICAL: Panic recovered in /reload-secrets: %v", r)
+				}
+			}()
 			_ = rotationMgr.Reload(ctx)
 		}
 	}
