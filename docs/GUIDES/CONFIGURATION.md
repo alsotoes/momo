@@ -481,7 +481,7 @@ This section controls the external secret sourcing and automated key rotation sy
     -   **Default:** `env,file`
 
 -   **`rotation_interval`**
-    -   **Description:** Interval for automatic key rotation (e.g., `90d`, `24h`). Empty disables scheduled rotation.
+    -   **Description:** Interval for automatic key rotation (Go duration string, e.g. `2160h` for 90 days).. Empty disables scheduled rotation.
     -   **Type:** Duration string
     -   **Default:** (empty — disabled)
 
@@ -535,7 +535,7 @@ This section controls the external secret sourcing and automated key rotation sy
 [secrets]
 enabled = true
 sources = env, file
-rotation_interval = 90d
+rotation_interval = 2160h
 rotation_grace_period = 24h
 
 [secrets.env]

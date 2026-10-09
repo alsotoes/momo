@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"syscall"
 	"time"
 
 	"go.etcd.io/bbolt"
@@ -57,10 +58,10 @@ func (kr *KeyRegistry) fireChangeHooks(entry KeyEntry) {
 // Returns the KeyID of the stored key.
 func (kr *KeyRegistry) StoreKey(ctx context.Context, purpose string, material []byte, algorithm string, tenantID string, status KeyStatus, oprfShareIndex int) (string, error) {
 	if len(material) == 0 {
-		return "", fmt.Errorf("key material cannot be empty")
+		return "", fmt.Errorf("key material cannot be empty: %w", syscall.EINVAL)
 	}
 	if purpose == "" {
-		return "", fmt.Errorf("purpose cannot be empty")
+		return "", fmt.Errorf("purpose cannot be empty: %w", syscall.EINVAL)
 	}
 
 	entry := KeyEntry{
@@ -86,7 +87,7 @@ func (kr *KeyRegistry) StoreKey(ctx context.Context, purpose string, material []
 	updateErr := kr.db.Update(func(tx *bbolt.Tx) error {
 		b := tx.Bucket([]byte(KeyRegistryBucket))
 		if b == nil {
-			return fmt.Errorf("key_registry bucket not found")
+			return fmt.Errorf("key_registry bucket not found: %w", syscall.ENOENT)
 		}
 		data, marshalErr := json.Marshal(entry)
 		if marshalErr != nil {
@@ -142,7 +143,7 @@ func (kr *KeyRegistry) GetKey(ctx context.Context, keyID string) (*KeyEntry, err
 	_ = kr.db.View(func(tx *bbolt.Tx) error {
 		b := tx.Bucket([]byte(KeyRegistryBucket))
 		if b == nil {
-			return fmt.Errorf("key_registry bucket not found")
+			return fmt.Errorf("key_registry bucket not found: %w", syscall.ENOENT)
 		}
 		v := b.Get([]byte(keyID))
 		if v == nil {
@@ -163,11 +164,11 @@ func (kr *KeyRegistry) MarkRetired(ctx context.Context, keyID string) error {
 	return kr.db.Update(func(tx *bbolt.Tx) error {
 		b := tx.Bucket([]byte(KeyRegistryBucket))
 		if b == nil {
-			return fmt.Errorf("key_registry bucket not found")
+			return fmt.Errorf("key_registry bucket not found: %w", syscall.ENOENT)
 		}
 		v := b.Get([]byte(keyID))
 		if v == nil {
-			return fmt.Errorf("key %s not found", keyID)
+			return fmt.Errorf("key %s not found: %w", keyID, syscall.ENOENT)
 		}
 		var entry KeyEntry
 		if err := json.Unmarshal(v, &entry); err != nil {
@@ -189,11 +190,11 @@ func (kr *KeyRegistry) MarkCompromised(ctx context.Context, keyID string) error 
 	return kr.db.Update(func(tx *bbolt.Tx) error {
 		b := tx.Bucket([]byte(KeyRegistryBucket))
 		if b == nil {
-			return fmt.Errorf("key_registry bucket not found")
+			return fmt.Errorf("key_registry bucket not found: %w", syscall.ENOENT)
 		}
 		v := b.Get([]byte(keyID))
 		if v == nil {
-			return fmt.Errorf("key %s not found", keyID)
+			return fmt.Errorf("key %s not found: %w", keyID, syscall.ENOENT)
 		}
 		var entry KeyEntry
 		if err := json.Unmarshal(v, &entry); err != nil {
@@ -215,21 +216,21 @@ func (kr *KeyRegistry) SetActive(ctx context.Context, keyID string) error {
 	return kr.db.Update(func(tx *bbolt.Tx) error {
 		b := tx.Bucket([]byte(KeyRegistryBucket))
 		if b == nil {
-			return fmt.Errorf("key_registry bucket not found")
+			return fmt.Errorf("key_registry bucket not found: %w", syscall.ENOENT)
 		}
 
 		// First, find the target entry and its purpose
 		v := b.Get([]byte(keyID))
 		if v == nil {
-			return fmt.Errorf("key %s not found", keyID)
+			return fmt.Errorf("key %s not found: %w", keyID, syscall.ENOENT)
 		}
-var target KeyEntry
-	if err := json.Unmarshal(v, &target); err != nil {
-		return err
-	}
+		var target KeyEntry
+		if err := json.Unmarshal(v, &target); err != nil {
+			return err
+		}
 
-	// Demote all other active keys for this purpose to retired
-	c := b.Cursor()
+		// Demote all other active keys for this purpose to retired
+		c := b.Cursor()
 		for k, v := c.First(); k != nil; k, v = c.Next() {
 			var entry KeyEntry
 			if err := json.Unmarshal(v, &entry); err != nil {

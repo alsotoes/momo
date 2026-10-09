@@ -336,16 +336,16 @@ type SecretsSourceConfig struct {
 	VaultPath    string
 	VaultMount   string
 	// AWS Secrets Manager configuration
-	AWSRegion    string
+	AWSRegion     string
 	AWSSecretName string
 	// GCP Secret Manager configuration
-	GCPProjectID  string
-	GCPSecretID   string
-	GCPVersion    string
+	GCPProjectID string
+	GCPSecretID  string
+	GCPVersion   string
 	// Azure Key Vault configuration
-	AzureVaultURL string
+	AzureVaultURL   string
 	AzureSecretName string
-	AzureVersion   string
+	AzureVersion    string
 }
 
 // SecretsConfig holds the configuration for secret management.

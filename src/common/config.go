@@ -28,12 +28,12 @@ const (
 	sectionMomofs = "momofs"
 	// sectionTenants is the name of the [tenants] section in the configuration file (R8, #936).
 	sectionTenants = "tenants"
-// sectionAudit is the name of the [audit] section in the configuration file (R8, #936).
-sectionAudit = "audit"
-// sectionSecrets is the name of the [secrets] section in the configuration file (R9, #937).
-sectionSecrets = "secrets"
-// prefixDaemon is the prefix for daemon sections in the configuration file (e.g., [daemon.0]).
-prefixDaemon = "daemon."
+	// sectionAudit is the name of the [audit] section in the configuration file (R8, #936).
+	sectionAudit = "audit"
+	// sectionSecrets is the name of the [secrets] section in the configuration file (R9, #937).
+	sectionSecrets = "secrets"
+	// prefixDaemon is the prefix for daemon sections in the configuration file (e.g., [daemon.0]).
+	prefixDaemon = "daemon."
 	// prefixTenant is the prefix for tenant sections in the configuration file (e.g., [tenant.xxx]).
 	prefixTenant = "tenant."
 )
@@ -228,12 +228,12 @@ func GetConfig(path string) (Configuration, error) {
 	}
 
 	// Load [secrets] section (optional, R9 #937)
-	secretsSec, err := cfg.GetSection(sectionSecrets)
-	if err == nil {
-		config.Secrets, err = loadSecretsConfig(secretsSec)
+	if _, secErr := cfg.GetSection(sectionSecrets); secErr == nil {
+		secretsCfg, err := loadSecretsConfig(cfg)
 		if err != nil {
 			return Configuration{}, fmt.Errorf("failed to load [%s] section: %w", sectionSecrets, err)
 		}
+		config.Secrets = secretsCfg
 	} else {
 		config.Secrets = SecretsConfig{}
 	}
@@ -279,88 +279,127 @@ func loadAuditConfig(section *ini.Section) (AuditConfig, error) {
 }
 
 // loadSecretsConfig loads the [secrets] section from the configuration (R9, #937).
-func loadSecretsConfig(section *ini.Section) (SecretsConfig, error) {
-	var secretsCfg SecretsConfig
-	secretsCfg.Enabled = section.Key("enabled").MustBool(false)
-	secretsCfg.EnvPrefix = section.Key("env_prefix").String()
-	secretsCfg.FilePath = section.Key("file_path").String()
-
-	// Parse rotation_interval (e.g., "90d", "24h")
-	rotationIntervalStr := section.Key("rotation_interval").String()
-	if rotationIntervalStr != "" {
-		d, err := time.ParseDuration(rotationIntervalStr)
-		if err != nil {
-			return SecretsConfig{}, fmt.Errorf("invalid 'rotation_interval': %w", err)
-		}
-		secretsCfg.RotationInterval = d
+// Per-source options are read from child sections, e.g. [secrets.env], [secrets.file].
+func loadSecretsConfig(cfg *ini.File) (SecretsConfig, error) {
+	section, err := cfg.GetSection(sectionSecrets)
+	if err != nil {
+		return SecretsConfig{}, nil // no [secrets] section
 	}
-
-	// Parse rotation_grace_period (default 24h)
-	gracePeriodStr := section.Key("rotation_grace_period").String()
-	if gracePeriodStr != "" {
-		d, err := time.ParseDuration(gracePeriodStr)
-		if err != nil {
-			return SecretsConfig{}, fmt.Errorf("invalid 'rotation_grace_period': %w", err)
-		}
-		secretsCfg.RotationGracePeriod = d
-	} else {
-		secretsCfg.RotationGracePeriod = 24 * time.Hour
+	secretsCfg, err := loadSecretsBase(section)
+	if err != nil {
+		return SecretsConfig{}, err
 	}
-
-	// Parse sources (comma-separated)
-	sourcesStr := section.Key("sources").String()
-	if sourcesStr != "" {
-		parts := strings.Split(sourcesStr, ",")
-		for _, part := range parts {
-			source := SecretsSource(strings.TrimSpace(part))
-			switch source {
-			case SecretsSourceEnv, SecretsSourceFile, SecretsSourceVault, SecretsSourceAWS, SecretsSourceGCP, SecretsSourceAzure:
-				secretsCfg.Sources = append(secretsCfg.Sources, source)
-			default:
-				return SecretsConfig{}, fmt.Errorf("unknown secret source %q: %w", source, syscall.EINVAL)
-			}
-		}
-	}
-
-	// Parse per-source configs
-	sourceConfigs := make(map[SecretsSource]SecretsSourceConfig)
+	sourceConfigs := make(map[SecretsSource]SecretsSourceConfig, len(secretsCfg.Sources))
 	for _, source := range secretsCfg.Sources {
-		prefix := string(source) + "."
-		sourceCfg := SecretsSourceConfig{Source: source}
-		if source == SecretsSourceEnv {
-			sourceCfg.EnvPrefix = section.Key(prefix + "prefix").String()
-			if sourceCfg.EnvPrefix == "" {
-				sourceCfg.EnvPrefix = "MOMO_"
-			}
-		} else if source == SecretsSourceFile {
-			sourceCfg.FilePath = section.Key(prefix + "path").String()
-			if sourceCfg.FilePath == "" {
-				sourceCfg.FilePath = "conf/momo.conf"
-			}
-		} else if source == SecretsSourceVault {
-			sourceCfg.VaultAddress = section.Key(prefix + "address").String()
-			sourceCfg.VaultToken = section.Key(prefix + "token").String()
-			sourceCfg.VaultPath = section.Key(prefix + "path").String()
-			sourceCfg.VaultMount = section.Key(prefix + "mount").String()
-		} else if source == SecretsSourceAWS {
-			sourceCfg.AWSRegion = section.Key(prefix + "region").String()
-			sourceCfg.AWSSecretName = section.Key(prefix + "secret_name").String()
-		} else if source == SecretsSourceGCP {
-			sourceCfg.GCPProjectID = section.Key(prefix + "project_id").String()
-			sourceCfg.GCPSecretID = section.Key(prefix + "secret_id").String()
-			sourceCfg.GCPVersion = section.Key(prefix + "version").String()
-		} else if source == SecretsSourceAzure {
-			sourceCfg.AzureVaultURL = section.Key(prefix + "vault_url").String()
-			sourceCfg.AzureSecretName = section.Key(prefix + "secret_name").String()
-			sourceCfg.AzureVersion = section.Key(prefix + "version").String()
-		}
-		if len(sourceCfg.Source) > 0 {
-			sourceConfigs[source] = sourceCfg
-		}
+		sourceConfigs[source] = loadSourceConfig(cfg, source)
 	}
 	secretsCfg.SourceConfigs = sourceConfigs
-
 	return secretsCfg, nil
+}
+
+// loadSecretsBase parses the scalar [secrets] options (everything except
+// per-source child sections).
+func loadSecretsBase(section *ini.Section) (SecretsConfig, error) {
+	var cfg SecretsConfig
+	cfg.Enabled = section.Key("enabled").MustBool(false)
+	cfg.EnvPrefix = section.Key("env_prefix").String()
+	cfg.FilePath = section.Key("file_path").String()
+
+	interval, err := parseOptionalDuration(section, "rotation_interval")
+	if err != nil {
+		return SecretsConfig{}, err
+	}
+	cfg.RotationInterval = interval
+
+	grace, err := parseOptionalDuration(section, "rotation_grace_period")
+	if err != nil {
+		return SecretsConfig{}, err
+	}
+	if grace == 0 {
+		grace = 24 * time.Hour
+	}
+	cfg.RotationGracePeriod = grace
+
+	sources, err := parseSecretSources(section)
+	if err != nil {
+		return SecretsConfig{}, err
+	}
+	cfg.Sources = sources
+	return cfg, nil
+}
+
+// parseOptionalDuration reads an optional Go duration key ("" -> 0).
+func parseOptionalDuration(section *ini.Section, key string) (time.Duration, error) {
+	v := section.Key(key).String()
+	if v == "" {
+		return 0, nil
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %q value %q: %w", key, v, syscall.EINVAL)
+	}
+	return d, nil
+}
+
+// parseSecretSources parses the comma-separated "sources" key.
+func parseSecretSources(section *ini.Section) ([]SecretsSource, error) {
+	v := section.Key("sources").String()
+	if v == "" {
+		return nil, nil
+	}
+	var sources []SecretsSource
+	for _, part := range strings.Split(v, ",") {
+		source := SecretsSource(strings.TrimSpace(part))
+		switch source {
+		case SecretsSourceEnv, SecretsSourceFile, SecretsSourceVault, SecretsSourceAWS, SecretsSourceGCP, SecretsSourceAzure:
+			sources = append(sources, source)
+		default:
+			return nil, fmt.Errorf("unknown secret source %q: %w", source, syscall.EINVAL)
+		}
+	}
+	return sources, nil
+}
+
+// loadSourceConfig reads the [secrets.<source>] child section and applies
+// backward-compatible defaults.
+func loadSourceConfig(cfg *ini.File, source SecretsSource) SecretsSourceConfig {
+	sc := SecretsSourceConfig{Source: source}
+	if child, err := cfg.GetSection(sectionSecrets + "." + string(source)); err == nil {
+		fillSourceConfig(child, &sc)
+	}
+	if sc.Source == SecretsSourceEnv && sc.EnvPrefix == "" {
+		sc.EnvPrefix = "MOMO_"
+	}
+	if sc.Source == SecretsSourceFile && sc.FilePath == "" {
+		sc.FilePath = "conf/momo.conf"
+	}
+	return sc
+}
+
+// fillSourceConfig copies keys from a [secrets.<source>] child section.
+func fillSourceConfig(child *ini.Section, sc *SecretsSourceConfig) {
+	switch sc.Source {
+	case SecretsSourceEnv:
+		sc.EnvPrefix = child.Key("prefix").String()
+	case SecretsSourceFile:
+		sc.FilePath = child.Key("path").String()
+	case SecretsSourceVault:
+		sc.VaultAddress = child.Key("address").String()
+		sc.VaultToken = child.Key("token").String()
+		sc.VaultPath = child.Key("path").String()
+		sc.VaultMount = child.Key("mount").String()
+	case SecretsSourceAWS:
+		sc.AWSRegion = child.Key("region").String()
+		sc.AWSSecretName = child.Key("secret_name").String()
+	case SecretsSourceGCP:
+		sc.GCPProjectID = child.Key("project_id").String()
+		sc.GCPSecretID = child.Key("secret_id").String()
+		sc.GCPVersion = child.Key("version").String()
+	case SecretsSourceAzure:
+		sc.AzureVaultURL = child.Key("vault_url").String()
+		sc.AzureSecretName = child.Key("secret_name").String()
+		sc.AzureVersion = child.Key("version").String()
+	}
 }
 
 // loadTenantsConfig loads all [tenant.*] sections from the configuration (R8, #936).
