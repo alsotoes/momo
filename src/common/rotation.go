@@ -8,8 +8,12 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"syscall"
 	"time"
 )
+
+// rotationPurposes is the fixed set of key purposes rotated by the manager.
+var rotationPurposes = []string{"encryption", "auth", "e2ee", "oprf"}
 
 // RotationManager manages automated and manual key rotation.
 // It handles scheduled rotation, grace periods, and hot reload signaling.
@@ -88,6 +92,11 @@ func (rm *RotationManager) Start(ctx context.Context, interval time.Duration) {
 	log.Printf("Key rotation scheduler started with interval %v", interval)
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("CRITICAL: Panic recovered in rotation scheduler: %v", r)
+			}
+		}()
 		for {
 			select {
 			case <-rm.ticker.C:
@@ -118,14 +127,20 @@ func (rm *RotationManager) Stop() {
 
 // Reload triggers a hot reload of secrets from the provider.
 // It fetches fresh secrets and updates the key registry.
-func (rm *RotationManager) Reload(ctx context.Context) error {
+func (rm *RotationManager) Reload(ctx context.Context) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in Reload: %v", r)
+			err = fmt.Errorf("reload panic: %w", syscall.EIO)
+		}
+	}()
 	log.Println("Reloading secrets from provider...")
 	if err := rm.provider.Reload(ctx); err != nil {
 		return fmt.Errorf("provider reload failed: %w", err)
 	}
 
 	// Fetch fresh secrets for all known purposes
-	purposes := []string{"encryption", "auth", "e2ee", "oprf"}
+	purposes := rotationPurposes
 	for _, purpose := range purposes {
 		var secretName string
 		switch purpose {
@@ -175,7 +190,13 @@ func (rm *RotationManager) Reload(ctx context.Context) error {
 // Rotate triggers a manual rotation for a specific purpose.
 // It generates a new key, stores it as the active key (retiring the previous
 // one, which remains readable for decryption), and signals a hot reload.
-func (rm *RotationManager) Rotate(ctx context.Context, purpose string) error {
+func (rm *RotationManager) Rotate(ctx context.Context, purpose string) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in Rotate: %v", r)
+			err = fmt.Errorf("rotate panic: %w", syscall.EIO)
+		}
+	}()
 	log.Printf("Manual rotation triggered for %s", purpose)
 
 	// Capture the current active key so the old/new IDs can be audited.
@@ -212,9 +233,14 @@ func (rm *RotationManager) Rotate(ctx context.Context, purpose string) error {
 }
 
 // RotateAll rotates all known purposes.
-func (rm *RotationManager) RotateAll(ctx context.Context) error {
-	purposes := []string{"encryption", "auth", "e2ee", "oprf"}
-	for _, purpose := range purposes {
+func (rm *RotationManager) RotateAll(ctx context.Context) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in RotateAll: %v", r)
+			err = fmt.Errorf("rotate-all panic: %w", syscall.EIO)
+		}
+	}()
+	for _, purpose := range rotationPurposes {
 		if err := rm.Rotate(ctx, purpose); err != nil {
 			log.Printf("Rotation failed for %s: %v", purpose, err)
 		}

@@ -336,7 +336,7 @@ func parseOptionalDuration(section *ini.Section, key string) (time.Duration, err
 	}
 	d, err := time.ParseDuration(v)
 	if err != nil {
-		return 0, fmt.Errorf("invalid %q: %w", key, err)
+		return 0, fmt.Errorf("invalid %q value %q: %w", key, v, syscall.EINVAL)
 	}
 	return d, nil
 }
