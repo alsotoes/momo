@@ -101,11 +101,61 @@ func NewVolumeBlobStore(baseDir string, volumeSize int64) (*VolumeBlobStore, err
 	return vbs, nil
 }
 
-func (vbs *VolumeBlobStore) initVolumes() error {
-	if err := os.MkdirAll(vbs.baseDir, 0750); err != nil {
-		return fmt.Errorf("failed to create base dir: %w", err)
+// volumeIDFromName extracts the numeric ID from a "vol-NNNN.dat" file name,
+// returning 0 for anything that is not a volume file.
+func volumeIDFromName(name string) uint32 {
+	if !strings.HasPrefix(name, VolumeFilePrefix) || !strings.HasSuffix(name, VolumeFileExt) {
+		return 0
 	}
+	idStr := strings.TrimSuffix(strings.TrimPrefix(name, VolumeFilePrefix), VolumeFileExt)
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		return 0
+	}
+	return uint32(id)
+}
 
+// volumePath renders the on-disk path for volume id.
+func (vbs *VolumeBlobStore) volumePath(id uint32) string {
+	return filepath.Join(vbs.baseDir, fmt.Sprintf("%s%04d%s", VolumeFilePrefix, id, VolumeFileExt))
+}
+
+// openExistingVolume reopens volume id read-write, or read-only when the
+// volume is sealed. Sealing is a persisted metadata state (the file is closed
+// for writing as soon as the next needle would not fit, well before the file
+// reaches its size cap), so the flag comes from the volumes bucket; the size
+// cap is only a fallback for volumes with no metadata record.
+func (vbs *VolumeBlobStore) openExistingVolume(id uint32) (*VolumeFile, error) {
+	path := vbs.volumePath(id)
+	fi, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	sealed := fi.Size() >= vbs.volumeSize
+	if meta, merr := vbs.getVolumeMetadata(id); merr == nil {
+		sealed = meta.Sealed
+	}
+	mode := os.O_RDWR
+	if sealed {
+		mode = os.O_RDONLY
+	}
+	f, err := os.OpenFile(path, mode, 0640)
+	if err != nil {
+		return nil, err
+	}
+	return &VolumeFile{
+		file:     f,
+		path:     path,
+		volumeID: id,
+		size:     fi.Size(),
+		sealed:   sealed,
+	}, nil
+}
+
+// restoreVolumes reopens persisted volume files, classifying full volumes as
+// sealed (read-only) and electing the last under-sized one as active. It
+// creates a fresh active volume when none survived the restart.
+func (vbs *VolumeBlobStore) restoreVolumes() error {
 	entries, err := os.ReadDir(vbs.baseDir)
 	if err != nil {
 		return fmt.Errorf("failed to read base dir: %w", err)
@@ -113,58 +163,39 @@ func (vbs *VolumeBlobStore) initVolumes() error {
 
 	var maxID uint32
 	for _, e := range entries {
-		if !e.IsDir() && strings.HasPrefix(e.Name(), VolumeFilePrefix) && strings.HasSuffix(e.Name(), VolumeFileExt) {
-			idStr := strings.TrimSuffix(strings.TrimPrefix(e.Name(), VolumeFilePrefix), VolumeFileExt)
-			id, err := strconv.ParseUint(idStr, 10, 32)
-			if err != nil {
-				continue
-			}
-			if id > uint64(maxID) {
-				maxID = uint32(id)
-			}
+		if id := volumeIDFromName(e.Name()); id > maxID {
+			maxID = id
 		}
 	}
-
 	vbs.volumeIDCounter = maxID
 
-	if maxID > 0 {
-		for id := uint32(1); id <= maxID; id++ {
-			path := filepath.Join(vbs.baseDir, fmt.Sprintf("%s%04d%s", VolumeFilePrefix, id, VolumeFileExt))
-			if _, err := os.Stat(path); err == nil {
-				vf := &VolumeFile{
-					path:     path,
-					volumeID: id,
-				}
-				f, err := os.OpenFile(path, os.O_RDWR, 0640)
-				if err != nil {
-					log.Printf("WARN: failed to open volume %s: %v", path, err)
-					continue
-				}
-				vf.file = f
-				fi, _ := f.Stat()
-				vf.size = fi.Size()
-
-				if vf.size >= vbs.volumeSize {
-					vf.sealed = true
-					f.Close()
-					f, _ = os.OpenFile(path, os.O_RDONLY, 0640)
-					vf.file = f
-				}
-
-				if !vf.sealed {
-					vbs.activeVolume = vf
-				} else {
-					vbs.sealedVolumes[id] = vf
-				}
+	for id := uint32(1); id <= maxID; id++ {
+		vf, err := vbs.openExistingVolume(id)
+		if err != nil {
+			if !errors.Is(err, os.ErrNotExist) {
+				log.Printf("WARN: failed to open volume %s: %v", vbs.volumePath(id), err)
 			}
+			continue
+		}
+		if vf.sealed {
+			vbs.sealedVolumes[vf.volumeID] = vf
+		} else {
+			vbs.activeVolume = vf
 		}
 	}
 
 	if vbs.activeVolume == nil {
 		return vbs.createNewVolume()
 	}
-
 	return nil
+}
+
+// initVolumes prepares the volume directory and restores persisted volumes.
+func (vbs *VolumeBlobStore) initVolumes() error {
+	if err := os.MkdirAll(vbs.baseDir, 0750); err != nil {
+		return fmt.Errorf("failed to create base dir: %w", err)
+	}
+	return vbs.restoreVolumes()
 }
 
 // createNewVolume opens the next volume and installs it as the active one.
