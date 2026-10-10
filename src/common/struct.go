@@ -271,6 +271,15 @@ type ConfigurationStorage struct {
 	// "fsync" (default), "group-commit", or "none". Empty defaults to fsync.
 	// Invalid values are rejected at config load.
 	Durability string
+	// AdaptiveThreshold is the object-size boundary (bytes) used by the
+	// "adaptive" backend (R-VS, #1128): blobs at or below it are packed into
+	// volume superblocks, larger ones go to the per-blob local layout.
+	// 0 or negative falls back to the default (1 MiB).
+	AdaptiveThreshold int64
+	// VolumeSize is the size (bytes) at which a volume superblock is sealed
+	// and a new active volume is started (R-VS, #1128). 0 defaults to 1 GiB;
+	// values above MaxVolumeSize (32 GiB) are rejected.
+	VolumeSize int64
 	// S3Endpoint is the S3-compatible API endpoint URL.
 	S3Endpoint string
 	// S3Region is the S3 region name.

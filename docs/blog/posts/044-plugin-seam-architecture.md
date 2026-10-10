@@ -16,6 +16,7 @@ related:
   - 043-reduce-read-verify-hashing
   - 053-multitenancy-authorization-audit
   - 054-secrets-management-key-rotation
+  - 055-adaptive-volume-storage
 ---
 
 "Should everything be a plugin?" The question arrives whenever a codebase wants

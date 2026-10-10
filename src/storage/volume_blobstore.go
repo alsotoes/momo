@@ -1,0 +1,616 @@
+package storage
+
+import (
+	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"hash/crc32"
+	"io"
+	"log"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"syscall"
+	"time"
+
+	"bytes"
+	"crypto/sha256"
+
+	"go.etcd.io/bbolt"
+	"golang.org/x/sys/unix"
+
+	"github.com/alsotoes/momo/src/common"
+)
+
+type VolumeFile struct {
+	file     *os.File
+	path     string
+	volumeID uint32
+	size     int64
+	sealed   bool
+	mu       sync.RWMutex
+}
+
+type VolumeMetadata struct {
+	VolumeID    uint32 `json:"volume_id"`
+	Size        int64  `json:"size"`
+	Sealed      bool   `json:"sealed"`
+	CreatedAt   int64  `json:"created_at"`
+	SealedAt    int64  `json:"sealed_at,omitempty"`
+	NeedleCount int    `json:"needle_count"`
+	CommittedAt int64  `json:"committed_at"`
+}
+
+type NeedleMetadata struct {
+	Hash     []byte `json:"hash"`
+	VolumeID uint32 `json:"volume_id"`
+	Offset   int64  `json:"offset"`
+	Size     int64  `json:"size"`
+}
+
+type VolumeBlobStore struct {
+	mu sync.RWMutex
+
+	baseDir       string
+	activeVolume  *VolumeFile
+	volumeSize    int64
+	sealedVolumes map[uint32]*VolumeFile
+	blobs         *bbolt.DB
+
+	volumeIDCounter uint32
+}
+
+// NewVolumeBlobStore creates a VolumeBlobStore rooted at baseDir. Needle
+// location metadata is kept in a dedicated <baseDir>/needles.db bbolt file so
+// the store never shares a bbolt lock with the CAS metadata DB (momo.db) —
+// two bbolt.Open calls on one file deadlock (see #1128).
+func NewVolumeBlobStore(baseDir string, volumeSize int64) (*VolumeBlobStore, error) {
+	if volumeSize <= 0 {
+		volumeSize = common.DefaultVolumeSizeBytes
+	}
+	if volumeSize > common.MaxVolumeSizeBytes {
+		return nil, fmt.Errorf("volume size %d exceeds maximum %d: %w", volumeSize, common.MaxVolumeSizeBytes, syscall.EINVAL)
+	}
+
+	if err := os.MkdirAll(baseDir, 0750); err != nil {
+		return nil, fmt.Errorf("failed to create volume dir: %w", err)
+	}
+
+	metaDB, err := bbolt.Open(filepath.Join(baseDir, "needles.db"), 0600, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open needles metadata DB: %w", err)
+	}
+
+	vbs := &VolumeBlobStore{
+		baseDir:       baseDir,
+		volumeSize:    volumeSize,
+		sealedVolumes: make(map[uint32]*VolumeFile),
+		blobs:         metaDB,
+	}
+
+	if err := vbs.initVolumes(); err != nil {
+		metaDB.Close()
+		return nil, err
+	}
+
+	return vbs, nil
+}
+
+func (vbs *VolumeBlobStore) initVolumes() error {
+	if err := os.MkdirAll(vbs.baseDir, 0750); err != nil {
+		return fmt.Errorf("failed to create base dir: %w", err)
+	}
+
+	entries, err := os.ReadDir(vbs.baseDir)
+	if err != nil {
+		return fmt.Errorf("failed to read base dir: %w", err)
+	}
+
+	var maxID uint32
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasPrefix(e.Name(), VolumeFilePrefix) && strings.HasSuffix(e.Name(), VolumeFileExt) {
+			idStr := strings.TrimSuffix(strings.TrimPrefix(e.Name(), VolumeFilePrefix), VolumeFileExt)
+			id, err := strconv.ParseUint(idStr, 10, 32)
+			if err != nil {
+				continue
+			}
+			if id > uint64(maxID) {
+				maxID = uint32(id)
+			}
+		}
+	}
+
+	vbs.volumeIDCounter = maxID
+
+	if maxID > 0 {
+		for id := uint32(1); id <= maxID; id++ {
+			path := filepath.Join(vbs.baseDir, fmt.Sprintf("%s%04d%s", VolumeFilePrefix, id, VolumeFileExt))
+			if _, err := os.Stat(path); err == nil {
+				vf := &VolumeFile{
+					path:     path,
+					volumeID: id,
+				}
+				f, err := os.OpenFile(path, os.O_RDWR, 0640)
+				if err != nil {
+					log.Printf("WARN: failed to open volume %s: %v", path, err)
+					continue
+				}
+				vf.file = f
+				fi, _ := f.Stat()
+				vf.size = fi.Size()
+
+				if vf.size >= vbs.volumeSize {
+					vf.sealed = true
+					f.Close()
+					f, _ = os.OpenFile(path, os.O_RDONLY, 0640)
+					vf.file = f
+				}
+
+				if !vf.sealed {
+					vbs.activeVolume = vf
+				} else {
+					vbs.sealedVolumes[id] = vf
+				}
+			}
+		}
+	}
+
+	if vbs.activeVolume == nil {
+		return vbs.createNewVolume()
+	}
+
+	return nil
+}
+
+func (vbs *VolumeBlobStore) createNewVolume() error {
+	vbs.mu.Lock()
+	defer vbs.mu.Unlock()
+
+	newID := atomic.AddUint32(&vbs.volumeIDCounter, 1)
+	path := filepath.Join(vbs.baseDir, fmt.Sprintf("%s%04d%s", VolumeFilePrefix, newID, VolumeFileExt))
+
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0640)
+	if err != nil {
+		return fmt.Errorf("failed to create volume %s: %w", path, err)
+	}
+
+	vbs.activeVolume = &VolumeFile{
+		file:     f,
+		path:     path,
+		volumeID: newID,
+		size:     0,
+		sealed:   false,
+	}
+
+	if vbs.blobs != nil {
+		meta := VolumeMetadata{
+			VolumeID:  newID,
+			Size:      0,
+			Sealed:    false,
+			CreatedAt: time.Now().UnixNano(),
+		}
+		if err := vbs.saveVolumeMetadata(newID, meta); err != nil {
+			log.Printf("WARN: failed to persist volume metadata for %d: %v", newID, err)
+		}
+	}
+
+	log.Printf("Created new volume %s (ID: %d)", path, newID)
+	return nil
+}
+
+func (vbs *VolumeBlobStore) PutBlob(hash string, content io.Reader) (err error) {
+	defer common.RecoverErr("VolumeBlobStore.PutBlob", &err)
+
+	if common.HasPathTraversalChars(hash) {
+		return fmt.Errorf("invalid hash contains path traversal characters: %w", syscall.EINVAL)
+	}
+
+	hashBytes, err := hex.DecodeString(hash)
+	if err != nil {
+		return fmt.Errorf("invalid hash: %w", err)
+	}
+	if len(hashBytes) != 32 {
+		return fmt.Errorf("invalid hash length: expected 32 bytes, got %d", len(hashBytes))
+	}
+
+	payload, err := io.ReadAll(content)
+	if err != nil {
+		return fmt.Errorf("failed to read payload: %w", err)
+	}
+
+	hashBytes2 := sha256.Sum256(payload)
+	if !bytesEqual(hashBytes, hashBytes2[:]) {
+		return fmt.Errorf("hash mismatch: expected %s, got %x", hash, hashBytes2)
+	}
+
+	// CRC32C over (Magic || Length || Hash || Flags || Payload), matching what
+	// readNeedle verifies.
+	crcTable := crc32.MakeTable(crc32.Castagnoli)
+	frame := make([]byte, NeedleHeaderSize+len(payload))
+	binary.BigEndian.PutUint32(frame[0:4], uint32(NeedleMagic))
+	binary.BigEndian.PutUint32(frame[4:8], uint32(len(payload)))
+	copy(frame[8:40], hashBytes)
+	binary.BigEndian.PutUint16(frame[40:42], uint16(NeedleFlagNone))
+	copy(frame[42:42+len(payload)], payload)
+	crcVal := crc32.Checksum(frame, crcTable)
+
+	vbs.mu.RLock()
+	vf := vbs.activeVolume
+	vbs.mu.RUnlock()
+
+	if vf == nil {
+		return fmt.Errorf("no active volume available")
+	}
+
+	vf.mu.Lock()
+	needleSize := int64(NeedleOverhead) + int64(alignTo8(len(payload)))
+	if vf.size+needleSize > vbs.volumeSize {
+		vf.mu.Unlock()
+		if err := vbs.sealCurrentVolume(); err != nil {
+			return err
+		}
+		vbs.mu.RLock()
+		vf = vbs.activeVolume
+		vbs.mu.RUnlock()
+		vf.mu.Lock()
+	} else {
+		vf.mu.Unlock()
+	}
+
+	vf.mu.Lock()
+	defer vf.mu.Unlock()
+
+	needleSize = int64(NeedleOverhead) + int64(alignTo8(len(payload)))
+	if vf.size+needleSize > vbs.volumeSize {
+		return fmt.Errorf("volume full after seal: %w", syscall.ENOSPC)
+	}
+
+	offset := vf.size
+
+	var hashBytesArr [32]byte
+	copy(hashBytesArr[:], hashBytes)
+
+	_ = NeedleHeader{
+		Magic:      NeedleMagic,
+		PayloadLen: uint32(len(payload)),
+		Hash:       hashBytesArr,
+		Flags:      NeedleFlagNone,
+	}
+
+	if err := binary.Write(vf.file, binary.BigEndian, uint32(NeedleMagic)); err != nil {
+		return fmt.Errorf("failed to write magic: %w", err)
+	}
+	if err := binary.Write(vf.file, binary.BigEndian, uint32(len(payload))); err != nil {
+		return fmt.Errorf("failed to write length: %w", err)
+	}
+	if _, err := vf.file.Write(hashBytes[:]); err != nil {
+		return fmt.Errorf("failed to write hash: %w", err)
+	}
+	if err := binary.Write(vf.file, binary.BigEndian, uint16(NeedleFlagNone)); err != nil {
+		return fmt.Errorf("failed to write flags: %w", err)
+	}
+
+	if _, err := vf.file.Write(payload); err != nil {
+		return fmt.Errorf("failed to write payload: %w", err)
+	}
+
+	alignedPayloadLen := alignTo8(len(payload))
+	padding := alignedPayloadLen - len(payload)
+	if padding > 0 {
+		if _, err := vf.file.Write(make([]byte, padding)); err != nil {
+			return fmt.Errorf("failed to write padding: %w", err)
+		}
+	}
+
+	if err = binary.Write(vf.file, binary.BigEndian, crcVal); err != nil {
+		return fmt.Errorf("failed to write CRC: %w", err)
+	}
+
+	if err := vf.file.Sync(); err != nil {
+		return fmt.Errorf("failed to sync volume: %w", err)
+	}
+
+	vf.size += int64(NeedleOverhead) + int64(alignTo8(len(payload)))
+
+	if vbs.blobs != nil {
+		if err = vbs.saveNeedleMetadata(hash, vf.volumeID, offset, len(payload)); err != nil {
+			log.Printf("WARN: failed to save needle metadata: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func (vbs *VolumeBlobStore) GetBlob(hash string) (rc io.ReadCloser, err error) {
+	defer common.RecoverErr("VolumeBlobStore.GetBlob", &err)
+
+	if common.HasPathTraversalChars(hash) {
+		return nil, fmt.Errorf("invalid hash contains path traversal characters: %w", syscall.EINVAL)
+	}
+
+	hashBytes, err := hex.DecodeString(hash)
+	if err != nil {
+		return nil, fmt.Errorf("invalid hash: %w", err)
+	}
+	if len(hashBytes) != 32 {
+		return nil, fmt.Errorf("invalid hash length")
+	}
+
+	meta, err := vbs.getNeedleMetadata(hash)
+	if err != nil {
+		if errors.Is(err, syscall.ENOENT) {
+			return nil, syscall.ENOENT
+		}
+		return nil, err
+	}
+
+	vbs.mu.RLock()
+	var vf *VolumeFile
+	if meta.VolumeID == vbs.activeVolume.volumeID {
+		vf = vbs.activeVolume
+	} else {
+		vf = vbs.sealedVolumes[meta.VolumeID]
+	}
+	vbs.mu.RUnlock()
+
+	if vf == nil {
+		return nil, fmt.Errorf("volume %d not found", meta.VolumeID)
+	}
+
+	vf.mu.RLock()
+	defer vf.mu.RUnlock()
+
+	if vf.file == nil {
+		return nil, fmt.Errorf("volume file not open")
+	}
+
+	needle, err := readNeedle(vf.file, meta.Offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read needle: %w", err)
+	}
+
+	if !bytesEqual(meta.Hash, needle.Header.Hash[:]) {
+		return nil, fmt.Errorf("hash mismatch in volume")
+	}
+
+	return io.NopCloser(bytes.NewReader(needle.Payload)), nil
+}
+
+func (vbs *VolumeBlobStore) DeleteBlob(hash string) (err error) {
+	defer common.RecoverErr("VolumeBlobStore.DeleteBlob", &err)
+
+	if common.HasPathTraversalChars(hash) {
+		return fmt.Errorf("invalid hash contains path traversal characters: %w", syscall.EINVAL)
+	}
+
+	if hb, derr := hex.DecodeString(hash); derr != nil || len(hb) != 32 {
+		if derr == nil {
+			derr = syscall.EINVAL
+		}
+		return fmt.Errorf("invalid hash: %w", derr)
+	}
+
+	meta, err := vbs.getNeedleMetadata(hash)
+	if err != nil {
+		if errors.Is(err, syscall.ENOENT) {
+			return syscall.ENOENT
+		}
+		return err
+	}
+
+	vbs.mu.RLock()
+	var vf *VolumeFile
+	if meta.VolumeID == vbs.activeVolume.volumeID {
+		vf = vbs.activeVolume
+	} else {
+		vf = vbs.sealedVolumes[meta.VolumeID]
+	}
+	vbs.mu.RUnlock()
+
+	if vf == nil {
+		return fmt.Errorf("volume %d not found", meta.VolumeID)
+	}
+
+	if vf.sealed {
+		return fmt.Errorf("cannot delete from sealed volume: %w", syscall.EPERM)
+	}
+
+	vf.mu.Lock()
+	defer vf.mu.Unlock()
+
+	err = unix.Fallocate(int(vf.file.Fd()), unix.FALLOC_FL_PUNCH_HOLE|unix.FALLOC_FL_KEEP_SIZE,
+		meta.Offset, int64(NeedleOverhead)+int64(alignTo8(int(meta.Size))))
+	if err != nil {
+		log.Printf("WARN: hole punching failed, falling back to tombstone: %v", err)
+		return vbs.writeTombstone(vf, hash)
+	}
+
+	if vbs.blobs != nil {
+		if err = vbs.deleteNeedleMetadata(hash); err != nil {
+			log.Printf("WARN: failed to delete needle metadata: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func (vbs *VolumeBlobStore) writeTombstone(vf *VolumeFile, hash string) error {
+	return nil
+}
+
+func (vbs *VolumeBlobStore) sealCurrentVolume() error {
+	vbs.mu.Lock()
+	defer vbs.mu.Unlock()
+
+	if vbs.activeVolume == nil || vbs.activeVolume.sealed {
+		return nil
+	}
+
+	vf := vbs.activeVolume
+	vf.mu.Lock()
+	if err := vf.file.Sync(); err != nil {
+		vf.mu.Unlock()
+		return fmt.Errorf("failed to sync volume before sealing: %w", err)
+	}
+	vf.sealed = true
+	vf.mu.Unlock()
+
+	vbs.sealedVolumes[vf.volumeID] = vf
+	vbs.activeVolume = nil
+
+	if vbs.blobs != nil {
+		if meta, err := vbs.getVolumeMetadata(vf.volumeID); err == nil {
+			meta.Sealed = true
+			meta.SealedAt = time.Now().UnixNano()
+			vbs.saveVolumeMetadata(vf.volumeID, meta)
+		}
+	}
+
+	return vbs.createNewVolume()
+}
+
+func (vbs *VolumeBlobStore) Close() error {
+	vbs.mu.Lock()
+	defer vbs.mu.Unlock()
+
+	if vbs.blobs != nil {
+		if err := vbs.blobs.Close(); err != nil {
+			log.Printf("WARN: failed to close needles metadata DB: %v", err)
+		}
+		vbs.blobs = nil
+	}
+
+	if vbs.activeVolume != nil {
+		vbs.activeVolume.mu.Lock()
+		if vbs.activeVolume.file != nil {
+			vbs.activeVolume.file.Close()
+		}
+		vbs.activeVolume.mu.Unlock()
+	}
+
+	for _, vf := range vbs.sealedVolumes {
+		vf.mu.Lock()
+		if vf.file != nil {
+			vf.file.Close()
+		}
+		vf.mu.Unlock()
+	}
+
+	return nil
+}
+
+func (vbs *VolumeBlobStore) saveVolumeMetadata(volumeID uint32, meta VolumeMetadata) error {
+	if vbs.blobs == nil {
+		return nil
+	}
+	return vbs.blobs.Update(func(tx *bbolt.Tx) error {
+		b, err := tx.CreateBucketIfNotExists([]byte("volumes"))
+		if err != nil {
+			return err
+		}
+		data, err := json.Marshal(meta)
+		if err != nil {
+			return err
+		}
+		key := make([]byte, 4)
+		binary.BigEndian.PutUint32(key, volumeID)
+		return b.Put(key, data)
+	})
+}
+
+func (vbs *VolumeBlobStore) getVolumeMetadata(volumeID uint32) (VolumeMetadata, error) {
+	var meta VolumeMetadata
+	err := vbs.blobs.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte("volumes"))
+		if b == nil {
+			return syscall.ENOENT
+		}
+		key := make([]byte, 4)
+		binary.BigEndian.PutUint32(key, volumeID)
+		data := b.Get(key)
+		if data == nil {
+			return syscall.ENOENT
+		}
+		return json.Unmarshal(data, &meta)
+	})
+	if err != nil {
+		return VolumeMetadata{}, err
+	}
+	return meta, nil
+}
+
+func (vbs *VolumeBlobStore) saveNeedleMetadata(hash string, volumeID uint32, offset int64, size int) error {
+	if vbs.blobs == nil {
+		return nil
+	}
+	return vbs.blobs.Update(func(tx *bbolt.Tx) error {
+		b, err := tx.CreateBucketIfNotExists([]byte("needles"))
+		if err != nil {
+			return err
+		}
+		decoded, derr := hex.DecodeString(hash)
+		if derr != nil {
+			return derr
+		}
+		meta := NeedleMetadata{
+			Hash:     decoded,
+			VolumeID: volumeID,
+			Offset:   offset,
+			Size:     int64(alignTo8(size)),
+		}
+		data, err := json.Marshal(meta)
+		if err != nil {
+			return err
+		}
+		return b.Put([]byte(hash), data)
+	})
+}
+
+func (vbs *VolumeBlobStore) getNeedleMetadata(hash string) (NeedleMetadata, error) {
+	var meta NeedleMetadata
+	err := vbs.blobs.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte("needles"))
+		if b == nil {
+			return syscall.ENOENT
+		}
+		data := b.Get([]byte(hash))
+		if data == nil {
+			return syscall.ENOENT
+		}
+		return json.Unmarshal(data, &meta)
+	})
+	if err != nil {
+		return NeedleMetadata{}, err
+	}
+	return meta, nil
+}
+
+func (vbs *VolumeBlobStore) deleteNeedleMetadata(hash string) error {
+	if vbs.blobs == nil {
+		return nil
+	}
+	return vbs.blobs.Update(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte("needles"))
+		if b == nil {
+			return nil
+		}
+		return b.Delete([]byte(hash))
+	})
+}
+
+func bytesEqual(a, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}

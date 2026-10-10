@@ -2,6 +2,7 @@ package storage
 
 import (
 	"fmt"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -50,6 +51,11 @@ func NewStoreWithRebuild(cfg common.ConfigurationStorage, daemon *common.Daemon,
 	return s, nil
 }
 
+// volumeDir is the on-disk root for the volume superblock layout (R-VS, #1128).
+func volumeDir(daemon *common.Daemon) string {
+	return filepath.Join(daemon.Data, "volumes")
+}
+
 // buildCAS constructs the CAS store, starts GC/scrub, and returns ownership of
 // the underlying blobs so the caller can close them on downstream failure.
 func buildCAS(cfg common.ConfigurationStorage, daemon *common.Daemon, encKeyHex string) (*CASStore, BlobStore, error) {
@@ -63,6 +69,20 @@ func buildCAS(cfg common.ConfigurationStorage, daemon *common.Daemon, encKeyHex 
 		blobs, err = NewS3BlobStore(cfg)
 	case common.BackendRaw:
 		blobs, err = NewRawBlobStore(cfg, daemon)
+	case common.BackendVolume:
+		blobs, err = NewVolumeBlobStore(volumeDir(daemon), cfg.VolumeSize)
+	case common.BackendAdaptive:
+		var volume *VolumeBlobStore
+		volume, err = NewVolumeBlobStore(volumeDir(daemon), cfg.VolumeSize)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to initialize volume store: %w", err)
+		}
+		local, lerr := NewLocalBlobStore(daemon.Data)
+		if lerr != nil {
+			volume.Close()
+			return nil, nil, fmt.Errorf("failed to initialize adaptive fallback store: %w", lerr)
+		}
+		blobs = NewAdaptiveBlobStore(volume, local, cfg.AdaptiveThreshold)
 	default:
 		return nil, nil, fmt.Errorf("unsupported storage backend %q: %w", cfg.Backend, syscall.EINVAL)
 	}

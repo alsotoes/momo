@@ -46,6 +46,18 @@ const (
 	BackendNFS   = "nfs"
 	BackendS3    = "s3"
 	BackendRaw   = "raw"
+
+	// Adaptive volume storage backends (R-VS, #1128).
+	BackendVolume   = "volume"
+	BackendAdaptive = "adaptive"
+
+	// DefaultAdaptiveThreshold is the default size boundary (bytes) for the
+	// adaptive backend: blobs at or below it go to the volume store.
+	DefaultAdaptiveThreshold int64 = 1 << 20 // 1 MiB
+	// DefaultVolumeSizeBytes is the default volume superblock size (bytes).
+	DefaultVolumeSizeBytes int64 = 1 << 30 // 1 GiB
+	// MaxVolumeSizeBytes caps a configured volume size.
+	MaxVolumeSizeBytes int64 = 32 << 30 // 32 GiB
 )
 
 // defaultClientSideReplicationModes is the default when client_side_replication_modes
@@ -839,9 +851,9 @@ func loadStorageConfig(section *ini.Section) (ConfigurationStorage, error) {
 	// 🛡️ Validate the backend eagerly so an invalid value (e.g. "foobar") fails
 	// at config load time instead of surfacing as a runtime error later (issue #649).
 	switch cfg.Backend {
-	case BackendLocal, BackendNFS, BackendS3, BackendRaw:
+	case BackendLocal, BackendNFS, BackendS3, BackendRaw, BackendVolume, BackendAdaptive:
 	default:
-		return ConfigurationStorage{}, fmt.Errorf("unsupported storage backend %q (valid: %s, %s, %s, %s): %w", cfg.Backend, BackendLocal, BackendNFS, BackendS3, BackendRaw, syscall.EINVAL)
+		return ConfigurationStorage{}, fmt.Errorf("unsupported storage backend %q (valid: %s, %s, %s, %s, %s, %s): %w", cfg.Backend, BackendLocal, BackendNFS, BackendS3, BackendRaw, BackendVolume, BackendAdaptive, syscall.EINVAL)
 	}
 
 	cfg.GCInterval, err = section.Key("gc_interval").Int()
@@ -890,6 +902,19 @@ func loadStorageConfig(section *ini.Section) (ConfigurationStorage, error) {
 	cfg.RebuildWorkers, err = section.Key("rebuild_workers").Int()
 	if err != nil || cfg.RebuildWorkers <= 0 {
 		cfg.RebuildWorkers = 4
+	}
+
+	cfg.AdaptiveThreshold, err = section.Key("adaptive_threshold").Int64()
+	if err != nil || cfg.AdaptiveThreshold <= 0 {
+		cfg.AdaptiveThreshold = DefaultAdaptiveThreshold
+	}
+
+	cfg.VolumeSize, err = section.Key("volume_size").Int64()
+	if err != nil || cfg.VolumeSize <= 0 {
+		cfg.VolumeSize = DefaultVolumeSizeBytes
+	}
+	if cfg.VolumeSize > MaxVolumeSizeBytes {
+		return ConfigurationStorage{}, fmt.Errorf("volume_size %d exceeds maximum %d: %w", cfg.VolumeSize, MaxVolumeSizeBytes, syscall.EINVAL)
 	}
 
 	cfg.S3Endpoint = section.Key("s3_endpoint").String()

@@ -17,6 +17,7 @@ related:
   - 024-bolt-performance-engineering
   - 015-sentinel-security-audit
   - 032-r5-metrics-phases-2-4
+  - 055-adaptive-volume-storage
 ---
 
 Momo was designed as a "metrics-driven controller" — a cluster that changes its

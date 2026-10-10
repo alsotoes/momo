@@ -763,3 +763,26 @@ retention_days=365
 |-----|----------|-------------|
 | `enabled` | no | Defaults to `false`. |
 | `retention_days` | no | Must be ≥ 1 when set; defaults to `365`. |
+
+## Adaptive Volume Storage (R-VS, #1128)
+
+Two additional `[storage]` backends pack small objects into append-only
+*volume superblocks* (a SeaweedFS-style needle layout), giving O(1)
+single-seek reads, sparse hole-punching deletion, and instant crash recovery.
+
+| Key | Required | Description |
+|-----|----------|-------------|
+| `backend` | no | `volume` packs **all** blobs into superblocks; `adaptive` routes blobs at or below `adaptive_threshold` to superblocks and larger ones to the per-blob local layout. |
+| `adaptive_threshold` | no | Size boundary in bytes for the `adaptive` backend (default `1048576`, 1 MiB). |
+| `volume_size` | no | Bytes at which a superblock is sealed and a new one starts (default `1073741824`, 1 GiB; max 32 GiB). |
+
+Superblock files live under `<daemon data dir>/volumes/vol-NNNN.dat`; needle
+locations are indexed in `<volumes dir>/needles.db` (a dedicated bbolt file,
+so it never contends with the CAS metadata DB's exclusive lock). Every needle
+carries a CRC32C frame checksum and the object's SHA-256, and both are
+re-verified on read — a torn or tampered needle fails closed.
+
+Deletion uses `fallocate(FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE)` to return
+space to the filesystem; on filesystems without hole-punch support the needle
+is tombstoned instead. On startup the active volume is truncated to the last
+committed offset, so a crash mid-write cannot leave a partial needle.
