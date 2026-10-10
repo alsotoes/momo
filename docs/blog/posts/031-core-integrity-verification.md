@@ -15,6 +15,7 @@ related:
   - 007-at-rest-integrity-and-gc
   - 004-cas-content-addressable-store
   - 043-reduce-read-verify-hashing
+  - 055-adaptive-volume-storage
 ---
 
 A **checksum** is a short fingerprint of a stream of bytes: recompute it on the
