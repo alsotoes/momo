@@ -1,0 +1,32 @@
+name: Lint
+
+# Complexity budget gate (docs/CORE/STANDARDS.md "Complexity budget"):
+# gocognit/gocyclo with new-code-only reporting mirror the SonarCloud master
+# gate (S3776, cognitive complexity > 15 on new code), so complexity
+# regressions are caught on the PR — before they turn the main pipeline red.
+on:
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  golangci:
+    name: golangci-lint (new code)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Full history so the action can diff against the PR base.
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.26.x'
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.11
+          # Only report findings on lines added/changed by this PR, matching
+          # .golangci.yml `issues.new: true` and Sonar's new-code gate.
+          only-new-issues: true

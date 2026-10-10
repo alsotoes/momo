@@ -1,0 +1,31 @@
+# Momo golangci-lint configuration (v2 schema).
+#
+# Philosophy (docs/CORE/STANDARDS.md, "Complexity budget"):
+#   - gocognit mirrors SonarCloud S3776 (cognitive complexity) so local runs
+#     and the CI gate flag exactly what the Sonar master gate would flag.
+#   - `issues.new: true` keeps the report on NEW/CHANGED code only — legacy
+#     offenders (HandshakeServer, Daemon, ...) are grandfathered until touched,
+#     matching Sonar's new-code gate semantics. Do not raise thresholds to
+#     silence findings; decompose the function instead.
+version: "2"
+
+linters:
+  # Keep the standard set (govet, staticcheck, errcheck, ineffassign, unused)
+  # and add the two complexity gates that mirror SonarCloud.
+  enable:
+    - gocognit
+    - gocyclo
+  settings:
+    gocognit:
+      # Sonar S3776 flags cognitive complexity > 15 (CRITICAL).
+      min-complexity: 15
+    gocyclo:
+      min-complexity: 15
+
+issues:
+  # New-code-only reporting, mirroring the SonarCloud new-code gate.
+  new: true
+
+formatters:
+  enable:
+    - gofmt
