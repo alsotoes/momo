@@ -4,7 +4,7 @@
 Proposed
 
 ## Confidence
-Low
+High
 
 ## Context
 Current Momo uses a single shared `auth_token` for all clients and all operations. This is a single-tenant model with no isolation, no per-tenant quotas, no per-tenant keys, and no audit trail of who did what. Production deployments require:
@@ -25,13 +25,13 @@ None documented.
 
 ## Implementation Status
 - **Code**: Partial
-- **Tests**: Partial
+- **Tests**: Done
 - **Docs**: Planned
-- **Blog post**: 
+- **Blog post**: docs/blog/posts/053-multitenancy-authorization-audit.md
 
 ## References
 - Issue: #936
 - PR: 
 - Spec: `openspec/changes/r8-multitenancy-authz/`
-- Blog: 
+- Blog: docs/blog/posts/053-multitenancy-authorization-audit.md
 

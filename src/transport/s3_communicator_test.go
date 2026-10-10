@@ -423,6 +423,7 @@ type mockStore struct {
 	deleteFunc         func(name string) error
 	listFunc           func() ([]common.FileMetadata, error)
 	s3Meta             map[string]map[string]string
+	auditEntries       []*common.AuditLogEntry
 }
 
 func (m *mockStore) Close() error { return nil }
@@ -476,6 +477,11 @@ func (m *mockStore) PutS3Meta(name string, headers map[string]string) error {
 		m.s3Meta = make(map[string]map[string]string)
 	}
 	m.s3Meta[name] = headers
+	return nil
+}
+
+func (m *mockStore) WriteAuditLog(entry *common.AuditLogEntry) error {
+	m.auditEntries = append(m.auditEntries, entry)
 	return nil
 }
 func (m *mockStore) GetS3Meta(name string) map[string]string {
@@ -3487,4 +3493,36 @@ func TestS3Communicator_RemainingSubresource501(t *testing.T) {
 			t.Errorf("expected 404 NoSuchUpload for plain UploadPart, got: %s", resp)
 		}
 	})
+}
+
+// GetTenantIDByAuthToken implements storage.Store interface
+func (m *mockStore) GetTenantIDByAuthToken(authToken string) (string, error) {
+	// Default mock: return empty string (not found)
+	return "", syscall.ENOENT
+}
+
+func TestS3Communicator_WriteAuditLog(t *testing.T) {
+	ms := &mockStore{}
+	m := &S3Communicator{store: ms, tenantID: "tenant-a"}
+	m.writeAuditLog("PutObject", "bucket/key", "success")
+
+	if len(ms.auditEntries) != 1 {
+		t.Fatalf("expected 1 audit entry, got %d", len(ms.auditEntries))
+	}
+	e := ms.auditEntries[0]
+	if e.TenantID != "tenant-a" || e.Operation != "PutObject" || e.Resource != "bucket/key" || e.Outcome != "success" {
+		t.Fatalf("unexpected audit entry: %+v", e)
+	}
+	if e.RequestID == "" {
+		t.Fatal("expected a non-empty request ID")
+	}
+}
+
+func TestS3Communicator_WriteAuditLog_NoTenant(t *testing.T) {
+	ms := &mockStore{}
+	m := &S3Communicator{store: ms} // no tenant
+	m.writeAuditLog("GetObject", "bucket/key", "success")
+	if len(ms.auditEntries) != 0 {
+		t.Fatalf("expected no audit entries without a tenant, got %d", len(ms.auditEntries))
+	}
 }

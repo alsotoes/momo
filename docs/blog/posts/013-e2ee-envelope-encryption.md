@@ -14,6 +14,7 @@ related:
   - 014-confidential-dedup-oprf
   - 006-pluggable-storage-backends
   - 015-sentinel-security-audit
+  - 053-multitenancy-authorization-audit
 ---
 
 The strongest security guarantee a cloud storage system can offer is simple: **even

@@ -2,6 +2,7 @@ package storage
 
 import (
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -12,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -32,6 +34,7 @@ var (
 	bucketQuarantine = []byte("quarantine")  // Maps ContentHash -> mark-and-hold flag (R2, #930)
 	bucketTenantMeta = []byte("tenant_meta") // Maps TenantID -> JSON TenantConfig (R8, #936)
 	bucketAuditLog   = []byte("audit_log")   // Immutable append-only audit log entries (R8, #936)
+	bucketACL        = []byte("acl")         // Bucket/Object ACLs (R8, #936)
 )
 
 // ObjectMeta is the binary metadata stored in the objects bucket.
@@ -182,6 +185,10 @@ type Store interface {
 	Delete(name string) error
 	// List returns metadata for all stored objects.
 	List() ([]common.FileMetadata, error)
+	// WriteAuditLog appends an audit log entry with hash chaining.
+	WriteAuditLog(entry *common.AuditLogEntry) error
+	// GetTenantIDByAuthToken returns the tenant ID associated with the given auth token.
+	GetTenantIDByAuthToken(authToken string) (string, error)
 }
 
 // CASStore implements Content-Addressable Storage with Bbolt metadata.
@@ -259,6 +266,30 @@ func NewCASStore(dataDir string) (*CASStore, error) {
 	return newCASStore(dataDir, blobs)
 }
 
+// metaBuckets is the fixed set of bbolt buckets created when a store opens.
+var metaBuckets = [][]byte{
+	bucketObjects,
+	bucketNamespace,
+	bucketPaths,
+	bucketModTimes,
+	bucketTombstones,
+	bucketS3Meta,
+	bucketQuarantine,
+	bucketACL,
+	bucketAuditLog,
+	bucketTenantMeta,
+}
+
+// initBuckets creates every metadata bucket if it does not already exist.
+func initBuckets(tx *bbolt.Tx) error {
+	for _, name := range metaBuckets {
+		if _, err := tx.CreateBucketIfNotExists(name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // newCASStore creates a CAS store with the given BlobStore backend and
 // a bbolt metadata database in dataDir. Optional func(opts) configure
 // behavior; the default read policy is everyReadVerifier (historical
@@ -275,31 +306,7 @@ func newCASStore(dataDir string, blobs BlobStore, opts ...func(*CASStore)) (*CAS
 	}
 
 	// Initialize buckets
-	err = db.Update(func(tx *bbolt.Tx) error {
-		if _, err := tx.CreateBucketIfNotExists(bucketObjects); err != nil {
-			return err
-		}
-		if _, err := tx.CreateBucketIfNotExists(bucketNamespace); err != nil {
-			return err
-		}
-		if _, err := tx.CreateBucketIfNotExists(bucketPaths); err != nil {
-			return err
-		}
-		if _, err := tx.CreateBucketIfNotExists(bucketModTimes); err != nil {
-			return err
-		}
-		_, err = tx.CreateBucketIfNotExists(bucketTombstones)
-		if err != nil {
-			return err
-		}
-		_, err = tx.CreateBucketIfNotExists(bucketS3Meta)
-		if err != nil {
-			return err
-		}
-		_, err = tx.CreateBucketIfNotExists(bucketQuarantine)
-		return err
-	})
-	if err != nil {
+	if err := db.Update(initBuckets); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -1194,21 +1201,8 @@ func (s *CASStore) DeleteTenantConfig(tenantID string) error {
 
 // === R8 Audit Log Methods ===
 
-// AuditLogEntry represents an immutable audit log entry (R8, #936).
-type AuditLogEntry struct {
-	Timestamp int64  `json:"timestamp"` // Unix nanoseconds
-	TenantID  string `json:"tenant_id"`
-	Identity  string `json:"identity"`   // e.g., "aws-cli", "momo-cli", "peer-3"
-	Operation string `json:"operation"`  // e.g., "PutObject", "GetObject", "DeleteObject"
-	Resource  string `json:"resource"`   // e.g., "bucket/key"
-	Outcome   string `json:"outcome"`    // "success" or "failure"
-	RequestID string `json:"request_id"` // Correlation ID
-	PrevHash  string `json:"prev_hash"`  // SHA-256 of previous entry (hex)
-	EntryHash string `json:"entry_hash"` // SHA-256 of this entry (hex)
-}
-
 // WriteAuditLog appends an audit log entry with hash chaining for tamper evidence.
-func (s *CASStore) WriteAuditLog(entry *AuditLogEntry) error {
+func (s *CASStore) WriteAuditLog(entry *common.AuditLogEntry) error {
 	return s.db.Update(func(tx *bbolt.Tx) error {
 		b := tx.Bucket(bucketAuditLog)
 		if b == nil {
@@ -1219,7 +1213,7 @@ func (s *CASStore) WriteAuditLog(entry *AuditLogEntry) error {
 		var prevHash string
 		c := b.Cursor()
 		if k, _ := c.Last(); k != nil {
-			var lastEntry AuditLogEntry
+			var lastEntry common.AuditLogEntry
 			if v := b.Get(k); v != nil {
 				if err := json.Unmarshal(v, &lastEntry); err == nil {
 					prevHash = lastEntry.EntryHash
@@ -1277,7 +1271,7 @@ func (s *CASStore) VerifyAuditLog() error {
 		var prevHash string
 		c := b.Cursor()
 		for k, v := c.First(); k != nil; k, v = c.Next() {
-			var entry AuditLogEntry
+			var entry common.AuditLogEntry
 			if err := json.Unmarshal(v, &entry); err != nil {
 				return fmt.Errorf("failed to unmarshal audit entry at %d: %w", binary.BigEndian.Uint64(k), err)
 			}
@@ -1320,40 +1314,258 @@ func (s *CASStore) VerifyAuditLog() error {
 }
 
 // GetAuditLogEntries returns audit log entries for a time range (optional).
-func (s *CASStore) GetAuditLogEntries(startTime, endTime int64, limit int) ([]*AuditLogEntry, error) {
-	var entries []*AuditLogEntry
-	_ = s.db.View(func(tx *bbolt.Tx) error {
+// auditTimeKey encodes a Unix-nano timestamp as an 8-byte big-endian key, or
+// nil when t <= 0 (meaning unbounded).
+func auditTimeKey(t int64) []byte {
+	if t <= 0 {
+		return nil
+	}
+	var k [8]byte
+	binary.BigEndian.PutUint64(k[:], uint64(t))
+	return k[:]
+}
+
+// collectAuditEntries walks the audit cursor from startKey (inclusive) to
+// endKey (inclusive), decoding entries up to limit (0 = unbounded).
+func collectAuditEntries(c *bbolt.Cursor, startKey, endKey []byte, limit int) []*common.AuditLogEntry {
+	var entries []*common.AuditLogEntry
+	for k, v := c.Seek(startKey); k != nil; k, v = c.Next() {
+		if limit > 0 && len(entries) >= limit {
+			break
+		}
+		if endKey != nil && binary.BigEndian.Uint64(k) > binary.BigEndian.Uint64(endKey) {
+			break
+		}
+		var entry common.AuditLogEntry
+		if err := json.Unmarshal(v, &entry); err != nil {
+			continue
+		}
+		entries = append(entries, &entry)
+	}
+	return entries
+}
+
+// GetAuditLogEntries returns audit entries whose timestamp falls within
+// [startTime, endTime], up to limit entries (0 = no limit).
+func (s *CASStore) GetAuditLogEntries(startTime, endTime int64, limit int) ([]*common.AuditLogEntry, error) {
+	var entries []*common.AuditLogEntry
+	err := s.db.View(func(tx *bbolt.Tx) error {
 		b := tx.Bucket(bucketAuditLog)
 		if b == nil {
 			return nil
 		}
-		c := b.Cursor()
-		var startKey, endKey []byte
-		if startTime > 0 {
-			var sk [8]byte
-			binary.BigEndian.PutUint64(sk[:], uint64(startTime))
-			startKey = sk[:]
-		}
-		if endTime > 0 {
-			var ek [8]byte
-			binary.BigEndian.PutUint64(ek[:], uint64(endTime))
-			endKey = ek[:]
-		}
-
-		for k, v := c.Seek(startKey); k != nil; k, v = c.Next() {
-			if limit > 0 && len(entries) >= limit {
-				break
-			}
-			if endKey != nil && binary.BigEndian.Uint64(k) > uint64(endTime) {
-				break
-			}
-			var entry AuditLogEntry
-			if err := json.Unmarshal(v, &entry); err != nil {
-				continue
-			}
-			entries = append(entries, &entry)
-		}
+		entries = collectAuditEntries(b.Cursor(), auditTimeKey(startTime), auditTimeKey(endTime), limit)
 		return nil
 	})
-	return entries, nil
+	return entries, err
+}
+
+// ACL methods for R8 multi-tenancy authorization
+
+// PutBucketACL stores a bucket ACL.
+func (s *CASStore) PutBucketACL(acl *common.BucketACL) error {
+	if acl == nil || acl.Bucket == "" {
+		return fmt.Errorf("bucket ACL requires bucket name: %w", syscall.EINVAL)
+	}
+	return s.db.Update(func(tx *bbolt.Tx) error {
+		b := tx.Bucket(bucketACL)
+		key := []byte(bucketResourcePrefix + acl.Bucket)
+		data, err := json.Marshal(acl)
+		if err != nil {
+			return fmt.Errorf("failed to marshal ACL: %w", syscall.EIO)
+		}
+		return b.Put(key, data)
+	})
+}
+
+// GetBucketACL retrieves a bucket ACL.
+func (s *CASStore) GetBucketACL(bucket string) (*common.BucketACL, error) {
+	if bucket == "" {
+		return nil, fmt.Errorf("bucket name required: %w", syscall.EINVAL)
+	}
+	var acl common.BucketACL
+	err := s.db.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket(bucketACL)
+		data := b.Get([]byte(bucketResourcePrefix + bucket))
+		if data == nil {
+			return nil
+		}
+		return json.Unmarshal(data, &acl)
+	})
+	return &acl, err
+}
+
+// PutObjectACL stores an object ACL.
+func (s *CASStore) PutObjectACL(acl *common.ObjectACL) error {
+	if acl == nil || acl.Key == "" {
+		return fmt.Errorf("object ACL requires object key: %w", syscall.EINVAL)
+	}
+	return s.db.Update(func(tx *bbolt.Tx) error {
+		b := tx.Bucket(bucketACL)
+		key := []byte(objectResourcePrefix + acl.Key)
+		data, err := json.Marshal(acl)
+		if err != nil {
+			return fmt.Errorf("failed to marshal ACL: %w", syscall.EIO)
+		}
+		return b.Put(key, data)
+	})
+}
+
+// GetObjectACL retrieves an object ACL.
+func (s *CASStore) GetObjectACL(key string) (*common.ObjectACL, error) {
+	if key == "" {
+		return nil, fmt.Errorf("object key required: %w", syscall.EINVAL)
+	}
+	var acl common.ObjectACL
+	err := s.db.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket(bucketACL)
+		data := b.Get([]byte(objectResourcePrefix + key))
+		if data == nil {
+			return nil
+		}
+		return json.Unmarshal(data, &acl)
+	})
+	return &acl, err
+}
+
+// checkACL evaluates an ACL entry against a tenant and permission.
+func checkACL(acl *common.ACLEntry, tenantID string, perm common.Permission) bool {
+	if acl == nil {
+		return false
+	}
+	// Wildcard tenant matches all
+	if acl.TenantID != "" && acl.TenantID != tenantID {
+		return false
+	}
+	// Check permission match
+	permMatch := false
+	switch acl.Permission {
+	case common.PermRead:
+		permMatch = perm == common.PermRead || perm == common.PermAdmin
+	case common.PermWrite:
+		permMatch = perm == common.PermWrite || perm == common.PermAdmin
+	case common.PermAdmin:
+		permMatch = perm == common.PermAdmin
+	case common.PermDelete:
+		permMatch = perm == common.PermDelete || perm == common.PermAdmin
+	}
+	if !permMatch {
+		return false
+	}
+	// Default effect is "allow" if not specified
+	effect := acl.Effect
+	if effect == "" {
+		effect = "allow"
+	}
+	return effect == "allow"
+}
+
+// Resource prefixes for Authorize.
+const (
+	bucketResourcePrefix = "bucket/"
+	objectResourcePrefix = "object/"
+)
+
+// parseACLResource splits an authorization resource into its bucket and object
+// parts. Resource format: "bucket/<bucket>" or "object/<bucket>/<key>".
+func parseACLResource(resource string) (bucket, object string, err error) {
+	switch {
+	case strings.HasPrefix(resource, bucketResourcePrefix):
+		return strings.TrimPrefix(resource, bucketResourcePrefix), "", nil
+	case strings.HasPrefix(resource, objectResourcePrefix):
+		parts := strings.SplitN(strings.TrimPrefix(resource, objectResourcePrefix), "/", 2)
+		if len(parts) != 2 {
+			return "", "", fmt.Errorf("invalid object resource format: %w", syscall.EINVAL)
+		}
+		return parts[0], parts[1], nil
+	default:
+		return "", "", fmt.Errorf("invalid resource format: %w", syscall.EINVAL)
+	}
+}
+
+// aclAllows reports whether any entry grants tenantID the permission.
+func aclAllows(entries []common.ACLEntry, tenantID string, perm common.Permission) bool {
+	for i := range entries {
+		if checkACL(&entries[i], tenantID, perm) {
+			return true
+		}
+	}
+	return false
+}
+
+// Authorize checks if a tenant has permission to perform an operation on a resource.
+// Returns nil if authorized, or an error with EACCES if denied.
+// Resource format: "bucket/<bucket>" or "object/<bucket>/<key>"
+func (s *CASStore) Authorize(tenantID string, perm common.Permission, resource string) error {
+	if tenantID == "" {
+		return fmt.Errorf("tenant ID required: %w", syscall.EINVAL)
+	}
+	// Admin tenant bypasses all ACL checks (convention: "admin" tenant ID)
+	if tenantID == "admin" {
+		return nil
+	}
+
+	bucket, object, err := parseACLResource(resource)
+	if err != nil {
+		return err
+	}
+
+	// Object ACL is the most specific rule; bucket ACL is the fallback.
+	if object != "" {
+		acl, aErr := s.GetObjectACL(bucket + "/" + object)
+		if aErr != nil {
+			return aErr
+		}
+		if acl != nil && aclAllows(acl.Entries, tenantID, perm) {
+			return nil
+		}
+	}
+	if bucket != "" {
+		acl, aErr := s.GetBucketACL(bucket)
+		if aErr != nil {
+			return aErr
+		}
+		if acl != nil && aclAllows(acl.Entries, tenantID, perm) {
+			return nil
+		}
+	}
+
+	// No matching ACL = deny (default deny)
+	return fmt.Errorf("access denied for tenant %s to %s: %w", tenantID, resource, syscall.EACCES)
+}
+
+// checkACL evaluates an ACL entry against a tenant and permission.
+
+// GetTenantIDByAuthToken returns the tenant ID associated with the given auth token.
+// Returns empty string and error if not found.
+func (s *CASStore) GetTenantIDByAuthToken(authToken string) (string, error) {
+	if authToken == "" {
+		return "", fmt.Errorf("auth token required: %w", syscall.EINVAL)
+	}
+
+	var tenantID string
+	err := s.db.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket(bucketTenantMeta)
+		if b == nil {
+			return fmt.Errorf("tenant_meta bucket not found: %w", syscall.ENOENT)
+		}
+
+		c := b.Cursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			var cfg common.TenantConfig
+			if err := json.Unmarshal(v, &cfg); err != nil {
+				continue
+			}
+			// Use constant-time comparison to prevent timing attacks
+			if subtle.ConstantTimeCompare([]byte(cfg.AuthToken), []byte(authToken)) == 1 {
+				tenantID = string(k)
+				return nil
+			}
+		}
+		return fmt.Errorf("tenant not found for auth token: %w", syscall.ENOENT)
+	})
+	if err != nil {
+		return "", err
+	}
+	return tenantID, nil
 }

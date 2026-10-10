@@ -10,8 +10,10 @@ import (
 	"io"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/alsotoes/momo/src/common"
 	"github.com/alsotoes/momo/src/storage"
@@ -165,7 +167,30 @@ func getFile(comm transport.Communicator, store storage.Store, fileName string, 
 	log.Printf("=> Expected Hash: %s", common.SanitizeLog(expectedHash))
 	log.Printf("=> Actual Hash:   %s", common.SanitizeLog(hash))
 	log.Printf("Received file completely!")
+	auditPut(comm, store, fileName)
 	return nil
+}
+
+// auditPut records a successful write in the tamper-evident audit log (R8,
+// #936). The tenant is only present on the tenant-authenticated S3 surface;
+// peer and native writes record an empty tenant. Failures are logged, never
+// fatal, so auditing can never break the write path.
+func auditPut(comm transport.Communicator, store storage.Store, fileName string) {
+	tenantID := ""
+	if tp, ok := comm.(interface{ TenantID() string }); ok {
+		tenantID = tp.TenantID()
+	}
+	entry := &common.AuditLogEntry{
+		TenantID:  tenantID,
+		Identity:  "put",
+		Operation: "PutObject",
+		Resource:  fileName,
+		Outcome:   "success",
+		RequestID: strconv.FormatInt(time.Now().UnixNano(), 10),
+	}
+	if err := store.WriteAuditLog(entry); err != nil {
+		log.Printf("AUDIT: Failed to write audit log for %s: %v", common.SanitizeLog(fileName), err)
+	}
 }
 
 // parsePaddedIntFast parses a null-padded or null-terminated byte slice into an int64

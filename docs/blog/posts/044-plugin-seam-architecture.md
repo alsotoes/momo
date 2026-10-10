@@ -14,6 +14,7 @@ related:
   - 018-adaptive-scaling-peer-quality
   - 020-r2-degraded-read-self-heal
   - 043-reduce-read-verify-hashing
+  - 053-multitenancy-authorization-audit
 ---
 
 "Should everything be a plugin?" The question arrives whenever a codebase wants

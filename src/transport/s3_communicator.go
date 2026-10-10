@@ -99,6 +99,8 @@ type S3Communicator struct {
 	// Client state
 	clientAuthToken string
 	clientTimestamp int64
+	// tenantID is the authenticated tenant ID for multi-tenancy (R8, #936)
+	tenantID string
 
 	// Server state
 	meta common.FileMetadata
@@ -692,6 +694,37 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		}
 	}
 
+	// 🛡️ R8: Authorize the request before processing
+	if m.tenantID != "" && m.store != nil {
+		var perm common.Permission
+		var resource string
+		switch req.Method {
+		case "GET", "HEAD":
+			perm = common.PermRead
+		case "PUT", "POST":
+			perm = common.PermWrite
+		case "DELETE":
+			perm = common.PermDelete
+		default:
+			perm = common.PermRead
+		}
+		if key != "" {
+			resource = "object/" + bucket + "/" + key
+		} else {
+			resource = "bucket/" + bucket
+		}
+		// Cast store to Authorizer interface (R8)
+		if authorizer, ok := m.store.(interface {
+			Authorize(string, common.Permission, string) error
+		}); ok {
+			if err := authorizer.Authorize(m.tenantID, perm, resource); err != nil {
+				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				writeS3Error(m.conn, http.StatusForbidden, "AccessDenied", err.Error(), "")
+				return 0, 0, err
+			}
+		}
+	}
+
 	// Intercept POST for multipart operations (issue #764)
 	if req.Method == "POST" {
 		q := req.URL.Query()
@@ -853,6 +886,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 				}
 			}
 
+			m.writeAuditLog("ListObjects", bucket, "success")
 			return 0, 0, ErrRequestHandled
 		}
 
@@ -1083,6 +1117,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			}
 		}
 
+		m.writeAuditLog("GetObject", bucket+"/"+key, "success")
 		return 0, 0, ErrRequestHandled
 	}
 
@@ -1156,6 +1191,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			return 0, 0, fmt.Errorf("failed to write HEAD response: %v: %w", err, syscall.EPIPE)
 		}
 
+		m.writeAuditLog("HeadObject", bucket+"/"+key, "success")
 		return 0, 0, ErrRequestHandled
 	}
 
@@ -1247,6 +1283,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		m.conn.Write([]byte("HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"))
 
+		m.writeAuditLog("DeleteObject", bucket+"/"+key, "success")
 		return 0, 0, ErrRequestHandled
 	}
 
@@ -3453,4 +3490,34 @@ func writeXMLString(w *bytes.Buffer, name, value string) {
 	w.WriteString("</")
 	w.WriteString(name)
 	w.WriteByte('>')
+}
+
+// TenantID returns the authenticated tenant ID for this S3 connection (R8, #936).
+// It is exposed so the protocol-agnostic server layer can attribute audited
+// writes without importing S3 specifics (optional interface).
+func (m *S3Communicator) TenantID() string {
+	return m.tenantID
+}
+
+// writeAuditLog writes an audit log entry for the current operation.
+func (m *S3Communicator) writeAuditLog(operation, resource, outcome string) {
+	if m.tenantID == "" || m.store == nil {
+		return
+	}
+	entry := &common.AuditLogEntry{
+		TenantID:  m.tenantID,
+		Identity:  "s3-client",
+		Operation: operation,
+		Resource:  resource,
+		Outcome:   outcome,
+		RequestID: fmt.Sprintf("%d", time.Now().UnixNano()),
+	}
+	// Cast store to interface with WriteAuditLog method
+	if auditor, ok := m.store.(interface {
+		WriteAuditLog(*common.AuditLogEntry) error
+	}); ok {
+		if err := auditor.WriteAuditLog(entry); err != nil {
+			log.Printf("AUDIT: Failed to write audit log: %v", err)
+		}
+	}
 }
