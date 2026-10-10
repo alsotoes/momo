@@ -231,3 +231,7 @@
 ## 2026-10-09 - Zero-Allocation S3 Path Parsing
 **Learning:** Using `strings.Split` or `strings.SplitN` to extract bucket names and keys from S3 HTTP requests causes redundant heap allocations (32 bytes/op) and GC pressure on every single incoming S3 gateway request.
 **Action:** Replace `strings.Split` in S3 path extraction with zero-allocation slicing logic using `strings.HasSuffix` and `strings.IndexByte`. Avoid allocating intermediate string slices on the hot path for path routing.
+
+## 2024-10-10 - Zero-Allocation S3 Range and Copy Path Parsing
+**Learning:** Using `strings.SplitN` to extract start/end offsets in HTTP `Range` headers or extract source bucket/key in S3 Copy requests allocates a slice header and backing array per request.
+**Action:** Replace `strings.SplitN` in S3 path extraction and range header parsing with zero-allocation slicing logic using `strings.IndexByte`. Avoid allocating intermediate string slices on the hot path.
