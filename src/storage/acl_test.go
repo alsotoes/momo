@@ -136,7 +136,7 @@ func TestAuthorize_ObjectACL(t *testing.T) {
 	}
 
 	objectACL := &common.ObjectACL{
-		Key: "secret.txt",
+		Key: "test-bucket/secret.txt",
 		Entries: []common.ACLEntry{
 			{TenantID: "tenant-a", Permission: common.PermDelete, Effect: "deny"},
 		},

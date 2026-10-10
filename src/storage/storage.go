@@ -266,6 +266,30 @@ func NewCASStore(dataDir string) (*CASStore, error) {
 	return newCASStore(dataDir, blobs)
 }
 
+// metaBuckets is the fixed set of bbolt buckets created when a store opens.
+var metaBuckets = [][]byte{
+	bucketObjects,
+	bucketNamespace,
+	bucketPaths,
+	bucketModTimes,
+	bucketTombstones,
+	bucketS3Meta,
+	bucketQuarantine,
+	bucketACL,
+	bucketAuditLog,
+	bucketTenantMeta,
+}
+
+// initBuckets creates every metadata bucket if it does not already exist.
+func initBuckets(tx *bbolt.Tx) error {
+	for _, name := range metaBuckets {
+		if _, err := tx.CreateBucketIfNotExists(name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // newCASStore creates a CAS store with the given BlobStore backend and
 // a bbolt metadata database in dataDir. Optional func(opts) configure
 // behavior; the default read policy is everyReadVerifier (historical
@@ -282,39 +306,7 @@ func newCASStore(dataDir string, blobs BlobStore, opts ...func(*CASStore)) (*CAS
 	}
 
 	// Initialize buckets
-	err = db.Update(func(tx *bbolt.Tx) error {
-		if _, err := tx.CreateBucketIfNotExists(bucketObjects); err != nil {
-			return err
-		}
-		if _, err := tx.CreateBucketIfNotExists(bucketNamespace); err != nil {
-			return err
-		}
-		if _, err := tx.CreateBucketIfNotExists(bucketPaths); err != nil {
-			return err
-		}
-		if _, err := tx.CreateBucketIfNotExists(bucketModTimes); err != nil {
-			return err
-		}
-		_, err = tx.CreateBucketIfNotExists(bucketTombstones)
-		if err != nil {
-			return err
-		}
-		_, err = tx.CreateBucketIfNotExists(bucketS3Meta)
-		if err != nil {
-			return err
-		}
-		_, err = tx.CreateBucketIfNotExists(bucketQuarantine)
-		_, err = tx.CreateBucketIfNotExists(bucketACL)
-		if err != nil {
-			return err
-		}
-		_, err = tx.CreateBucketIfNotExists(bucketAuditLog)
-		if err != nil {
-			return err
-		}
-		return err
-	})
-	if err != nil {
+	if err := db.Update(initBuckets); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -1322,42 +1314,50 @@ func (s *CASStore) VerifyAuditLog() error {
 }
 
 // GetAuditLogEntries returns audit log entries for a time range (optional).
+// auditTimeKey encodes a Unix-nano timestamp as an 8-byte big-endian key, or
+// nil when t <= 0 (meaning unbounded).
+func auditTimeKey(t int64) []byte {
+	if t <= 0 {
+		return nil
+	}
+	var k [8]byte
+	binary.BigEndian.PutUint64(k[:], uint64(t))
+	return k[:]
+}
+
+// collectAuditEntries walks the audit cursor from startKey (inclusive) to
+// endKey (inclusive), decoding entries up to limit (0 = unbounded).
+func collectAuditEntries(c *bbolt.Cursor, startKey, endKey []byte, limit int) []*common.AuditLogEntry {
+	var entries []*common.AuditLogEntry
+	for k, v := c.Seek(startKey); k != nil; k, v = c.Next() {
+		if limit > 0 && len(entries) >= limit {
+			break
+		}
+		if endKey != nil && binary.BigEndian.Uint64(k) > binary.BigEndian.Uint64(endKey) {
+			break
+		}
+		var entry common.AuditLogEntry
+		if err := json.Unmarshal(v, &entry); err != nil {
+			continue
+		}
+		entries = append(entries, &entry)
+	}
+	return entries
+}
+
+// GetAuditLogEntries returns audit entries whose timestamp falls within
+// [startTime, endTime], up to limit entries (0 = no limit).
 func (s *CASStore) GetAuditLogEntries(startTime, endTime int64, limit int) ([]*common.AuditLogEntry, error) {
 	var entries []*common.AuditLogEntry
-	_ = s.db.View(func(tx *bbolt.Tx) error {
+	err := s.db.View(func(tx *bbolt.Tx) error {
 		b := tx.Bucket(bucketAuditLog)
 		if b == nil {
 			return nil
 		}
-		c := b.Cursor()
-		var startKey, endKey []byte
-		if startTime > 0 {
-			var sk [8]byte
-			binary.BigEndian.PutUint64(sk[:], uint64(startTime))
-			startKey = sk[:]
-		}
-		if endTime > 0 {
-			var ek [8]byte
-			binary.BigEndian.PutUint64(ek[:], uint64(endTime))
-			endKey = ek[:]
-		}
-
-		for k, v := c.Seek(startKey); k != nil; k, v = c.Next() {
-			if limit > 0 && len(entries) >= limit {
-				break
-			}
-			if endKey != nil && binary.BigEndian.Uint64(k) > uint64(endTime) {
-				break
-			}
-			var entry common.AuditLogEntry
-			if err := json.Unmarshal(v, &entry); err != nil {
-				continue
-			}
-			entries = append(entries, &entry)
-		}
+		entries = collectAuditEntries(b.Cursor(), auditTimeKey(startTime), auditTimeKey(endTime), limit)
 		return nil
 	})
-	return entries, nil
+	return entries, err
 }
 
 // ACL methods for R8 multi-tenancy authorization
@@ -1369,7 +1369,7 @@ func (s *CASStore) PutBucketACL(acl *common.BucketACL) error {
 	}
 	return s.db.Update(func(tx *bbolt.Tx) error {
 		b := tx.Bucket(bucketACL)
-		key := []byte("bucket/" + acl.Bucket)
+		key := []byte(bucketResourcePrefix + acl.Bucket)
 		data, err := json.Marshal(acl)
 		if err != nil {
 			return fmt.Errorf("failed to marshal ACL: %w", syscall.EIO)
@@ -1386,7 +1386,7 @@ func (s *CASStore) GetBucketACL(bucket string) (*common.BucketACL, error) {
 	var acl common.BucketACL
 	err := s.db.View(func(tx *bbolt.Tx) error {
 		b := tx.Bucket(bucketACL)
-		data := b.Get([]byte("bucket/" + bucket))
+		data := b.Get([]byte(bucketResourcePrefix + bucket))
 		if data == nil {
 			return nil
 		}
@@ -1402,7 +1402,7 @@ func (s *CASStore) PutObjectACL(acl *common.ObjectACL) error {
 	}
 	return s.db.Update(func(tx *bbolt.Tx) error {
 		b := tx.Bucket(bucketACL)
-		key := []byte("object/" + acl.Key)
+		key := []byte(objectResourcePrefix + acl.Key)
 		data, err := json.Marshal(acl)
 		if err != nil {
 			return fmt.Errorf("failed to marshal ACL: %w", syscall.EIO)
@@ -1419,7 +1419,7 @@ func (s *CASStore) GetObjectACL(key string) (*common.ObjectACL, error) {
 	var acl common.ObjectACL
 	err := s.db.View(func(tx *bbolt.Tx) error {
 		b := tx.Bucket(bucketACL)
-		data := b.Get([]byte("object/" + key))
+		data := b.Get([]byte(objectResourcePrefix + key))
 		if data == nil {
 			return nil
 		}
@@ -1460,6 +1460,39 @@ func checkACL(acl *common.ACLEntry, tenantID string, perm common.Permission) boo
 	return effect == "allow"
 }
 
+// Resource prefixes for Authorize.
+const (
+	bucketResourcePrefix = "bucket/"
+	objectResourcePrefix = "object/"
+)
+
+// parseACLResource splits an authorization resource into its bucket and object
+// parts. Resource format: "bucket/<bucket>" or "object/<bucket>/<key>".
+func parseACLResource(resource string) (bucket, object string, err error) {
+	switch {
+	case strings.HasPrefix(resource, bucketResourcePrefix):
+		return strings.TrimPrefix(resource, bucketResourcePrefix), "", nil
+	case strings.HasPrefix(resource, objectResourcePrefix):
+		parts := strings.SplitN(strings.TrimPrefix(resource, objectResourcePrefix), "/", 2)
+		if len(parts) != 2 {
+			return "", "", fmt.Errorf("invalid object resource format: %w", syscall.EINVAL)
+		}
+		return parts[0], parts[1], nil
+	default:
+		return "", "", fmt.Errorf("invalid resource format: %w", syscall.EINVAL)
+	}
+}
+
+// aclAllows reports whether any entry grants tenantID the permission.
+func aclAllows(entries []common.ACLEntry, tenantID string, perm common.Permission) bool {
+	for i := range entries {
+		if checkACL(&entries[i], tenantID, perm) {
+			return true
+		}
+	}
+	return false
+}
+
 // Authorize checks if a tenant has permission to perform an operation on a resource.
 // Returns nil if authorized, or an error with EACCES if denied.
 // Resource format: "bucket/<bucket>" or "object/<bucket>/<key>"
@@ -1467,55 +1500,33 @@ func (s *CASStore) Authorize(tenantID string, perm common.Permission, resource s
 	if tenantID == "" {
 		return fmt.Errorf("tenant ID required: %w", syscall.EINVAL)
 	}
-
 	// Admin tenant bypasses all ACL checks (convention: "admin" tenant ID)
 	if tenantID == "admin" {
 		return nil
 	}
 
-	// Parse resource
-	var bucket, object string
-	if len(resource) > 7 && resource[:7] == "bucket/" {
-		bucket = resource[7:]
-	} else if len(resource) > 7 && resource[:7] == "object/" {
-		// object resource format: "object/<bucket>/<key>"
-		parts := strings.SplitN(resource[7:], "/", 2)
-		if len(parts) != 2 {
-			return fmt.Errorf("invalid object resource format: %w", syscall.EINVAL)
-		}
-		bucket = parts[0]
-		object = parts[1]
-	} else {
-		return fmt.Errorf("invalid resource format: %w", syscall.EINVAL)
+	bucket, object, err := parseACLResource(resource)
+	if err != nil {
+		return err
 	}
 
-	// Check object ACL first (most specific)
+	// Object ACL is the most specific rule; bucket ACL is the fallback.
 	if object != "" {
-		acl, err := s.GetObjectACL(object)
-		if err != nil {
-			return err
+		acl, aErr := s.GetObjectACL(bucket + "/" + object)
+		if aErr != nil {
+			return aErr
 		}
-		if acl != nil {
-			for _, entry := range acl.Entries {
-				if checkACL(&entry, tenantID, perm) {
-					return nil
-				}
-			}
+		if acl != nil && aclAllows(acl.Entries, tenantID, perm) {
+			return nil
 		}
 	}
-
-	// Check bucket ACL
 	if bucket != "" {
-		acl, err := s.GetBucketACL(bucket)
-		if err != nil {
-			return err
+		acl, aErr := s.GetBucketACL(bucket)
+		if aErr != nil {
+			return aErr
 		}
-		if acl != nil {
-			for _, entry := range acl.Entries {
-				if checkACL(&entry, tenantID, perm) {
-					return nil
-				}
-			}
+		if acl != nil && aclAllows(acl.Entries, tenantID, perm) {
+			return nil
 		}
 	}
 
