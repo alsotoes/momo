@@ -15,6 +15,7 @@ related:
   - 020-r2-degraded-read-self-heal
   - 043-reduce-read-verify-hashing
   - 053-multitenancy-authorization-audit
+  - 054-secrets-management-key-rotation
 ---
 
 "Should everything be a plugin?" The question arrives whenever a codebase wants

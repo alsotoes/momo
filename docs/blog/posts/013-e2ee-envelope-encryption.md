@@ -15,6 +15,7 @@ related:
   - 006-pluggable-storage-backends
   - 015-sentinel-security-audit
   - 053-multitenancy-authorization-audit
+  - 054-secrets-management-key-rotation
 ---
 
 The strongest security guarantee a cloud storage system can offer is simple: **even

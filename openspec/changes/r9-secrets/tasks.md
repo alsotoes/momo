@@ -2,45 +2,52 @@
 
 ## Implementation
 
-### External Secret Sources
-- [ ] `src/common/config.go`: Add `SecretsConfig` with `Source`, `Sources[]`, `VaultConfig`, `AWSConfig`, `GCPConfig`, `AzureConfig`
-- [ ] `src/common/secrets.go`: New file — `SecretProvider` interface + implementations (`FileProvider`, `EnvProvider`, `VaultProvider`, `AWSProvider`, `GCPProvider`, `AzureProvider`)
-- [ ] `src/common/config.go`: Parse `[secrets]` section; instantiate provider chain
+### Secret Providers
+- [x] `src/common/config.go` / `struct.go`: `SecretsConfig` with `Source`, `Sources[]`, per-source config
+- [x] `src/common/secrets.go`: `SecretProvider` interface + `EnvProvider` + `FileProvider`
+- [x] `src/common/secrets.go`: `ProviderChain` fallback (env → file); `BuildProviderChain`
+- [x] `src/common/config.go`: Parse `[secrets]` section; instantiate the provider chain
 
-### Versioned Key Store
-- [ ] `src/common/keyregistry.go`: New file — `KeyRegistry` with BoltDB bucket `key_registry`
-- [ ] `KeyRegistry`: `StoreKey(purpose, material) (keyID string)`, `GetActiveKey(purpose) (keyID, material)`, `MarkRetired(keyID)`, `ListVersions(purpose)`
-- [ ] Schema: `key_id` → `{version, material, created_at, rotated_at, algorithm, status, purpose}`
+### Key Registry
+- [x] `src/common/keyregistry.go`: `KeyRegistry` over the `key_registry` BoltDB bucket
+- [x] `StoreKey` / `GetActiveKey` / `GetKey` / `SetActive` / `MarkRetired` / `MarkCompromised` / `ListVersions`
+- [x] Schema: `{version, material, status, algorithm, tenant, timestamps}` with statuses active/retired/pending_rotation/compromised
 
-### Rotation Mechanism
-- [ ] `src/common/rotation.go`: `RotationManager` with `Start()` (ticker), `Rotate(purpose)`, `Reload()`
-- [ ] `RotationManager`: On interval, call `GenerateNewKey(purpose)`, store as `pending_rotation`, signal reload
-- [ ] `src/common/secrets.go`: Add `Reload()` to all providers; hot-swap active key
-- [ ] `src/momo.go`: Add `handleSIGHUP()` → `rotationMgr.Reload()`; HTTP `/reload-secrets` endpoint
-- [ ] `src/momo.go`: Add `rotate-secrets` CLI command (`--purpose <encryption|auth|e2ee|oprf>`)
-- [ ] Grace period: after rotation, keep old key `active` for `[secrets] rotation_grace_period` (default 24h), then `MarkRetired`
+### Rotation
+- [x] `src/common/rotation.go`: `RotationManager` with `Start()` (ticker), `Rotate`, `RotateAll`
+- [x] On rotation: generate new material, `StoreKey` pending, `SetActive` (promotes new, retires old)
+- [x] Grace period: the previous key is retained (not deleted), so old ciphertext keeps decrypting
+- [x] `src/common/secrets.go`: `Reload()` on providers; `fireReloadHooks` hot-swap signal
+- [x] `src/momo.go`: `rotate-secrets` CLI command (`--purpose`)
+- [x] `src/server/server.go`: `POST /reload-secrets` endpoint
+- [x] `src/server/server.go`: `SIGHUP` → `RotationManager.Reload()`
 
-### Audit Integration
-- [ ] `src/common/log.go`: Add `AuditRotation(purpose, oldKeyID, newKeyID, operator, trigger, success, error)`
-- [ ] `rotation.go`: Call `AuditRotation` on every rotation (scheduled/manual)
+### Audit
+- [x] `src/common/log.go`: `AuditRotation(purpose, old, new, operator, trigger, success, err)`
+- [x] `rotation.go`: call `AuditRotation` on every rotation (success and failure)
 
-### Config
-- [ ] `src/common/config.go`: Parse `[secrets]` section with all sub-keys
-- [ ] `conf/momo.conf`: Document `[secrets]` section with all options
+### Config & Docs
+- [x] `conf/momo.conf`: document `[secrets]` with all options
+- [x] `docs/GUIDES/CONFIGURATION.md`: document `[secrets]`
+
+### Deferred (documented design decision)
+- [ ] External providers (Vault, AWS Secrets Manager, GCP Secret Manager, Azure Key Vault).
+      The `SecretProvider` seam + `ProviderChain` are designed so these can be added
+      as compile-time providers without touching callers; heavy cloud SDKs are
+      intentionally out of the default build.
 
 ## Testing
 
-- [ ] `TestSecretProviderChain` — verifies fallback order (env → vault → file)
-- [ ] `TestKeyRegistryVersioning` — verifies versioning, active/retired status
-- [ ] `TestRotationFlow` — verifies scheduled + manual rotation, graceful reload
-- [ ] `TestRotationAudit` — verifies audit entries for success/failure
-- [ ] `TestGracePeriod` — verifies old key usable during grace period
-- [ ] `go test -race ./...` — all tests pass
-- [ ] `make test` — full suite passes
+- [x] `TestSecretProviderChain` / `TestBuildProviderChain` — fallback order and defaults
+- [x] `TestKeyRegistry*` — versioning, active/retired status transitions
+- [x] `TestRotationManager_*` — reload, rotate, RotateAll, generate, audit, old-key retention
+- [x] `TestRotationManager_AuditRecorded` — rotation writes a chained audit entry
+- [x] `go test -race ./...` — all tests pass
+- [x] `make test` — full suite passes
 
 ## Compliance
 
-- [ ] OpenSpec change authored (Rule 73)
-- [ ] ADR generated via `make adr-sync` (Rule 77/78)
-- [ ] Blog post shipped (Rule 76)
+- [x] OpenSpec change authored (Rule 73)
+- [x] ADR generated via `make adr-sync` (Rules 77/78)
+- [x] Blog post shipped — `054-secrets-management-key-rotation.md` (Rule 76)
 - [ ] PR body includes `Resolves #937` (Rule 11)

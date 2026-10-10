@@ -4,7 +4,7 @@
 Proposed
 
 ## Confidence
-Low
+High
 
 ## Context
 All secrets in Momo are currently static config-file values:
@@ -30,8 +30,8 @@ No rotation mechanism exists. If a key is compromised, there is no way to rotate
 None documented.
 
 ## Implementation Status
-- **Code**: Planned
-- **Tests**: Planned
+- **Code**: Partial
+- **Tests**: Done
 - **Docs**: Planned
 - **Blog post**: 
 
