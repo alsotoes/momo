@@ -167,10 +167,17 @@ func (vbs *VolumeBlobStore) initVolumes() error {
 	return nil
 }
 
+// createNewVolume opens the next volume and installs it as the active one.
 func (vbs *VolumeBlobStore) createNewVolume() error {
 	vbs.mu.Lock()
 	defer vbs.mu.Unlock()
+	return vbs.createNewVolumeLocked()
+}
 
+// createNewVolumeLocked is createNewVolume with vbs.mu already held. Keeping
+// the unlocked form lets sealCurrentVolume roll volumes without re-entering
+// the (non-reentrant) store mutex.
+func (vbs *VolumeBlobStore) createNewVolumeLocked() error {
 	newID := atomic.AddUint32(&vbs.volumeIDCounter, 1)
 	path := filepath.Join(vbs.baseDir, fmt.Sprintf("%s%04d%s", VolumeFilePrefix, newID, VolumeFileExt))
 
@@ -282,30 +289,11 @@ func (vbs *VolumeBlobStore) reserveNeedleSlot(needleSize int64) (*VolumeFile, in
 }
 
 // appendNeedle writes the frame bytes at the current file offset and syncs.
-// The caller holds vf.mu and owns the tail via vf.size.
-func (vf *VolumeFile) appendNeedle(hashBytes [32]byte, payload []byte, crcVal uint32) error {
-	if err := binary.Write(vf.file, binary.BigEndian, uint32(NeedleMagic)); err != nil {
-		return fmt.Errorf("failed to write magic: %w", err)
-	}
-	if err := binary.Write(vf.file, binary.BigEndian, uint32(len(payload))); err != nil {
-		return fmt.Errorf("failed to write length: %w", err)
-	}
-	if _, err := vf.file.Write(hashBytes[:]); err != nil {
-		return fmt.Errorf("failed to write hash: %w", err)
-	}
-	if err := binary.Write(vf.file, binary.BigEndian, uint16(NeedleFlagNone)); err != nil {
-		return fmt.Errorf("failed to write flags: %w", err)
-	}
-	if _, err := vf.file.Write(payload); err != nil {
-		return fmt.Errorf("failed to write payload: %w", err)
-	}
-	if padding := alignTo8(len(payload)) - len(payload); padding > 0 {
-		if _, err := vf.file.Write(make([]byte, padding)); err != nil {
-			return fmt.Errorf("failed to write padding: %w", err)
-		}
-	}
-	if err := binary.Write(vf.file, binary.BigEndian, crcVal); err != nil {
-		return fmt.Errorf("failed to write CRC: %w", err)
+// The caller holds vf.mu and owns the tail via vf.size. Frame layout and
+// checksumming are delegated to writeNeedle so there is exactly one writer.
+func (vf *VolumeFile) appendNeedle(hashBytes [32]byte, payload []byte) error {
+	if _, err := writeNeedle(vf.file, hashBytes, payload, NeedleFlagNone); err != nil {
+		return fmt.Errorf("failed to append needle: %w", err)
 	}
 	if err := vf.file.Sync(); err != nil {
 		return fmt.Errorf("failed to sync volume: %w", err)
@@ -336,7 +324,7 @@ func (vbs *VolumeBlobStore) PutBlob(hash string, content io.Reader) (err error) 
 
 	vf.mu.Lock()
 	defer vf.mu.Unlock()
-	if err := vf.appendNeedle(hashBytes, payload, needleCRC(hashBytes, payload)); err != nil {
+	if err := vf.appendNeedle(hashBytes, payload); err != nil {
 		return err
 	}
 
@@ -480,7 +468,7 @@ func (vbs *VolumeBlobStore) sealCurrentVolume() error {
 		}
 	}
 
-	return vbs.createNewVolume()
+	return vbs.createNewVolumeLocked()
 }
 
 func (vbs *VolumeBlobStore) Close() error {

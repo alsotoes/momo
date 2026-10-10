@@ -2,7 +2,6 @@ package storage
 
 import (
 	"encoding/binary"
-	"hash/crc32"
 	"os"
 )
 
@@ -77,15 +76,7 @@ func writeNeedle(file *os.File, hash [32]byte, payload []byte, flags NeedleFlags
 		Flags:      flags,
 	}
 
-	// Calculate CRC32C over header + payload
-	crc := crc32.MakeTable(crc32.Castagnoli)
-	data := make([]byte, NeedleHeaderSize+payloadLen)
-	binary.BigEndian.PutUint32(data[0:4], header.Magic)
-	binary.BigEndian.PutUint32(data[4:8], header.PayloadLen)
-	copy(data[8:40], header.Hash[:])
-	binary.BigEndian.PutUint16(data[40:42], uint16(header.Flags))
-	copy(data[42:42+payloadLen], payload)
-	crcVal := crc32.Checksum(data, crc)
+	crcVal := needleCRC(hash, payload)
 
 	// Write header
 	if err := binary.Write(file, binary.BigEndian, header.Magic); err != nil {
@@ -156,16 +147,9 @@ func readNeedle(file *os.File, offset int64) (*Needle, error) {
 	}
 	crcVal := binary.BigEndian.Uint32(crcBuf)
 
-	// Verify CRC
-	crc := crc32.MakeTable(crc32.Castagnoli)
-	data := make([]byte, NeedleHeaderSize+len(payload))
-	binary.BigEndian.PutUint32(data[0:4], NeedleMagic)
-	binary.BigEndian.PutUint32(data[4:8], header.PayloadLen)
-	copy(data[8:40], header.Hash[:])
-	binary.BigEndian.PutUint16(data[40:42], uint16(header.Flags))
-	copy(data[42:42+len(payload)], payload)
-	expectedCRC := crc32.Checksum(data, crc)
-	if crcVal != expectedCRC {
+	// Verify the frame CRC — the same needleCRC the writer used, so the frame
+	// layout has exactly one definition.
+	if crcVal != needleCRC(header.Hash, payload) {
 		return nil, ErrCRC32Mismatch
 	}
 
