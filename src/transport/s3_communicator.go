@@ -2704,21 +2704,22 @@ func (m *S3Communicator) handleCopyObject(bucket, key, copySource string) (int, 
 
 	// Source key: in bucket mode the first segment is the source bucket; in
 	// legacy flat mode it is ignored (consistent with GET/HEAD use of `key`).
-	srcKey := ""
-	parts := strings.SplitN(srcPath, "/", 2)
+	var srcKey string
+	// ⚡ Bolt: Extract bucket and key using IndexByte instead of SplitN to avoid heap allocation.
+	srcBucket := srcPath
+	if idx := strings.IndexByte(srcPath, '/'); idx >= 0 {
+		srcBucket = srcPath[:idx]
+		srcKey = srcPath[idx+1:]
+	} else if m.configuredBucket == "" {
+		srcKey = srcPath
+	}
+
 	if m.configuredBucket != "" {
-		if !m.validBucket(parts[0]) {
+		if !m.validBucket(srcBucket) {
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			writeS3Error(m.conn, http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", parts[0])
+			writeS3Error(m.conn, http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", srcBucket)
 			return 0, 0, ErrRequestHandled
 		}
-		if len(parts) > 1 {
-			srcKey = parts[1]
-		}
-	} else if len(parts) > 1 {
-		srcKey = parts[1]
-	} else {
-		srcKey = parts[0]
 	}
 	if srcKey == "" {
 		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
@@ -2963,11 +2964,12 @@ func parseS3Range(rangeHeader string, size int64) (start, end int64, serveRange,
 		return 0, 0, false, false
 	}
 
-	parts := strings.SplitN(spec, "-", 2)
-	if len(parts) != 2 {
+	// ⚡ Bolt: scan with strings.IndexByte instead of strings.SplitN so parsing Range header allocates zero heap.
+	idx := strings.IndexByte(spec, '-')
+	if idx < 0 {
 		return 0, 0, false, false // malformed: ignore the header
 	}
-	startStr, endStr := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+	startStr, endStr := strings.TrimSpace(spec[:idx]), strings.TrimSpace(spec[idx+1:])
 
 	parseInt := func(s string) (int64, bool) {
 		if s == "" {
