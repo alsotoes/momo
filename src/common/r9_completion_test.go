@@ -3,6 +3,7 @@ package common
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -83,5 +84,25 @@ func TestRotationManager_OldKeyRetained(t *testing.T) {
 	}
 	if newID == oldID {
 		t.Fatal("expected a new active key after rotation")
+	}
+}
+
+func TestRotationManager_AuditError(t *testing.T) {
+	kr, db := newTestRegistry(t)
+	defer db.Close()
+
+	// A separate, closed audit DB forces AuditRotation to fail; rotation must
+	// still succeed (auditing is best-effort).
+	auditDB, err := bbolt.Open(filepath.Join(t.TempDir(), "audit.db"), 0600, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	auditDB.Close()
+
+	rm := NewRotationManager(kr, &errProvider{}, time.Hour)
+	rm.SetAuditDB(auditDB)
+
+	if err := rm.Rotate(context.Background(), "encryption"); err != nil {
+		t.Fatalf("Rotate should succeed despite an audit failure: %v", err)
 	}
 }

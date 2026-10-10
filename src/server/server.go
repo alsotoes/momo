@@ -173,12 +173,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 	}
 
 	// 🛡️ R9: SIGHUP triggers a secrets hot reload (parity with POST /reload-secrets).
-	if rotationMgr != nil {
-		sighupCh := make(chan os.Signal, 1)
-		signal.Notify(sighupCh, syscall.SIGHUP)
-		defer signal.Stop(sighupCh)
-		go watchSecretsReload(ctx, rotationMgr, sighupCh)
-	}
+	go startSecretsReloadWatcher(ctx, rotationMgr)
 
 	// R5 phase 2: install scrape-time storage/CAS gauge source (blob count,
 	// stored bytes, disk, GC) when the store implements it.
@@ -1042,6 +1037,19 @@ func downgradeToServerSideMode(currentMode int, replicationOrder []int, clientSi
 	}
 
 	return common.ReplicationNone
+}
+
+// startSecretsReloadWatcher installs a SIGHUP handler and blocks in the reload
+// loop until ctx is done. It is a no-op when secrets management is disabled
+// (rotationMgr == nil). Call it with `go`.
+func startSecretsReloadWatcher(ctx context.Context, rotationMgr *common.RotationManager) {
+	if rotationMgr == nil {
+		return
+	}
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGHUP)
+	defer signal.Stop(sigCh)
+	watchSecretsReload(ctx, rotationMgr, sigCh)
 }
 
 // watchSecretsReload reloads secrets on every SIGHUP until ctx is done.
