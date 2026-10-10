@@ -11,6 +11,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -167,6 +168,26 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 		defer func() {
 			if cerr := keyDB.Close(); cerr != nil {
 				log.Printf("⚠️ Failed to close key registry DB: %v", cerr)
+			}
+		}()
+	}
+
+	// 🛡️ R9: SIGHUP triggers a secrets hot reload (parity with POST /reload-secrets).
+	if rotationMgr != nil {
+		sighupCh := make(chan os.Signal, 1)
+		signal.Notify(sighupCh, syscall.SIGHUP)
+		go func() {
+			defer signal.Stop(sighupCh)
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-sighupCh:
+					log.Println("R9: SIGHUP received, reloading secrets")
+					if rerr := rotationMgr.Reload(ctx); rerr != nil {
+						log.Printf("R9: SIGHUP reload failed: %v", rerr)
+					}
+				}
 			}
 		}()
 	}
@@ -1044,7 +1065,9 @@ func initSecretsManager(ctx context.Context, cfg common.Configuration, dataDir s
 		return nil, nil
 	}
 
-	keyDB, err := bbolt.Open(filepath.Join(dataDir, "momo.db"), 0600, nil)
+	// Use a dedicated file: bbolt takes an exclusive lock, and the CAS store
+	// already opens <dataDir>/momo.db. Opening the same file twice deadlocks.
+	keyDB, err := bbolt.Open(filepath.Join(dataDir, "keys.db"), 0600, nil)
 	if err != nil {
 		log.Printf("⚠️ Failed to open key registry DB: %v (secrets management disabled)", err)
 		return nil, nil
@@ -1067,6 +1090,7 @@ func initSecretsManager(ctx context.Context, cfg common.Configuration, dataDir s
 		gracePeriod = 24 * time.Hour
 	}
 	rotationMgr := common.NewRotationManager(keyRegistry, provider, gracePeriod)
+	rotationMgr.SetAuditDB(keyDB)
 	rotationMgr.RegisterReloadHook(func() {
 		log.Println("R9: Secrets reloaded via hot reload")
 	})

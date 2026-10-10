@@ -9,6 +9,8 @@ import (
 	"log"
 	"sync"
 	"time"
+
+	"go.etcd.io/bbolt"
 )
 
 // rotationPurposes is the fixed set of key purposes rotated by the manager.
@@ -25,6 +27,7 @@ type RotationManager struct {
 	mu            sync.RWMutex
 	reloadHooks   []func()
 	rotationHooks []func(purpose string, oldKeyID, newKeyID string, trigger string, success bool, err error)
+	auditDB       *bbolt.DB
 }
 
 // NewRotationManager creates a new RotationManager.
@@ -55,6 +58,27 @@ func (rm *RotationManager) RegisterRotationHook(fn func(purpose, oldKeyID, newKe
 	rm.mu.Lock()
 	defer rm.mu.Unlock()
 	rm.rotationHooks = append(rm.rotationHooks, fn)
+}
+
+// SetAuditDB attaches a BoltDB used to record rotation events (R8/R9). When
+// nil, rotations are not audited.
+func (rm *RotationManager) SetAuditDB(db *bbolt.DB) {
+	rm.mu.Lock()
+	rm.auditDB = db
+	rm.mu.Unlock()
+}
+
+// auditRotation records a rotation outcome when an audit DB is configured.
+func (rm *RotationManager) auditRotation(ctx context.Context, entry AuditRotationEntry) {
+	rm.mu.RLock()
+	db := rm.auditDB
+	rm.mu.RUnlock()
+	if db == nil {
+		return
+	}
+	if err := AuditRotation(ctx, db, entry); err != nil {
+		log.Printf("AUDIT: failed to record rotation audit: %v", err)
+	}
 }
 
 // fireReloadHooks calls all registered reload hooks.
@@ -191,6 +215,7 @@ func (rm *RotationManager) Rotate(ctx context.Context, purpose string) (err erro
 	// Capture the current active key so the old/new IDs can be audited.
 	oldKeyID, _, err := rm.keyRegistry.GetActiveKeyForPurpose(ctx, purpose)
 	if err != nil {
+		rm.auditRotation(ctx, AuditRotationEntry{Purpose: purpose, Operator: "system", Trigger: "manual", Success: false, Error: err.Error()})
 		rm.fireRotationHooks(purpose, "", "", "manual", false, err)
 		return fmt.Errorf("failed to get active key: %w", err)
 	}
@@ -198,6 +223,7 @@ func (rm *RotationManager) Rotate(ctx context.Context, purpose string) (err erro
 	// Generate new key material.
 	material, err := rm.generateKeyForPurpose(purpose)
 	if err != nil {
+		rm.auditRotation(ctx, AuditRotationEntry{Purpose: purpose, OldKeyID: oldKeyID, Operator: "system", Trigger: "manual", Success: false, Error: err.Error()})
 		rm.fireRotationHooks(purpose, oldKeyID, "", "manual", false, err)
 		return fmt.Errorf("failed to generate new key: %w", err)
 	}
@@ -216,6 +242,7 @@ func (rm *RotationManager) Rotate(ctx context.Context, purpose string) (err erro
 	// Signal dependent components to re-read keys from the registry.
 	rm.fireReloadHooks()
 
+	rm.auditRotation(ctx, AuditRotationEntry{Purpose: purpose, OldKeyID: oldKeyID, NewKeyID: newKeyID, Operator: "system", Trigger: "manual", Success: true})
 	rm.fireRotationHooks(purpose, oldKeyID, newKeyID, "manual", true, nil)
 	log.Printf("Rotation completed for %s (grace period %v)", purpose, rm.gracePeriod)
 	return nil
