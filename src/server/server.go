@@ -176,20 +176,8 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 	if rotationMgr != nil {
 		sighupCh := make(chan os.Signal, 1)
 		signal.Notify(sighupCh, syscall.SIGHUP)
-		go func() {
-			defer signal.Stop(sighupCh)
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-sighupCh:
-					log.Println("R9: SIGHUP received, reloading secrets")
-					if rerr := rotationMgr.Reload(ctx); rerr != nil {
-						log.Printf("R9: SIGHUP reload failed: %v", rerr)
-					}
-				}
-			}
-		}()
+		defer signal.Stop(sighupCh)
+		go watchSecretsReload(ctx, rotationMgr, sighupCh)
 	}
 
 	// R5 phase 2: install scrape-time storage/CAS gauge source (blob count,
@@ -1054,6 +1042,22 @@ func downgradeToServerSideMode(currentMode int, replicationOrder []int, clientSi
 	}
 
 	return common.ReplicationNone
+}
+
+// watchSecretsReload reloads secrets on every SIGHUP until ctx is done.
+// Extracted from Daemon so the signal-driven reload loop is unit-testable.
+func watchSecretsReload(ctx context.Context, rotationMgr *common.RotationManager, sigCh <-chan os.Signal) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-sigCh:
+			log.Println("R9: SIGHUP received, reloading secrets")
+			if rerr := rotationMgr.Reload(ctx); rerr != nil {
+				log.Printf("R9: SIGHUP reload failed: %v", rerr)
+			}
+		}
+	}
 }
 
 // initSecretsManager initializes the R9 key registry and rotation manager.
