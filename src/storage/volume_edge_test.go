@@ -249,3 +249,81 @@ func tempVolumeFile(t *testing.T) (*VolumeFile, error) {
 }
 
 var _ io.Reader = (*errReader)(nil)
+
+func TestVolumeBlobStore_RestoresSealedAndActive(t *testing.T) {
+	dir := t.TempDir()
+
+	// First life: small superblocks so at least one volume seals.
+	vbs, err := NewVolumeBlobStore(dir, 128*1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const n = 3
+	hashes := make([]string, n)
+	payloads := make([][]byte, n)
+	for i := 0; i < n; i++ {
+		payloads[i] = bytes.Repeat([]byte{byte('a' + i)}, 64*1024)
+		hashes[i] = contentHash(payloads[i])
+		if err := vbs.PutBlob(hashes[i], bytes.NewReader(payloads[i])); err != nil {
+			t.Fatalf("PutBlob %d: %v", i, err)
+		}
+	}
+	if err := vbs.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Second life: volumes must be restored and classified.
+	vbs2, err := NewVolumeBlobStore(dir, 128*1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer vbs2.Close()
+
+	vbs2.mu.RLock()
+	sealedCount := len(vbs2.sealedVolumes)
+	active := vbs2.activeVolume
+	vbs2.mu.RUnlock()
+
+	if sealedCount == 0 {
+		t.Fatal("expected at least one sealed volume after restore")
+	}
+	if active == nil {
+		t.Fatal("expected an active volume after restore")
+	}
+	if active.sealed {
+		t.Fatal("the elected active volume must not be sealed")
+	}
+
+	// Every object survives the restart, including sealed ones.
+	for i := 0; i < n; i++ {
+		rc, err := vbs2.GetBlob(hashes[i])
+		if err != nil {
+			t.Fatalf("GetBlob %d after restore: %v", i, err)
+		}
+		data, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			t.Fatalf("ReadAll %d: %v", i, err)
+		}
+		if !bytes.Equal(data, payloads[i]) {
+			t.Fatalf("payload %d mismatch after restore", i)
+		}
+	}
+}
+
+func TestVolumeIDFromName(t *testing.T) {
+	cases := map[string]uint32{
+		"vol-0001.dat":   1,
+		"vol-0042.dat":   42,
+		"vol-999999.dat": 999999,
+		"not-a-volume":   0,
+		"vol-xxxx.dat":   0,
+		"vol-0001.txt":   0,
+		"vol-.dat":       0,
+	}
+	for name, want := range cases {
+		if got := volumeIDFromName(name); got != want {
+			t.Fatalf("volumeIDFromName(%q) = %d, want %d", name, got, want)
+		}
+	}
+}
