@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
 	"sync"
@@ -275,4 +276,36 @@ func TestStartMetricsServer_ReloadSecrets(t *testing.T) {
 	}
 	time.Sleep(50 * time.Millisecond)
 	goleak.VerifyNone(t)
+}
+
+func TestSecurityHeadersMiddleware(t *testing.T) {
+	handler := securityHeadersMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("GET", "http://example.com/foo", nil)
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, req)
+
+	resp := w.Result()
+
+	if val := resp.Header.Get("Content-Security-Policy"); val != "default-src 'self'; script-src 'self'" {
+		t.Errorf("expected CSP header to be 'default-src \\'self\\'; script-src \\'self\\'', got %q", val)
+	}
+	if val := resp.Header.Get("X-Frame-Options"); val != "DENY" {
+		t.Errorf("expected X-Frame-Options header to be 'DENY', got %q", val)
+	}
+	if val := resp.Header.Get("X-Content-Type-Options"); val != "nosniff" {
+		t.Errorf("expected X-Content-Type-Options header to be 'nosniff', got %q", val)
+	}
+	if val := resp.Header.Get("Strict-Transport-Security"); val != "max-age=31536000; includeSubDomains" {
+		t.Errorf("expected Strict-Transport-Security header, got %q", val)
+	}
+	if val := resp.Header.Get("Referrer-Policy"); val != "strict-origin-when-cross-origin" {
+		t.Errorf("expected Referrer-Policy header, got %q", val)
+	}
+	if val := resp.Header.Get("Permissions-Policy"); val != "geolocation=(), microphone=(), camera=()" {
+		t.Errorf("expected Permissions-Policy header, got %q", val)
+	}
 }

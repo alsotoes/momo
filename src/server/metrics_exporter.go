@@ -16,6 +16,21 @@ import (
 	"time"
 )
 
+
+// securityHeadersMiddleware adds standard security headers to HTTP responses.
+// 🛡️ Sentinel: Medium priority enhancement to prevent XSS, clickjacking, and MIME sniffing.
+func securityHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+		next.ServeHTTP(w, r)
+	})
+}
+
 // storageStatsProvider is the optional scrape-time storage/CAS gauge source
 // implemented by *storage.CASStore (R5 phase 2, #933).
 type storageStatsProvider interface {
@@ -627,7 +642,7 @@ func StartMetricsServer(ctx context.Context, host string, port int, collector *M
 		return
 	}
 
-	srv := &http.Server{Handler: mux}
+	srv := &http.Server{Handler: securityHeadersMiddleware(mux)}
 
 	go func() {
 		defer func() {
