@@ -49,16 +49,23 @@ func TestVolumeBlobStore_PutGet(t *testing.T) {
 }
 
 func TestVolumeBlobStore_VolumeRolling(t *testing.T) {
-	vbs, cleanup := newTestVolumeStore(t)
-	defer cleanup()
+	dataDir := t.TempDir()
+	// A small superblock forces real rolling: 5 x 64 KiB objects across
+	// 128 KiB volumes produces several sealed files.
+	vbs, err := NewVolumeBlobStore(dataDir, 128*1024)
+	if err != nil {
+		t.Fatalf("NewVolumeBlobStore: %v", err)
+	}
+	defer vbs.Close()
 
-	hashes := make([]string, 20)
-	payloads := make([][]byte, 20)
+	const n = 5
+	hashes := make([]string, n)
+	payloads := make([][]byte, n)
 
-	for i := 0; i < 20; i++ {
-		payloads[i] = make([]byte, 10*1024*1024) // 10 MiB
+	for i := 0; i < n; i++ {
+		payloads[i] = make([]byte, 64*1024)
 		if _, err := rand.Read(payloads[i]); err != nil {
-			t.Fatalf("rand.Read: %v", err)
+			t.Fatal(err)
 		}
 		hashes[i] = contentHash(payloads[i])
 
@@ -67,7 +74,15 @@ func TestVolumeBlobStore_VolumeRolling(t *testing.T) {
 		}
 	}
 
-	for i := 0; i < 20; i++ {
+	vbs.mu.RLock()
+	sealed := len(vbs.sealedVolumes)
+	vbs.mu.RUnlock()
+	if sealed == 0 {
+		t.Fatal("expected at least one sealed volume after rolling")
+	}
+
+	// Every object must read back correctly, including ones sealed away.
+	for i := 0; i < n; i++ {
 		rc, err := vbs.GetBlob(hashes[i])
 		if err != nil {
 			t.Fatalf("GetBlob %d: %v", i, err)
