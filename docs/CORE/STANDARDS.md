@@ -102,6 +102,46 @@ per-object detail argument may remain explicit and inline.
 
 ---
 
+## Complexity Budget: 🛡️ Sentinel Code Health
+
+SonarCloud gates master on the **cognitive complexity of new code**: any
+function whose complexity exceeds **15** fails the pipeline as a CRITICAL code
+smell (rule `go:S3776`). Three rounds of post-merge pipeline reds
+(#1164→#1167→#1169) were all this single rule, so the budget is now enforced
+locally before a PR can land.
+
+### The gates
+
+| Gate | Where | What it enforces |
+|------|-------|------------------|
+| `make lint` | local, every PR branch | `.golangci.yml`: `gocognit` + `gocyclo` at 15, **new code only** |
+| Lint workflow | CI, every PR | Same config via `golangci-lint-action` with `only-new-issues` |
+| Sonar master gate | CI, post-merge | `S3776` > 15 on new code; coverage ≥ 80% on new code |
+
+`gocognit` measures **cognitive** complexity — the same metric Sonar uses — so
+a green `make lint` is a faithful preview of the Sonar gate. `gocyclo`
+(cyclomatic) is the cheaper sibling kept at the same threshold.
+
+### Rules
+
+1. **New functions stay ≤ 15 cognitive complexity.** Decompose *before* the PR:
+   extract one-responsibility helpers (see `decodeContentHash`,
+   `reserveNeedleSlot`, `openExistingVolume` in `src/storage/`) rather than
+   splitting lines arbitrarily.
+2. **Never raise a threshold to silence a finding.** If a function is flagged,
+   the fix is decomposition or a documented, reviewer-approved exception — not
+   a bumped number in `.golangci.yml`.
+3. **Legacy offenders are grandfathered, not ignored.** `issues.new: true`
+   reports findings only on lines this PR adds or changes; a legacy function
+   (`HandshakeServer`, `Daemon`) is only flagged when a PR edits it. Editing a
+   hotspot is the natural moment to decompose it.
+4. **Every error branch gets a test.** Coverage on new code must be ≥ 80%; in
+   practice that means testing the failure paths of every helper that returns
+   `error` (invalid input, I/O failure, missing resource), not just the happy
+   path — see `src/storage/volume_edge_test.go` for the pattern.
+
+---
+
 ## See Also
 
 - [AI_FLYING_SOLO.md](AI_FLYING_SOLO.md) — Autonomous bug-fix workflow rules 51-63 (PR workflow, clean rebase, stale reviewer re-trigger, post-merge branch cleanup)

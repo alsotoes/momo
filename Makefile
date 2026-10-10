@@ -9,7 +9,7 @@ BIN := $(BIN_DIR)/momo
 MAIN := src/momo.go
 MODULES := ./src/common ./src/crypto ./src/transport ./src/client ./src/metrics ./src/p2p ./src/server ./src/storage ./src/momofs
 
-.PHONY: all build clean tidy vendor test vet coverage doc doc-live benchmark test-e2e smoke-tcp smoke-quic smoke-encryption-tcp smoke-encryption-quic smoke-encryption-s3-tcp smoke-encryption-s3-quic smoke-scale-cas test-contract test-load test-stress test-chaos test-metrics test-external-client blog-check adr-sync adr-sync-check monitoring-up monitoring-down pentest
+.PHONY: all build clean tidy vendor test vet lint coverage doc doc-live benchmark test-e2e smoke-tcp smoke-quic smoke-encryption-tcp smoke-encryption-quic smoke-encryption-s3-tcp smoke-encryption-s3-quic smoke-scale-cas test-contract test-load test-stress test-chaos test-metrics test-external-client blog-check adr-sync adr-sync-check monitoring-up monitoring-down pentest
 
 all: build
 
@@ -54,6 +54,18 @@ test: vet
 
 vet:
 	$(GO) vet $(MODULES)
+
+# lint runs golangci-lint with .golangci.yml (gocognit/gocyclo at 15,
+# new-code-only) — the local mirror of the SonarCloud S3776 gate. Run it on
+# every PR branch before pushing: `make lint`.
+lint:
+	@if command -v golangci-lint >/dev/null 2>&1; then \
+		golangci-lint run $(MODULES); \
+	else \
+		echo "golangci-lint not found; install with:"; \
+		echo "  go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest"; \
+		echo "skipping (CI will still enforce)"; \
+	fi
 
 coverage:
 	CGO_ENABLED=1 $(GO) test -race -coverprofile=coverage.out $(MODULES)
