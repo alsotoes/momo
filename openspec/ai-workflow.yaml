@@ -1,0 +1,73 @@
+version: 1
+description: Harness manifest — how agents, plugins and automation operate in momo
+
+# HARNESS: agents/automation that drive the repo
+harness:
+  ai_reviewer:
+    script: .github/scripts/ai_reviewer.py
+    workflow: .github/workflows/gemini_reviewer.yml
+    role: merge-gate
+    rules: [80, 70]
+  ecc_tools:
+    config: .github/ecc-tools.yml
+    role: advisory-audit
+    allowed: [analyze, comment, suggest]
+    forbidden: [auto-merge, unreviewed-bundles, rule-silencing]
+    rules: [70, 80]
+  jules:
+    role: implementation-agent
+    policy: [rule-80-takeover, rule-93-consolidation]
+    rules: [80, 93]
+  bundle_triage:
+    workflow: .github/workflows/ecc_bundle_triage.yml
+    role: defense-in-depth
+    rules: [70]
+
+# PLUGINS: every plugin active in this repo (project + global)
+plugins:
+  # Project-local plugins
+  - package: "@dietrichgebert/ponytail@5.1.0"
+    pinned: "5.1.0"
+    scope: project
+    default_mode: "lite"
+    allowed: [diff-review, minimalism-guidance]
+    forbidden: [ultra-mode, skipping-openspec-ceremony, replacing-lint-gate]
+    rules: [73, 74, 37]
+
+  # Project-local plugin (context7)
+  - package: "context7"
+    scope: project
+    requires_env: "CONTEXT7_API_KEY"
+    rules: [73]
+
+  # Global plugins (installed in user's global config; declared here for completeness)
+  - package: "opencode-plugin-mempalace"
+    scope: global
+    rules: [89]
+  - package: "mempalace"
+    scope: global
+    rules: []
+  - package: "opencode-caveman"
+    scope: global
+    description: "Ultra-compressed communication mode for token efficiency"
+  - package: "opencode-rtk"
+    scope: global
+    description: "Read-toolkit utilities for file operations"
+  - package: "openslimedit@latest"
+    scope: global
+    description: "Slim edit utilities"
+  - package: "opencode-research-papers"
+    scope: global
+    description: "Research paper search integration"
+  - package: "@cortexkit/opencode-magic-context@latest"
+    scope: global
+    description: "Magic Context integration"
+
+# INVARIANTS: cross-check rules enforced by ai_workflow_check.py
+invariants:
+  - project opencode.json plugins ⊆ plugins declared here
+  - pinned versions unless declared floating
+  - no secrets in harness/plugin configs
+  - global MCP set == declared global set (mempalace only)
+  - referenced rule IDs exist in openspec/config.yaml
+  - Ponytail default_mode = lite; ultra not in allowed

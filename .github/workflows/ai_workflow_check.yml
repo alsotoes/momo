@@ -1,0 +1,54 @@
+name: AI Workflow Check
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - "openspec/ai-workflow.yaml"
+      - "openspec/config.yaml"
+      - "opencode.json"
+      - ".github/scripts/ai_workflow_check.py"
+      - ".github/scripts/test_ai_workflow_check.py"
+      - ".github/workflows/ai_workflow_check.yml"
+      - ".github/ecc-tools.yml"
+      - "mempalace.yaml"
+  push:
+    branches: [master]
+    paths:
+      - "openspec/ai-workflow.yaml"
+      - "openspec/config.yaml"
+      - "opencode.json"
+      - ".github/scripts/ai_workflow_check.py"
+      - ".github/scripts/test_ai_workflow_check.py"
+      - ".github/workflows/ai_workflow_check.yml"
+      - ".github/ecc-tools.yml"
+      - "mempalace.yaml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ai-workflow-check:
+    name: Harness Manifest Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyYAML
+        run: pip install pyyaml
+
+      - name: Validate harness manifest
+        run: python3 .github/scripts/ai_workflow_check.py
+
+      - name: Unit tests
+        run: |
+          pip install pytest
+          python3 -m pytest .github/scripts/test_ai_workflow_check.py -v
