@@ -203,85 +203,87 @@ func (vbs *VolumeBlobStore) createNewVolume() error {
 	return nil
 }
 
-func (vbs *VolumeBlobStore) PutBlob(hash string, content io.Reader) (err error) {
-	defer common.RecoverErr("VolumeBlobStore.PutBlob", &err)
-
+// decodeContentHash validates an object hash and returns its 32 decoded bytes.
+func decodeContentHash(hash string) ([32]byte, error) {
+	var out [32]byte
 	if common.HasPathTraversalChars(hash) {
-		return fmt.Errorf("invalid hash contains path traversal characters: %w", syscall.EINVAL)
+		return out, fmt.Errorf("invalid hash contains path traversal characters: %w", syscall.EINVAL)
 	}
-
-	hashBytes, err := hex.DecodeString(hash)
+	raw, err := hex.DecodeString(hash)
 	if err != nil {
-		return fmt.Errorf("invalid hash: %w", err)
+		return out, fmt.Errorf("invalid hash: %w", err)
 	}
-	if len(hashBytes) != 32 {
-		return fmt.Errorf("invalid hash length: expected 32 bytes, got %d", len(hashBytes))
+	if len(raw) != 32 {
+		return out, fmt.Errorf("invalid hash length: expected 32 bytes, got %d", len(raw))
 	}
+	copy(out[:], raw)
+	return out, nil
+}
 
+// readVerifiedPayload reads the whole content stream and confirms it hashes to
+// the given content hash — the CAS write path's integrity gate.
+func readVerifiedPayload(hashBytes [32]byte, content io.Reader) ([]byte, error) {
 	payload, err := io.ReadAll(content)
 	if err != nil {
-		return fmt.Errorf("failed to read payload: %w", err)
+		return nil, fmt.Errorf("failed to read payload: %w", err)
 	}
-
-	hashBytes2 := sha256.Sum256(payload)
-	if !bytesEqual(hashBytes, hashBytes2[:]) {
-		return fmt.Errorf("hash mismatch: expected %s, got %x", hash, hashBytes2)
+	sum := sha256.Sum256(payload)
+	if !bytesEqual(hashBytes[:], sum[:]) {
+		return nil, fmt.Errorf("hash mismatch: expected %x, got %x", hashBytes, sum)
 	}
+	return payload, nil
+}
 
-	// CRC32C over (Magic || Length || Hash || Flags || Payload), matching what
-	// readNeedle verifies.
-	crcTable := crc32.MakeTable(crc32.Castagnoli)
+// needleCRC computes the CRC32C over the full needle frame
+// (Magic || Length || Hash || Flags || Payload), matching readNeedle.
+func needleCRC(hashBytes [32]byte, payload []byte) uint32 {
 	frame := make([]byte, NeedleHeaderSize+len(payload))
 	binary.BigEndian.PutUint32(frame[0:4], uint32(NeedleMagic))
 	binary.BigEndian.PutUint32(frame[4:8], uint32(len(payload)))
-	copy(frame[8:40], hashBytes)
+	copy(frame[8:40], hashBytes[:])
 	binary.BigEndian.PutUint16(frame[40:42], uint16(NeedleFlagNone))
 	copy(frame[42:42+len(payload)], payload)
-	crcVal := crc32.Checksum(frame, crcTable)
+	return crc32.Checksum(frame, crc32.MakeTable(crc32.Castagnoli))
+}
 
+// reserveNeedleSlot returns the active volume plus the write offset, rolling
+// to a fresh volume first when the needle would not fit. It returns
+// syscall.ENOSPC when even a freshly sealed successor cannot fit the needle.
+func (vbs *VolumeBlobStore) reserveNeedleSlot(needleSize int64) (*VolumeFile, int64, error) {
 	vbs.mu.RLock()
 	vf := vbs.activeVolume
 	vbs.mu.RUnlock()
-
 	if vf == nil {
-		return fmt.Errorf("no active volume available")
+		return nil, 0, fmt.Errorf("no active volume available")
 	}
 
 	vf.mu.Lock()
-	needleSize := int64(NeedleOverhead) + int64(alignTo8(len(payload)))
-	if vf.size+needleSize > vbs.volumeSize {
-		vf.mu.Unlock()
-		if err := vbs.sealCurrentVolume(); err != nil {
-			return err
-		}
-		vbs.mu.RLock()
-		vf = vbs.activeVolume
-		vbs.mu.RUnlock()
-		vf.mu.Lock()
-	} else {
-		vf.mu.Unlock()
+	fits := vf.size+needleSize <= vbs.volumeSize
+	vf.mu.Unlock()
+	if fits {
+		return vf, vf.size, nil
 	}
 
+	if err := vbs.sealCurrentVolume(); err != nil {
+		return nil, 0, err
+	}
+	vbs.mu.RLock()
+	vf = vbs.activeVolume
+	vbs.mu.RUnlock()
+	if vf == nil {
+		return nil, 0, fmt.Errorf("no active volume available after seal")
+	}
 	vf.mu.Lock()
 	defer vf.mu.Unlock()
-
-	needleSize = int64(NeedleOverhead) + int64(alignTo8(len(payload)))
 	if vf.size+needleSize > vbs.volumeSize {
-		return fmt.Errorf("volume full after seal: %w", syscall.ENOSPC)
+		return nil, 0, fmt.Errorf("volume full after seal: %w", syscall.ENOSPC)
 	}
+	return vf, vf.size, nil
+}
 
-	offset := vf.size
-
-	var hashBytesArr [32]byte
-	copy(hashBytesArr[:], hashBytes)
-
-	_ = NeedleHeader{
-		Magic:      NeedleMagic,
-		PayloadLen: uint32(len(payload)),
-		Hash:       hashBytesArr,
-		Flags:      NeedleFlagNone,
-	}
-
+// appendNeedle writes the frame bytes at the current file offset and syncs.
+// The caller holds vf.mu and owns the tail via vf.size.
+func (vf *VolumeFile) appendNeedle(hashBytes [32]byte, payload []byte, crcVal uint32) error {
 	if err := binary.Write(vf.file, binary.BigEndian, uint32(NeedleMagic)); err != nil {
 		return fmt.Errorf("failed to write magic: %w", err)
 	}
@@ -294,51 +296,65 @@ func (vbs *VolumeBlobStore) PutBlob(hash string, content io.Reader) (err error) 
 	if err := binary.Write(vf.file, binary.BigEndian, uint16(NeedleFlagNone)); err != nil {
 		return fmt.Errorf("failed to write flags: %w", err)
 	}
-
 	if _, err := vf.file.Write(payload); err != nil {
 		return fmt.Errorf("failed to write payload: %w", err)
 	}
-
-	alignedPayloadLen := alignTo8(len(payload))
-	padding := alignedPayloadLen - len(payload)
-	if padding > 0 {
+	if padding := alignTo8(len(payload)) - len(payload); padding > 0 {
 		if _, err := vf.file.Write(make([]byte, padding)); err != nil {
 			return fmt.Errorf("failed to write padding: %w", err)
 		}
 	}
-
-	if err = binary.Write(vf.file, binary.BigEndian, crcVal); err != nil {
+	if err := binary.Write(vf.file, binary.BigEndian, crcVal); err != nil {
 		return fmt.Errorf("failed to write CRC: %w", err)
 	}
-
 	if err := vf.file.Sync(); err != nil {
 		return fmt.Errorf("failed to sync volume: %w", err)
 	}
+	return nil
+}
 
-	vf.size += int64(NeedleOverhead) + int64(alignTo8(len(payload)))
+// PutBlob appends a needle carrying the verified payload to the active volume,
+// sealing the volume first when the needle would not fit.
+func (vbs *VolumeBlobStore) PutBlob(hash string, content io.Reader) (err error) {
+	defer common.RecoverErr("VolumeBlobStore.PutBlob", &err)
+
+	hashBytes, err := decodeContentHash(hash)
+	if err != nil {
+		return err
+	}
+
+	payload, err := readVerifiedPayload(hashBytes, content)
+	if err != nil {
+		return err
+	}
+
+	needleSize := int64(NeedleOverhead) + int64(alignTo8(len(payload)))
+	vf, offset, err := vbs.reserveNeedleSlot(needleSize)
+	if err != nil {
+		return err
+	}
+
+	vf.mu.Lock()
+	defer vf.mu.Unlock()
+	if err := vf.appendNeedle(hashBytes, payload, needleCRC(hashBytes, payload)); err != nil {
+		return err
+	}
+
+	vf.size += needleSize
 
 	if vbs.blobs != nil {
 		if err = vbs.saveNeedleMetadata(hash, vf.volumeID, offset, len(payload)); err != nil {
 			log.Printf("WARN: failed to save needle metadata: %v", err)
 		}
 	}
-
 	return nil
 }
 
 func (vbs *VolumeBlobStore) GetBlob(hash string) (rc io.ReadCloser, err error) {
 	defer common.RecoverErr("VolumeBlobStore.GetBlob", &err)
 
-	if common.HasPathTraversalChars(hash) {
-		return nil, fmt.Errorf("invalid hash contains path traversal characters: %w", syscall.EINVAL)
-	}
-
-	hashBytes, err := hex.DecodeString(hash)
-	if err != nil {
-		return nil, fmt.Errorf("invalid hash: %w", err)
-	}
-	if len(hashBytes) != 32 {
-		return nil, fmt.Errorf("invalid hash length")
+	if _, derr := decodeContentHash(hash); derr != nil {
+		return nil, derr
 	}
 
 	meta, err := vbs.getNeedleMetadata(hash)
@@ -384,15 +400,8 @@ func (vbs *VolumeBlobStore) GetBlob(hash string) (rc io.ReadCloser, err error) {
 func (vbs *VolumeBlobStore) DeleteBlob(hash string) (err error) {
 	defer common.RecoverErr("VolumeBlobStore.DeleteBlob", &err)
 
-	if common.HasPathTraversalChars(hash) {
-		return fmt.Errorf("invalid hash contains path traversal characters: %w", syscall.EINVAL)
-	}
-
-	if hb, derr := hex.DecodeString(hash); derr != nil || len(hb) != 32 {
-		if derr == nil {
-			derr = syscall.EINVAL
-		}
-		return fmt.Errorf("invalid hash: %w", derr)
+	if _, derr := decodeContentHash(hash); derr != nil {
+		return derr
 	}
 
 	meta, err := vbs.getNeedleMetadata(hash)
