@@ -63,6 +63,7 @@ Momo is engineered around two foundational philosophies that govern all subsyste
 | [CONTRACT_TESTING](GUIDES/CONTRACT_TESTING.md) | TCP wire protocol contract testing strategy |
 | [POLYMORPHIC_SYSTEM](REFERENCE/POLYMORPHIC_SYSTEM.md) | Dynamic replication mode switching and polymorphic engine |
 | [AI_FLYING_SOLO](AI_FLYING_SOLO.md) | Autonomous development workflow for AI agents (bugs and features) |
+| [HARNESS_MANIFEST](openspec/ai-workflow.yaml) | Harness & Plugin Manifest — authoritative surface for agents/plugins |
 | [EXTERNAL_CLIENT_REPLICATION](GUIDES/EXTERNAL_CLIENT_REPLICATION.md) | External S3 client replication mode downgrade handling |
 | [PENTESTING](GUIDES/PENTESTING.md) | Security pentest overview — DotDotPwn fuzzing + Python exploit scripts (points to `pentest/README.md` for reproduction) |
 | [BLOG](blog/README.md) | Engineering journal (Hugo-format posts) — journey, research, architecture decisions, changes |

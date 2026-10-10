@@ -9,7 +9,7 @@ BIN := $(BIN_DIR)/momo
 MAIN := src/momo.go
 MODULES := ./src/common ./src/crypto ./src/transport ./src/client ./src/metrics ./src/p2p ./src/server ./src/storage ./src/momofs
 
-.PHONY: all build clean tidy vendor test vet lint coverage doc doc-live benchmark test-e2e smoke-tcp smoke-quic smoke-encryption-tcp smoke-encryption-quic smoke-encryption-s3-tcp smoke-encryption-s3-quic smoke-scale-cas test-contract test-load test-stress test-chaos test-metrics test-external-client blog-check adr-sync adr-sync-check monitoring-up monitoring-down pentest
+.PHONY: all build clean tidy vendor test vet lint coverage doc doc-live benchmark test-e2e smoke-tcp smoke-quic smoke-encryption-tcp smoke-encryption-quic smoke-encryption-s3-tcp smoke-encryption-s3-quic smoke-scale-cas test-contract test-load test-stress test-chaos test-metrics test-external-client blog-check adr-sync adr-sync-check ai-workflow-check monitoring-up monitoring-down pentest
 
 all: build
 
@@ -160,3 +160,6 @@ adr-sync:
 
 adr-sync-check:
 	@go run ./tools/adr-sync --check-only
+
+ai-workflow-check:
+	@python3 .github/scripts/ai_workflow_check.py
