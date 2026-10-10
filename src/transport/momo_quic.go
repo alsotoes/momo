@@ -92,6 +92,25 @@ func (m *MomoQUICCommunicator) SetStore(store storage.Store) {
 	m.store = store
 }
 
+// writeAuditLog records a native-protocol operation in the tamper-evident audit
+// log (R8, #936). TenantID is empty for node/peer operations; the S3 gateway is
+// the tenant-authenticated surface. Failures are logged, never fatal.
+func (m *MomoQUICCommunicator) writeAuditLog(operation, resource, outcome string) {
+	if m.store == nil {
+		return
+	}
+	entry := &common.AuditLogEntry{
+		Identity:  "momo-quic",
+		Operation: operation,
+		Resource:  resource,
+		Outcome:   outcome,
+		RequestID: strconv.FormatInt(time.Now().UnixNano(), 10),
+	}
+	if err := m.store.WriteAuditLog(entry); err != nil {
+		log.Printf("AUDIT: Failed to write audit log: %v", err)
+	}
+}
+
 // SetGlobalLister sets the scatter-gather list capability.
 func (m *MomoQUICCommunicator) SetGlobalLister(gl GlobalLister) {
 	m.globalLister = gl
@@ -438,6 +457,7 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 			}
 		}
 
+		m.writeAuditLog("ListObjects", "*", "success")
 		return 0, 0, ErrRequestHandled
 	}
 
@@ -517,6 +537,7 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 		if err := writeStatusByte(m, '0'); err != nil {
 			return 0, 0, err
 		} // success status
+		m.writeAuditLog("DeleteObject", fileName, "success")
 		return 0, 0, ErrRequestHandled
 	}
 
@@ -607,6 +628,7 @@ func (m *MomoQUICCommunicator) HandshakeServer(expectedAuthToken []byte) (reques
 			}
 		}
 
+		m.writeAuditLog("GetObject", fileName, "success")
 		return 0, 0, ErrRequestHandled
 	}
 

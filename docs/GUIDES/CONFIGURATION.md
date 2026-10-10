@@ -707,3 +707,59 @@ Now, standard S3 client tools can list, download, and delete files directly over
   ```bash
   aws s3 rm s3://any-bucket-name/file.txt --endpoint-url http://127.0.0.1:4440
   ```
+
+## Multi-Tenancy, Authorization & Audit (R8, #936)
+
+### `[tenant.<id>]` sections
+
+Declare each tenant in its own section. The section suffix is the tenant ID
+and must match the `id` key. Tenants are addressed on the S3 gateway by their
+`auth_token` (sent as `Authorization: Bearer <token>` or as the SigV4 access
+key). Per-tenant key material is derived from the root key with HKDF-SHA256
+(`info = tenantID`), so no two tenants share a KEK.
+
+```ini
+[tenant.acme]
+id=acme
+master_key_id=root-1
+auth_token=acme-secret-token
+quota_bytes=10737418240    # 0 = unlimited
+quota_objects=100000       # 0 = unlimited
+enabled=true
+```
+
+| Key | Required | Description |
+|-----|----------|-------------|
+| `id` | yes | Tenant identifier; must equal the section suffix. |
+| `master_key_id` | yes | Root key used to wrap this tenant's KEK. |
+| `auth_token` | yes | Opaque token presented by the tenant; must be ≤ `AuthTokenLength` bytes. |
+| `quota_bytes` | no | Byte quota (0 = unlimited). |
+| `quota_objects` | no | Object-count quota (0 = unlimited). |
+| `enabled` | no | Defaults to `true`. |
+
+### Authorization
+
+Bucket and object ACLs are stored in the `acl` BoltDB bucket (not config),
+managed through the storage API (`PutBucketACL`, `PutObjectACL`). Evaluation
+is default-deny: a request is allowed only if an `allow` entry matches the
+tenant and permission, and explicit `deny` entries win. Admins (tenant ID
+`admin`) bypass ACL checks. Permissions are `read`, `write`, `delete`, and
+`admin`, checked against resources `bucket/<name>` and `object/<bucket>/<key>`.
+
+### `[audit]` section
+
+Every mutating and read operation on the S3 gateway and the native TCP/QUIC
+protocols is appended to a tamper-evident audit log. Entries are SHA-256
+hash-chained in the `audit_log` BoltDB bucket; `VerifyAuditLog` walks the chain
+to detect tampering.
+
+```ini
+[audit]
+enabled=true
+retention_days=365
+```
+
+| Key | Required | Description |
+|-----|----------|-------------|
+| `enabled` | no | Defaults to `false`. |
+| `retention_days` | no | Must be ≥ 1 when set; defaults to `365`. |

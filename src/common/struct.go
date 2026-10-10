@@ -431,3 +431,60 @@ type Configuration struct {
 	// Secrets is the secrets management configuration (R9, #937).
 	Secrets SecretsConfig
 }
+
+// Permission represents a S3/bucket operation permission.
+type Permission string
+
+const (
+	PermRead   Permission = "read"   // GET, HEAD, LIST
+	PermWrite  Permission = "write"  // PUT, POST, COPY, DELETE
+	PermAdmin  Permission = "admin"  // bucket config, versioning, lifecycle
+	PermDelete Permission = "delete" // DELETE (explicit)
+)
+
+// ACLEntry represents a single access control entry for a bucket or object.
+type ACLEntry struct {
+	// TenantID is the tenant this ACL applies to. Empty string = all tenants (global).
+	TenantID string
+	// Permission is the allowed operation.
+	Permission Permission
+	// Effect is "allow" or "deny". Default "allow" if empty.
+	Effect string
+}
+
+// BucketACL holds the ACL for a bucket.
+type BucketACL struct {
+	// Bucket is the bucket name.
+	Bucket string
+	// Entries are the ACL entries for this bucket.
+	Entries []ACLEntry
+}
+
+// ObjectACL holds the ACL for a specific object.
+type ObjectACL struct {
+	// Key is the object key.
+	Key string
+	// Entries are the ACL entries for this object.
+	Entries []ACLEntry
+}
+
+// ACLConfig holds the ACL configuration for a bucket.
+type ACLConfig struct {
+	// Enabled controls whether ACL enforcement is active.
+	Enabled bool
+	// DefaultEffect is the default effect when no ACL matches ("allow" or "deny").
+	DefaultEffect string
+}
+
+// AuditLogEntry represents an immutable audit log entry (R8, #936).
+type AuditLogEntry struct {
+	Timestamp int64  `json:"timestamp"` // Unix nanoseconds
+	TenantID  string `json:"tenant_id"`
+	Identity  string `json:"identity"`   // e.g., "aws-cli", "momo-cli", "peer-3"
+	Operation string `json:"operation"`  // e.g., "PutObject", "GetObject", "DeleteObject"
+	Resource  string `json:"resource"`   // e.g., "bucket/key"
+	Outcome   string `json:"outcome"`    // "success" or "failure"
+	RequestID string `json:"request_id"` // Correlation ID
+	PrevHash  string `json:"prev_hash"`  // SHA-256 of previous entry (hex)
+	EntryHash string `json:"entry_hash"` // SHA-256 of this entry (hex)
+}

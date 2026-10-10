@@ -162,3 +162,155 @@ func DeriveKey(masterKey []byte, tenant string, context []byte) ([]byte, error) 
 func appendUint32(dst []byte, v uint32) []byte {
 	return append(dst, byte(v>>24), byte(v>>16), byte(v>>8), byte(v))
 }
+
+// TenantKeys holds the per-tenant derived keys. Each field is a 32-byte
+// key or share, encrypted at rest when persisted to the key registry.
+type TenantKeys struct {
+	KEK       []byte // 32-byte tenant key encryption key (AES-GCM-SIV)
+	OPRFShare []byte // 32-byte OPRF share for this tenant
+	AuthToken []byte // 32-byte auth token for this tenant
+}
+
+// TenantKeySizes holds the expected sizes of tenant key fields.
+const (
+	TenantKEKSize       = 32
+	TenantOPRFShareSize = 32
+	TenantAuthTokenSize = 32
+)
+
+// Domain labels for tenant-specific key derivation.
+var (
+	DomainTenantKEK       = []byte("momo/tenant/kek")
+	DomainTenantOPRFShare = []byte("momo/tenant/oprf")
+	DomainTenantAuthToken = []byte("momo/tenant/auth")
+)
+
+// DeriveTenantKeys derives the three per-tenant keys from a root KEK using
+// HKDF-SHA256 with domain-separated labels. All keys are 32 bytes.
+// The tenantID is included in the HKDF info to ensure isolation.
+func DeriveTenantKeys(rootKEK []byte, tenantID string) (*TenantKeys, error) {
+	if len(rootKEK) != KeySize {
+		return nil, ErrInvalidKeySize
+	}
+
+	kek, err := hkdf.Key(sha256.New, rootKEK, nil,
+		string(appendDomainTenantLabel(DomainTenantKEK, tenantID)), TenantKEKSize)
+	if err != nil {
+		return nil, fmt.Errorf("crypto: failed to derive tenant KEK: %w", err)
+	}
+
+	oprfShare, err := hkdf.Key(sha256.New, rootKEK, nil,
+		string(appendDomainTenantLabel(DomainTenantOPRFShare, tenantID)), TenantOPRFShareSize)
+	if err != nil {
+		return nil, fmt.Errorf("crypto: failed to derive tenant OPRF share: %w", err)
+	}
+
+	authToken, err := hkdf.Key(sha256.New, rootKEK, nil,
+		string(appendDomainTenantLabel(DomainTenantAuthToken, tenantID)), TenantAuthTokenSize)
+	if err != nil {
+		return nil, fmt.Errorf("crypto: failed to derive tenant auth token: %w", err)
+	}
+
+	return &TenantKeys{
+		KEK:       kek,
+		OPRFShare: oprfShare,
+		AuthToken: authToken,
+	}, nil
+}
+
+func appendDomainTenantLabel(domain []byte, tenantID string) []byte {
+	// Domain label with length-prefixed tenant ID for collision resistance.
+	buf := make([]byte, 0, len(domain)+4+len(tenantID))
+	buf = append(buf, domain...)
+	buf = appendUint32(buf, uint32(len(tenantID)))
+	buf = append(buf, tenantID...)
+	return buf
+}
+
+// WrapTenantKEK encrypts a tenant KEK with a root KEK using AES-256-GCM.
+// The tenant ID is used as associated data to bind the ciphertext to the tenant.
+func WrapTenantKEK(rootKEK, tenantKEK []byte, tenantID string) ([]byte, error) {
+	if len(rootKEK) != KeySize || len(tenantKEK) != TenantKEKSize {
+		return nil, ErrInvalidKeySize
+	}
+
+	block, err := aes.NewCipher(rootKEK)
+	if err != nil {
+		return nil, fmt.Errorf("crypto: failed to create AES cipher: %w", err)
+	}
+
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, fmt.Errorf("crypto: failed to create GCM: %w", err)
+	}
+
+	// Use a fixed nonce derived from tenant ID for deterministic wrapping
+	nonce := make([]byte, NonceSize)
+	copy(nonce, []byte("momo-wrap"))
+
+	// Associated data binds the ciphertext to the tenant
+	aad := []byte("tenant-wrap")
+	aad = append(aad, tenantID...)
+
+	return aead.Seal(nil, nonce, tenantKEK, aad), nil
+}
+
+// UnwrapTenantKEK decrypts a wrapped tenant KEK.
+func UnwrapTenantKEK(rootKEK, wrappedKEK []byte, tenantID string) ([]byte, error) {
+	if len(rootKEK) != KeySize {
+		return nil, ErrInvalidKeySize
+	}
+
+	block, err := aes.NewCipher(rootKEK)
+	if err != nil {
+		return nil, fmt.Errorf("crypto: failed to create AES cipher: %w", err)
+	}
+
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, fmt.Errorf("crypto: failed to create GCM: %w", err)
+	}
+
+	nonce := make([]byte, NonceSize)
+	copy(nonce, []byte("momo-wrap"))
+
+	aad := []byte("tenant-wrap")
+	aad = append(aad, tenantID...)
+
+	plaintext, err := aead.Open(nil, nonce, wrappedKEK, aad)
+	if err != nil {
+		return nil, ErrTampered
+	}
+
+	if len(plaintext) != TenantKEKSize {
+		return nil, ErrInvalidKeySize
+	}
+	return plaintext, nil
+}
+
+// RotateTenantKEK re-wraps a tenant's KEK from an old root KEK to a new root KEK.
+// The tenant ID is used as AAD for both unwrap and wrap operations.
+func RotateTenantKEK(oldRootKEK, newRootKEK, wrappedTenantKEK []byte, tenantID string) ([]byte, error) {
+	// Unwrap from old root
+	tenantKEK, err := UnwrapTenantKEK(oldRootKEK, wrappedTenantKEK, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("crypto: failed to unwrap tenant KEK: %w", err)
+	}
+	// Wrap with new root
+	return WrapTenantKEK(newRootKEK, tenantKEK, tenantID)
+}
+
+// DeriveTenantOPRFShare derives a tenant-specific OPRF share from a root OPRF share.
+// Uses the tenant ID as HKDF info for tenant isolation.
+func DeriveTenantOPRFShare(rootShare []byte, tenantID string) ([]byte, error) {
+	if len(rootShare) != TenantOPRFShareSize {
+		return nil, ErrInvalidKeySize
+	}
+
+	derived, err := hkdf.Key(sha256.New, rootShare, nil,
+		string(appendDomainTenantLabel(DomainTenantOPRFShare, tenantID)), TenantOPRFShareSize)
+	if err != nil {
+		return nil, fmt.Errorf("crypto: failed to derive tenant OPRF share: %w", err)
+	}
+	return derived, nil
+}

@@ -13,6 +13,7 @@ related:
   - 001-origin-and-genesis
   - 003-transport-tcp-to-quic
   - 021-r3-write-durability-quorum
+  - 053-multitenancy-authorization-audit
 ---
 
 Most distributed storage architectures lock their replication topology into

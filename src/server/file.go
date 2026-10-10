@@ -10,8 +10,10 @@ import (
 	"io"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/alsotoes/momo/src/common"
 	"github.com/alsotoes/momo/src/storage"
@@ -165,6 +167,24 @@ func getFile(comm transport.Communicator, store storage.Store, fileName string, 
 	log.Printf("=> Expected Hash: %s", common.SanitizeLog(expectedHash))
 	log.Printf("=> Actual Hash:   %s", common.SanitizeLog(hash))
 	log.Printf("Received file completely!")
+
+	// 🛡️ R8 (#936): attribute the successful write in the tamper-evident audit
+	// log. Tenant is only present on the tenant-authenticated S3 surface; peer
+	// and native writes record an empty tenant.
+	tenantID := ""
+	if tp, ok := comm.(interface{ TenantID() string }); ok {
+		tenantID = tp.TenantID()
+	}
+	if err := store.WriteAuditLog(&common.AuditLogEntry{
+		TenantID:  tenantID,
+		Identity:  "put",
+		Operation: "PutObject",
+		Resource:  fileName,
+		Outcome:   "success",
+		RequestID: strconv.FormatInt(time.Now().UnixNano(), 10),
+	}); err != nil {
+		log.Printf("AUDIT: Failed to write audit log for %s: %v", common.SanitizeLog(fileName), err)
+	}
 	return nil
 }
 
