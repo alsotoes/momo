@@ -620,6 +620,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 						return
 					}
 					persistS3Meta(store, storageKey, metadata)
+					recordVersionIfVersioned(comm, store, storageKey, metadata.Hash, metadata.Size)
 				} else {
 					if err := getFile(comm, store, storageKey, metadata.Hash, metadata.Size, remotePath); err != nil {
 						log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
@@ -627,6 +628,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 						return
 					}
 					persistS3Meta(store, storageKey, metadata)
+					recordVersionIfVersioned(comm, store, storageKey, metadata.Hash, metadata.Size)
 				}
 			case common.ReplicationChain:
 				// In Chain mode, we find our position in the placement list and forward to the next node.
@@ -648,6 +650,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 						return
 					}
 					persistS3Meta(store, storageKey, metadata)
+					recordVersionIfVersioned(comm, store, storageKey, metadata.Hash, metadata.Size)
 				} else {
 					if err := getFile(comm, store, storageKey, metadata.Hash, metadata.Size, remotePath); err != nil {
 						log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
@@ -656,6 +659,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 						return
 					}
 					persistS3Meta(store, storageKey, metadata)
+					recordVersionIfVersioned(comm, store, storageKey, metadata.Hash, metadata.Size)
 				}
 
 				if myPos != -1 && myPos < len(placement)-1 {
@@ -732,6 +736,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 							return
 						}
 						persistS3Meta(store, storageKey, metadata)
+						recordVersionIfVersioned(comm, store, storageKey, metadata.Hash, metadata.Size)
 					} else {
 						if err := getFile(comm, store, storageKey, metadata.Hash, metadata.Size, remotePath); err != nil {
 							log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
@@ -742,6 +747,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 							return
 						}
 						persistS3Meta(store, storageKey, metadata)
+						recordVersionIfVersioned(comm, store, storageKey, metadata.Hash, metadata.Size)
 					}
 					for _, targetId := range targets {
 						go func(id int) {
@@ -789,6 +795,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 							return
 						}
 						persistS3Meta(store, storageKey, metadata)
+						recordVersionIfVersioned(comm, store, storageKey, metadata.Hash, metadata.Size)
 					} else {
 						if err := getFile(comm, store, storageKey, metadata.Hash, metadata.Size, remotePath); err != nil {
 							log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
@@ -796,6 +803,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 							return
 						}
 						persistS3Meta(store, storageKey, metadata)
+						recordVersionIfVersioned(comm, store, storageKey, metadata.Hash, metadata.Size)
 					}
 				}
 			default:
@@ -838,6 +846,36 @@ func persistS3Meta(store storage.Store, key string, meta common.FileMetadata) {
 	}
 	if err := ps.PutS3Meta(key, meta.S3Headers); err != nil {
 		log.Printf("AUDIT: Error persisting S3 metadata for %s: %v", key, common.SanitizeLog(err.Error()))
+	}
+}
+
+// recordVersionIfVersioned creates an object version after a successful S3
+// write when the gateway's bucket is versioned (R10 Phase 1, #938). Versioning
+// is an S3-surface concept: native-protocol writes never create versions.
+// The version record lives in node-local metadata; cross-node version-chain
+// replication is a tracked follow-up (see openspec/changes/r10-s3-breadth).
+func recordVersionIfVersioned(comm transport.Communicator, store storage.Store, key, hash string, size int64) {
+	if !comm.IsExternalClient() {
+		return
+	}
+	bucket := comm.ConfiguredBucket()
+	if bucket == "" {
+		return // legacy flat namespace: no bucket to version
+	}
+	vs, ok := store.(transport.VersioningStore)
+	if !ok {
+		return
+	}
+	versioned, err := vs.IsVersioned(bucket)
+	if err != nil {
+		log.Printf("AUDIT: versioning check failed for %s: %v", bucket, common.SanitizeLog(err.Error()))
+		return
+	}
+	if !versioned {
+		return
+	}
+	if _, err := vs.RecordVersion(bucket, key, hash, size); err != nil {
+		log.Printf("AUDIT: failed to record version for %s: %v", key, common.SanitizeLog(err.Error()))
 	}
 }
 

@@ -16,6 +16,7 @@ related:
   - 004-cas-content-addressable-store
   - 043-reduce-read-verify-hashing
   - 055-adaptive-volume-storage
+  - "056-s3-versioning-on-cas"
 ---
 
 A **checksum** is a short fingerprint of a stream of bytes: recompute it on the

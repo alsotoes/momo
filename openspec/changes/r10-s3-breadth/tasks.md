@@ -2,16 +2,24 @@
 
 ## Implementation
 
-### Versioning
-- [ ] `src/storage/storage.go`: Add `VersionedBlob` struct with `VersionID`, `IsDeleteMarker`, `IsLatest`
-- [ ] `src/storage/storage.go`: Add `PutBlobVersioned(bucket, key, data, versionID) (newVersionID string)`
-- [ ] `src/storage/storage.go`: Add `GetBlobVersioned(bucket, key, versionID) (data, metadata)`
-- [ ] `src/storage/storage.go`: Add `ListVersions(bucket, prefix, delimiter, keyMarker, versionIDMarker, maxKeys)`
-- [ ] `src/transport/s3_communicator.go`: `handlePutVersioning` — parse `<VersioningConfiguration>`; store bucket versioning status
-- [ ] `src/transport/s3_communicator.go`: `handleGetVersions` — implement `GET ?versions` with pagination
-- [ ] `src/transport/s3_communicator.go`: `handleGetObject` — support `versionId` query param
-- [ ] `src/transport/s3_communicator.go`: `handleDeleteObject` — create delete marker if no `versionId`; permanent delete if `versionId` provided
-- [ ] `src/storage/metadata.go`: Extend `ObjectMeta` with `VersionID`, `IsDeleteMarker`, `IsLatest`, `VersionSequence`
+### Versioning (Phase 1 — SHIPPED)
+- [x] `src/storage/versioning.go`: `VersionRecord` (VersionID/Hash/Size/Timestamp/IsLatest/IsDeleteMarker + wire-less Key) — CAS dedup preserved: N versions of identical content cost one physical blob
+- [x] `src/storage/versioning.go`: `SetBucketVersioning`/`BucketVersioning`/`IsVersioned` (bbolt `versioning` bucket)
+- [x] `src/storage/versioning.go`: `RecordVersion`/`RecordDeleteMarker` (opaque UUIDv4 version ids — S3 mutation identity)
+- [x] `src/storage/versioning.go`: `LatestVersion`/`GetVersion`/`GetVersionContent`/`DeleteVersion` (latest re-pointing; marker removal revives the previous version)
+- [x] `src/storage/versioning.go`: `ListVersions` (S3 order: key asc, last-modified desc; key-marker/version-id-marker pagination)
+- [x] `src/storage/versioning.go`: `RepointNamespace` (flat GETs follow the latest data version / 404 under a marker)
+- [x] `src/transport/s3_versioning.go`: `handlePutVersioning`/`handleGetVersioning`/`handleGetVersions` (ListVersionsResult XML with `Version`+`DeleteMarker` elements)
+- [x] `src/transport/s3_communicator.go`: GET/HEAD `?versionId` routes (+ 501 when the store lacks the capability)
+- [x] `src/transport/s3_communicator.go`: versioned DELETE — marker without `versionId` (204 + `x-amz-delete-marker: true`), permanent with `versionId` (204 + revived namespace)
+- [x] `src/server/server.go`: `recordVersionIfVersioned` ingest hook — every S3-external PUT path records a version when the bucket is versioned (native-protocol writes never do)
+- [x] `src/transport/s3_communicator.go`: multipart completion records a version + echoes `<VersionId>` in the response XML
+- [x] 501 maps updated: `versioning`/`versions`/`versionId` removed from the reject sets (now real implementations)
+- [x] Tests: `src/storage/versioning_test.go` (9), `src/transport/s3_versioning_test.go` (14, incl. full-stack flow through the real CASStore)
+
+### Versioning follow-ups (tracked)
+- [ ] Cross-node version-record replication via the R6 metadata RPC (Phase 1 keeps version records node-local; PR documents this ceiling)
+- [ ] `x-amz-version-id` response header on plain PUTs (response is written before the body streams; multipart already echoes it)
 
 ### Lifecycle
 - [ ] `src/s3/lifecycle.go`: New file — `LifecycleRule` struct, `LifecycleEngine`
@@ -39,7 +47,9 @@
 
 ## Testing
 
-- [ ] `TestVersioning` — enable versioning, PUT multiple versions, GET specific version, DELETE with/without versionId
+- [x] `TestS3Versioning_FullStackFlow` — enable versioning, record versions, GET ?versions, GET specific version, DELETE with/without versionId (marker + revive + permanent)
+- [x] `TestS3Versioning_UnversionedDeleteUnchanged` — unversioned buckets keep plain delete semantics
+- [x] Handler/error-branch coverage: PUT malformed/invalid status, GET/HEAD versionId missing (404 NoSuchVersion), 501 without versioning capability, max-keys clamp, prefix filter
 - [ ] `TestLifecycleTransitions` — rule with transition after N days; verify storage class change
 - [ ] `TestLifecycleExpiration` — rule with expiration; verify object deleted
 - [ ] `TestNotification` — PUT notification config; trigger event; verify webhook received
