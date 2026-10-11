@@ -15,7 +15,7 @@ summary: "Why millions of small files per directory collapse a filesystem, and h
 artifacts:
   - type: spec
     path: openspec/changes/adaptive-volume-storage
-related: ["044-plugin-seam-architecture", "031-core-integrity-verification", "026-metrics-observability"]
+related: ["044-plugin-seam-architecture", "031-core-integrity-verification", "026-metrics-observability", "056-s3-versioning-on-cas"]
 difficulty: "advanced"
 pattern: "data-locality"
 teaches:
