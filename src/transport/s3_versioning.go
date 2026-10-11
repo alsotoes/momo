@@ -18,7 +18,12 @@ import (
 // S3 versioning surface (R10 Phase 1, #938): PUT/GET ?versioning, GET ?versions,
 // GET/HEAD ?versionId, and versioned DELETE marker/permanent semantics.
 
-const s3XMLNS = "http://s3.amazonaws.com/doc/2006-03-01/"
+// s3XMLNS is the S3 XML namespace identifier — an XML schema marker, never a
+// fetched URL; plain HTTP is the canonical S3 namespace spelling.
+const s3XMLNS = "http://s3.amazonaws.com/doc/2006-03-01/" // NOSONAR
+
+// s3ConnClose is the standard S3 response connection terminator.
+const s3ConnClose = "\r\nConnection: close\r\n\r\n"
 
 // VersioningConfiguration is the S3 PUT ?versioning body.
 type VersioningConfiguration struct {
@@ -135,7 +140,7 @@ func xmlResponseHeaders(contentLength int) string {
 	var b strings.Builder
 	b.WriteString("HTTP/1.1 200 OK\r\nContent-Type: application/xml\r\nContent-Length: ")
 	b.WriteString(strconv.Itoa(contentLength))
-	b.WriteString("\r\nConnection: close\r\n\r\n")
+	b.WriteString(s3ConnClose)
 	return b.String()
 }
 
@@ -148,7 +153,7 @@ func (m *S3Communicator) handleGetVersioning(bucket string) (int, int64, error) 
 	}
 	body := FormatVersioningConfigurationXML(status)
 	_ = configured
-	return 0, 0, m.writeRawResponse(xmlResponseHeaders(len(body)), body, err)
+	return 0, 0, m.writeRawResponse(xmlResponseHeaders(len(body)), body, nil)
 }
 
 // handlePutVersioning answers PUT /{bucket}?versioning with the body already
@@ -169,7 +174,7 @@ func (m *S3Communicator) handlePutVersioning(req *http.Request, bucket string) (
 		return 0, 0, fmt.Errorf("failed to set versioning status: %w", err)
 	}
 	m.writeAuditLog("PutVersioning", bucket, "success")
-	return 0, 0, m.writeRawResponse("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n", nil, nil)
+	return 0, 0, m.writeRawResponse("HTTP/1.1 200 OK\r\nContent-Length: 0"+s3ConnClose, nil, nil)
 }
 
 // handleGetVersions answers GET /{bucket}?versions with S3 pagination.
@@ -189,7 +194,7 @@ func (m *S3Communicator) handleGetVersions(bucket string, q url.Values) (int, in
 		return 0, 0, fmt.Errorf("failed to list versions: %w", err)
 	}
 	body := FormatListVersionsXML(bucket, prefix, keyMarker, versionIDMarker, maxKeys, page)
-	return 0, 0, m.writeRawResponse(xmlResponseHeaders(len(body)), body, err)
+	return 0, 0, m.writeRawResponse(xmlResponseHeaders(len(body)), body, nil)
 }
 
 // handleGetObjectVersion answers GET/HEAD /{bucket}/{key}?versionId=X by
@@ -245,7 +250,7 @@ func (m *S3Communicator) handleVersionedDelete(bucket, key, versionID string) (i
 			writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to create delete marker.", key)
 			return 0, 0, fmt.Errorf("failed to record delete marker: %w", err)
 		}
-		hdr := "HTTP/1.1 204 No Content\r\nx-amz-delete-marker: true\r\nx-amz-version-id: " + marker + "\r\nConnection: close\r\n\r\n"
+		hdr := "HTTP/1.1 204 No Content\r\nx-amz-delete-marker: true\r\nx-amz-version-id: " + marker + s3ConnClose
 		m.writeAuditLog("DeleteObject", bucket+"/"+key, "success")
 		return 0, 0, m.writeRawResponse(hdr, nil, nil)
 	}
@@ -273,7 +278,7 @@ func (m *S3Communicator) handleVersionedDelete(bucket, key, versionID string) (i
 	if deleted.IsDeleteMarker {
 		marker = "true"
 	}
-	hdr := "HTTP/1.1 204 No Content\r\nx-amz-delete-marker: " + marker + "\r\nx-amz-version-id: " + deleted.VersionID + "\r\nConnection: close\r\n\r\n"
+	hdr := "HTTP/1.1 204 No Content\r\nx-amz-delete-marker: " + marker + "\r\nx-amz-version-id: " + deleted.VersionID + s3ConnClose
 	m.writeAuditLog("DeleteObjectVersion", bucket+"/"+key, "success")
 	return 0, 0, m.writeRawResponse(hdr, nil, nil)
 }

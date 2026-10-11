@@ -75,7 +75,7 @@ func newVersionID() (string, error) {
 
 // SetBucketVersioning sets the versioning status ("Enabled"/"Suspended") for a
 // bucket. Once enabled, versioning can be suspended but never removed.
-func (s *CASStore) SetBucketVersioning(bucket string, status string) (err error) {
+func (s *CASStore) SetBucketVersioning(bucket, status string) (err error) {
 	defer common.RecoverErr("CASStore.SetBucketVersioning", &err)
 	if status != VersioningEnabled && status != VersioningSuspended {
 		return fmt.Errorf("invalid versioning status %q: %w", status, syscall.EINVAL)
@@ -268,89 +268,99 @@ func (s *CASStore) ListVersions(bucket, prefix, keyMarker, versionIDMarker strin
 	defer s.mu.RUnlock()
 
 	err = s.db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket(bucketObjectVersions)
-		startKey := []byte(bucket + "\x00")
-		if keyMarker != "" {
-			startKey = []byte(bucket + "\x00" + keyMarker)
+		entries, scanErr := scanVersionEntries(tx, bucket, prefix)
+		if scanErr != nil {
+			return scanErr
 		}
-		c := b.Cursor()
-		var entries []versionEntry
-		for k, v := c.Seek(startKey); k != nil; k, v = c.Next() {
-			full := string(k)
-			head := bucket + "\x00"
-			if len(full) <= len(head) || full[:len(head)] != head {
-				break // past this bucket's keys
-			}
-			rest := full[len(head):]
-			nul := strings.IndexByte(rest, 0)
-			if nul < 0 {
-				continue // malformed; skip
-			}
-			key := rest[:nul]
-
-			if keyMarker != "" && key < keyMarker {
-				continue // before the marker key
-			}
-			if prefix != "" && !strings.HasPrefix(key, prefix) {
-				continue
-			}
-			var r VersionRecord
-			if err := json.Unmarshal(v, &r); err != nil {
-				return fmt.Errorf("corrupt version record: %w", err)
-			}
-			entries = append(entries, versionEntry{key: key, rec: r})
-		}
-
-		sort.SliceStable(entries, func(i, j int) bool {
-			if entries[i].key != entries[j].key {
-				return entries[i].key < entries[j].key
-			}
-			if entries[i].rec.Timestamp != entries[j].rec.Timestamp {
-				return entries[i].rec.Timestamp > entries[j].rec.Timestamp
-			}
-			return entries[i].rec.VersionID > entries[j].rec.VersionID
-		})
-
-		// Resume: the version-id marker means "after this exact record in S3
-		// order", which is only knowable after sorting (version ids are random
-		// UUIDs and carry no order). If the marker record was pruned, fall back
-		// to the first entry strictly after the marker key.
-		if keyMarker != "" && versionIDMarker != "" {
-			resume := -1
-			for i, e := range entries {
-				if e.key == keyMarker && e.rec.VersionID == versionIDMarker {
-					resume = i + 1
-					break
-				}
-				if e.key > keyMarker {
-					resume = i
-					break
-				}
-			}
-			if resume >= 0 {
-				entries = entries[resume:]
-			} else if len(entries) > 0 && entries[len(entries)-1].key <= keyMarker {
-				entries = nil // nothing after the marker key
-			}
-		}
-
-		if maxKeys > 0 && len(entries) > maxKeys {
-			entries = entries[:maxKeys]
-			page.IsTruncated = true
-		}
-		page.Records = make([]VersionRecord, len(entries))
-		for i, e := range entries {
-			e.rec.Key = e.key
-			page.Records[i] = e.rec
-		}
-		if page.IsTruncated && len(entries) > 0 {
-			last := entries[len(entries)-1]
-			page.NextKeyMarker = last.key
-			page.NextVersionID = last.rec.VersionID
-		}
-		return nil
+		sortVersionEntries(entries)
+		entries = resumeAfterMarker(entries, keyMarker, versionIDMarker)
+		return paginate(entries, maxKeys, &page)
 	})
 	return page, err
+}
+
+// scanVersionEntries collects every version record of the bucket, carrying its
+// object key. It always scans from the bucket start: version keys sort by
+// random UUID, so a seek to the marker key would skip the marker key's own
+// older records. Caller must hold s.mu.
+func scanVersionEntries(tx *bolt.Tx, bucket, prefix string) ([]versionEntry, error) {
+	b := tx.Bucket(bucketObjectVersions)
+	head := bucket + "\x00"
+	c := b.Cursor()
+	var entries []versionEntry
+	for k, v := c.Seek([]byte(head)); k != nil; k, v = c.Next() {
+		full := string(k)
+		if len(full) <= len(head) || full[:len(head)] != head {
+			break // past this bucket's keys
+		}
+		rest := full[len(head):]
+		nul := strings.IndexByte(rest, 0)
+		if nul < 0 {
+			continue // malformed; skip
+		}
+		key := rest[:nul]
+		if prefix != "" && !strings.HasPrefix(key, prefix) {
+			continue
+		}
+		var r VersionRecord
+		if err := json.Unmarshal(v, &r); err != nil {
+			return nil, fmt.Errorf("corrupt version record: %w", err)
+		}
+		entries = append(entries, versionEntry{key: key, rec: r})
+	}
+	return entries, nil
+}
+
+// resumeAfterMarker drops every entry at or before the (keyMarker,
+// versionIDMarker) resume point in S3 order. Version ids are random UUIDs and
+// carry no order, so the marker position is only meaningful after sorting —
+// callers invoke this AFTER sortVersionEntries. When the marker record was
+// pruned, resume at the first entry strictly after the marker key.
+func resumeAfterMarker(entries []versionEntry, keyMarker, versionIDMarker string) []versionEntry {
+	if keyMarker == "" || versionIDMarker == "" {
+		return entries
+	}
+	for i, e := range entries {
+		if e.key == keyMarker && e.rec.VersionID == versionIDMarker {
+			return entries[i+1:]
+		}
+		if e.key > keyMarker {
+			return entries[i:]
+		}
+	}
+	return nil // nothing after the marker key
+}
+
+// sortVersionEntries orders entries key asc, last-modified desc within key.
+func sortVersionEntries(entries []versionEntry) {
+	sort.SliceStable(entries, func(i, j int) bool {
+		if entries[i].key != entries[j].key {
+			return entries[i].key < entries[j].key
+		}
+		if entries[i].rec.Timestamp != entries[j].rec.Timestamp {
+			return entries[i].rec.Timestamp > entries[j].rec.Timestamp
+		}
+		return entries[i].rec.VersionID > entries[j].rec.VersionID
+	})
+}
+
+// paginate trims to maxKeys and fills the page's truncation markers.
+func paginate(entries []versionEntry, maxKeys int, page *VersionPage) error {
+	if maxKeys > 0 && len(entries) > maxKeys {
+		entries = entries[:maxKeys]
+		page.IsTruncated = true
+	}
+	page.Records = make([]VersionRecord, len(entries))
+	for i, e := range entries {
+		e.rec.Key = e.key
+		page.Records[i] = e.rec
+	}
+	if page.IsTruncated && len(entries) > 0 {
+		last := entries[len(entries)-1]
+		page.NextKeyMarker = last.key
+		page.NextVersionID = last.rec.VersionID
+	}
+	return nil
 }
 
 // DeleteVersion permanently removes one version record. If the removed record
@@ -374,25 +384,31 @@ func (s *CASStore) DeleteVersion(bucket, key, versionID string) (deleted Version
 		if err := b.Delete(k); err != nil {
 			return err
 		}
-		if deleted.IsLatest {
-			next, ok, err := latestVersionTx(tx, bucket, key)
-			if err != nil {
-				return err
-			}
-			if ok && !next.IsLatest {
-				next.IsLatest = true
-				nv, err := json.Marshal(next)
-				if err != nil {
-					return err
-				}
-				if err := b.Put(versionKey(bucket, key, next.VersionID), nv); err != nil {
-					return err
-				}
-			}
-		}
-		return nil
+		return rePointLatest(tx, bucket, key, deleted.IsLatest)
 	})
 	return deleted, err
+}
+
+// rePointLatest re-points IsLatest to the next-newest record after the latest
+// one was removed. noOp when the removed record wasn't latest or the key is
+// now empty. Caller must hold s.mu inside a live update.
+func rePointLatest(tx *bolt.Tx, bucket, key string, wasLatest bool) error {
+	if !wasLatest {
+		return nil
+	}
+	next, ok, err := latestVersionTx(tx, bucket, key)
+	if err != nil || !ok {
+		return err
+	}
+	if next.IsLatest {
+		return nil
+	}
+	next.IsLatest = true
+	nv, err := json.Marshal(next)
+	if err != nil {
+		return err
+	}
+	return tx.Bucket(bucketObjectVersions).Put(versionKey(bucket, key, next.VersionID), nv)
 }
 
 // GetVersionContent opens the content stream for one specific version.
@@ -416,7 +432,7 @@ func (s *CASStore) GetVersionContent(bucket, key, versionID string) (rc io.ReadC
 // RepointNamespace points the flat namespace mapping for name at hash (empty
 // hash removes the mapping) — used by versioned delete/revive paths so plain
 // (non-versioned) GETs follow the latest data version.
-func (s *CASStore) RepointNamespace(name string, hash string) (err error) {
+func (s *CASStore) RepointNamespace(name, hash string) (err error) {
 	defer common.RecoverErr("CASStore.RepointNamespace", &err)
 	s.mu.Lock()
 	defer s.mu.Unlock()

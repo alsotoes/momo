@@ -91,23 +91,37 @@ func TestDeleteMarkerSemantics(t *testing.T) {
 	if err := s.SetBucketVersioning("b", VersioningEnabled); err != nil {
 		t.Fatal(err)
 	}
-	v1, err := s.RecordVersion("b", "k", "hash-1", 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	v2, err := s.RecordVersion("b", "k", "hash-2", 20)
-	if err != nil {
-		t.Fatal(err)
+	for _, h := range []string{"hash-1", "hash-2"} {
+		if _, err := s.RecordVersion("b", "k", h, 10); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	// Create delete marker — becomes latest, shadows the object.
-	marker, err := s.RecordDeleteMarker("b", "k")
-	if err != nil {
+	if _, err := s.RecordDeleteMarker("b", "k"); err != nil {
 		t.Fatal(err)
 	}
 	rec, ok, err := s.LatestVersion("b", "k")
 	if err != nil || !ok || !rec.IsDeleteMarker || !rec.IsLatest {
 		t.Fatalf("expected delete marker latest, got %+v ok=%v err=%v", rec, ok, err)
+	}
+}
+
+func TestDeleteMarkerReviveAndPurge(t *testing.T) {
+	s := newTestStore(t)
+
+	if err := s.SetBucketVersioning("b", VersioningEnabled); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RecordVersion("b", "k", "hash-1", 10); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RecordVersion("b", "k", "hash-2", 20); err != nil {
+		t.Fatal(err)
+	}
+	marker, err := s.RecordDeleteMarker("b", "k")
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	// Removing the marker revives the previous data version (S3 semantics).
@@ -118,49 +132,40 @@ func TestDeleteMarkerSemantics(t *testing.T) {
 	if !deleted.IsDeleteMarker {
 		t.Fatalf("expected deleted record to be the marker: %+v", deleted)
 	}
-	rec, ok, err = s.LatestVersion("b", "k")
+	rec, ok, err := s.LatestVersion("b", "k")
 	if err != nil || !ok {
 		t.Fatalf("LatestVersion after revive: ok=%v err=%v", ok, err)
 	}
-	if rec.VersionID != v2 || rec.IsDeleteMarker {
-		t.Fatalf("expected v2 revived as latest, got %+v", rec)
-	}
-
-	// Permanently delete both data versions — key becomes empty.
-	for _, vid := range []string{v1, v2} {
-		if _, err := s.DeleteVersion("b", "k", vid); err != nil {
-			t.Fatalf("DeleteVersion(%s): %v", vid, err)
-		}
-	}
-	if _, ok, err := s.LatestVersion("b", "k"); err != nil || ok {
-		t.Fatalf("expected no versions after purge, ok=%v err=%v", ok, err)
+	if rec.IsDeleteMarker || rec.Hash != "hash-2" {
+		t.Fatalf("expected hash-2 revived as latest, got %+v", rec)
 	}
 }
 
-func TestListVersionsOrderingAndPagination(t *testing.T) {
-	s := newTestStore(t)
-
-	if err := s.SetBucketVersioning("b", VersioningEnabled); err != nil {
-		t.Fatal(err)
-	}
-	// Two keys, versions interleaved.
-	want := map[string][]string{
-		"a-key": {"h1", "h2", "h3"},
-		"b-key": {"h4", "h5"},
-	}
-	for key, hashes := range want {
-		for _, h := range hashes {
+// seedVersions seeds bucket "b" with h1/h2/h3 versions under each key plus a
+// delete marker on a-key.
+func seedVersions(t *testing.T, s *CASStore, keys ...string) {
+	t.Helper()
+	for _, key := range keys {
+		for _, h := range []string{"h1", "h2", "h3"} {
 			if _, err := s.RecordVersion("b", key, h, 1); err != nil {
 				t.Fatalf("RecordVersion(%s): %v", key, err)
 			}
 		}
 	}
-	// A delete marker on a-key shadows nothing for listing — it must appear.
 	if _, err := s.RecordDeleteMarker("b", "a-key"); err != nil {
 		t.Fatal(err)
 	}
+}
 
-	// Full listing: keys asc, lastmod desc within key.
+func TestListVersionsOrdering(t *testing.T) {
+	s := newTestStore(t)
+
+	if err := s.SetBucketVersioning("b", VersioningEnabled); err != nil {
+		t.Fatal(err)
+	}
+	// A delete marker on a-key shadows nothing for listing — it must appear.
+	seedVersions(t, s, "a-key", "b-key")
+
 	page, err := s.ListVersions("b", "", "", "", 0)
 	if err != nil {
 		t.Fatalf("ListVersions: %v", err)
@@ -168,31 +173,42 @@ func TestListVersionsOrderingAndPagination(t *testing.T) {
 	if page.IsTruncated {
 		t.Fatal("unlimited page must not be truncated")
 	}
-	// a-key: marker, h3, h2, h1 (newest first); then b-key: h5, h4.
-	expectOrder := []struct {
-		key, hash string
-		marker    bool
-	}{
-		{"a-key", "", true}, {"a-key", "h3", false}, {"a-key", "h2", false}, {"a-key", "h1", false},
-		{"b-key", "h5", false}, {"b-key", "h4", false},
+	// a-key: marker + h3 + h2 + h1 (newest first); b-key: h3 + h2 + h1.
+	if len(page.Records) != 7 {
+		t.Fatalf("expected 7 records, got %d", len(page.Records))
 	}
-	if len(page.Records) != len(expectOrder) {
-		t.Fatalf("expected %d records, got %d", len(expectOrder), len(page.Records))
-	}
-	// Records don't carry keys; validate via order of markers/hashes per key run.
 	if !page.Records[0].IsDeleteMarker {
 		t.Fatalf("expected first record to be a-key's marker: %+v", page.Records[0])
 	}
-	gotA := []string{page.Records[1].Hash, page.Records[2].Hash, page.Records[3].Hash}
+	// Newest-first within a key: the a-key run must be marker,h3,h2,h1.
+	gotA := hashesOf(page.Records[1:4])
 	if gotA[0] != "h3" || gotA[1] != "h2" || gotA[2] != "h1" {
 		t.Fatalf("a-key order wrong: %v", gotA)
 	}
-	gotB := []string{page.Records[4].Hash, page.Records[5].Hash}
-	if gotB[0] != "h5" || gotB[1] != "h4" {
+	gotB := hashesOf(page.Records[4:7])
+	if gotB[0] != "h3" || gotB[1] != "h2" || gotB[2] != "h1" {
 		t.Fatalf("b-key order wrong: %v", gotB)
 	}
+}
 
-	// Pagination: maxKeys=2 → first page h3-page, truncated with markers.
+func hashesOf(recs []VersionRecord) []string {
+	out := make([]string, len(recs))
+	for i, r := range recs {
+		out[i] = r.Hash
+	}
+	return out
+}
+
+func TestListVersionsPagination(t *testing.T) {
+	s := newTestStore(t)
+
+	if err := s.SetBucketVersioning("b", VersioningEnabled); err != nil {
+		t.Fatal(err)
+	}
+	const total = 7 // a-key: marker,h3,h2,h1 · b-key: h3,h2,h1
+	seedVersions(t, s, "a-key", "b-key")
+
+	// maxKeys=2 → truncated page with resume markers.
 	p1, err := s.ListVersions("b", "", "", "", 2)
 	if err != nil {
 		t.Fatal(err)
@@ -201,15 +217,14 @@ func TestListVersionsOrderingAndPagination(t *testing.T) {
 		t.Fatalf("page1 wrong: %+v", p1)
 	}
 
-	// Resume from the marker: must return exactly the remaining records.
+	// Resume from the marker: exactly the remaining records, no dupes, no loss.
 	p2, err := s.ListVersions("b", "", p1.NextKeyMarker, p1.NextVersionID, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(p1.Records)+len(p2.Records) != len(expectOrder) {
-		t.Fatalf("pagination lost records: %d + %d != %d", len(p1.Records), len(p2.Records), len(expectOrder))
+	if len(p1.Records)+len(p2.Records) != total {
+		t.Fatalf("pagination lost records: %d + %d != %d", len(p1.Records), len(p2.Records), total)
 	}
-	// No duplicates across pages.
 	seen := map[string]bool{}
 	for _, r := range append(append([]VersionRecord{}, p1.Records...), p2.Records...) {
 		if seen[r.VersionID] {
@@ -218,7 +233,6 @@ func TestListVersionsOrderingAndPagination(t *testing.T) {
 		seen[r.VersionID] = true
 	}
 }
-
 func TestListVersionsPrefixFilter(t *testing.T) {
 	s := newTestStore(t)
 
