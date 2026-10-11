@@ -87,10 +87,20 @@ func NormalizeVirtualPath(p string) (string, error) {
 	if strings.Contains(p, "\\") {
 		return "", syscall.EINVAL
 	}
-	for _, seg := range strings.Split(p, "/") {
-		if seg == ".." {
+	// ⚡ Bolt: Eliminate heap allocation by replacing strings.Split with strings.IndexByte
+	rem := p
+	for {
+		i := strings.IndexByte(rem, '/')
+		if i == -1 {
+			if rem == ".." {
+				return "", syscall.EINVAL
+			}
+			break
+		}
+		if rem[:i] == ".." {
 			return "", syscall.EINVAL
 		}
+		rem = rem[i+1:]
 	}
 
 	// Resolve slashes and remove redundancies efficiently
@@ -99,14 +109,26 @@ func NormalizeVirtualPath(p string) (string, error) {
 	// Split and validate each segment to ensure no empty segments exist.
 	// Segment content is preserved verbatim: whitespace within a segment is
 	// meaningful (e.g. "my folder/file") and must not be trimmed.
-	segments := strings.Split(cleaned, "/")
+	// ⚡ Bolt: Eliminate heap allocation by replacing strings.Split with strings.IndexByte
 	var validSegments []string
-
-	for _, seg := range segments {
-		if seg == "" || seg == "." || seg == ".." || strings.TrimSpace(seg) == "" {
-			continue
+	remCleaned := cleaned
+	for {
+		i := strings.IndexByte(remCleaned, '/')
+		var seg string
+		if i == -1 {
+			seg = remCleaned
+		} else {
+			seg = remCleaned[:i]
 		}
-		validSegments = append(validSegments, seg)
+
+		if seg != "" && seg != "." && seg != ".." && strings.TrimSpace(seg) != "" {
+			validSegments = append(validSegments, seg)
+		}
+
+		if i == -1 {
+			break
+		}
+		remCleaned = remCleaned[i+1:]
 	}
 
 	if len(validSegments) == 0 {
