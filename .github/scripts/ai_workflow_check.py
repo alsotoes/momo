@@ -85,9 +85,23 @@ def check_plugins() -> List[str]:
     # opencode.json entries carry a version suffix ("pkg@1.2.3") while the
     # manifest declares the bare package name ("pkg"), so compare on the name.
     def plugin_name(spec: str) -> str:
+        """Strip a trailing @version/@latest, preserving scoped package names.
+
+        npm scoped packages start with @scope/name and must keep their leading
+        '@': '@dietrichgebert/ponytail@5.1.0' -> '@dietrichgebert/ponytail',
+        but 'openslimedit@latest' -> 'openslimedit'.
+        """
         if not isinstance(spec, str):
             return ""
-        return spec.split("@")[0] if spec.startswith("@") and spec.count("@") == 1 else spec.rsplit("@", 1)[0]
+        if "@" in spec:
+            head, _, tail = spec.rpartition("@")
+            if "/" in tail:
+                # No version suffix; the '@' belongs to a scoped name (or the
+                # whole spec is a bare '@scope/pkg').
+                return spec
+            if head:
+                return head
+        return spec
 
     # 1. All plugins in project config must be declared in manifest
     for p in project_plugin_names:

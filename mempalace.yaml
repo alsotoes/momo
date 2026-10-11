@@ -1,102 +1,75 @@
-# MemPalace configuration for the momo project.
-#
-# Schema expected by mempalace 3.x (miner.load_config):
-#   wing:             <string>            top-level wing name
-#   rooms:            [{name, description, keywords}]
-#   exclude_patterns: [<gitignore-style patterns>]
-#
-# Run: mempalace mine .
-#
-# Note: keys like `include`, `handlers`, `organization` and `mining` from the
-# previous revision are NOT read by the miner; the room/exclude intent is
-# expressed below in the schema the tool actually consumes.
-
 wing: momo
-
-# Room routing: a file is matched to a room by folder/filename tokens first,
-# then by keyword scoring over the file content. Keep folder names among the
-# keywords so directory-based routing works.
 rooms:
-  - name: specs
-    description: "OpenSpec changes, proposals, and specifications"
-    keywords: [specs, spec, openspec, proposal, change]
-  - name: architecture
-    description: "Architecture decisions, ADRs, design docs"
-    keywords: [adr, architecture, roadmap, design, decision]
-  - name: source
-    description: "Core Go source code"
-    keywords: [src, source, go, code]
-  - name: tests
-    description: "Test files and test infrastructure"
-    keywords: [tests, test, testing]
-  - name: tools
-    description: "Build tools and utilities"
-    keywords: [tools, tool, adr-sync]
-  - name: ci
-    description: "CI/CD pipelines and scripts"
-    keywords: [ci, workflow, workflows, github, actions]
-  - name: config
-    description: "Configuration files"
-    keywords: [conf, config, configuration, makefile]
-  - name: pentest
-    description: "Security testing and pentest artifacts"
-    keywords: [pentest, security, fuzzing]
-  - name: docs
-    description: "Documentation and blog posts"
-    keywords: [docs, doc, blog, documentation]
-  - name: steering
-    description: "Project steering rules and standards"
-    keywords: [steering, standards, agents]
-
-# Directories/files excluded from indexing (gitignore-style patterns).
-# `vendor/` must stay excluded: the repo commits it for `go work vendor`
-# parity, and it would otherwise dominate the index.
-exclude_patterns:
-  - "vendor/"
-  - "**/*.test"
-  - "**/*.out"
-  - "**/*.prof"
-  - "*.exe"
-  - "*.dll"
-  - "*.so"
-  - "*.dylib"
-  - "momo"
-  - "src/momo"
-  - "src/src"
-  - "body*.txt"
-  - "**/__pycache__/"
-  - ".github/scripts/__pycache__/"
-  - "pentest/server-logs/"
-  - "pentest/fuzzing-reports/"
-  - "pentest-results/"
-  - "repomix-output.*"
-  - "*.repomix.*"
-  - "node_modules/"
-  - "package-lock.json"
-  - "package.json"
-  - "mempalace.yaml"
-  - "entities.json"
-  - ".cortexkit/"
-  - "skills-lock.json"
-  - "**/skills-lock.json"
-  - ".kiro/"
-  - "**/.kiro/"
-  - "plan.md"
-  - "**/plan.md"
-  - "docs/html/"
-  - "received_files/"
-  - "test_data/"
-  - "*.swp"
-  - "venv/"
-  - "**/bin"
-  - "conf/smoke.conf"
-  - "test.sh"
-  - "*_filtered.txt"
-  - "*_bench*.txt"
-  - "empty.txt"
-  - ".gemini/"
-  - ".jules/"
-  - ".agents/"
-  - ".git/"
-  - ".gitignore"
-  - ".gitmodules"
+- name: conf
+  description: Files from conf/
+  keywords:
+  - conf
+  - conf
+- name: openspec
+  description: Files from openspec/
+  keywords:
+  - openspec
+  - openspec
+- name: src
+  description: Files from src/
+  keywords:
+  - src
+  - src
+- name: bin
+  description: Files from bin/
+  keywords:
+  - bin
+  - bin
+- name: documentation
+  description: Files from docs/
+  keywords:
+  - documentation
+  - docs
+- name: hooks
+  description: Files from hooks/
+  keywords:
+  - hooks
+  - hooks
+- name: pentest
+  description: Files from pentest/
+  keywords:
+  - pentest
+  - pentest
+- name: testing
+  description: Files from tests/
+  keywords:
+  - testing
+  - tests
+- name: scripts
+  description: Files from tools/
+  keywords:
+  - scripts
+  - tools
+- name: vendor
+  description: Files from vendor/
+  keywords:
+  - vendor
+  - vendor
+- name: planning
+  description: Files from specs/
+  keywords:
+  - planning
+  - specs
+- name: backend
+  description: Files from server/
+  keywords:
+  - backend
+  - server
+- name: frontend
+  description: Files from client/
+  keywords:
+  - frontend
+  - client
+- name: configuration
+  description: Files from configs/
+  keywords:
+  - configuration
+  - configs
+- name: general
+  description: Files that don't fit other rooms
+  keywords: []
