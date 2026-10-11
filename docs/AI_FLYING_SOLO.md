@@ -42,6 +42,7 @@ The authoritative surface for how agents, plugins and automation operate in this
 - **Rule 90**: Auto-Trace Issue Deduplication — the AI reviewer MUST NEVER create duplicate auto-trace issues for the same PR: search existing OPEN auto-trace issues first and reuse the canonical, use the CURRENT PR body from the API (not the stale event payload), and rely on workflow `concurrency` (`cancel-in-progress: true`) to serialize pushes. Prevents the #1057 duplicate-issue incident.
 - **Rule 91**: Tool Selection Strategy — targeted tools (glob/grep/read) by default; `mempalace search` before reading files; `repomix` only for whole-repo analysis.
 - **Rule 92**: Educational Blog Posts — every post must be a teachable narrative (Real Problem → Why Obvious Solutions Failed → Solution → Principle → Verification → Failure Modes → When NOT to Use), not a changelog.
+- **Rule 94**: Post-Merge Master Gate Verification — merging is not done; wait for the full master run set + Sonar master gate = OK on the merge SHA before reporting done. A red post-merge gate is a same-session hotfix duty. PR checks are never master evidence (Sonar leak-period asymmetry, #1184).
 - **Rule 93**: Duplicate Jules PR/Branch Consolidation — when Jules opens multiple PRs/branches for the same task, keep the merged canonical PR, close the duplicate with `--delete-branch`, close its auto-trace issue as superseded, and prune the remote. Complements Rule 80 (one PR rebuild) and Rule 90 (reviewer-created issues). Incident: #1112 (merged) vs #1114 (closed).
 
 ## Pre-Flight Checklist
@@ -282,6 +283,21 @@ Verify ALL conditions before merging:
    ```bash
    gh pr merge PR_N --merge --delete-branch
    ```
+
+### Step 14b: Post-Merge Master Gate Watch (Rule 94)
+Merging is NOT done. After the merge lands:
+1. **Wait for the full master run set** on the merge commit to finish:
+   ```bash
+   HEAD=$(git rev-parse origin/master)
+   gh run list --branch master --limit 30 --json name,conclusion,headSha \
+     --jq '.[] | select(.headSha|startswith("'"${HEAD:0:8}"'")) | "\(.conclusion // .status) \(.name)"'
+   ```
+2. **Confirm the SonarCloud master quality gate = OK**:
+   ```bash
+   curl -s "https://sonarcloud.io/api/qualitygates/project_status?projectKey=alsotoes_momo&branch=master" | jq -r .projectStatus.status
+   ```
+3. **Only then report the work as done.** PR checks are never evidence that master is green — Sonar's leak-period analysis re-dates moved/shifted code the PR diff cannot see (#1156/#1159, #1180).
+4. If any post-merge gate is red: **hotfix in the same session** (branch → fix → PR → merge → re-verify). Never leave a red master for the user to discover.
 
 ### Step 15: Post-Merge Cleanup
 1. **Rule 56**: Close the issue:
@@ -752,6 +768,10 @@ If any runs are `in_progress` or `queued`, wait. If any failed, fix `master` fir
 **Solution**: Immediately consolidate to one canonical issue (lowest number, OPEN), close dups with `gh issue close <dups> --comment "Duplicate of #<canonical> (canonical tracker for PR #<N>). Closed per Rule 20."`, update PR body with `Resolves #<canonical>`. If new auto-trace appears during takeover (stale reviewer read), close it immediately.
 
 **Automated-duplicate variant (Rule 90):** When the AI reviewer itself creates 50+ duplicate auto-trace issues for one PR (e.g., #997–#1054 for PR #996), the root cause is the reviewer script — no dedup search, stale event payload, and no workflow concurrency. Fix `ai_reviewer.py` (`find_existing_auto_trace` + `get_current_pr_body`) and add `concurrency: cancel-in-progress: true` to `gemini_reviewer.yml`; then bulk-close the duplicates with the canonical message. Do NOT just close duplicates and leave the script broken — the next synchronize will re-create them.
+
+### Reporting "Master Green" Before Master Actually Is (Rule 94)
+- **Pitfall**: Declaring a merge done based on PR checks and a stale master snapshot, then master's post-merge Sonar analysis flips the gate to ERROR hours later. Recurred across #1156/#1159, #1164, and #1180.
+- **Solution**: Step 14b — wait for the full master run set + Sonar master gate on the merge SHA before any "done" claim; treat a red post-merge gate as an immediate same-session hotfix.
 
 ### Duplicate Jules PRs for the Same Task (Rule 93)
 **Pitfall**: Jules opens more than one PR/branch for the same task across parallel runs (e.g., #1112 and #1114 both implementing the aws-chunked zero-alloc parse). You merge one, and the twin lingers open with its own auto-trace issue and a stale branch.

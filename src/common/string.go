@@ -78,42 +78,52 @@ func NormalizeVirtualPath(p string) (string, error) {
 		return "", nil
 	}
 
-	// Strictly reject path traversal segments (..), backslashes, and null bytes.
-	// Null bytes must be rejected: downstream C libraries, shells, or log
-	// aggregators would truncate the path at the first \x00 (injection vector).
-	if strings.ContainsRune(p, 0) {
-		return "", syscall.EINVAL
-	}
-	if strings.Contains(p, "\\") {
-		return "", syscall.EINVAL
-	}
-	for _, seg := range strings.Split(p, "/") {
-		if seg == ".." {
-			return "", syscall.EINVAL
-		}
+	if err := rejectPathHazards(p); err != nil {
+		return "", err
 	}
 
 	// Resolve slashes and remove redundancies efficiently
 	cleaned := path.Clean(p)
 
-	// Split and validate each segment to ensure no empty segments exist.
-	// Segment content is preserved verbatim: whitespace within a segment is
-	// meaningful (e.g. "my folder/file") and must not be trimmed.
-	segments := strings.Split(cleaned, "/")
-	var validSegments []string
-
-	for _, seg := range segments {
-		if seg == "" || seg == "." || seg == ".." || strings.TrimSpace(seg) == "" {
-			continue
-		}
-		validSegments = append(validSegments, seg)
-	}
-
+	validSegments := meaningfulSegments(cleaned)
 	if len(validSegments) == 0 {
 		return "", syscall.EINVAL
 	}
 
 	return strings.Join(validSegments, "/"), nil
+}
+
+// rejectPathHazards strictly rejects path traversal segments (..), backslashes,
+// and null bytes. Null bytes must be rejected: downstream C libraries, shells,
+// or log aggregators would truncate the path at the first \x00 (injection
+// vector).
+func rejectPathHazards(p string) error {
+	if strings.ContainsRune(p, 0) {
+		return syscall.EINVAL
+	}
+	if strings.Contains(p, "\\") {
+		return syscall.EINVAL
+	}
+	for _, seg := range strings.Split(p, "/") {
+		if seg == ".." {
+			return syscall.EINVAL
+		}
+	}
+	return nil
+}
+
+// meaningfulSegments splits a cleaned path and keeps only non-empty, non-dot
+// segments. Segment content is preserved verbatim: whitespace within a segment
+// is meaningful (e.g. "my folder/file") and must not be trimmed.
+func meaningfulSegments(cleaned string) []string {
+	var validSegments []string
+	for _, seg := range strings.Split(cleaned, "/") {
+		if seg == "" || seg == "." || seg == ".." || strings.TrimSpace(seg) == "" {
+			continue
+		}
+		validSegments = append(validSegments, seg)
+	}
+	return validSegments
 }
 
 // TrimNullBytesString finds the first null byte and returns a string up to that byte.

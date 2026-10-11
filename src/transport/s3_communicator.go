@@ -176,7 +176,7 @@ func NewS3Communicator(conn net.Conn) *S3Communicator {
 // consumer-side interface pattern (accept interfaces, return structs) so the
 // communicator never depends on the concrete store.
 type VersioningStore interface {
-	SetBucketVersioning(bucket string, status string) error
+	SetBucketVersioning(bucket, status string) error
 	BucketVersioning(bucket string) (status string, configured bool, err error)
 	IsVersioned(bucket string) (enabled bool, err error)
 	RecordVersion(bucket, key, hash string, size int64) (versionID string, err error)
@@ -1769,13 +1769,49 @@ func (m *S3Communicator) SendReplicationMode(mode int) (err error) {
 	return nil
 }
 
+// validatedWireName resolves and validates the wire name for SendMetadata:
+// virtual-path normalization, length cap, CRLF rejection, URL-decoding, and
+// per-component path-traversal checks (defense-in-depth, #1075/#1076).
+func validatedWireName(meta *common.FileMetadata) (string, error) {
+	wireName := common.TrimNullBytesFromString(meta.Name)
+	if meta.RemotePath != "" {
+		norm, err := common.NormalizeVirtualPath(meta.RemotePath)
+		if err != nil {
+			return "", fmt.Errorf("invalid path: %w", err)
+		}
+		wireName = norm + "/" + meta.Name
+	}
+	if len(wireName) > common.FileInfoLength {
+		return "", fmt.Errorf("joined remote path exceeds maximum length of %d: %w", common.FileInfoLength, syscall.ENAMETOOLONG)
+	}
+
+	// 🛡️ Sentinel: Reject carriage returns or line feeds in the path to prevent HTTP Request Smuggling (CRLF Injection).
+	if strings.ContainsAny(wireName, "\r\n") {
+		return "", fmt.Errorf("invalid characters in path: %w", syscall.EBADMSG)
+	}
+
+	// 🛡️ Sentinel: URL-decode wireName to catch URL-encoded path traversal (e.g., ..%2ffile)
+	decodedName, err := url.PathUnescape(wireName)
+	if err != nil {
+		return "", fmt.Errorf("invalid wireName encoding: %w", syscall.EBADMSG)
+	}
+
+	// 🛡️ Sentinel: Validate path traversal on decoded name to catch URL-encoded bypasses.
+	for _, part := range strings.Split(decodedName, "/") {
+		if common.HasPathTraversalChars(part) {
+			return "", fmt.Errorf("path traversal in wireName: %w", syscall.EBADMSG)
+		}
+	}
+	return wireName, nil
+}
+
 // SendMetadata echoes the received metadata back with a send-payload status
 // (S3 requests carry the payload directly, so no transfer handshake applies).
 func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (status int, err error) {
 	defer common.RecoverErr("S3 SendMetadata", &err)
 	// 🛡️ Zero-Crash: Set a short write deadline to prevent stalled socket hanging
-	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-	defer m.conn.SetWriteDeadline(time.Time{})
+	_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	defer func() { _ = m.conn.SetWriteDeadline(time.Time{}) }()
 
 	host := "127.0.0.1"
 	if m.remoteAddr != nil {
@@ -1783,34 +1819,9 @@ func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (status int, er
 	}
 
 	// Validate wire name length to prevent protocol buffer overflow
-	wireName := meta.Name
-	if meta.RemotePath != "" {
-		norm, err := common.NormalizeVirtualPath(meta.RemotePath)
-		if err != nil {
-			return 0, fmt.Errorf("invalid path: %w", err)
-		}
-		wireName = norm + "/" + meta.Name
-	}
-	if len(wireName) > common.FileInfoLength {
-		return 0, fmt.Errorf("joined remote path exceeds maximum length of %d: %w", common.FileInfoLength, syscall.ENAMETOOLONG)
-	}
-
-	// 🛡️ Sentinel: Reject carriage returns or line feeds in the path to prevent HTTP Request Smuggling (CRLF Injection).
-	if strings.ContainsAny(wireName, "\r\n") {
-		return 0, fmt.Errorf("invalid characters in path: %w", syscall.EBADMSG)
-	}
-
-	// 🛡️ Sentinel: URL-decode wireName to catch URL-encoded path traversal (e.g., ..%2ffile)
-	decodedName, err := url.PathUnescape(wireName)
+	wireName, err := validatedWireName(meta)
 	if err != nil {
-		return 0, fmt.Errorf("invalid wireName encoding: %w", syscall.EBADMSG)
-	}
-
-	// 🛡️ Sentinel: Validate path traversal on decoded name to catch URL-encoded bypasses.
-	for _, part := range strings.Split(decodedName, "/") {
-		if common.HasPathTraversalChars(part) {
-			return 0, fmt.Errorf("path traversal in wireName: %w", syscall.EBADMSG)
-		}
+		return 0, err
 	}
 
 	// 🛡️ Sentinel: Validate hash, auth token, and host for CRLF to prevent HTTP header injection.
@@ -1828,12 +1839,7 @@ func (m *S3Communicator) SendMetadata(meta *common.FileMetadata) (status int, er
 	var buf [16384]byte
 	b := buf[:0]
 	b = append(b, "PUT /"...)
-	if meta.RemotePath != "" {
-		norm, _ := common.NormalizeVirtualPath(meta.RemotePath)
-		b = append(b, norm...)
-		b = append(b, '/')
-	}
-	b = append(b, common.TrimNullBytesFromString(meta.Name)...)
+	b = append(b, wireName...)
 	b = append(b, " HTTP/1.1\r\nHost: "...)
 	b = append(b, host...)
 	b = append(b, "\r\nAuthorization: Bearer "...)

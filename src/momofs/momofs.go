@@ -158,15 +158,23 @@ func normalizePath(p string) (string, error) {
 	if cleaned == "." {
 		return "", fmt.Errorf("momofs: invalid root path: %w", syscall.EINVAL)
 	}
+	if err := validateSegments(cleaned); err != nil {
+		return "", err
+	}
+	return cleaned, nil
+}
+
+// validateSegments rejects any invalid path segment in a cleaned absolute path.
+func validateSegments(cleaned string) error {
 	for _, seg := range strings.Split(cleaned, "/") {
 		if seg == "" || seg == "." {
 			continue
 		}
 		if seg == ".." || seg == " " || strings.Contains(seg, "\\") {
-			return "", fmt.Errorf("momofs: invalid path segment %q: %w", seg, syscall.EINVAL)
+			return fmt.Errorf("momofs: invalid path segment %q: %w", seg, syscall.EINVAL)
 		}
 	}
-	return cleaned, nil
+	return nil
 }
 
 // parentBase splits an absolute path into its parent directory and basename.
