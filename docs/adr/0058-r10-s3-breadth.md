@@ -26,8 +26,8 @@ Momo's S3 gateway implements core data plane (Put/Get/Head/Delete/List/Copy/Mult
 None documented.
 
 ## Implementation Status
-- **Code**: Planned
-- **Tests**: Planned
+- **Code**: Partial
+- **Tests**: Partial
 - **Docs**: Planned
 - **Blog post**: 
 

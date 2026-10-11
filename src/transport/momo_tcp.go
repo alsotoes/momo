@@ -886,6 +886,12 @@ func (m *MomoTCPCommunicator) IsExternalClient() bool {
 	return false
 }
 
+// ConfiguredBucket returns "" — native TCP/QUIC transports have no bucket
+// concept (S3-only, R10 #938).
+func (m *MomoTCPCommunicator) ConfiguredBucket() string {
+	return ""
+}
+
 // IsPeer reports whether the connection was authenticated with the derived
 // peer token (Secondary role) rather than the client auth token.
 func (m *MomoTCPCommunicator) IsPeer() bool {

@@ -25,16 +25,18 @@ import (
 
 // Buckets used in Bbolt
 var (
-	bucketObjects    = []byte("objects")     // Maps ContentHash -> {ObjectMeta binary}
-	bucketNamespace  = []byte("namespace")   // Maps FileName -> ContentHash
-	bucketPaths      = []byte("paths")       // Maps FileName -> RemotePath
-	bucketTombstones = []byte("tombstones")  // Maps FileName -> deletion timestamp (unix nano)
-	bucketModTimes   = []byte("modtimes")    // Maps FileName -> modification timestamp (unix nano)
-	bucketS3Meta     = []byte("s3meta")      // Maps FileName -> JSON S3 object metadata (content-type, x-amz-meta-*)
-	bucketQuarantine = []byte("quarantine")  // Maps ContentHash -> mark-and-hold flag (R2, #930)
-	bucketTenantMeta = []byte("tenant_meta") // Maps TenantID -> JSON TenantConfig (R8, #936)
-	bucketAuditLog   = []byte("audit_log")   // Immutable append-only audit log entries (R8, #936)
-	bucketACL        = []byte("acl")         // Bucket/Object ACLs (R8, #936)
+	bucketObjects        = []byte("objects")         // Maps ContentHash -> {ObjectMeta binary}
+	bucketNamespace      = []byte("namespace")       // Maps FileName -> ContentHash
+	bucketPaths          = []byte("paths")           // Maps FileName -> RemotePath
+	bucketTombstones     = []byte("tombstones")      // Maps FileName -> deletion timestamp (unix nano)
+	bucketModTimes       = []byte("modtimes")        // Maps FileName -> modification timestamp (unix nano)
+	bucketS3Meta         = []byte("s3meta")          // Maps FileName -> JSON S3 object metadata (content-type, x-amz-meta-*)
+	bucketQuarantine     = []byte("quarantine")      // Maps ContentHash -> mark-and-hold flag (R2, #930)
+	bucketTenantMeta     = []byte("tenant_meta")     // Maps TenantID -> JSON TenantConfig (R8, #936)
+	bucketAuditLog       = []byte("audit_log")       // Immutable append-only audit log entries (R8, #936)
+	bucketACL            = []byte("acl")             // Bucket/Object ACLs (R8, #936)
+	bucketVersioning     = []byte("versioning")      // Maps bucket -> versioning status (R10, #938)
+	bucketObjectVersions = []byte("object_versions") // Maps bucket\x00key\x00versionID -> VersionRecord (R10, #938)
 )
 
 // ObjectMeta is the binary metadata stored in the objects bucket.
@@ -278,6 +280,8 @@ var metaBuckets = [][]byte{
 	bucketACL,
 	bucketAuditLog,
 	bucketTenantMeta,
+	bucketVersioning,
+	bucketObjectVersions,
 }
 
 // initBuckets creates every metadata bucket if it does not already exist.

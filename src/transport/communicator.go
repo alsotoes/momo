@@ -170,6 +170,11 @@ type Communicator interface {
 	// this to determine if client-side replication modes should be downgraded.
 	IsExternalClient() bool
 
+	// ConfiguredBucket returns the single S3 bucket name this gateway exposes
+	// ("" in legacy flat-namespace mode). Used by the ingest hook that records
+	// object versions (R10, #938).
+	ConfiguredBucket() string
+
 	// IsPeer returns true if the connection was authenticated using the derived
 	// peer token rather than the client auth token. The server uses this to
 	// distinguish peer-to-peer connections (Secondary role) from direct client

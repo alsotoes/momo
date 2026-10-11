@@ -112,6 +112,10 @@ type S3Communicator struct {
 	// Storage store for list, get, and delete operations
 	store storage.Store
 
+	// versioning is the R10 bucket-versioning capability of the store. Nil on
+	// stores without versioning support — every versioning route then 501s.
+	versioning VersioningStore
+
 	// configuredBucket is the single bucket name exposed by the S3 gateway for
 	// bucket-management operations (issue #767). Empty means legacy flat
 	// namespace mode where no bucket semantics are enforced.
@@ -167,8 +171,31 @@ func NewS3Communicator(conn net.Conn) *S3Communicator {
 }
 
 // SetStore attaches the storage backend used for S3 object operations.
+// VersioningStore is the capability interface the S3 gateway needs for R10
+// bucket versioning (implemented by *storage.CASStore). Declared here per the
+// consumer-side interface pattern (accept interfaces, return structs) so the
+// communicator never depends on the concrete store.
+type VersioningStore interface {
+	SetBucketVersioning(bucket string, status string) error
+	BucketVersioning(bucket string) (status string, configured bool, err error)
+	IsVersioned(bucket string) (enabled bool, err error)
+	RecordVersion(bucket, key, hash string, size int64) (versionID string, err error)
+	RecordDeleteMarker(bucket, key string) (versionID string, err error)
+	LatestVersion(bucket, key string) (rec storage.VersionRecord, ok bool, err error)
+	GetVersion(bucket, key, versionID string) (rec storage.VersionRecord, err error)
+	GetVersionContent(bucket, key, versionID string) (rc io.ReadCloser, rec storage.VersionRecord, err error)
+	ListVersions(bucket, prefix, keyMarker, versionIDMarker string, maxKeys int) (page storage.VersionPage, err error)
+	DeleteVersion(bucket, key, versionID string) (deleted storage.VersionRecord, err error)
+	RepointNamespace(name string, hash string) error
+}
+
 func (m *S3Communicator) SetStore(store storage.Store) {
 	m.store = store
+	// Wire the versioning capability when the store provides one (CASStore
+	// does; narrower test mocks may not).
+	if vs, ok := store.(VersioningStore); ok {
+		m.versioning = vs
+	}
 }
 
 // SetSigV4GatewayCredentials sets the dedicated SigV4 access/secret key pair
@@ -187,6 +214,12 @@ func (m *S3Communicator) SetSigV4GatewayCredentials(accessKey, secretKey string)
 // semantics (legacy flat namespace mode).
 func (m *S3Communicator) SetConfiguredBucket(bucket string) {
 	m.configuredBucket = bucket
+}
+
+// ConfiguredBucket exposes the single S3 bucket name to the server layer
+// (used by the ingest hook that records object versions, R10 #938).
+func (m *S3Communicator) ConfiguredBucket() string {
+	return m.configuredBucket
 }
 
 // validBucket reports whether the addressed bucket name is acceptable under the
@@ -819,6 +852,26 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			}
 		}
 
+		// R10 Phase 1 (#938): bucket versioning configuration + version listing.
+		if key == "" {
+			if _, hasVersioning := q["versioning"]; hasVersioning {
+				if m.versioning == nil {
+					m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+					writeS3Error(m.conn, http.StatusNotImplemented, "NotImplemented", "Versioning is not supported by this storage backend.", bucket)
+					return 0, 0, fmt.Errorf("versioning store unavailable: %w", syscall.ENOTSUP)
+				}
+				return m.handleGetVersioning(bucket)
+			}
+			if _, hasVersions := q["versions"]; hasVersions {
+				if m.versioning == nil {
+					m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+					writeS3Error(m.conn, http.StatusNotImplemented, "NotImplemented", "Versioning is not supported by this storage backend.", bucket)
+					return 0, 0, fmt.Errorf("versioning store unavailable: %w", syscall.ENOTSUP)
+				}
+				return m.handleGetVersions(bucket, q)
+			}
+		}
+
 		// ListObjectsV2 (is list if key is empty, or if list-type query is 2)
 		isList := (key == "") || (q.Get("list-type") == "2")
 
@@ -917,6 +970,15 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			writeS3Error(m.conn, http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", bucket)
 			return 0, 0, fmt.Errorf("unknown bucket %q: %w", bucket, syscall.ENOENT)
+		}
+		// R10 Phase 1 (#938): GET a specific object version.
+		if versionID := q.Get("versionId"); versionID != "" {
+			if m.versioning == nil {
+				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				writeS3Error(m.conn, http.StatusNotImplemented, "NotImplemented", "Versioning is not supported by this storage backend.", key)
+				return 0, 0, fmt.Errorf("versioning store unavailable: %w", syscall.ENOTSUP)
+			}
+			return m.handleGetObjectVersion(bucket, key, versionID, false)
 		}
 		// R5 phase 4: time the download only when histograms are armed.
 		var downloadStart time.Time
@@ -1153,6 +1215,15 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			writeS3Error(m.conn, http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", bucket)
 			return 0, 0, fmt.Errorf("unknown bucket %q: %w", bucket, syscall.ENOENT)
 		}
+		// R10 Phase 1 (#938): HEAD a specific object version.
+		if versionID := req.URL.Query().Get("versionId"); versionID != "" {
+			if m.versioning == nil {
+				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				writeS3Error(m.conn, http.StatusNotImplemented, "NotImplemented", "Versioning is not supported by this storage backend.", key)
+				return 0, 0, fmt.Errorf("versioning store unavailable: %w", syscall.ENOTSUP)
+			}
+			return m.handleGetObjectVersion(bucket, key, versionID, true)
+		}
 		rc, meta, err := m.store.Get(key)
 		if err != nil {
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
@@ -1243,6 +1314,19 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			writeS3Error(m.conn, http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", bucket)
 			return 0, 0, fmt.Errorf("unknown bucket %q: %w", bucket, syscall.ENOENT)
+		}
+
+		// R10 Phase 1 (#938): versioned delete semantics (marker or permanent).
+		if m.versioning != nil {
+			if versioned, verr := m.versioning.IsVersioned(bucket); verr == nil && versioned {
+				return m.handleVersionedDelete(bucket, key, req.URL.Query().Get("versionId"))
+			}
+		} else if req.URL.Query().Get("versionId") != "" {
+			// A store without versioning support cannot honor version-targeted
+			// deletes; falling through would delete the whole object.
+			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			writeS3Error(m.conn, http.StatusNotImplemented, "NotImplemented", "Versioning is not supported by this storage backend.", key)
+			return 0, 0, fmt.Errorf("versioning store unavailable: %w", syscall.ENOTSUP)
 		}
 
 		if m.leaseAcquirer != nil {
@@ -1371,6 +1455,16 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 				return 0, 0, fmt.Errorf("storage store not initialized")
 			}
 			return m.handleCopyObject(bucket, key, copySource)
+		}
+
+		// R10 Phase 1 (#938): PUT /{bucket}?versioning — set bucket versioning.
+		if _, hasVersioning := q["versioning"]; hasVersioning && key == "" {
+			if m.versioning == nil {
+				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				writeS3Error(m.conn, http.StatusNotImplemented, "NotImplemented", "Versioning is not supported by this storage backend.", bucket)
+				return 0, 0, fmt.Errorf("versioning store unavailable: %w", syscall.ENOTSUP)
+			}
+			return m.handlePutVersioning(req, bucket)
 		}
 
 		// CreateBucket: PUT to a bucket root (key empty) in bucket mode.
@@ -1977,8 +2071,6 @@ func (m *S3Communicator) IsPeer() bool {
 // CreateBucket). Only bucket-root addresses (key == "") are intercepted;
 // object-level variants (GetObjectTagging, ?versionId, etc.) are Tier P4.
 var unsupportedBucketConfigSubresources = map[string]string{
-	"versioning":          "bucket versioning",
-	"versions":            "bucket version listing",
 	"acl":                 "bucket access-control lists",
 	"policy":              "bucket policies",
 	"cors":                "CORS configuration",
@@ -2019,7 +2111,6 @@ func unsupportedBucketConfigSubresource(q url.Values) (string, bool) {
 var unsupportedObjectSubresources = map[string]string{
 	"tagging":    "object tagging",
 	"acl":        "object access-control lists",
-	"versionId":  "object versioning",
 	"retention":  "object retention",
 	"legal-hold": "object legal hold",
 	"select":     "SelectObjectContent",
@@ -3336,6 +3427,19 @@ func (m *S3Communicator) handleCompleteMultipartUpload(req *http.Request, bucket
 		return 0, 0, fmt.Errorf("store.Put of assembled multipart object: %w", err)
 	}
 
+	// R10 Phase 1 (#938): versioned buckets record a version per completed
+	// multipart upload; the response echoes the version id in-gateway.
+	var versionID string
+	if m.versioning != nil {
+		if versioned, verr := m.versioning.IsVersioned(bucket); verr == nil && versioned {
+			if vid, rerr := m.versioning.RecordVersion(bucket, key, finalHash, finalSize); rerr != nil {
+				log.Printf("AUDIT: failed to record multipart version for %s: %v", key, rerr)
+			} else {
+				versionID = vid
+			}
+		}
+	}
+
 	var buf bytes.Buffer
 	buf.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)
 	buf.WriteString(`<CompleteMultipartUploadResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">`)
@@ -3344,6 +3448,9 @@ func (m *S3Communicator) handleCompleteMultipartUpload(req *http.Request, bucket
 	buf.WriteString(`<ETag>"`)
 	xmlEscape(&buf, finalHash)
 	buf.WriteString(`"</ETag>`)
+	if versionID != "" {
+		writeXMLString(&buf, "VersionId", versionID)
+	}
 	buf.WriteString(`</CompleteMultipartUploadResult>`)
 
 	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
