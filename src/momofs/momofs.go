@@ -158,13 +158,28 @@ func normalizePath(p string) (string, error) {
 	if cleaned == "." {
 		return "", fmt.Errorf("momofs: invalid root path: %w", syscall.EINVAL)
 	}
-	for _, seg := range strings.Split(cleaned, "/") {
-		if seg == "" || seg == "." {
-			continue
+
+	// ⚡ Bolt: Eliminate heap allocation by replacing strings.Split with strings.IndexByte
+	rem := cleaned
+	for {
+		i := strings.IndexByte(rem, '/')
+		var seg string
+		if i == -1 {
+			seg = rem
+		} else {
+			seg = rem[:i]
 		}
-		if seg == ".." || seg == " " || strings.Contains(seg, "\\") {
-			return "", fmt.Errorf("momofs: invalid path segment %q: %w", seg, syscall.EINVAL)
+
+		if seg != "" && seg != "." {
+			if seg == ".." || seg == " " || strings.Contains(seg, "\\") {
+				return "", fmt.Errorf("momofs: invalid path segment %q: %w", seg, syscall.EINVAL)
+			}
 		}
+
+		if i == -1 {
+			break
+		}
+		rem = rem[i+1:]
 	}
 	return cleaned, nil
 }

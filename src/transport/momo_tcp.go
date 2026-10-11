@@ -736,10 +736,20 @@ func (m *MomoTCPCommunicator) SendMetadata(meta *common.FileMetadata) (status in
 	}
 
 	// 🛡️ Sentinel: Validate path traversal on decoded name to catch URL-encoded bypasses.
-	for _, part := range strings.Split(decodedName, "/") {
-		if common.HasPathTraversalChars(part) {
+	// ⚡ Bolt: Eliminate heap allocation by replacing strings.Split with strings.IndexByte
+	remName := decodedName
+	for {
+		i := strings.IndexByte(remName, '/')
+		if i == -1 {
+			if common.HasPathTraversalChars(remName) {
+				return 0, fmt.Errorf("path traversal in wireName: %w", syscall.EBADMSG)
+			}
+			break
+		}
+		if common.HasPathTraversalChars(remName[:i]) {
 			return 0, fmt.Errorf("path traversal in wireName: %w", syscall.EBADMSG)
 		}
+		remName = remName[i+1:]
 	}
 	copy(metadataBuffer[hashLength:hashLength+common.FileInfoLength], common.PadString(wireName, common.FileInfoLength))
 

@@ -235,3 +235,7 @@
 ## 2024-10-10 - Zero-Allocation S3 Range and Copy Path Parsing
 **Learning:** Using `strings.SplitN` to extract start/end offsets in HTTP `Range` headers or extract source bucket/key in S3 Copy requests allocates a slice header and backing array per request.
 **Action:** Replace `strings.SplitN` in S3 path extraction and range header parsing with zero-allocation slicing logic using `strings.IndexByte`. Avoid allocating intermediate string slices on the hot path.
+
+## 2026-10-12 - Zero-Allocation Path Validation
+**Learning:** Using `strings.Split` for path validation and normalization (e.g., checking for path traversal characters) causes redundant heap allocations and GC pressure on every request parsing a path.
+**Action:** Replace `strings.Split` in path validation loops with zero-allocation slicing logic using `strings.IndexByte` and inline slice boundaries to avoid allocating intermediate string slices on the hot path.
