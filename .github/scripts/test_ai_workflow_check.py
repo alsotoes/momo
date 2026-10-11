@@ -152,5 +152,31 @@ class TestAiWorkflowCheck(unittest.TestCase):
         self.assertTrue(any("secret" in e.lower() for e in errors), errors)
 
 
+    def test_scoped_package_version_suffix_matches_bare_declaration(self):
+        """A config entry 'pkg@x.y.z' must match a manifest declaration of the
+        bare scoped package '@scope/pkg' (and vice versa) — no false 'not
+        declared' errors for npm-scoped names."""
+        checker.MANIFEST_PATH.write_text("""version: 1
+plugins:
+  - package: "@scope/pkg"
+    pinned: "1.2.3"
+    scope: project
+    default_mode: "lite"
+    allowed: [x]
+    forbidden: [ultra-mode]
+  - package: "@scope/other@2.0.0"
+    pinned: "2.0.0"
+    scope: project
+""")
+        checker.OPENCODE_PROJECT.write_text(
+            json.dumps({"plugins": ["@scope/pkg@1.2.3", "@scope/other"]})
+        )
+        errors, _ = checker.check_plugins()
+        undeclared = [e for e in errors if "not declared" in e]
+        self.assertEqual(undeclared, [])
+
+if __name__ == "__main__":
+    unittest.main()
+
 if __name__ == "__main__":
     unittest.main()
