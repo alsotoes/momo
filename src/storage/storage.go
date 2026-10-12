@@ -1477,11 +1477,13 @@ func parseACLResource(resource string) (bucket, object string, err error) {
 	case strings.HasPrefix(resource, bucketResourcePrefix):
 		return strings.TrimPrefix(resource, bucketResourcePrefix), "", nil
 	case strings.HasPrefix(resource, objectResourcePrefix):
-		parts := strings.SplitN(strings.TrimPrefix(resource, objectResourcePrefix), "/", 2)
-		if len(parts) != 2 {
+		// ⚡ Bolt: Eliminate heap allocation by replacing strings.SplitN with strings.IndexByte
+		rest := resource[len(objectResourcePrefix):]
+		idx := strings.IndexByte(rest, '/')
+		if idx == -1 {
 			return "", "", fmt.Errorf("invalid object resource format: %w", syscall.EINVAL)
 		}
-		return parts[0], parts[1], nil
+		return rest[:idx], rest[idx+1:], nil
 	default:
 		return "", "", fmt.Errorf("invalid resource format: %w", syscall.EINVAL)
 	}

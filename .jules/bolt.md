@@ -239,3 +239,7 @@
 ## 2026-10-12 - Zero-Allocation Path Validation
 **Learning:** Using `strings.Split` for path validation and normalization (e.g., checking for path traversal characters) causes redundant heap allocations and GC pressure on every request parsing a path.
 **Action:** Replace `strings.Split` in path validation loops with zero-allocation slicing logic using `strings.IndexByte` and inline slice boundaries to avoid allocating intermediate string slices on the hot path.
+
+## 2026-10-12 - Zero-Allocation ACL Path Parsing
+**Learning:** Using `strings.SplitN` to extract the bucket and key from authorization paths (e.g., `object/<bucket>/<key>`) allocates a slice header and backing array per request. Since `parseACLResource` is called on every authenticated object access, this creates unnecessary GC pressure on a hot path.
+**Action:** Replace `strings.SplitN` in ACL resource parsing with zero-allocation slicing logic using `strings.IndexByte`. Avoid allocating intermediate string slices on authorization paths.
