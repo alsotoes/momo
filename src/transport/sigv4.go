@@ -214,7 +214,7 @@ func buildCanonicalHeaders(req *http.Request, signedHeadersStr string) (result s
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Recovered from panic in buildCanonicalHeaders: %v", r)
-			err = fmt.Errorf("panic in buildCanonicalHeaders: %v: %w", r, syscall.EIO)
+			err = syscall.EIO
 		}
 	}()
 
@@ -283,6 +283,9 @@ func buildCanonicalHeaders(req *http.Request, signedHeadersStr string) (result s
 		}
 
 		if start <= end && end <= len(val) {
+			if end-start > 4096 {
+				return "", fmt.Errorf("canonical header value exceeds 4KB limit: %w", syscall.EBADMSG)
+			}
 			sb.WriteString(val[start:end])
 		}
 		sb.WriteByte('\n')
