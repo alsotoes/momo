@@ -243,3 +243,7 @@
 ## 2026-10-12 - Zero-Allocation ACL Path Parsing
 **Learning:** Using `strings.SplitN` to extract the bucket and key from authorization paths (e.g., `object/<bucket>/<key>`) allocates a slice header and backing array per request. Since `parseACLResource` is called on every authenticated object access, this creates unnecessary GC pressure on a hot path.
 **Action:** Replace `strings.SplitN` in ACL resource parsing with zero-allocation slicing logic using `strings.IndexByte`. Avoid allocating intermediate string slices on authorization paths.
+
+## 2026-10-13 - Zero-Allocation SigV4 Canonical Header Parsing
+**Learning:** Using `strings.Split` in `buildCanonicalHeaders` for SigV4 authentication allocates a slice header and backing array on every request. Furthermore, `req.Header.Get()` allocates via `net/textproto.CanonicalMIMEHeaderKey`, and `strings.TrimSpace` allocates when trimming strings, causing significant GC pressure on the hot path for S3 Gateway requests.
+**Action:** Replace `strings.Split` with a manual `strings.IndexByte` scan and a stack-allocated buffer (e.g., `var stackHeaders [16]string`). Bypass `req.Header.Get` by iterating directly over the map with `strings.EqualFold`. Replace `strings.TrimSpace` with manual slice indexing to drop allocations from ~7 down to 1 per request, vastly improving throughput.
