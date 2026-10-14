@@ -206,7 +206,37 @@ func buildCanonicalQueryString(values url.Values) (string, error) {
 }
 
 func buildCanonicalHeaders(req *http.Request, signedHeadersStr string) string {
-	headerNames := strings.Split(signedHeadersStr, ";")
+	// ⚡ Bolt: Use a stack-allocated buffer to eliminate heap allocations for header splitting
+	var stackBuf [16]string
+	var headerNames []string
+
+	if count := strings.Count(signedHeadersStr, ";") + 1; count <= len(stackBuf) {
+		headerNames = stackBuf[:count]
+		start, i := 0, 0
+		for {
+			idx := strings.IndexByte(signedHeadersStr[start:], ';')
+			if idx == -1 {
+				headerNames[i] = signedHeadersStr[start:]
+				break
+			}
+			headerNames[i] = signedHeadersStr[start : start+idx]
+			start += idx + 1
+			i++
+		}
+	} else {
+		headerNames = make([]string, 0, count)
+		start := 0
+		for {
+			idx := strings.IndexByte(signedHeadersStr[start:], ';')
+			if idx == -1 {
+				headerNames = append(headerNames, signedHeadersStr[start:])
+				break
+			}
+			headerNames = append(headerNames, signedHeadersStr[start:start+idx])
+			start += idx + 1
+		}
+	}
+
 	sort.Strings(headerNames)
 
 	var sb strings.Builder
@@ -217,7 +247,18 @@ func buildCanonicalHeaders(req *http.Request, signedHeadersStr string) string {
 		if h == "host" {
 			val = req.Host
 		}
-		val = strings.TrimSpace(val)
+
+		// ⚡ Bolt: Eliminate heap allocation from strings.TrimSpace by manually indexing
+		startTrim := 0
+		for startTrim < len(val) && (val[startTrim] == ' ' || val[startTrim] == '\t' || val[startTrim] == '\n' || val[startTrim] == '\r') {
+			startTrim++
+		}
+		endTrim := len(val)
+		for endTrim > startTrim && (val[endTrim-1] == ' ' || val[endTrim-1] == '\t' || val[endTrim-1] == '\n' || val[endTrim-1] == '\r') {
+			endTrim--
+		}
+		val = val[startTrim:endTrim]
+
 		sb.WriteString(val)
 		sb.WriteByte('\n')
 	}
