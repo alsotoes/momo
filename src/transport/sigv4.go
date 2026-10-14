@@ -135,7 +135,7 @@ func buildCanonicalRequest(req *http.Request, signedHeaders, payloadHash string)
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("CRITICAL: Recovered from panic in buildCanonicalRequest: %v", r)
-			err = fmt.Errorf("panic in buildCanonicalRequest: %v: %w", r, syscall.EIO)
+			err = syscall.EIO
 		}
 	}()
 
@@ -210,31 +210,23 @@ func buildCanonicalHeaders(req *http.Request, signedHeadersStr string) string {
 	var stackBuf [16]string
 	var headerNames []string
 
-	if count := strings.Count(signedHeadersStr, ";") + 1; count <= len(stackBuf) {
+	count := strings.Count(signedHeadersStr, ";") + 1
+	if count <= len(stackBuf) {
 		headerNames = stackBuf[:count]
-		start, i := 0, 0
-		for {
-			idx := strings.IndexByte(signedHeadersStr[start:], ';')
-			if idx == -1 {
-				headerNames[i] = signedHeadersStr[start:]
-				break
-			}
-			headerNames[i] = signedHeadersStr[start : start+idx]
-			start += idx + 1
-			i++
-		}
 	} else {
-		headerNames = make([]string, 0, count)
-		start := 0
-		for {
-			idx := strings.IndexByte(signedHeadersStr[start:], ';')
-			if idx == -1 {
-				headerNames = append(headerNames, signedHeadersStr[start:])
-				break
-			}
-			headerNames = append(headerNames, signedHeadersStr[start:start+idx])
-			start += idx + 1
+		headerNames = make([]string, count)
+	}
+
+	start, i := 0, 0
+	for {
+		idx := strings.IndexByte(signedHeadersStr[start:], ';')
+		if idx == -1 {
+			headerNames[i] = signedHeadersStr[start:]
+			break
 		}
+		headerNames[i] = signedHeadersStr[start : start+idx]
+		start += idx + 1
+		i++
 	}
 
 	sort.Strings(headerNames)
