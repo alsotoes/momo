@@ -53,28 +53,11 @@ func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
 
 		if strings.HasPrefix(part, "Credential=") {
 			cred := part[11:]
-			c1 := strings.IndexByte(cred, '/')
-			if c1 == -1 {
+			var ok bool
+			c.AccessKey, c.DateStamp, c.Region, ok = parseCredentialScope(cred)
+			if !ok {
 				return sigV4Components{}, false
 			}
-			c2 := strings.IndexByte(cred[c1+1:], '/')
-			if c2 == -1 {
-				return sigV4Components{}, false
-			}
-			c2 += c1 + 1
-			c3 := strings.IndexByte(cred[c2+1:], '/')
-			if c3 == -1 {
-				return sigV4Components{}, false
-			}
-			c3 += c2 + 1
-			c4 := strings.IndexByte(cred[c3+1:], '/')
-			if c4 == -1 {
-				return sigV4Components{}, false
-			}
-
-			c.AccessKey = cred[:c1]
-			c.DateStamp = cred[c1+1 : c2]
-			c.Region = cred[c2+1 : c3]
 			partsFound++
 		} else if strings.HasPrefix(part, "SignedHeaders=") {
 			c.SignedHeaders = part[14:]
@@ -299,6 +282,27 @@ const s3UnsignedPayload = "UNSIGNED-PAYLOAD"
 
 var sigV4MaxSkew = 15 * time.Minute // max allowed clock skew for X-Amz-Date (replay attack prevention)
 
+func parseCredentialScope(cred string) (accessKey, dateStamp, region string, ok bool) {
+	c1 := strings.IndexByte(cred, '/')
+	if c1 == -1 {
+		return "", "", "", false
+	}
+	c2 := strings.IndexByte(cred[c1+1:], '/')
+	if c2 == -1 {
+		return "", "", "", false
+	}
+	c2 += c1 + 1
+	c3 := strings.IndexByte(cred[c2+1:], '/')
+	if c3 == -1 {
+		return "", "", "", false
+	}
+	c3 += c2 + 1
+	if strings.IndexByte(cred[c3+1:], '/') == -1 {
+		return "", "", "", false
+	}
+	return cred[:c1], cred[c1+1 : c2], cred[c2+1 : c3], true
+}
+
 // isPresignedSigV4 reports whether the request authenticates via query-string
 // SigV4 parameters (a presigned URL) rather than the Authorization header.
 func isPresignedSigV4(req *http.Request) bool {
@@ -317,29 +321,15 @@ func parseSigV4QueryAuth(req *http.Request) (sigV4Components, bool) {
 	}
 	cred := q.Get("X-Amz-Credential")
 
-	c1 := strings.IndexByte(cred, '/')
-	if c1 == -1 {
-		return sigV4Components{}, false
-	}
-	c2 := strings.IndexByte(cred[c1+1:], '/')
-	if c2 == -1 {
-		return sigV4Components{}, false
-	}
-	c2 += c1 + 1
-	c3 := strings.IndexByte(cred[c2+1:], '/')
-	if c3 == -1 {
-		return sigV4Components{}, false
-	}
-	c3 += c2 + 1
-	c4 := strings.IndexByte(cred[c3+1:], '/')
-	if c4 == -1 {
+	accessKey, dateStamp, region, ok := parseCredentialScope(cred)
+	if !ok {
 		return sigV4Components{}, false
 	}
 
 	c := sigV4Components{
-		AccessKey:     cred[:c1],
-		DateStamp:     cred[c1+1 : c2],
-		Region:        cred[c2+1 : c3],
+		AccessKey:     accessKey,
+		DateStamp:     dateStamp,
+		Region:        region,
 		SignedHeaders: q.Get("X-Amz-SignedHeaders"),
 		Signature:     q.Get("X-Amz-Signature"),
 		AmzDate:       q.Get("X-Amz-Date"),
