@@ -205,18 +205,47 @@ func buildCanonicalQueryString(values url.Values) (string, error) {
 	return sb.String(), nil
 }
 
+// ⚡ Bolt: Eliminate heap allocations in buildCanonicalHeaders by replacing strings.Split
+// and http.Header.Get() with zero-allocation parsing loops and map iteration.
 func buildCanonicalHeaders(req *http.Request, signedHeadersStr string) string {
-	headerNames := strings.Split(signedHeadersStr, ";")
+	if signedHeadersStr == "" {
+		return ""
+	}
+
+	var stackBuf [16]string
+	headerNames := stackBuf[:0]
+
+	rest := signedHeadersStr
+	for len(rest) > 0 {
+		idx := strings.IndexByte(rest, ';')
+		if idx == -1 {
+			headerNames = append(headerNames, rest)
+			break
+		}
+		headerNames = append(headerNames, rest[:idx])
+		rest = rest[idx+1:]
+	}
 	sort.Strings(headerNames)
 
 	var sb strings.Builder
+	sb.Grow(len(signedHeadersStr) * 4)
+
 	for _, h := range headerNames {
 		sb.WriteString(h)
 		sb.WriteByte(':')
-		val := req.Header.Get(h)
+
+		var val string
 		if h == "host" {
 			val = req.Host
+		} else {
+			for k, v := range req.Header {
+				if strings.EqualFold(k, h) && len(v) > 0 {
+					val = v[0]
+					break
+				}
+			}
 		}
+
 		val = strings.TrimSpace(val)
 		sb.WriteString(val)
 		sb.WriteByte('\n')
