@@ -243,3 +243,6 @@
 ## 2026-10-12 - Zero-Allocation ACL Path Parsing
 **Learning:** Using `strings.SplitN` to extract the bucket and key from authorization paths (e.g., `object/<bucket>/<key>`) allocates a slice header and backing array per request. Since `parseACLResource` is called on every authenticated object access, this creates unnecessary GC pressure on a hot path.
 **Action:** Replace `strings.SplitN` in ACL resource parsing with zero-allocation slicing logic using `strings.IndexByte`. Avoid allocating intermediate string slices on authorization paths.
+## 2026-10-14 - Zero-Allocation SigV4 Header Splitting
+**Learning:** `strings.Split` in `buildCanonicalHeaders` causes heap allocation. `strings.TrimSpace` inside the loop causes further heap allocations when processing canonical header signatures.
+**Action:** Replace `strings.Split` with a stack-allocated buffer (e.g. `var stackBuf [16]string`) and a `strings.IndexByte` loop to zero-allocate the slice, falling back to `make` only if the dynamic size exceeds the stack buffer. And use inline index manipulation to trim spaces instead of `strings.TrimSpace`.
