@@ -642,18 +642,25 @@ func StartMetricsServer(ctx context.Context, host string, port int, collector *M
 		return
 	}
 
-	srv := &http.Server{Handler: securityHeadersMiddleware(mux)}
+	srv := &http.Server{
+		Handler:      securityHeadersMiddleware(mux),
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
 
-	go func() {
+	go func() (err error) {
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("CRITICAL: Panic recovered in metrics server: %v", r)
+				log.Printf("metrics server panicked: %v", r)
+				err = syscall.EIO
 			}
 		}()
 		log.Printf("Prometheus metrics server listening on :%d/metrics", port)
 		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			log.Printf("Metrics server error: %v", err)
 		}
+		return nil
 	}()
 
 	go func() {
