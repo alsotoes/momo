@@ -1,0 +1,5 @@
+- [x] Implement zero-allocation header parsing.
+- [x] Add bounds checks (Rule 4).
+- [x] Add 4KB limit check (Rule 35).
+- [x] Add observable panic recovery (Rule 37).
+- [x] Verify with tests and benchmarks.

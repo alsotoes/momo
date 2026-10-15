@@ -154,7 +154,10 @@ func buildCanonicalRequest(req *http.Request, signedHeaders, payloadHash string)
 		return "", qsErr
 	}
 
-	canonicalHeaders := buildCanonicalHeaders(req, signedHeaders)
+	canonicalHeaders, chErr := buildCanonicalHeaders(req, signedHeaders)
+	if chErr != nil {
+		return "", chErr
+	}
 
 	return req.Method + "\n" +
 		canonicalURIEscaped + "\n" +
@@ -205,23 +208,89 @@ func buildCanonicalQueryString(values url.Values) (string, error) {
 	return sb.String(), nil
 }
 
-func buildCanonicalHeaders(req *http.Request, signedHeadersStr string) string {
-	headerNames := strings.Split(signedHeadersStr, ";")
+// ⚡ Bolt: Eliminate heap allocations in buildCanonicalHeaders by replacing strings.Split
+// with a zero-allocation manual parsing loop using strings.IndexByte.
+func buildCanonicalHeaders(req *http.Request, signedHeadersStr string) (result string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in buildCanonicalHeaders: %v", r)
+			err = syscall.EIO
+		}
+	}()
+
+	n := 1
+	for i := 0; i < len(signedHeadersStr); i++ {
+		if signedHeadersStr[i] == ';' {
+			n++
+		}
+	}
+
+	if n > 1024 {
+		return "", fmt.Errorf("too many headers in signedHeadersStr: %w", syscall.EBADMSG)
+	}
+
+	var stackHeaders [16]string
+	var headerNames []string
+	if n <= 16 {
+		headerNames = stackHeaders[:0]
+	} else {
+		headerNames = make([]string, 0, n)
+	}
+
+	s := signedHeadersStr
+	for {
+		idx := strings.IndexByte(s, ';')
+		if idx == -1 {
+			if s != "" {
+				headerNames = append(headerNames, s)
+			}
+			break
+		}
+		headerNames = append(headerNames, s[:idx])
+		s = s[idx+1:]
+	}
+
 	sort.Strings(headerNames)
 
 	var sb strings.Builder
+	sb.Grow(len(signedHeadersStr) + len(headerNames)*64 + len(headerNames)*2)
+
 	for _, h := range headerNames {
 		sb.WriteString(h)
 		sb.WriteByte(':')
-		val := req.Header.Get(h)
+
+		val := ""
 		if h == "host" {
 			val = req.Host
+		} else {
+			for k, v := range req.Header {
+				if len(v) > 0 {
+					if len(k) == len(h) && strings.EqualFold(k, h) {
+						val = v[0]
+						break
+					}
+				}
+			}
 		}
-		val = strings.TrimSpace(val)
-		sb.WriteString(val)
+
+		start := 0
+		for start < len(val) && (val[start] == ' ' || val[start] == '\t' || val[start] == '\n' || val[start] == '\r') {
+			start++
+		}
+		end := len(val)
+		for end > start && (val[end-1] == ' ' || val[end-1] == '\t' || val[end-1] == '\n' || val[end-1] == '\r') {
+			end--
+		}
+
+		if start <= end && end <= len(val) {
+			if end-start > 4096 {
+				return "", fmt.Errorf("canonical header value exceeds 4KB limit: %w", syscall.EBADMSG)
+			}
+			sb.WriteString(val[start:end])
+		}
 		sb.WriteByte('\n')
 	}
-	return sb.String()
+	return sb.String(), nil
 }
 
 func deriveSigningKey(secretKey, dateStamp, region string) []byte {
