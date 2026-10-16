@@ -196,3 +196,8 @@
 **Vulnerability:** The internal Prometheus metrics HTTP server (`/metrics`, `/health`, `/reload-secrets`) in `src/server/metrics_exporter.go` initialized `http.Server` without bounded timeouts (ReadTimeout, WriteTimeout, IdleTimeout).
 **Learning:** Default `http.Server` instances in Go do not enforce connection timeouts, leaving them vulnerable to resource exhaustion (DoS) via Slowloris-style attacks, where clients hold connections open indefinitely. Even for internal APIs like metrics exporters, defensive bounds must be enforced.
 **Prevention:** Always instantiate an explicit `http.Server{}` struct configured with bounded `ReadTimeout`, `WriteTimeout`, and `IdleTimeout` values instead of relying on default unbounded timeouts.
+
+## 2026-10-18 - Missing Panic Recovery Resource Cleanup in HTTP Servers
+**Vulnerability:** The internal Prometheus metrics HTTP server (`/metrics`, `health`, `/reload-secrets`) in `src/server/metrics_exporter.go` had a `defer recover()` block that failed to close the `net.Listener` on panic.
+**Learning:** According to Rule 43, panics caught inside a connection or server handler must explicitly release the underlying socket/channel (e.g., `ln.Close()`) inside the `defer recover()` block. If the panic occurs before normal teardown, the listener becomes a zombie socket, exhausting file descriptors.
+**Prevention:** Ensure that when wrapping an HTTP server in a goroutine with panic recovery, the underlying listener or connections are explicitly closed within the `recover()` handler to prevent resource leaks during unexpected crashes.
