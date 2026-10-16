@@ -154,7 +154,10 @@ func buildCanonicalRequest(req *http.Request, signedHeaders, payloadHash string)
 		return "", qsErr
 	}
 
-	canonicalHeaders := buildCanonicalHeaders(req, signedHeaders)
+	canonicalHeaders, chErr := buildCanonicalHeaders(req, signedHeaders)
+	if chErr != nil {
+		return "", chErr
+	}
 
 	return req.Method + "\n" +
 		canonicalURIEscaped + "\n" +
@@ -205,7 +208,15 @@ func buildCanonicalQueryString(values url.Values) (string, error) {
 	return sb.String(), nil
 }
 
-func buildCanonicalHeaders(req *http.Request, signedHeadersStr string) string {
+func buildCanonicalHeaders(req *http.Request, signedHeadersStr string) (result string, err error) {
+	// Rule 37: Unified Observable Panic Recovery
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in buildCanonicalHeaders: %v", r)
+			err = syscall.EIO
+		}
+	}()
+
 	// ⚡ Bolt: Eliminate heap allocations in parseSigV4QueryAuth by replacing strings.Split
 	// with inline strings.IndexByte and a stack-allocated buffer to extract header names.
 	var stackBuf [16]string
@@ -216,6 +227,10 @@ func buildCanonicalHeaders(req *http.Request, signedHeadersStr string) string {
 		headerNames[0] = signedHeadersStr
 	} else {
 		count := strings.Count(signedHeadersStr, ";") + 1
+		// Rule 32: Defensive Allocation Bounds and Rule 24: Bounded Network Loops
+		if count > 64 {
+			return "", syscall.EBADMSG
+		}
 		if count > 16 {
 			headerNames = make([]string, 0, count)
 		} else {
@@ -223,7 +238,12 @@ func buildCanonicalHeaders(req *http.Request, signedHeadersStr string) string {
 		}
 
 		rem := signedHeadersStr
+		loopCount := 0
 		for {
+			if loopCount >= 64 {
+				return "", syscall.EBADMSG
+			}
+			loopCount++
 			idx := strings.IndexByte(rem, ';')
 			if idx == -1 {
 				headerNames = append(headerNames, rem)
@@ -261,7 +281,7 @@ func buildCanonicalHeaders(req *http.Request, signedHeadersStr string) string {
 		sb.WriteString(val)
 		sb.WriteByte('\n')
 	}
-	return sb.String()
+	return sb.String(), nil
 }
 
 func deriveSigningKey(secretKey, dateStamp, region string) []byte {
