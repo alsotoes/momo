@@ -206,17 +206,57 @@ func buildCanonicalQueryString(values url.Values) (string, error) {
 }
 
 func buildCanonicalHeaders(req *http.Request, signedHeadersStr string) string {
-	headerNames := strings.Split(signedHeadersStr, ";")
+	// ⚡ Bolt: Eliminate heap allocations in parseSigV4QueryAuth by replacing strings.Split
+	// with inline strings.IndexByte and a stack-allocated buffer to extract header names.
+	var stackBuf [16]string
+	var headerNames []string
+
+	if idx := strings.IndexByte(signedHeadersStr, ';'); idx == -1 {
+		headerNames = stackBuf[:1]
+		headerNames[0] = signedHeadersStr
+	} else {
+		count := strings.Count(signedHeadersStr, ";") + 1
+		if count > 16 {
+			headerNames = make([]string, 0, count)
+		} else {
+			headerNames = stackBuf[:0]
+		}
+
+		rem := signedHeadersStr
+		for {
+			idx := strings.IndexByte(rem, ';')
+			if idx == -1 {
+				headerNames = append(headerNames, rem)
+				break
+			}
+			headerNames = append(headerNames, rem[:idx])
+			rem = rem[idx+1:]
+		}
+	}
+
 	sort.Strings(headerNames)
 
 	var sb strings.Builder
 	for _, h := range headerNames {
 		sb.WriteString(h)
 		sb.WriteByte(':')
-		val := req.Header.Get(h)
+
+		var val string
 		if h == "host" {
 			val = req.Host
+		} else {
+			// ⚡ Bolt: Bypass req.Header.Get() which allocates via net/textproto.CanonicalMIMEHeaderKey.
+			// Perform a zero-allocation case-insensitive lookup directly on the map.
+			for k, v := range req.Header {
+				if strings.EqualFold(k, h) {
+					if len(v) > 0 {
+						val = v[0]
+					}
+					break
+				}
+			}
 		}
+
 		val = strings.TrimSpace(val)
 		sb.WriteString(val)
 		sb.WriteByte('\n')
