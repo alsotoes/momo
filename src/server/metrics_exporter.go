@@ -650,14 +650,17 @@ func StartMetricsServer(ctx context.Context, host string, port int, collector *M
 	}
 
 	go func() {
+		var err error
 		defer func() {
 			if r := recover(); r != nil {
 				log.Printf("CRITICAL: Panic recovered in metrics server: %v", r)
+				err = syscall.EIO
 				srv.Close()
+				ln.Close()
 			}
 		}()
 		log.Printf("Prometheus metrics server listening on :%d/metrics", port)
-		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+		if err = srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			log.Printf("Metrics server error: %v", err)
 		}
 	}()
