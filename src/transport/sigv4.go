@@ -206,7 +206,21 @@ func buildCanonicalQueryString(values url.Values) (string, error) {
 }
 
 func buildCanonicalHeaders(req *http.Request, signedHeadersStr string) string {
-	headerNames := strings.Split(signedHeadersStr, ";")
+	// ⚡ Bolt: Eliminate heap allocation in canonical header parsing by replacing
+	// strings.Split with inline strings.IndexByte and a stack-allocated buffer.
+	var buf [16]string
+	headerNames := buf[:0]
+
+	str := signedHeadersStr
+	for len(str) > 0 {
+		idx := strings.IndexByte(str, ';')
+		if idx == -1 {
+			headerNames = append(headerNames, str)
+			break
+		}
+		headerNames = append(headerNames, str[:idx])
+		str = str[idx+1:]
+	}
 	sort.Strings(headerNames)
 
 	var sb strings.Builder
