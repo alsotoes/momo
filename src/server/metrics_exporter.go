@@ -611,9 +611,9 @@ func (m *MetricsCollector) detailedHealthHandler(w http.ResponseWriter, r *http.
 // StartMetricsServer starts an HTTP server exposing Prometheus metrics on the given
 // host and port (empty host binds all interfaces). It runs in a background goroutine
 // and returns immediately. The server is shut down when the provided context is canceled.
-func StartMetricsServer(ctx context.Context, host string, port int, collector *MetricsCollector, reloadFn func()) {
+func StartMetricsServer(ctx context.Context, host string, port int, collector *MetricsCollector, reloadFn func()) (err error) {
 	if port <= 0 {
-		return
+		return nil
 	}
 
 	mux := http.NewServeMux()
@@ -639,7 +639,7 @@ func StartMetricsServer(ctx context.Context, host string, port int, collector *M
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Printf("Failed to start metrics server on port %d: %v", port, err)
-		return
+		return err
 	}
 
 	srv := &http.Server{
@@ -653,6 +653,8 @@ func StartMetricsServer(ctx context.Context, host string, port int, collector *M
 		defer func() {
 			if r := recover(); r != nil {
 				log.Printf("CRITICAL: Panic recovered in metrics server: %v", r)
+				ln.Close()
+				err = syscall.EIO
 			}
 		}()
 		log.Printf("Prometheus metrics server listening on :%d/metrics", port)
@@ -667,4 +669,6 @@ func StartMetricsServer(ctx context.Context, host string, port int, collector *M
 		defer cancel()
 		srv.Shutdown(shutdownCtx)
 	}()
+
+	return nil
 }
