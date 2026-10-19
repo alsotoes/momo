@@ -154,7 +154,10 @@ func buildCanonicalRequest(req *http.Request, signedHeaders, payloadHash string)
 		return "", qsErr
 	}
 
-	canonicalHeaders := buildCanonicalHeaders(req, signedHeaders)
+	canonicalHeaders, chErr := buildCanonicalHeaders(req, signedHeaders)
+	if chErr != nil {
+		return "", chErr
+	}
 
 	return req.Method + "\n" +
 		canonicalURIEscaped + "\n" +
@@ -205,7 +208,15 @@ func buildCanonicalQueryString(values url.Values) (string, error) {
 	return sb.String(), nil
 }
 
-func buildCanonicalHeaders(req *http.Request, signedHeadersStr string) string {
+const MaxSignedHeaders = 64
+
+func buildCanonicalHeaders(req *http.Request, signedHeadersStr string) (result string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = syscall.EINVAL
+		}
+	}()
+
 	// ⚡ Bolt: Eliminate heap allocation in canonical header parsing by replacing
 	// strings.Split with inline strings.IndexByte and a stack-allocated buffer.
 	var buf [16]string
@@ -213,6 +224,10 @@ func buildCanonicalHeaders(req *http.Request, signedHeadersStr string) string {
 
 	str := signedHeadersStr
 	for len(str) > 0 {
+		if len(headerNames) >= MaxSignedHeaders {
+			panic("too many signed headers")
+		}
+
 		idx := strings.IndexByte(str, ';')
 		if idx == -1 {
 			headerNames = append(headerNames, str)
@@ -235,7 +250,7 @@ func buildCanonicalHeaders(req *http.Request, signedHeadersStr string) string {
 		sb.WriteString(val)
 		sb.WriteByte('\n')
 	}
-	return sb.String()
+	return sb.String(), nil
 }
 
 func deriveSigningKey(secretKey, dateStamp, region string) []byte {
