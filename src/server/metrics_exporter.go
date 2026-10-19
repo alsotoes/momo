@@ -654,7 +654,6 @@ func StartMetricsServer(ctx context.Context, host string, port int, collector *M
 			if r := recover(); r != nil {
 				log.Printf("CRITICAL: Panic recovered in metrics server: %v", r)
 				ln.Close()
-				err = syscall.EIO
 			}
 		}()
 		log.Printf("Prometheus metrics server listening on :%d/metrics", port)
