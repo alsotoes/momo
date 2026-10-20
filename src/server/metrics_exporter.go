@@ -642,7 +642,12 @@ func StartMetricsServer(ctx context.Context, host string, port int, collector *M
 		return
 	}
 
-	srv := &http.Server{Handler: securityHeadersMiddleware(mux)}
+	srv := &http.Server{
+		Handler:      securityHeadersMiddleware(mux),
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  120 * time.Second,
+	}
 
 	go func() {
 		defer func() {

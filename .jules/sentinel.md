@@ -191,3 +191,8 @@
 **Vulnerability:** The internal Prometheus metrics HTTP server (`/metrics`, `/health`, `/reload-secrets`) lacked security headers like `Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options`, `Strict-Transport-Security`, `Referrer-Policy`, and `Permissions-Policy`.
 **Learning:** Even internal auxiliary HTTP servers in Golang should have basic security headers to protect against cross-site scripting (XSS), clickjacking, and MIME sniffing attacks if they are ever exposed or bridged to an insecure network. A middleware approach (`securityHeadersMiddleware`) cleanly wraps the `http.ServeMux` to enforce this policy without modifying individual handlers.
 **Prevention:** Always wrap `http.ServeMux` instances with a security headers middleware before passing them to `http.Server{Handler: ...}`. Include headers for CSP, X-Frame-Options, Content-Type Options, HSTS, Referrer, and Permissions.
+
+## 2026-10-20 - Slowloris DoS via Unbounded HTTP Server Timeouts
+**Vulnerability:** The internal Prometheus metrics HTTP server (`/metrics`) was instantiated with an `http.Server{}` lacking explicit timeouts (`ReadTimeout`, `WriteTimeout`, `IdleTimeout`). This allows an attacker to tie up server resources by opening connections and sending data very slowly (Slowloris attack) or leaving idle connections open indefinitely.
+**Learning:** The default Go HTTP server configuration without explicitly set timeouts is vulnerable to resource exhaustion attacks. Even internal auxiliary HTTP servers should have bounded connection lifecycles.
+**Prevention:** Always instantiate an explicit `http.Server{}` struct configured with bounded `ReadTimeout`, `WriteTimeout`, and `IdleTimeout` values instead of relying on defaults.
