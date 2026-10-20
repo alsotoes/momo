@@ -653,6 +653,7 @@ func StartMetricsServer(ctx context.Context, host string, port int, collector *M
 		defer func() {
 			if r := recover(); r != nil {
 				log.Printf("CRITICAL: Panic recovered in metrics server: %v", r)
+				_ = syscall.EIO
 			}
 		}()
 		log.Printf("Prometheus metrics server listening on :%d/metrics", port)
@@ -662,6 +663,12 @@ func StartMetricsServer(ctx context.Context, host string, port int, collector *M
 	}()
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("CRITICAL: Panic recovered in metrics server shutdown: %v", r)
+				_ = syscall.EIO
+			}
+		}()
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
