@@ -208,29 +208,62 @@ func buildCanonicalQueryString(values url.Values) (string, error) {
 	return sb.String(), nil
 }
 
-// ⚡ Bolt: Eliminate heap allocations in buildCanonicalHeaders by replacing strings.Split
-// with strings.IndexByte and a stack-allocated buffer. Also replaces req.Header.Get() with
-// a zero-allocation manual loop to avoid textproto.CanonicalMIMEHeaderKey allocations.
-func buildCanonicalHeaders(req *http.Request, signedHeadersStr string) (string, error) {
-	var headerBuf [16]string
-	headerNames := headerBuf[:0]
-	s := signedHeadersStr
+func getCanonicalHeaderValue(req *http.Request, h string) (string, bool) {
+	if h == "host" {
+		return req.Host, true
+	}
+	for k, v := range req.Header {
+		if strings.EqualFold(k, h) {
+			if len(v) > 0 {
+				return v[0], true
+			}
+			return "", true
+		}
+	}
+	return "", false
+}
+
+func parseSignedHeaders(s string, buf []string) ([]string, error) {
+	headerNames := buf[:0]
 	for {
 		idx := strings.IndexByte(s, ';')
 		if idx == -1 {
 			if len(s) > 0 {
-				if len(headerNames) >= cap(headerBuf) {
-					return "", syscall.EBADMSG
+				if len(headerNames) >= cap(buf) {
+					return nil, syscall.EBADMSG
 				}
 				headerNames = append(headerNames, s)
 			}
 			break
 		}
-		if len(headerNames) >= cap(headerBuf) {
-			return "", syscall.EBADMSG
+		part := s[:idx]
+		if len(part) > 0 {
+			if len(headerNames) >= cap(buf) {
+				return nil, syscall.EBADMSG
+			}
+			headerNames = append(headerNames, part)
 		}
-		headerNames = append(headerNames, s[:idx])
 		s = s[idx+1:]
+	}
+	return headerNames, nil
+}
+
+// ⚡ Bolt: Eliminate heap allocations in buildCanonicalHeaders by replacing strings.Split
+// with strings.IndexByte and a stack-allocated buffer (max 16 headers for performance).
+// Also replaces req.Header.Get() with a zero-allocation manual loop to avoid
+// textproto.CanonicalMIMEHeaderKey allocations.
+func buildCanonicalHeaders(req *http.Request, signedHeadersStr string) (result string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in buildCanonicalHeaders: %v", r)
+			err = syscall.EIO
+		}
+	}()
+
+	var headerBuf [16]string
+	headerNames, pErr := parseSignedHeaders(signedHeadersStr, headerBuf[:])
+	if pErr != nil {
+		return "", pErr
 	}
 
 	sort.Strings(headerNames)
@@ -239,23 +272,8 @@ func buildCanonicalHeaders(req *http.Request, signedHeadersStr string) (string, 
 	for _, h := range headerNames {
 		sb.WriteString(h)
 		sb.WriteByte(':')
-		var val string
-		var found bool
-		if h == "host" {
-			val = req.Host
-			found = true
-		} else {
-			for k, v := range req.Header {
-				if strings.EqualFold(k, h) {
-					if len(v) > 0 {
-						val = v[0]
-					}
-					found = true
-					break
-				}
-			}
-		}
 
+		val, found := getCanonicalHeaderValue(req, h)
 		if !found {
 			return "", syscall.EBADMSG
 		}

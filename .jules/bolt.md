@@ -247,3 +247,7 @@
 ## 2026-10-20 - Zero-Allocation SigV4 Canonical Headers
 **Learning:** In Go, calling `http.Header.Get()` can cause heap allocations on hot paths due to `net/textproto.CanonicalMIMEHeaderKey`.
 **Action:** For zero-allocation header lookups, bypass `Get()` by iterating directly over the `http.Header` map and comparing keys case-insensitively (e.g., using `strings.EqualFold`). Also replace `strings.Split` with `strings.IndexByte` and a stack-allocated buffer.
+
+## 2026-10-20 - Cognitive Complexity in Parse Loops
+**Learning:** To resolve SonarCloud 'Cognitive Complexity' Quality Gate failures (often flagged as Critical code smells in CI), avoid deep nesting such as placing iteration over maps inside parsing loops. Refactor by extracting the inner logic into separate helper functions.
+**Action:** Always extract inner iteration blocks or lookups into their own clearly named helper functions when the outer loop is already handling state or parsing logic.
