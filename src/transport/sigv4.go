@@ -249,9 +249,8 @@ func parseSignedHeaders(s string, buf []string) ([]string, error) {
 }
 
 // ⚡ Bolt: Eliminate heap allocations in buildCanonicalHeaders by replacing strings.Split
-// with strings.IndexByte and a stack-allocated buffer (max 16 headers for performance).
-// Also replaces req.Header.Get() with a zero-allocation manual loop to avoid
-// textproto.CanonicalMIMEHeaderKey allocations.
+// with strings.IndexByte and a stack-allocated buffer. Also replaces req.Header.Get() with
+// a zero-allocation manual loop to avoid textproto.CanonicalMIMEHeaderKey allocations.
 func buildCanonicalHeaders(req *http.Request, signedHeadersStr string) (result string, err error) {
 	defer func() {
 		if r := recover(); r != nil {

@@ -340,3 +340,107 @@ func TestSigV4Escape_EncodesMultibyte(t *testing.T) {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 }
+
+func TestParseSignedHeaders(t *testing.T) {
+	tests := []struct {
+		name    string
+		in      string
+		bufSize int
+		want    []string
+		wantErr bool
+	}{
+		{"empty", "", 16, []string{}, false},
+		{"single", "host", 16, []string{"host"}, false},
+		{"multiple", "host;x-amz-date", 16, []string{"host", "x-amz-date"}, false},
+		{"trailing semi", "host;", 16, []string{"host"}, false},
+		{"leading semi", ";host", 16, []string{"host"}, false},
+		{"consecutive semi", "host;;x-amz-date", 16, []string{"host", "x-amz-date"}, false},
+		{"buffer overflow exactly at end", "1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;16;17", 16, nil, true},
+		{"buffer overflow mid parse", "1;2;3", 2, nil, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			buf := make([]string, tc.bufSize)
+			got, err := parseSignedHeaders(tc.in, buf)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(got) != len(tc.want) {
+				t.Fatalf("got len %d, want %d", len(got), len(tc.want))
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Fatalf("got[%d] = %q, want %q", i, got[i], tc.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestBuildCanonicalHeaders(t *testing.T) {
+	req, _ := http.NewRequest("GET", "/", nil)
+	req.Host = "example.com"
+	req.Header.Set("x-amz-date", "20230101T000000Z")
+	req.Header.Set("X-Custom-Header", "  value with spaces  ")
+
+	tests := []struct {
+		name    string
+		signed  string
+		want    string
+		wantErr bool
+	}{
+		{
+			name:   "host only",
+			signed: "host",
+			want:   "host:example.com\n",
+		},
+		{
+			name:   "multiple ordered",
+			signed: "host;x-amz-date",
+			want:   "host:example.com\nx-amz-date:20230101T000000Z\n",
+		},
+		{
+			name:   "out of order",
+			signed: "x-amz-date;host",
+			want:   "host:example.com\nx-amz-date:20230101T000000Z\n",
+		},
+		{
+			name:   "trim spaces",
+			signed: "host;x-custom-header",
+			want:   "host:example.com\nx-custom-header:value with spaces\n",
+		},
+		{
+			name:    "missing header",
+			signed:  "host;missing-header",
+			wantErr: true,
+		},
+		{
+			name:    "too many headers",
+			signed:  "1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;16;17",
+			wantErr: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := buildCanonicalHeaders(req, tc.signed)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
