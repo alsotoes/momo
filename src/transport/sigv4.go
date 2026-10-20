@@ -205,19 +205,47 @@ func buildCanonicalQueryString(values url.Values) (string, error) {
 	return sb.String(), nil
 }
 
+// ⚡ Bolt: Eliminate heap allocations in buildCanonicalHeaders by replacing strings.Split
+// with strings.IndexByte and a stack-allocated buffer. Also replaces req.Header.Get() with
+// a zero-allocation manual loop to avoid textproto.CanonicalMIMEHeaderKey allocations.
 func buildCanonicalHeaders(req *http.Request, signedHeadersStr string) string {
-	headerNames := strings.Split(signedHeadersStr, ";")
+	var headerBuf [16]string
+	headerNames := headerBuf[:0]
+	s := signedHeadersStr
+	for {
+		idx := strings.IndexByte(s, ';')
+		if idx == -1 {
+			if len(s) > 0 {
+				headerNames = append(headerNames, s)
+			}
+			break
+		}
+		headerNames = append(headerNames, s[:idx])
+		s = s[idx+1:]
+	}
+
 	sort.Strings(headerNames)
 
 	var sb strings.Builder
 	for _, h := range headerNames {
 		sb.WriteString(h)
 		sb.WriteByte(':')
-		val := req.Header.Get(h)
+		var val string
 		if h == "host" {
 			val = req.Host
+		} else {
+			for k, v := range req.Header {
+				if strings.EqualFold(k, h) {
+					if len(v) > 0 {
+						val = v[0]
+					}
+					break
+				}
+			}
 		}
+
 		val = strings.TrimSpace(val)
+
 		sb.WriteString(val)
 		sb.WriteByte('\n')
 	}
