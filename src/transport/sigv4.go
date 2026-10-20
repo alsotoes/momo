@@ -154,7 +154,10 @@ func buildCanonicalRequest(req *http.Request, signedHeaders, payloadHash string)
 		return "", qsErr
 	}
 
-	canonicalHeaders := buildCanonicalHeaders(req, signedHeaders)
+	canonicalHeaders, err := buildCanonicalHeaders(req, signedHeaders)
+	if err != nil {
+		return "", err
+	}
 
 	return req.Method + "\n" +
 		canonicalURIEscaped + "\n" +
@@ -208,7 +211,7 @@ func buildCanonicalQueryString(values url.Values) (string, error) {
 // ⚡ Bolt: Eliminate heap allocations in buildCanonicalHeaders by replacing strings.Split
 // with strings.IndexByte and a stack-allocated buffer. Also replaces req.Header.Get() with
 // a zero-allocation manual loop to avoid textproto.CanonicalMIMEHeaderKey allocations.
-func buildCanonicalHeaders(req *http.Request, signedHeadersStr string) string {
+func buildCanonicalHeaders(req *http.Request, signedHeadersStr string) (string, error) {
 	var headerBuf [16]string
 	headerNames := headerBuf[:0]
 	s := signedHeadersStr
@@ -216,9 +219,15 @@ func buildCanonicalHeaders(req *http.Request, signedHeadersStr string) string {
 		idx := strings.IndexByte(s, ';')
 		if idx == -1 {
 			if len(s) > 0 {
+				if len(headerNames) >= cap(headerBuf) {
+					return "", syscall.EBADMSG
+				}
 				headerNames = append(headerNames, s)
 			}
 			break
+		}
+		if len(headerNames) >= cap(headerBuf) {
+			return "", syscall.EBADMSG
 		}
 		headerNames = append(headerNames, s[:idx])
 		s = s[idx+1:]
@@ -231,17 +240,24 @@ func buildCanonicalHeaders(req *http.Request, signedHeadersStr string) string {
 		sb.WriteString(h)
 		sb.WriteByte(':')
 		var val string
+		var found bool
 		if h == "host" {
 			val = req.Host
+			found = true
 		} else {
 			for k, v := range req.Header {
 				if strings.EqualFold(k, h) {
 					if len(v) > 0 {
 						val = v[0]
 					}
+					found = true
 					break
 				}
 			}
+		}
+
+		if !found {
+			return "", syscall.EBADMSG
 		}
 
 		val = strings.TrimSpace(val)
@@ -249,7 +265,7 @@ func buildCanonicalHeaders(req *http.Request, signedHeadersStr string) string {
 		sb.WriteString(val)
 		sb.WriteByte('\n')
 	}
-	return sb.String()
+	return sb.String(), nil
 }
 
 func deriveSigningKey(secretKey, dateStamp, region string) []byte {
