@@ -16,7 +16,7 @@ summary: "How we removed the heap allocation from ETag list parsing on the S3 co
 artifacts:
   - type: spec
     path: openspec/changes/bolt-etag-matches-zero-alloc
-related: ["024-bolt-performance-engineering", "048-bolt-listparts-appendformat", "051-bolt-aws-chunked-zero-alloc"]
+related: ["024-bolt-performance-engineering", "048-bolt-listparts-appendformat", "051-bolt-aws-chunked-zero-alloc", "057-bolt-sigv4-zero-alloc-headers"]
 difficulty: "intermediate"
 pattern: "zero-alloc"
 teaches:

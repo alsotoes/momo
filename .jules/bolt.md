@@ -243,3 +243,7 @@
 ## 2026-10-12 - Zero-Allocation ACL Path Parsing
 **Learning:** Using `strings.SplitN` to extract the bucket and key from authorization paths (e.g., `object/<bucket>/<key>`) allocates a slice header and backing array per request. Since `parseACLResource` is called on every authenticated object access, this creates unnecessary GC pressure on a hot path.
 **Action:** Replace `strings.SplitN` in ACL resource parsing with zero-allocation slicing logic using `strings.IndexByte`. Avoid allocating intermediate string slices on authorization paths.
+
+## 2026-10-20 - Zero-Allocation SigV4 Canonical Headers
+**Learning:** In Go, calling `http.Header.Get()` can cause heap allocations on hot paths due to `net/textproto.CanonicalMIMEHeaderKey`.
+**Action:** For zero-allocation header lookups, bypass `Get()` by iterating directly over the `http.Header` map and comparing keys case-insensitively (e.g., using `strings.EqualFold`). Also replace `strings.Split` with `strings.IndexByte` and a stack-allocated buffer.
