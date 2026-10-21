@@ -14,8 +14,9 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
-)
 
+	"github.com/alsotoes/momo/src/common"
+)
 
 // securityHeadersMiddleware adds standard security headers to HTTP responses.
 // 🛡️ Sentinel: Medium priority enhancement to prevent XSS, clickjacking, and MIME sniffing.
@@ -642,14 +643,18 @@ func StartMetricsServer(ctx context.Context, host string, port int, collector *M
 		return
 	}
 
-	srv := &http.Server{Handler: securityHeadersMiddleware(mux)}
+	// 🛡️ Sentinel (Rule 24): bound every phase so a slow or idle client cannot
+	// hold a connection open indefinitely (Slowloris / resource exhaustion).
+	srv := &http.Server{
+		Handler:           securityHeadersMiddleware(mux),
+		ReadTimeout:       5 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 
 	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				log.Printf("CRITICAL: Panic recovered in metrics server: %v", r)
-			}
-		}()
+		defer common.RecoverClose("metrics server serve", srv)
 		log.Printf("Prometheus metrics server listening on :%d/metrics", port)
 		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			log.Printf("Metrics server error: %v", err)
@@ -657,9 +662,10 @@ func StartMetricsServer(ctx context.Context, host string, port int, collector *M
 	}()
 
 	go func() {
+		defer common.RecoverClose("metrics server shutdown", srv)
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		srv.Shutdown(shutdownCtx)
+		_ = srv.Shutdown(shutdownCtx)
 	}()
 }
