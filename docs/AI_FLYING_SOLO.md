@@ -701,6 +701,14 @@ gh api repos/<owner>/<repo>/actions/runs/<run-id>/jobs \
   --jq '.jobs[0] | {status, conclusion, steps:[.steps[]|{name,status,conclusion}]}'
 ```
 
+### Closing Keywords Have No Negation — Never Write One Near an Umbrella Issue
+**Pitfall**: Writing a **negated** closing keyword in a PR body or commit message — e.g. "This PR deliberately does **not** close #938" or "no longer fixes #930". GitHub's closing-keyword parser has **no negation**: it matches `close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved` immediately before `#NNN` and closes the issue anyway. An umbrella or tracking issue therefore closes silently on merge, mid-phase. (This closed umbrella #938 two seconds after the PR #1215 merge and had to be reopened.)
+**Solution**: Never place a closing keyword anywhere near an issue you intend to keep open — not even to say you are not closing it. Use neutral wording that contains no close/fix/resolve word:
+```markdown
+**Part of #938** — Phase 4 (object lock) remains, so the umbrella stays open.
+```
+Reserve `Closes #NNN` / `Resolves #NNN` for the issues the merge really should close (e.g. the auto-trace issue, Rule 20). After merging, verify the intended issues closed **and** the intended ones stayed open.
+
 ### Jules PR Comments Posted as Bot (Rule 69)
 **Pitfall**: Posting reviewer feedback or STOP comments as `github-actions[bot]` on a Jules-created PR. Jules only recognizes comments from `alsotoes` and will silently ignore bot comments, causing Jules to continue working or miss feedback.
 **Solution**: Before posting any comment on a PR, check for the `jules` label. If present, ensure the `gh pr comment` command runs from an authenticated `alsotoes` session (PAT), not the `GITHUB_TOKEN` used by CI:
