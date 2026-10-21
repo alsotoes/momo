@@ -35,6 +35,7 @@ related:
 - 032-r5-metrics-phases-2-4
 - 036-s3-listxml-appendformat-optimization
 - 042-perf-profiling-baseline
+- 057-bolt-sigv4-zero-alloc-headers
 difficulty: "advanced"
 pattern: "zero-alloc"
 teaches:
