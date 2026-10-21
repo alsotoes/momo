@@ -124,6 +124,11 @@ type S3Communicator struct {
 	// stores without notification support – every notification route then 501s.
 	notification NotificationStore
 
+	// notificationRetryMax bounds webhook delivery attempts per event when this
+	// gateway itself dispatches an event (multipart completion, object delete).
+	// 0 means the package default; set via SetNotificationRetryMax.
+	notificationRetryMax int
+
 	// configuredBucket is the single bucket name exposed by the S3 gateway for
 	// bucket-management operations (issue #767). Empty means legacy flat
 	// namespace mode where no bucket semantics are enforced.
@@ -228,6 +233,15 @@ func (m *S3Communicator) SetSigV4GatewayCredentials(accessKey, secretKey string)
 // semantics (legacy flat namespace mode).
 func (m *S3Communicator) SetConfiguredBucket(bucket string) {
 	m.configuredBucket = bucket
+}
+
+// SetNotificationRetryMax sets the webhook delivery attempt bound used when this
+// gateway dispatches a notification itself (multipart completion, delete).
+// Values < 1 are ignored so the package default applies.
+func (m *S3Communicator) SetNotificationRetryMax(n int) {
+	if n >= 1 {
+		m.notificationRetryMax = n
+	}
 }
 
 // ConfiguredBucket exposes the single S3 bucket name to the server layer
@@ -1400,6 +1414,8 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		m.conn.Write([]byte("HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"))
 
 		m.writeAuditLog("DeleteObject", bucket+"/"+key, "success")
+		// R10 Phase 3 (#938): fire ObjectRemoved notifications for the deleted key.
+		m.dispatchNotification(bucket, key, "", storage.EventObjectRemovedDelete)
 		return 0, 0, ErrRequestHandled
 	}
 
@@ -3082,6 +3098,8 @@ func (m *S3Communicator) handleBatchDelete(bucket string, req *http.Request) (in
 			}
 		}
 		deleted = append(deleted, k)
+		// R10 Phase 3 (#938): fire ObjectRemoved notifications per deleted key.
+		m.dispatchNotification(bucket, k, "", storage.EventObjectRemovedDelete)
 		if !delStart.IsZero() {
 			if lr, ok := m.metricsHook.(LatencyRecorder); ok {
 				lr.RecordRequestLatency("delete", time.Since(delStart))
@@ -3538,6 +3556,9 @@ func (m *S3Communicator) handleCompleteMultipartUpload(req *http.Request, bucket
 	// R10 Phase 1 (#938): versioned buckets record a version per completed
 	// multipart upload; the response echoes the version id in-gateway.
 	versionID := m.recordMultipartVersion(bucket, key, finalHash, finalSize)
+
+	// R10 Phase 3 (#938): fire ObjectCreated notifications for the assembled object.
+	m.dispatchNotification(bucket, key, versionID, storage.EventObjectCreatedMultipart)
 
 	var buf bytes.Buffer
 	buf.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)

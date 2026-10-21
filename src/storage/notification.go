@@ -1,8 +1,13 @@
 package storage
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"strings"
 	"syscall"
 	"time"
 
@@ -22,6 +27,14 @@ const (
 	EventObjectRemovedDelete       EventType = "s3:ObjectRemoved:Delete"
 	EventObjectRemovedDeleteMarker EventType = "s3:ObjectRemoved:DeleteMarkerCreated"
 )
+
+// notificationRetryBackoff is the base delay between webhook delivery attempts.
+// Each subsequent attempt doubles it (exponential backoff). It is a variable so
+// tests can set it to zero.
+var notificationRetryBackoff = 100 * time.Millisecond
+
+// notificationHTTPTimeout bounds a single webhook delivery attempt.
+const notificationHTTPTimeout = 10 * time.Second
 
 // NotificationRule represents one S3 notification rule.
 type NotificationRule struct {
@@ -94,17 +107,11 @@ func (s *CASStore) DeleteBucketNotification(bucket string) (err error) {
 	})
 }
 
-// NotificationEvent represents a single event to be dispatched.
-type NotificationEvent struct {
-	EventType EventType
-	Bucket    string
-	Key       string
-	VersionID string
-	Timestamp time.Time
-}
-
-// DispatchNotification dispatches a single event to all matching rules.
-func (s *CASStore) DispatchNotification(bucket, key, versionID string, eventType EventType, now time.Time) (out NotificationOutcome, err error) {
+// DispatchNotification delivers eventType for bucket/key to every matching rule.
+// now is the event time (injected for deterministic tests); retryMax bounds the
+// webhook delivery attempts per rule. A failing rule increments Failed and does
+// not abort delivery to the remaining rules.
+func (s *CASStore) DispatchNotification(bucket, key, versionID string, eventType EventType, now time.Time, retryMax int) (out NotificationOutcome, err error) {
 	defer common.RecoverErr("CASStore.DispatchNotification", &err)
 
 	cfg, ok, err := s.BucketNotification(bucket)
@@ -116,10 +123,9 @@ func (s *CASStore) DispatchNotification(bucket, key, versionID string, eventType
 		if !ruleMatches(rule, key, eventType) {
 			continue
 		}
-
-		// Dispatch to the configured target
-		if err := s.dispatchToTarget(rule, bucket, key, versionID, eventType); err != nil {
-			// Log but continue to other rules
+		if derr := dispatchToTarget(rule, bucket, key, versionID, eventType, now, retryMax); derr != nil {
+			log.Printf("AUDIT: notification rule %s delivery failed for %s: %v", rule.ID, key, common.SanitizeLog(derr.Error()))
+			out.Failed++
 			continue
 		}
 		out.Dispatched++
@@ -127,12 +133,11 @@ func (s *CASStore) DispatchNotification(bucket, key, versionID string, eventType
 	return out, nil
 }
 
-// ruleMatches checks if a notification rule matches the given key and event type.
+// ruleMatches reports whether a rule fires for the given key and event type.
 func ruleMatches(rule NotificationRule, key string, eventType EventType) bool {
 	if rule.Status != "Enabled" {
 		return false
 	}
-	// Match event type
 	eventMatched := false
 	for _, et := range rule.Events {
 		if et == eventType {
@@ -143,62 +148,101 @@ func ruleMatches(rule NotificationRule, key string, eventType EventType) bool {
 	if !eventMatched {
 		return false
 	}
-	// Match prefix/suffix
-	if rule.Prefix != "" && !hasPrefix(key, rule.Prefix) {
+	if rule.Prefix != "" && !strings.HasPrefix(key, rule.Prefix) {
 		return false
 	}
-	if rule.Suffix != "" && !hasSuffix(key, rule.Suffix) {
+	if rule.Suffix != "" && !strings.HasSuffix(key, rule.Suffix) {
 		return false
 	}
 	return true
 }
 
-// hasPrefix checks if key starts with prefix.
-func hasPrefix(key, prefix string) bool {
-	return len(key) >= len(prefix) && key[:len(prefix)] == prefix
+// s3EventPayload is the S3 event notification document posted to a webhook.
+type s3EventPayload struct {
+	Records []s3EventRecord `json:"Records"`
 }
 
-// hasSuffix checks if key ends with suffix.
-func hasSuffix(key, suffix string) bool {
-	return len(key) >= len(suffix) && key[len(key)-len(suffix):] == suffix
+type s3EventRecord struct {
+	EventVersion string        `json:"eventVersion"`
+	EventSource  string        `json:"eventSource"`
+	EventTime    string        `json:"eventTime"`
+	EventName    string        `json:"eventName"`
+	S3           s3EventEntity `json:"s3"`
 }
 
-// dispatchToTarget sends the notification to the configured endpoint.
-// Currently supports HTTP webhook; SQS/SNS/Lambda are stubbed.
-func (s *CASStore) dispatchToTarget(rule NotificationRule, bucket, key, versionID string, eventType EventType) error {
-	// Build the notification payload (S3 event format)
-	payload := map[string]interface{}{
-		"Records": []map[string]interface{}{
-			{
-				"eventVersion": "2.1",
-				"eventSource":  "aws:s3",
-				"eventTime":    time.Now().Format(time.RFC3339),
-				"eventName":    string(eventType),
-				"s3": map[string]interface{}{
-					"bucket": map[string]interface{}{
-						"name": rule.QueueARN, // bucket name
-					},
-					"object": map[string]interface{}{
-						"key":       rule.TopicARN, // key
-						"versionId": versionID,
-					},
-				},
+type s3EventEntity struct {
+	Bucket s3EventBucket `json:"bucket"`
+	Object s3EventObject `json:"object"`
+}
+
+type s3EventBucket struct {
+	Name string `json:"name"`
+}
+
+type s3EventObject struct {
+	Key       string `json:"key"`
+	VersionID string `json:"versionId,omitempty"`
+}
+
+// buildS3EventPayload constructs the S3 event document for one event.
+func buildS3EventPayload(bucket, key, versionID string, eventType EventType, now time.Time) s3EventPayload {
+	return s3EventPayload{
+		Records: []s3EventRecord{{
+			EventVersion: "2.1",
+			EventSource:  "aws:s3",
+			EventTime:    now.UTC().Format(time.RFC3339),
+			EventName:    string(eventType),
+			S3: s3EventEntity{
+				Bucket: s3EventBucket{Name: bucket},
+				Object: s3EventObject{Key: key, VersionID: versionID},
 			},
-		},
+		}},
 	}
-
-	// HTTP webhook
-	if rule.HTTPUrl != "" {
-		return dispatchHTTP(rule.HTTPUrl, payload)
-	}
-
-	// TODO: SQS, SNS, Lambda implementations
-	return fmt.Errorf("notification target not implemented: %w", syscall.ENOSYS)
 }
 
-// dispatchHTTP posts the payload to the given URL with exponential backoff.
-func dispatchHTTP(url string, payload map[string]interface{}) error {
-	// Import here to avoid cycle; this is a standalone helper
-	// Real implementation would use the http client with retry
-	return nil
+// dispatchToTarget delivers one event to the rule's target. Only HTTP webhooks
+// are supported; SQS/SNS/Lambda return an explicit not-implemented error rather
+// than silently succeeding.
+func dispatchToTarget(rule NotificationRule, bucket, key, versionID string, eventType EventType, now time.Time, retryMax int) error {
+	if rule.HTTPUrl == "" {
+		return fmt.Errorf("notification rule %s: only HttpUrl webhooks are supported: %w", rule.ID, syscall.ENOSYS)
+	}
+	payload, err := json.Marshal(buildS3EventPayload(bucket, key, versionID, eventType, now))
+	if err != nil {
+		return fmt.Errorf("notification rule %s: encode payload: %w: %v", rule.ID, syscall.EIO, err)
+	}
+	return dispatchHTTP(rule.HTTPUrl, payload, retryMax)
+}
+
+// dispatchHTTP POSTs payload to url, retrying with exponential backoff up to
+// retryMax attempts. Network errors and 5xx responses are retried; a 4xx
+// response is returned immediately (retrying cannot help a rejected request).
+func dispatchHTTP(url string, payload []byte, retryMax int) error {
+	if retryMax < 1 {
+		retryMax = 1
+	}
+	client := &http.Client{Timeout: notificationHTTPTimeout}
+	var lastErr error
+	for attempt := 0; attempt < retryMax; attempt++ {
+		if attempt > 0 {
+			time.Sleep(notificationRetryBackoff << (attempt - 1))
+		}
+		resp, err := client.Post(url, "application/json", bytes.NewReader(payload))
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		// Drain and close so the connection can be reused; the body is not read.
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		_ = resp.Body.Close()
+		switch {
+		case resp.StatusCode >= 200 && resp.StatusCode < 300:
+			return nil
+		case resp.StatusCode >= 400 && resp.StatusCode < 500:
+			return fmt.Errorf("notification webhook returned %d: %w", resp.StatusCode, syscall.EIO)
+		default:
+			lastErr = fmt.Errorf("notification webhook returned %d", resp.StatusCode)
+		}
+	}
+	return fmt.Errorf("notification webhook delivery failed after %d attempts: %w", retryMax, lastErr)
 }

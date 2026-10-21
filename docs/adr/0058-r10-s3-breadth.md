@@ -29,11 +29,11 @@ None documented.
 - **Code**: Partial
 - **Tests**: Partial
 - **Docs**: Planned
-- **Blog post**: docs/blog/posts/055-r10-notification.md
+- **Blog post**: docs/blog/posts/056-s3-versioning-on-cas.md
 
 ## References
 - Issue: #938
 - PR: 
 - Spec: `openspec/changes/r10-s3-breadth/`
-- Blog: docs/blog/posts/055-r10-notification.md
+- Blog: docs/blog/posts/056-s3-versioning-on-cas.md
 

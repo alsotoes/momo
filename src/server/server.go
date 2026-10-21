@@ -333,6 +333,12 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 				bcComm.SetConfiguredBucket(cfg.Storage.S3Bucket)
 			}
 
+			// R10 Phase 3 (#938): propagate the webhook retry budget so gateway-
+			// dispatched events (multipart completion, delete) use the configured bound.
+			if nrComm, ok := comm.(interface{ SetNotificationRetryMax(int) }); ok {
+				nrComm.SetNotificationRetryMax(cfg.S3.NotificationRetryMax)
+			}
+
 			// Inject dedicated S3 gateway SigV4 credentials (issue #656). When
 			// configured, inbound SigV4 requests must present these access/secret
 			// keys instead of the momo auth token.
@@ -626,7 +632,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 						return
 					}
 					persistS3Meta(store, storageKey, metadata)
-					recordVersionIfVersioned(comm, store, storageKey, metadata.Hash, metadata.Size)
+					afterS3ObjectWrite(comm, store, storageKey, metadata.Hash, metadata.Size, cfg.S3.NotificationRetryMax)
 				} else {
 					if err := getFile(comm, store, storageKey, metadata.Hash, metadata.Size, remotePath); err != nil {
 						log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
@@ -634,7 +640,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 						return
 					}
 					persistS3Meta(store, storageKey, metadata)
-					recordVersionIfVersioned(comm, store, storageKey, metadata.Hash, metadata.Size)
+					afterS3ObjectWrite(comm, store, storageKey, metadata.Hash, metadata.Size, cfg.S3.NotificationRetryMax)
 				}
 			case common.ReplicationChain:
 				// In Chain mode, we find our position in the placement list and forward to the next node.
@@ -656,7 +662,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 						return
 					}
 					persistS3Meta(store, storageKey, metadata)
-					recordVersionIfVersioned(comm, store, storageKey, metadata.Hash, metadata.Size)
+					afterS3ObjectWrite(comm, store, storageKey, metadata.Hash, metadata.Size, cfg.S3.NotificationRetryMax)
 				} else {
 					if err := getFile(comm, store, storageKey, metadata.Hash, metadata.Size, remotePath); err != nil {
 						log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
@@ -665,7 +671,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 						return
 					}
 					persistS3Meta(store, storageKey, metadata)
-					recordVersionIfVersioned(comm, store, storageKey, metadata.Hash, metadata.Size)
+					afterS3ObjectWrite(comm, store, storageKey, metadata.Hash, metadata.Size, cfg.S3.NotificationRetryMax)
 				}
 
 				if myPos != -1 && myPos < len(placement)-1 {
@@ -742,7 +748,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 							return
 						}
 						persistS3Meta(store, storageKey, metadata)
-						recordVersionIfVersioned(comm, store, storageKey, metadata.Hash, metadata.Size)
+						afterS3ObjectWrite(comm, store, storageKey, metadata.Hash, metadata.Size, cfg.S3.NotificationRetryMax)
 					} else {
 						if err := getFile(comm, store, storageKey, metadata.Hash, metadata.Size, remotePath); err != nil {
 							log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
@@ -753,7 +759,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 							return
 						}
 						persistS3Meta(store, storageKey, metadata)
-						recordVersionIfVersioned(comm, store, storageKey, metadata.Hash, metadata.Size)
+						afterS3ObjectWrite(comm, store, storageKey, metadata.Hash, metadata.Size, cfg.S3.NotificationRetryMax)
 					}
 					for _, targetId := range targets {
 						go func(id int) {
@@ -801,7 +807,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 							return
 						}
 						persistS3Meta(store, storageKey, metadata)
-						recordVersionIfVersioned(comm, store, storageKey, metadata.Hash, metadata.Size)
+						afterS3ObjectWrite(comm, store, storageKey, metadata.Hash, metadata.Size, cfg.S3.NotificationRetryMax)
 					} else {
 						if err := getFile(comm, store, storageKey, metadata.Hash, metadata.Size, remotePath); err != nil {
 							log.Printf("AUDIT: Error getting file from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
@@ -809,7 +815,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 							return
 						}
 						persistS3Meta(store, storageKey, metadata)
-						recordVersionIfVersioned(comm, store, storageKey, metadata.Hash, metadata.Size)
+						afterS3ObjectWrite(comm, store, storageKey, metadata.Hash, metadata.Size, cfg.S3.NotificationRetryMax)
 					}
 				}
 			default:
@@ -855,33 +861,56 @@ func persistS3Meta(store storage.Store, key string, meta common.FileMetadata) {
 	}
 }
 
-// recordVersionIfVersioned creates an object version after a successful S3
-// write when the gateway's bucket is versioned (R10 Phase 1, #938). Versioning
-// is an S3-surface concept: native-protocol writes never create versions.
-// The version record lives in node-local metadata; cross-node version-chain
+// afterS3ObjectWrite applies the S3-surface side effects of a completed object
+// write: version recording when the gateway's bucket is versioned, then
+// notification delivery to matching webhook rules (R10, #938). Both are
+// S3-surface concepts: native-protocol writes never version and never notify.
+// Version records live in node-local metadata; cross-node version-chain
 // replication is a tracked follow-up (see openspec/changes/r10-s3-breadth).
-func recordVersionIfVersioned(comm transport.Communicator, store storage.Store, key, hash string, size int64) {
+func afterS3ObjectWrite(comm transport.Communicator, store storage.Store, key, hash string, size int64, retryMax int) {
 	if !comm.IsExternalClient() {
 		return
 	}
-	bucket := comm.ConfiguredBucket()
+	afterS3ObjectWriteBucket(store, comm.ConfiguredBucket(), key, hash, size, retryMax)
+}
+
+// afterS3ObjectWriteBucket records a version (when the bucket is versioned) and
+// dispatches an ObjectCreated notification for one bucket-scoped object write.
+func afterS3ObjectWriteBucket(store storage.Store, bucket, key, hash string, size int64, retryMax int) {
 	if bucket == "" {
-		return // legacy flat namespace: no bucket to version
+		return // legacy flat namespace: no bucket to version or notify
 	}
-	vs, ok := store.(transport.VersioningStore)
+
+	versionID := ""
+	if vs, ok := store.(transport.VersioningStore); ok {
+		versioned, err := vs.IsVersioned(bucket)
+		if err != nil {
+			log.Printf("AUDIT: versioning check failed for %s: %v", bucket, common.SanitizeLog(err.Error()))
+		} else if versioned {
+			vid, rerr := vs.RecordVersion(bucket, key, hash, size)
+			if rerr != nil {
+				log.Printf("AUDIT: failed to record version for %s: %v", key, common.SanitizeLog(rerr.Error()))
+			} else {
+				versionID = vid
+			}
+		}
+	}
+
+	dispatchObjectEvent(store, bucket, key, versionID, storage.EventObjectCreatedPut, retryMax)
+}
+
+// dispatchObjectEvent delivers one S3 event to the bucket's notification rules.
+// A store without notification support makes it inert. Delivery is synchronous
+// and bounded by the rule's retry budget; failures are logged, never fatal.
+func dispatchObjectEvent(store storage.Store, bucket, key, versionID string, eventType storage.EventType, retryMax int) {
+	ns, ok := store.(interface {
+		DispatchNotification(string, string, string, storage.EventType, time.Time, int) (storage.NotificationOutcome, error)
+	})
 	if !ok {
 		return
 	}
-	versioned, err := vs.IsVersioned(bucket)
-	if err != nil {
-		log.Printf("AUDIT: versioning check failed for %s: %v", bucket, common.SanitizeLog(err.Error()))
-		return
-	}
-	if !versioned {
-		return
-	}
-	if _, err := vs.RecordVersion(bucket, key, hash, size); err != nil {
-		log.Printf("AUDIT: failed to record version for %s: %v", key, common.SanitizeLog(err.Error()))
+	if _, err := ns.DispatchNotification(bucket, key, versionID, eventType, time.Now(), retryMax); err != nil {
+		log.Printf("AUDIT: notification dispatch failed for %s: %v", key, common.SanitizeLog(err.Error()))
 	}
 }
 

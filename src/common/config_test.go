@@ -1114,3 +1114,44 @@ func TestGetConfig_MomofsConfig(t *testing.T) {
 		t.Fatal("expected unknown consistency value to be rejected")
 	}
 }
+
+func TestGetConfig_S3Section(t *testing.T) {
+	mk := func(t *testing.T, s3 string) string {
+		t.Helper()
+		tmpfile := filepath.Join(t.TempDir(), "momo.conf")
+		if err := os.WriteFile(tmpfile, []byte(validConfig+"\n"+s3), 0666); err != nil {
+			t.Fatalf("Failed to write config: %v", err)
+		}
+		return tmpfile
+	}
+
+	t.Run("default retry max when section absent", func(t *testing.T) {
+		cfg, err := GetConfig(mk(t, ""))
+		if err != nil {
+			t.Fatalf("GetConfig failed: %v", err)
+		}
+		if cfg.S3.NotificationRetryMax != 3 {
+			t.Errorf("NotificationRetryMax = %d, want default 3", cfg.S3.NotificationRetryMax)
+		}
+	})
+
+	t.Run("explicit retry max parsed", func(t *testing.T) {
+		cfg, err := GetConfig(mk(t, "[s3]\nnotification_retry_max = 5\n"))
+		if err != nil {
+			t.Fatalf("GetConfig failed: %v", err)
+		}
+		if cfg.S3.NotificationRetryMax != 5 {
+			t.Errorf("NotificationRetryMax = %d, want 5", cfg.S3.NotificationRetryMax)
+		}
+	})
+
+	t.Run("invalid retry max rejected", func(t *testing.T) {
+		_, err := GetConfig(mk(t, "[s3]\nnotification_retry_max = 0\n"))
+		if err == nil {
+			t.Fatal("expected error for notification_retry_max < 1")
+		}
+		if !strings.Contains(err.Error(), "notification_retry_max") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}

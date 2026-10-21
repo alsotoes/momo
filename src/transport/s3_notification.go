@@ -4,12 +4,22 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"syscall"
+	"time"
 
 	"github.com/alsotoes/momo/src/common"
 	"github.com/alsotoes/momo/src/storage"
 )
+
+// notificationUnsupportedMsg is the S3 error message returned when the store
+// has no notification capability.
+const notificationUnsupportedMsg = "Notification is not supported."
+
+// defaultNotificationRetryMax bounds webhook delivery attempts when the gateway
+// dispatches an event itself and no explicit retry budget was configured.
+const defaultNotificationRetryMax = 3
 
 // NotificationStore is the storage-agnostic interface for bucket notification
 // configurations. The CASStore implements this.
@@ -19,25 +29,34 @@ type NotificationStore interface {
 	DeleteBucketNotification(bucket string) error
 }
 
+// notificationFilterRuleXML mirrors one S3 <FilterRule> (Name/Value pair).
+type notificationFilterRuleXML struct {
+	Name  string `xml:"Name"`
+	Value string `xml:"Value"`
+}
+
+// notificationS3KeyXML mirrors the S3 <S3Key> filter container.
+type notificationS3KeyXML struct {
+	FilterRule []notificationFilterRuleXML `xml:"FilterRule"`
+}
+
+// notificationFilterXML mirrors the S3 <Filter> element.
+type notificationFilterXML struct {
+	S3Key *notificationS3KeyXML `xml:"S3Key"`
+}
+
 // notificationRuleXML mirrors the S3 <Rule> element for notifications.
 type notificationRuleXML struct {
-	ID     string   `xml:"ID"`
-	Status string   `xml:"Status"`
-	Event  []string `xml:"Event"`
-	Filter *struct {
-		S3Key *struct {
-			FilterRule []struct {
-				Name  string `xml:"Name"`
-				Value string `xml:"Value"`
-			} `xml:"FilterRule"`
-		} `xml:"S3Key"`
-	} `xml:"Filter"`
-	Prefix    string `xml:"Prefix"` // legacy top-level <Prefix>
-	Suffix    string `xml:"Suffix"`
-	QueueARN  string `xml:"QueueARN"`          // SQS
-	TopicARN  string `xml:"TopicARN"`          // SNS
-	LambdaARN string `xml:"LambdaFunctionARN"` // Lambda
-	HTTPUrl   string `xml:"HttpUrl"`           // Webhook (momo extension)
+	ID        string                 `xml:"ID"`
+	Status    string                 `xml:"Status"`
+	Event     []string               `xml:"Event"`
+	Filter    *notificationFilterXML `xml:"Filter"`
+	Prefix    string                 `xml:"Prefix"` // legacy top-level <Prefix>
+	Suffix    string                 `xml:"Suffix"`
+	QueueARN  string                 `xml:"QueueARN"`          // SQS
+	TopicARN  string                 `xml:"TopicARN"`          // SNS
+	LambdaARN string                 `xml:"LambdaFunctionARN"` // Lambda
+	HTTPUrl   string                 `xml:"HttpUrl"`           // Webhook (momo extension)
 }
 
 // notificationConfigurationXML mirrors the S3 <NotificationConfiguration> document.
@@ -46,9 +65,6 @@ type notificationConfigurationXML struct {
 	Rules   []notificationRuleXML `xml:"Rule"`
 }
 
-// ParseNotificationConfiguration converts a PUT ?notification body into a
-// storage.NotificationConfig. It rejects a document with no rules, a rule with
-// no ID/Status, and a rule with no Events or no destination.
 // validateNotificationRule validates the basic fields of a notification rule.
 func validateNotificationRule(r notificationRuleXML) error {
 	if r.ID == "" {
@@ -60,8 +76,6 @@ func validateNotificationRule(r notificationRuleXML) error {
 	if len(r.Event) == 0 {
 		return fmt.Errorf("notification rule %s: no events specified: %w", r.ID, syscall.EINVAL)
 	}
-
-	// Validate destination
 	hasTarget := r.QueueARN != "" || r.TopicARN != "" || r.LambdaARN != "" || r.HTTPUrl != ""
 	if !hasTarget {
 		return fmt.Errorf("notification rule %s: no destination (QueueARN/TopicARN/LambdaFunctionARN/HttpUrl): %w", r.ID, syscall.EINVAL)
@@ -118,14 +132,11 @@ func parseNotificationRule(r notificationRuleXML) (storage.NotificationRule, err
 	if err := validateNotificationRule(r); err != nil {
 		return storage.NotificationRule{}, err
 	}
-
 	events, err := convertNotificationEvents(r.Event, r.ID)
 	if err != nil {
 		return storage.NotificationRule{}, err
 	}
-
 	prefix, suffix := extractPrefixSuffix(r)
-
 	return storage.NotificationRule{
 		ID:        r.ID,
 		Status:    r.Status,
@@ -187,10 +198,33 @@ func FormatNotificationConfiguration(cfg storage.NotificationConfig) ([]byte, er
 	return xml.MarshalIndent(doc, "", "  ")
 }
 
+// dispatchNotification delivers one S3 event to the bucket's notification rules
+// (R10 Phase 3, #938). It is a no-op when the store has no notification
+// capability; delivery failures are logged and never propagate into the
+// request path.
+func (m *S3Communicator) dispatchNotification(bucket, key, versionID string, eventType storage.EventType) {
+	if m.notification == nil {
+		return
+	}
+	ds, ok := m.notification.(interface {
+		DispatchNotification(string, string, string, storage.EventType, time.Time, int) (storage.NotificationOutcome, error)
+	})
+	if !ok {
+		return
+	}
+	retryMax := m.notificationRetryMax
+	if retryMax < 1 {
+		retryMax = defaultNotificationRetryMax
+	}
+	if _, err := ds.DispatchNotification(bucket, key, versionID, eventType, time.Now(), retryMax); err != nil {
+		log.Printf("AUDIT: notification dispatch failed for %s: %v", key, common.SanitizeLog(err.Error()))
+	}
+}
+
 // handleGetNotification answers GET /{bucket}?notification.
 func (m *S3Communicator) handleGetNotification(bucket string) (int, int64, error) {
 	if m.notification == nil {
-		_, _ = writeS3Error(m.conn, http.StatusNotImplemented, "NotImplemented", "Notification is not supported.", bucket)
+		_, _ = writeS3Error(m.conn, http.StatusNotImplemented, "NotImplemented", notificationUnsupportedMsg, bucket)
 		return 0, 0, fmt.Errorf("notification not supported: %w", syscall.ENOSYS)
 	}
 	cfg, ok, err := m.notification.BucketNotification(bucket)
@@ -214,7 +248,7 @@ func (m *S3Communicator) handleGetNotification(bucket string) (int, int64, error
 // spooled by the gateway reader.
 func (m *S3Communicator) handlePutNotification(req *http.Request, bucket string) (int, int64, error) {
 	if m.notification == nil {
-		_, _ = writeS3Error(m.conn, http.StatusNotImplemented, "NotImplemented", "Notification is not supported.", bucket)
+		_, _ = writeS3Error(m.conn, http.StatusNotImplemented, "NotImplemented", notificationUnsupportedMsg, bucket)
 		return 0, 0, fmt.Errorf("notification not supported: %w", syscall.ENOSYS)
 	}
 	body, err := io.ReadAll(io.LimitReader(req.Body, 128*1024))
@@ -238,7 +272,7 @@ func (m *S3Communicator) handlePutNotification(req *http.Request, bucket string)
 // handleDeleteNotification answers DELETE /{bucket}?notification.
 func (m *S3Communicator) handleDeleteNotification(bucket string) (int, int64, error) {
 	if m.notification == nil {
-		_, _ = writeS3Error(m.conn, http.StatusNotImplemented, "NotImplemented", "Notification is not supported.", bucket)
+		_, _ = writeS3Error(m.conn, http.StatusNotImplemented, "NotImplemented", notificationUnsupportedMsg, bucket)
 		return 0, 0, fmt.Errorf("notification not supported: %w", syscall.ENOSYS)
 	}
 	if err := m.notification.DeleteBucketNotification(bucket); err != nil {

@@ -199,6 +199,8 @@ func GetConfig(path string) (Configuration, error) {
 		if err != nil {
 			return Configuration{}, fmt.Errorf("failed to load [%s] section: %w", sectionS3, err)
 		}
+	} else {
+		config.S3 = defaultS3Config()
 	}
 
 	// Load [momofs] section (optional). consistency=cached is deprecated:
@@ -282,12 +284,23 @@ func loadMomofsConfig(section *ini.Section) (ConfigurationMomofs, error) {
 	return momofsCfg, nil
 }
 
+// defaultS3Config returns the default [s3] gateway tuning configuration.
+func defaultS3Config() ConfigurationS3 {
+	return ConfigurationS3{
+		NotificationRetryMax: 3,
+	}
+}
+
 // loadS3Config loads the [s3] section from the configuration (R10, #938).
 func loadS3Config(section *ini.Section) (ConfigurationS3, error) {
 	var s3Cfg ConfigurationS3
 	s3Cfg.LifecycleWorkerInterval = section.Key("lifecycle_worker_interval").MustDuration(0)
 	if s3Cfg.LifecycleWorkerInterval < 0 {
 		return ConfigurationS3{}, fmt.Errorf("'lifecycle_worker_interval' must be >= 0: %w", syscall.EINVAL)
+	}
+	s3Cfg.NotificationRetryMax = section.Key("notification_retry_max").MustInt(3)
+	if s3Cfg.NotificationRetryMax < 1 {
+		return ConfigurationS3{}, fmt.Errorf("'notification_retry_max' must be >= 1: %w", syscall.EINVAL)
 	}
 	return s3Cfg, nil
 }
