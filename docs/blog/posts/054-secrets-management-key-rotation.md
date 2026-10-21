@@ -16,7 +16,7 @@ summary: "How momo manages encryption keys without a central secret server: a pl
 artifacts:
   - type: spec
     path: openspec/changes/r9-secrets
-related: ["053-multitenancy-authorization-audit", "013-e2ee-envelope-encryption", "044-plugin-seam-architecture"]
+related: ["053-multitenancy-authorization-audit", "013-e2ee-envelope-encryption", "044-plugin-seam-architecture", "055-r10-notification"]
 difficulty: "advanced"
 pattern: "seam-over-plugins"
 teaches:
@@ -152,3 +152,4 @@ resolution.
 - Versioned key registry: `src/common/keyregistry.go`
 - Rotation manager and audit: `src/common/rotation.go`
 - Tracking issue: https://github.com/alsotoes/momo/issues/937
+- Related: R10 Phase 3 (Notification, [055](055-r10-notification.md))

@@ -38,6 +38,7 @@ var (
 	bucketVersioning     = []byte("versioning")      // Maps bucket -> versioning status (R10, #938)
 	bucketObjectVersions = []byte("object_versions") // Maps bucket\x00key\x00versionID -> VersionRecord (R10, #938)
 	bucketLifecycle      = []byte("lifecycle")       // Maps bucket -> JSON LifecycleConfig (R10, #938)
+	bucketNotification   = []byte("notification")    // Maps bucket -> JSON NotificationConfig (R10, #938)
 )
 
 // ObjectMeta is the binary metadata stored in the objects bucket.
@@ -284,6 +285,7 @@ var metaBuckets = [][]byte{
 	bucketVersioning,
 	bucketObjectVersions,
 	bucketLifecycle,
+	bucketNotification,
 }
 
 // initBuckets creates every metadata bucket if it does not already exist.

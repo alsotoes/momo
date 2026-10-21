@@ -30,10 +30,13 @@
 - [x] Expirations: delete object (delete marker if versioned; permanent delete if not)
 
 ### Notification
-- [ ] `src/s3/notification.go`: New file — `NotificationConfig`, `EventType`, `NotificationWorker`
-- [ ] `src/transport/s3_communicator.go`: `handlePutNotification` / `handleGetNotification` / `handleDeleteNotification`
-- [ ] `NotificationWorker`: async HTTP POST with exponential backoff; retry up to `[s3] notification_retry_max`
-- [ ] Event filtering: prefix/suffix filter on object key
+- [x] `src/storage/notification.go`: New file — `NotificationConfig`, `EventType`, `NotificationConfig` CRUD, `DispatchNotification`
+- [x] `src/transport/s3_notification.go`: New file — `NotificationStore` interface, `ParseNotificationConfiguration`, `FormatNotificationConfiguration`, handlers
+- [x] `src/transport/s3_communicator.go`: `handlePutNotification` / `handleGetNotification` / `handleDeleteNotification` + `NotificationStore` capability
+- [x] `src/server/server.go`: `NotificationStore` capability wiring
+- [x] `NotificationWorker`: async HTTP POST with exponential backoff; retry up to `[s3] notification_retry_max`
+- [x] Event filtering: prefix/suffix filter on object key
+- [x] Tests: `src/storage/notification_test.go` (5), `src/transport/s3_notification_test.go` (4)
 
 ### Object Lock
 - [ ] `src/storage/storage.go`: Add `ObjectLockConfig` to `ObjectMeta` (`Mode`, `RetainUntilDate`, `LegalHold`)
@@ -52,10 +55,10 @@
 - [x] Handler/error-branch coverage: PUT malformed/invalid status, GET/HEAD versionId missing (404 NoSuchVersion), 501 without versioning capability, max-keys clamp, prefix filter
 - [x] `TestEvaluateLifecycleTransition` (storage) — verifies the storage-class change
 - [x] `TestEvaluateLifecycleExpiration` (storage) — verifies deletion
-- [ ] `TestNotification` — PUT notification config; trigger event; verify webhook received
+- [x] `TestNotification` — PUT notification config; trigger event; verify webhook received
 - [ ] `TestObjectLock` — enable lock; PUT with retention; verify overwrite/delete denied; legal hold
 - [x] `go test ./src/storage/ ./src/transport/ ./src/server/ ./src/common/` — all pass
-- [ ] `make test` — full suite passes
+- [x] `make test` — full suite passes
 
 ## Compliance
 

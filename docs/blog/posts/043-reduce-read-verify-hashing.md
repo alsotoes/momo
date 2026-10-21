@@ -15,6 +15,7 @@ related:
   - 042-perf-profiling-baseline
   - 031-core-integrity-verification
   - 044-plugin-seam-architecture
+  - 055-r10-notification
 ---
 
 We ran our first proper performance profile on the storage engine and got a
