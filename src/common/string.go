@@ -78,64 +78,72 @@ func NormalizeVirtualPath(p string) (string, error) {
 		return "", nil
 	}
 
-	// Strictly reject path traversal segments (..), backslashes, and null bytes.
-	// Null bytes must be rejected: downstream C libraries, shells, or log
-	// aggregators would truncate the path at the first \x00 (injection vector).
-	if strings.ContainsRune(p, 0) {
-		return "", syscall.EINVAL
-	}
-	if strings.Contains(p, "\\") {
-		return "", syscall.EINVAL
-	}
-	// ⚡ Bolt: Eliminate heap allocation by replacing strings.Split with strings.IndexByte
-	rem := p
-	for {
-		i := strings.IndexByte(rem, '/')
-		if i == -1 {
-			if rem == ".." {
-				return "", syscall.EINVAL
-			}
-			break
-		}
-		if rem[:i] == ".." {
-			return "", syscall.EINVAL
-		}
-		rem = rem[i+1:]
+	if err := rejectPathHazards(p); err != nil {
+		return "", err
 	}
 
 	// Resolve slashes and remove redundancies efficiently
 	cleaned := path.Clean(p)
 
-	// Split and validate each segment to ensure no empty segments exist.
-	// Segment content is preserved verbatim: whitespace within a segment is
-	// meaningful (e.g. "my folder/file") and must not be trimmed.
-	// ⚡ Bolt: Eliminate heap allocation by replacing strings.Split with strings.IndexByte
-	var validSegments []string
-	remCleaned := cleaned
-	for {
-		i := strings.IndexByte(remCleaned, '/')
-		var seg string
-		if i == -1 {
-			seg = remCleaned
-		} else {
-			seg = remCleaned[:i]
-		}
-
-		if seg != "" && seg != "." && seg != ".." && strings.TrimSpace(seg) != "" {
-			validSegments = append(validSegments, seg)
-		}
-
-		if i == -1 {
-			break
-		}
-		remCleaned = remCleaned[i+1:]
-	}
-
+	validSegments := meaningfulSegments(cleaned)
 	if len(validSegments) == 0 {
 		return "", syscall.EINVAL
 	}
 
 	return strings.Join(validSegments, "/"), nil
+}
+
+// rejectPathHazards strictly rejects path traversal segments (..), backslashes,
+// and null bytes. Null bytes must be rejected: downstream C libraries, shells,
+// or log aggregators would truncate the path at the first \x00 (injection
+// vector).
+func rejectPathHazards(p string) error {
+	if strings.ContainsRune(p, 0) {
+		return syscall.EINVAL
+	}
+	if strings.Contains(p, "\\") {
+		return syscall.EINVAL
+	}
+	// ⚡ Bolt: strings.IndexByte scan avoids the allocations strings.Split would make.
+	rem := p
+	for {
+		i := strings.IndexByte(rem, '/')
+		if i == -1 {
+			if rem == ".." {
+				return syscall.EINVAL
+			}
+			return nil
+		}
+		if rem[:i] == ".." {
+			return syscall.EINVAL
+		}
+		rem = rem[i+1:]
+	}
+}
+
+// meaningfulSegments splits a cleaned path and keeps only non-empty, non-dot
+// segments. Segment content is preserved verbatim: whitespace within a segment
+// is meaningful (e.g. "my folder/file") and must not be trimmed.
+func meaningfulSegments(cleaned string) []string {
+	// ⚡ Bolt: strings.IndexByte scan avoids the allocations strings.Split would make.
+	var validSegments []string
+	rem := cleaned
+	for {
+		i := strings.IndexByte(rem, '/')
+		var seg string
+		if i == -1 {
+			seg = rem
+		} else {
+			seg = rem[:i]
+		}
+		if seg != "" && seg != "." && seg != ".." && strings.TrimSpace(seg) != "" {
+			validSegments = append(validSegments, seg)
+		}
+		if i == -1 {
+			return validSegments
+		}
+		rem = rem[i+1:]
+	}
 }
 
 // TrimNullBytesString finds the first null byte and returns a string up to that byte.
