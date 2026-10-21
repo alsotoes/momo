@@ -169,6 +169,14 @@ type ConfigurationMomofs struct {
 	MetadataTTL time.Duration
 }
 
+// ConfigurationS3 holds the optional [s3] gateway tuning configuration (R10, #938).
+type ConfigurationS3 struct {
+	// LifecycleWorkerInterval is how often the lifecycle background worker scans
+	// versioned/bucketed objects and applies expiration/transition rules.
+	// 0 (default) disables the worker.
+	LifecycleWorkerInterval time.Duration
+}
+
 // ConfigurationMetrics holds the metrics configuration for the application.
 type ConfigurationMetrics struct {
 	// Interval is the interval at which to collect metrics.
@@ -439,6 +447,8 @@ type Configuration struct {
 	Momofs ConfigurationMomofs
 	// Secrets is the secrets management configuration (R9, #937).
 	Secrets SecretsConfig
+	// S3 is the optional [s3] gateway tuning configuration (R10, #938).
+	S3 ConfigurationS3
 }
 
 // Permission represents a S3/bucket operation permission.

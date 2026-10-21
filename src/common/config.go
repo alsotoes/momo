@@ -26,6 +26,8 @@ const (
 	sectionStorage = "storage"
 	// sectionMomofs is the name of the optional [momofs] section in the configuration file.
 	sectionMomofs = "momofs"
+	// sectionS3 is the name of the optional [s3] section in the configuration file.
+	sectionS3 = "s3"
 	// sectionTenants is the name of the [tenants] section in the configuration file (R8, #936).
 	sectionTenants = "tenants"
 	// sectionAudit is the name of the [audit] section in the configuration file (R8, #936).
@@ -190,6 +192,15 @@ func GetConfig(path string) (Configuration, error) {
 		config.Storage = defaultStorageConfig()
 	}
 
+	// Load [s3] section (optional, R10 #938).
+	s3Sec, err := cfg.GetSection(sectionS3)
+	if err == nil {
+		config.S3, err = loadS3Config(s3Sec)
+		if err != nil {
+			return Configuration{}, fmt.Errorf("failed to load [%s] section: %w", sectionS3, err)
+		}
+	}
+
 	// Load [momofs] section (optional). consistency=cached is deprecated:
 	// kernel-level consistency makes it redundant, so it is ignored with an
 	// AUDIT log (issue #980).
@@ -269,6 +280,16 @@ func loadMomofsConfig(section *ini.Section) (ConfigurationMomofs, error) {
 		}
 	}
 	return momofsCfg, nil
+}
+
+// loadS3Config loads the [s3] section from the configuration (R10, #938).
+func loadS3Config(section *ini.Section) (ConfigurationS3, error) {
+	var s3Cfg ConfigurationS3
+	s3Cfg.LifecycleWorkerInterval = section.Key("lifecycle_worker_interval").MustDuration(0)
+	if s3Cfg.LifecycleWorkerInterval < 0 {
+		return ConfigurationS3{}, fmt.Errorf("'lifecycle_worker_interval' must be >= 0: %w", syscall.EINVAL)
+	}
+	return s3Cfg, nil
 }
 
 // defaultAuditConfig returns the default audit configuration.

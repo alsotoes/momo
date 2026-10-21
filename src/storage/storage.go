@@ -37,6 +37,7 @@ var (
 	bucketACL            = []byte("acl")             // Bucket/Object ACLs (R8, #936)
 	bucketVersioning     = []byte("versioning")      // Maps bucket -> versioning status (R10, #938)
 	bucketObjectVersions = []byte("object_versions") // Maps bucket\x00key\x00versionID -> VersionRecord (R10, #938)
+	bucketLifecycle      = []byte("lifecycle")       // Maps bucket -> JSON LifecycleConfig (R10, #938)
 )
 
 // ObjectMeta is the binary metadata stored in the objects bucket.
@@ -282,6 +283,7 @@ var metaBuckets = [][]byte{
 	bucketTenantMeta,
 	bucketVersioning,
 	bucketObjectVersions,
+	bucketLifecycle,
 }
 
 // initBuckets creates every metadata bucket if it does not already exist.

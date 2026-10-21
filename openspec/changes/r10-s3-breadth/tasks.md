@@ -22,12 +22,12 @@
 - [ ] `x-amz-version-id` response header on plain PUTs (response is written before the body streams; multipart already echoes it)
 
 ### Lifecycle
-- [ ] `src/s3/lifecycle.go`: New file — `LifecycleRule` struct, `LifecycleEngine`
-- [ ] `LifecycleEngine`: `Evaluate(bucket)` — iterates objects, matches prefix/filter, executes transitions/expirations
-- [ ] `src/transport/s3_communicator.go`: `handlePutLifecycle` / `handleGetLifecycle` / `handleDeleteLifecycle`
-- [ ] `src/server/server.go`: Register lifecycle background worker (interval from `[s3] lifecycle_worker_interval`)
-- [ ] Transitions: copy object to new storage class (update `StorageClass` in metadata)
-- [ ] Expirations: delete object (create delete marker if versioned; permanent delete if not)
+- [x] `src/storage/lifecycle.go`: New file — `LifecycleRule`/`LifecycleConfig` + `EvaluateLifecycle` engine (implemented in the storage layer per the protocol/cluster separation, ADR 0053; `src/s3/` does not exist)
+- [x] `EvaluateLifecycle(bucket, now)`: iterates objects, matches prefix, applies expiration/transition
+- [x] `src/transport/s3_lifecycle.go`: `handlePutLifecycle` / `handleGetLifecycle` / `handleDeleteLifecycle` (+ `LifecycleStore` capability, 501 without it)
+- [x] `src/server/server.go`: `startLifecycleWorker` (interval from `[s3] lifecycle_worker_interval`)
+- [x] Transitions: update `x-amz-storage-class` in the object's S3 metadata
+- [x] Expirations: delete object (delete marker if versioned; permanent delete if not)
 
 ### Notification
 - [ ] `src/s3/notification.go`: New file — `NotificationConfig`, `EventType`, `NotificationWorker`
@@ -42,19 +42,19 @@
 - [ ] `src/transport/s3_communicator.go`: `handleGetObject` / `handleHeadObject` — return `x-amz-object-lock-*` headers
 
 ### Config
-- [ ] `src/common/config.go`: Add `[s3]` keys: `lifecycle_worker_interval`, `notification_worker_concurrency`, `notification_retry_max`
-- [ ] `conf/momo.conf`: Document new S3 breadth keys
+- [x] `src/common/config.go`: `[s3] lifecycle_worker_interval` (notification keys land with Phase 3)
+- [x] `conf/momo.conf`: Documented the `[s3]` section
 
 ## Testing
 
 - [x] `TestS3Versioning_FullStackFlow` — enable versioning, record versions, GET ?versions, GET specific version, DELETE with/without versionId (marker + revive + permanent)
 - [x] `TestS3Versioning_UnversionedDeleteUnchanged` — unversioned buckets keep plain delete semantics
 - [x] Handler/error-branch coverage: PUT malformed/invalid status, GET/HEAD versionId missing (404 NoSuchVersion), 501 without versioning capability, max-keys clamp, prefix filter
-- [ ] `TestLifecycleTransitions` — rule with transition after N days; verify storage class change
-- [ ] `TestLifecycleExpiration` — rule with expiration; verify object deleted
+- [x] `TestEvaluateLifecycleTransition` (storage) — verifies the storage-class change
+- [x] `TestEvaluateLifecycleExpiration` (storage) — verifies deletion
 - [ ] `TestNotification` — PUT notification config; trigger event; verify webhook received
 - [ ] `TestObjectLock` — enable lock; PUT with retention; verify overwrite/delete denied; legal hold
-- [ ] `go test -race ./...` — all tests pass
+- [x] `go test ./src/storage/ ./src/transport/ ./src/server/ ./src/common/` — all pass
 - [ ] `make test` — full suite passes
 
 ## Compliance

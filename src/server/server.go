@@ -196,6 +196,12 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 	}
 	StartMetricsServer(ctx, metricsHost, metricsPort, metricsCollector, reloadFn)
 
+	// R10 Phase 2 (#938): lifecycle background worker. Applies expiration and
+	// transition rules to the configured bucket on a fixed interval.
+	if cfg.S3.LifecycleWorkerInterval > 0 && cfg.Storage.S3Bucket != "" {
+		startLifecycleWorker(ctx, store, cfg.Storage.S3Bucket, cfg.S3.LifecycleWorkerInterval)
+	}
+
 	// 🛡️ Sentinel: Adaptive failed-auth backoff & temporary lockout (issue #821).
 	// Disabled (Allow always true) when auth_backoff_delay is 0.
 
@@ -1149,4 +1155,35 @@ func initSecretsManager(ctx context.Context, cfg common.Configuration, dataDir s
 	}
 	log.Printf("R9: Secrets management enabled (sources: %v, rotation: %v)", cfg.Secrets.Sources, cfg.Secrets.RotationInterval)
 	return rotationMgr, keyDB
+}
+
+// startLifecycleWorker runs the R10 lifecycle engine on a fixed interval until
+// ctx is canceled. A store without lifecycle support makes it inert.
+func startLifecycleWorker(ctx context.Context, store storage.Store, bucket string, interval time.Duration) {
+	engine, ok := store.(interface {
+		EvaluateLifecycle(string, time.Time) (storage.LifecycleOutcome, error)
+	})
+	if !ok {
+		return
+	}
+	go func() {
+		defer common.RecoverClose("lifecycle worker", nil)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case now := <-ticker.C:
+				out, err := engine.EvaluateLifecycle(bucket, now)
+				if err != nil {
+					log.Printf("AUDIT: lifecycle evaluation failed for %s: %v", bucket, common.SanitizeLog(err.Error()))
+					continue
+				}
+				if out.Expired > 0 || out.Transitioned > 0 {
+					log.Printf("AUDIT: lifecycle applied to %s: expired=%d transitioned=%d", bucket, out.Expired, out.Transitioned)
+				}
+			}
+		}
+	}()
 }

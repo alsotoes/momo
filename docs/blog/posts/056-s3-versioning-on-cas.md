@@ -15,7 +15,7 @@ summary: "Why S3 versioning and content-addressed storage seem to conflict — m
 artifacts:
   - type: spec
     path: openspec/changes/r10-s3-breadth
-related: ["055-adaptive-volume-storage", "031-core-integrity-verification", "026-metrics-observability"]
+related: ["055-adaptive-volume-storage", "031-core-integrity-verification", "026-metrics-observability", "058-s3-lifecycle-on-cas"]
 difficulty: "intermediate"
 pattern: "layered-identity"
 teaches:
