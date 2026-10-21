@@ -116,6 +116,10 @@ type S3Communicator struct {
 	// stores without versioning support — every versioning route then 501s.
 	versioning VersioningStore
 
+	// lifecycle is the R10 bucket-lifecycle capability of the store. Nil on
+	// stores without lifecycle support — every lifecycle route then 501s.
+	lifecycle LifecycleStore
+
 	// configuredBucket is the single bucket name exposed by the S3 gateway for
 	// bucket-management operations (issue #767). Empty means legacy flat
 	// namespace mode where no bucket semantics are enforced.
@@ -195,6 +199,9 @@ func (m *S3Communicator) SetStore(store storage.Store) {
 	// does; narrower test mocks may not).
 	if vs, ok := store.(VersioningStore); ok {
 		m.versioning = vs
+	}
+	if ls, ok := store.(LifecycleStore); ok {
+		m.lifecycle = ls
 	}
 }
 
@@ -866,6 +873,13 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 				}
 				return m.handleGetVersions(bucket, q)
 			}
+			// R10 Phase 2 (#938): bucket lifecycle configuration.
+			if _, hasLifecycle := q["lifecycle"]; hasLifecycle {
+				if m.lifecycle == nil {
+					return 0, 0, m.rejectLifecycleUnsupported(bucket)
+				}
+				return m.handleGetLifecycle(bucket)
+			}
 		}
 
 		// ListObjectsV2 (is list if key is empty, or if list-type query is 2)
@@ -1286,6 +1300,13 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 				writeS3Error(m.conn, http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", bucket)
 				return 0, 0, fmt.Errorf("unknown bucket %q: %w", bucket, syscall.ENOENT)
 			}
+			// R10 Phase 2 (#938): DELETE /{bucket}?lifecycle.
+			if _, hasLifecycle := req.URL.Query()["lifecycle"]; hasLifecycle {
+				if m.lifecycle == nil {
+					return 0, 0, m.rejectLifecycleUnsupported(bucket)
+				}
+				return m.handleDeleteLifecycle(bucket)
+			}
 			files, err := m.listFiles(5 * time.Second)
 			if err != nil {
 				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
@@ -1453,6 +1474,14 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 				return 0, 0, m.rejectVersioningUnsupported(bucket)
 			}
 			return m.handlePutVersioning(req, bucket)
+		}
+
+		// R10 Phase 2 (#938): PUT /{bucket}?lifecycle — set bucket lifecycle.
+		if _, hasLifecycle := q["lifecycle"]; hasLifecycle && key == "" {
+			if m.lifecycle == nil {
+				return 0, 0, m.rejectLifecycleUnsupported(bucket)
+			}
+			return m.handlePutLifecycle(req, bucket)
 		}
 
 		// CreateBucket: PUT to a bucket root (key empty) in bucket mode.
@@ -2079,7 +2108,6 @@ var unsupportedBucketConfigSubresources = map[string]string{
 	"policy":              "bucket policies",
 	"cors":                "CORS configuration",
 	"website":             "static website hosting",
-	"lifecycle":           "lifecycle configuration",
 	"tagging":             "bucket tagging",
 	"encryption":          "bucket encryption",
 	"publicAccessBlock":   "public access block",
@@ -2134,6 +2162,22 @@ func (m *S3Communicator) rejectVersioningUnsupported(resource string) (err error
 		return fmt.Errorf("failed to write 501 response: %v: %w", werr, syscall.ENOTSUP)
 	}
 	return fmt.Errorf("versioning store unavailable: %w", syscall.ENOTSUP)
+}
+
+// msgLifecycleUnsupported is the honest-501 message used by every lifecycle
+// route on stores without the lifecycle capability.
+const msgLifecycleUnsupported = "Lifecycle configuration is not supported by this storage backend."
+
+// rejectLifecycleUnsupported answers 501 NotImplemented and returns the
+// connection-teardown error for lifecycle routes on stores without the
+// lifecycle capability.
+func (m *S3Communicator) rejectLifecycleUnsupported(resource string) (err error) {
+	defer common.RecoverErr("S3 rejectLifecycleUnsupported", &err)
+	_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	if _, werr := writeS3Error(m.conn, http.StatusNotImplemented, "NotImplemented", msgLifecycleUnsupported, resource); werr != nil {
+		return fmt.Errorf("failed to write 501 response: %v: %w", werr, syscall.ENOTSUP)
+	}
+	return fmt.Errorf("lifecycle store unavailable: %w", syscall.ENOTSUP)
 }
 
 // unsupportedObjectSubresource returns the human-readable descriptor of the

@@ -20,6 +20,7 @@ artifacts:
 - type: issue
   id: '820'
 related:
+- 058-s3-lifecycle-on-cas
 - 001-origin-and-genesis
 - 005-crush-placement
 - 006-pluggable-storage-backends

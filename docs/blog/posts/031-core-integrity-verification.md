@@ -17,6 +17,7 @@ related:
   - 043-reduce-read-verify-hashing
   - 055-adaptive-volume-storage
   - "056-s3-versioning-on-cas"
+  - 058-s3-lifecycle-on-cas
 ---
 
 A **checksum** is a short fingerprint of a stream of bytes: recompute it on the
