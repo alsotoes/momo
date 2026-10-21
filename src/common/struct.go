@@ -175,6 +175,10 @@ type ConfigurationS3 struct {
 	// versioned/bucketed objects and applies expiration/transition rules.
 	// 0 (default) disables the worker.
 	LifecycleWorkerInterval time.Duration
+	// NotificationRetryMax bounds the number of delivery attempts per webhook
+	// notification rule, with exponential backoff between attempts. Default 3;
+	// validated at config load to be >= 1.
+	NotificationRetryMax int
 }
 
 // ConfigurationMetrics holds the metrics configuration for the application.

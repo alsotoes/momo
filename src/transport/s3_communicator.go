@@ -120,6 +120,15 @@ type S3Communicator struct {
 	// stores without lifecycle support — every lifecycle route then 501s.
 	lifecycle LifecycleStore
 
+	// notification is the R10 bucket-notification capability of the store. Nil on
+	// stores without notification support – every notification route then 501s.
+	notification NotificationStore
+
+	// notificationRetryMax bounds webhook delivery attempts per event when this
+	// gateway itself dispatches an event (multipart completion, object delete).
+	// 0 means the package default; set via SetNotificationRetryMax.
+	notificationRetryMax int
+
 	// configuredBucket is the single bucket name exposed by the S3 gateway for
 	// bucket-management operations (issue #767). Empty means legacy flat
 	// namespace mode where no bucket semantics are enforced.
@@ -203,6 +212,9 @@ func (m *S3Communicator) SetStore(store storage.Store) {
 	if ls, ok := store.(LifecycleStore); ok {
 		m.lifecycle = ls
 	}
+	if ns, ok := store.(NotificationStore); ok {
+		m.notification = ns
+	}
 }
 
 // SetSigV4GatewayCredentials sets the dedicated SigV4 access/secret key pair
@@ -221,6 +233,15 @@ func (m *S3Communicator) SetSigV4GatewayCredentials(accessKey, secretKey string)
 // semantics (legacy flat namespace mode).
 func (m *S3Communicator) SetConfiguredBucket(bucket string) {
 	m.configuredBucket = bucket
+}
+
+// SetNotificationRetryMax sets the webhook delivery attempt bound used when this
+// gateway dispatches a notification itself (multipart completion, delete).
+// Values < 1 are ignored so the package default applies.
+func (m *S3Communicator) SetNotificationRetryMax(n int) {
+	if n >= 1 {
+		m.notificationRetryMax = n
+	}
 }
 
 // ConfiguredBucket exposes the single S3 bucket name to the server layer
@@ -880,6 +901,13 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 				}
 				return m.handleGetLifecycle(bucket)
 			}
+			// R10 Phase 3 (#938): bucket notification configuration.
+			if _, hasNotification := q["notification"]; hasNotification {
+				if m.notification == nil {
+					return 0, 0, m.rejectNotificationUnsupported(bucket)
+				}
+				return m.handleGetNotification(bucket)
+			}
 		}
 
 		// ListObjectsV2 (is list if key is empty, or if list-type query is 2)
@@ -1307,6 +1335,13 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 				}
 				return m.handleDeleteLifecycle(bucket)
 			}
+			// R10 Phase 3 (#938): DELETE /{bucket}?notification.
+			if _, hasNotification := req.URL.Query()["notification"]; hasNotification {
+				if m.notification == nil {
+					return 0, 0, m.rejectNotificationUnsupported(bucket)
+				}
+				return m.handleDeleteNotification(bucket)
+			}
 			files, err := m.listFiles(5 * time.Second)
 			if err != nil {
 				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
@@ -1379,6 +1414,8 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		m.conn.Write([]byte("HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"))
 
 		m.writeAuditLog("DeleteObject", bucket+"/"+key, "success")
+		// R10 Phase 3 (#938): fire ObjectRemoved notifications for the deleted key.
+		m.dispatchNotification(bucket, key, "", storage.EventObjectRemovedDelete)
 		return 0, 0, ErrRequestHandled
 	}
 
@@ -1482,6 +1519,13 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 				return 0, 0, m.rejectLifecycleUnsupported(bucket)
 			}
 			return m.handlePutLifecycle(req, bucket)
+		}
+		// R10 Phase 3 (#938): PUT /{bucket}?notification — set bucket notification.
+		if _, hasNotification := q["notification"]; hasNotification && key == "" {
+			if m.notification == nil {
+				return 0, 0, m.rejectNotificationUnsupported(bucket)
+			}
+			return m.handlePutNotification(req, bucket)
 		}
 
 		// CreateBucket: PUT to a bucket root (key empty) in bucket mode.
@@ -2178,6 +2222,22 @@ func (m *S3Communicator) rejectLifecycleUnsupported(resource string) (err error)
 		return fmt.Errorf("failed to write 501 response: %v: %w", werr, syscall.ENOTSUP)
 	}
 	return fmt.Errorf("lifecycle store unavailable: %w", syscall.ENOTSUP)
+}
+
+// msgNotificationUnsupported is the honest-501 message used by every notification
+// route on stores without the notification capability.
+const msgNotificationUnsupported = "Notification configuration is not supported by this storage backend."
+
+// rejectNotificationUnsupported answers 501 NotImplemented and returns the
+// connection-teardown error for notification routes on stores without the
+// notification capability.
+func (m *S3Communicator) rejectNotificationUnsupported(resource string) (err error) {
+	defer common.RecoverErr("S3 rejectNotificationUnsupported", &err)
+	_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	if _, werr := writeS3Error(m.conn, http.StatusNotImplemented, "NotImplemented", msgNotificationUnsupported, resource); werr != nil {
+		return fmt.Errorf("failed to write 501 response: %v: %w", werr, syscall.ENOTSUP)
+	}
+	return fmt.Errorf("notification store unavailable: %w", syscall.ENOTSUP)
 }
 
 // unsupportedObjectSubresource returns the human-readable descriptor of the
@@ -3038,6 +3098,8 @@ func (m *S3Communicator) handleBatchDelete(bucket string, req *http.Request) (in
 			}
 		}
 		deleted = append(deleted, k)
+		// R10 Phase 3 (#938): fire ObjectRemoved notifications per deleted key.
+		m.dispatchNotification(bucket, k, "", storage.EventObjectRemovedDelete)
 		if !delStart.IsZero() {
 			if lr, ok := m.metricsHook.(LatencyRecorder); ok {
 				lr.RecordRequestLatency("delete", time.Since(delStart))
@@ -3494,6 +3556,9 @@ func (m *S3Communicator) handleCompleteMultipartUpload(req *http.Request, bucket
 	// R10 Phase 1 (#938): versioned buckets record a version per completed
 	// multipart upload; the response echoes the version id in-gateway.
 	versionID := m.recordMultipartVersion(bucket, key, finalHash, finalSize)
+
+	// R10 Phase 3 (#938): fire ObjectCreated notifications for the assembled object.
+	m.dispatchNotification(bucket, key, versionID, storage.EventObjectCreatedMultipart)
 
 	var buf bytes.Buffer
 	buf.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)

@@ -30,10 +30,15 @@
 - [x] Expirations: delete object (delete marker if versioned; permanent delete if not)
 
 ### Notification
-- [ ] `src/s3/notification.go`: New file — `NotificationConfig`, `EventType`, `NotificationWorker`
-- [ ] `src/transport/s3_communicator.go`: `handlePutNotification` / `handleGetNotification` / `handleDeleteNotification`
-- [ ] `NotificationWorker`: async HTTP POST with exponential backoff; retry up to `[s3] notification_retry_max`
-- [ ] Event filtering: prefix/suffix filter on object key
+- [x] `src/storage/notification.go`: New file — `NotificationConfig`, `EventType`, `NotificationConfig` CRUD, `DispatchNotification`
+- [x] `src/transport/s3_notification.go`: New file — `NotificationStore` interface, `ParseNotificationConfiguration`, `FormatNotificationConfiguration`, handlers
+- [x] `src/transport/s3_communicator.go`: `handlePutNotification` / `handleGetNotification` / `handleDeleteNotification` + `NotificationStore` capability
+- [x] `src/server/server.go`: `NotificationStore` capability wiring; `afterS3ObjectWriteBucket` dispatches ObjectCreated on every S3 write; `SetNotificationRetryMax` propagates the retry budget to the gateway
+- [x] Webhook delivery: sync HTTP POST with exponential backoff; retries network errors and 5xx up to `[s3] notification_retry_max`, returns immediately on 4xx
+- [x] Event filtering: prefix/suffix filter on object key
+- [x] Delete notifications: ObjectRemoved fired from the single-DELETE and batch-DELETE paths
+- [x] Multipart: ObjectCreated:CompleteMultipartUpload fired on assembled upload
+- [x] Tests: `src/storage/notification_test.go` (delivery, filtering, retry backoff, exhausted retries, 4xx no-retry, unsupported target), `src/transport/s3_notification_test.go` (parsing, formatting, handler + error paths, dispatch helper), `src/server/s3_notification_hook_test.go` (ingest hook end-to-end)
 
 ### Object Lock
 - [ ] `src/storage/storage.go`: Add `ObjectLockConfig` to `ObjectMeta` (`Mode`, `RetainUntilDate`, `LegalHold`)
@@ -42,7 +47,7 @@
 - [ ] `src/transport/s3_communicator.go`: `handleGetObject` / `handleHeadObject` — return `x-amz-object-lock-*` headers
 
 ### Config
-- [x] `src/common/config.go`: `[s3] lifecycle_worker_interval` (notification keys land with Phase 3)
+- [x] `src/common/config.go`: `[s3] lifecycle_worker_interval` and `notification_retry_max` (default 3, validated ≥ 1)
 - [x] `conf/momo.conf`: Documented the `[s3]` section
 
 ## Testing
@@ -52,10 +57,10 @@
 - [x] Handler/error-branch coverage: PUT malformed/invalid status, GET/HEAD versionId missing (404 NoSuchVersion), 501 without versioning capability, max-keys clamp, prefix filter
 - [x] `TestEvaluateLifecycleTransition` (storage) — verifies the storage-class change
 - [x] `TestEvaluateLifecycleExpiration` (storage) — verifies deletion
-- [ ] `TestNotification` — PUT notification config; trigger event; verify webhook received
+- [x] `TestNotification` — PUT notification config; trigger event; verify webhook received
 - [ ] `TestObjectLock` — enable lock; PUT with retention; verify overwrite/delete denied; legal hold
 - [x] `go test ./src/storage/ ./src/transport/ ./src/server/ ./src/common/` — all pass
-- [ ] `make test` — full suite passes
+- [x] `make test` — full suite passes
 
 ## Compliance
 

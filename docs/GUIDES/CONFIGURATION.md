@@ -574,6 +574,16 @@ FUSE transport itself is selected at launch with `-imp fs`.
     -   **Type:** String
     -   **Default:** (none)
 
+### [s3] (optional)
+
+Gateway tuning for the S3-compatible surface (R10, #938). The section and every
+key in it are optional.
+
+| Key | Required | Description |
+|-----|----------|-------------|
+| `lifecycle_worker_interval` | no | Interval for the lifecycle background worker, e.g. `1h`. It applies the configured bucket lifecycle rules (expiration → delete or, on a versioned bucket, a delete marker; transition → storage class). `0` (default) disables the worker. |
+| `notification_retry_max` | no | Maximum delivery attempts per webhook notification rule, with exponential backoff between attempts. Default `3`; must be ≥ 1. Network errors and 5xx responses are retried; a 4xx is returned immediately. |
+
 ## Example Configurations
 
 ### High-Durability Object Storage
