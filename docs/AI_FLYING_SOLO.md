@@ -42,8 +42,8 @@ The authoritative surface for how agents, plugins and automation operate in this
 - **Rule 90**: Auto-Trace Issue Deduplication — the AI reviewer MUST NEVER create duplicate auto-trace issues for the same PR: search existing OPEN auto-trace issues first and reuse the canonical, use the CURRENT PR body from the API (not the stale event payload), and rely on workflow `concurrency` (`cancel-in-progress: true`) to serialize pushes. Prevents the #1057 duplicate-issue incident.
 - **Rule 91**: Tool Selection Strategy — targeted tools (glob/grep/read) by default; `mempalace search` before reading files; `repomix` only for whole-repo analysis.
 - **Rule 92**: Educational Blog Posts — every post must be a teachable narrative (Real Problem → Why Obvious Solutions Failed → Solution → Principle → Verification → Failure Modes → When NOT to Use), not a changelog.
-- **Rule 94**: Post-Merge Master Gate Verification — merging is not done; wait for the full master run set + Sonar master gate = OK on the merge SHA before reporting done. A red post-merge gate is a same-session hotfix duty. PR checks are never master evidence (Sonar leak-period asymmetry, #1184).
 - **Rule 93**: Duplicate Jules PR/Branch Consolidation — when Jules opens multiple PRs/branches for the same task, keep the merged canonical PR, close the duplicate with `--delete-branch`, close its auto-trace issue as superseded, and prune the remote. Complements Rule 80 (one PR rebuild) and Rule 90 (reviewer-created issues). Incident: #1112 (merged) vs #1114 (closed).
+- **Rule 94**: Post-Merge Master Gate Verification — merging is not done; wait for the full master run set + Sonar master gate = OK on the merge SHA before reporting done. A red post-merge gate is a same-session hotfix duty. PR checks are never master evidence (Sonar leak-period asymmetry, #1184).
 
 ## Pre-Flight Checklist
 
