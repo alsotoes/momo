@@ -247,3 +247,7 @@
 ## 2026-10-20 - Zero-Allocation SigV4 Canonical Headers
 **Learning:** In Go, calling `http.Header.Get()` can cause heap allocations on hot paths due to `net/textproto.CanonicalMIMEHeaderKey`.
 **Action:** For zero-allocation header lookups, bypass `Get()` by iterating directly over the `http.Header` map and comparing keys case-insensitively (e.g., using `strings.EqualFold`). Also replace `strings.Split` with `strings.IndexByte` and a stack-allocated buffer.
+
+## 2026-10-24 - Zero-Allocation http.Header.Get
+**Learning:** Go's `http.Header.Get(key)` performs an `O(1)` map lookup and is highly optimized. However, if the provided `key` string literal is *not* already in canonical MIME format (e.g., `"Content-SHA256"` instead of `"Content-Sha256"`), `net/textproto.CanonicalMIMEHeaderKey` allocates memory on the heap. Trying to write a custom case-insensitive map iteration (`O(N)`) to bypass this allocation is an algorithmic downgrade that introduces CPU overhead and a DoS vector.
+**Action:** When trying to eliminate heap allocations from `http.Header.Get` on hot paths, do not write a custom loop. Simply fix the string literal in the code to its canonical form (e.g. `"X-Amz-Date"`), enabling the `Get()` zero-allocation fast path.

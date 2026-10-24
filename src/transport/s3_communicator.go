@@ -1582,7 +1582,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		m.meta.Size = req.ContentLength
 		m.meta.Hash = req.Header.Get("X-Amz-Content-Sha256")
 		if m.meta.Hash == "" {
-			m.meta.Hash = req.Header.Get("Content-SHA256") // Fallback
+			m.meta.Hash = req.Header.Get("Content-Sha256") // Fallback
 		}
 
 		// S3 object metadata (Content-Type, x-amz-meta-*, cache/encoding headers):
@@ -2013,7 +2013,7 @@ func (m *S3Communicator) ReceiveMetadata() (meta common.FileMetadata, err error)
 		m.meta.Size = req.ContentLength
 		hash := req.Header.Get("X-Amz-Content-Sha256")
 		if hash == "" {
-			hash = req.Header.Get("Content-SHA256")
+			hash = req.Header.Get("Content-Sha256")
 		}
 
 		// 🛡️ Sentinel: Sanitize S3 hash to prevent directory traversal via malicious metadata.
