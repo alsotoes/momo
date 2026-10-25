@@ -321,13 +321,19 @@ type fileKey struct {
 // aliases) are all kept, while identical name+hash entries from different
 // node lists are collapsed (fix #664).
 func MergeFileMetadataLists(lists ...[]common.FileMetadata) []common.FileMetadata {
-	seen := make(map[fileKey]bool)
-	var merged []common.FileMetadata
+	total := 0
+	for _, list := range lists {
+		total += len(list)
+	}
+	// ⚡ Bolt: Pre-allocate map and use struct{} for zero-byte memory overhead instead of bool.
+	seen := make(map[fileKey]struct{}, total)
+	// ⚡ Bolt: Pre-allocate slice capacity to prevent dynamic re-sizing and reduce heap allocations.
+	merged := make([]common.FileMetadata, 0, total)
 	for _, list := range lists {
 		for _, f := range list {
 			key := fileKey{name: f.Name, hash: f.Hash}
-			if !seen[key] {
-				seen[key] = true
+			if _, ok := seen[key]; !ok {
+				seen[key] = struct{}{}
 				merged = append(merged, f)
 			}
 		}
