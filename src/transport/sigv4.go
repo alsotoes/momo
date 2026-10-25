@@ -210,7 +210,13 @@ func buildCanonicalQueryString(values url.Values) (string, error) {
 
 // 🛡️ Sentinel: Enforce Rule 35 (Safe Serialization/Validation) on canonical header values
 // by applying a 4096-byte (4KB) length limit, returning syscall.EBADMSG if exceeded.
-func getCanonicalHeaderValue(req *http.Request, h string) (string, error) {
+func getCanonicalHeaderValue(req *http.Request, h string) (val string, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in getCanonicalHeaderValue: %v", r)
+			err = syscall.EIO
+		}
+	}()
 	if h == "host" {
 		if len(req.Host) > 4096 {
 			return "", syscall.EBADMSG
