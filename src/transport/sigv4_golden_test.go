@@ -134,3 +134,18 @@ func TestBuildCanonicalHeaders_HeaderCountBound(t *testing.T) {
 		t.Fatal("expected failure when signedHeaders exceeds the buffer capacity")
 	}
 }
+
+func TestBuildCanonicalHeaders_HeaderValueLengthBound(t *testing.T) {
+	req := goldenRequest()
+	req.Header.Set("x-amz-oversized", strings.Repeat("a", 4097))
+	if _, err := buildCanonicalHeaders(req, "host;x-amz-oversized"); err == nil {
+		t.Fatal("expected failure when a canonical header value exceeds 4096 bytes")
+	}
+}
+
+func TestGetCanonicalHeaderValue_PanicRecovery(t *testing.T) {
+	_, err := getCanonicalHeaderValue(nil, "host")
+	if err != syscall.EIO {
+		t.Fatalf("expected EIO on panic, got: %v", err)
+	}
+}
