@@ -196,3 +196,8 @@
 **Vulnerability:** The internal Prometheus metrics HTTP server (`/metrics`, `/health`, `/reload-secrets`) instantiated its `http.Server` without explicit timeout bounds (`ReadTimeout`, `ReadHeaderTimeout`, `WriteTimeout`, `IdleTimeout`), leaving the zero-value (unbounded) defaults active.
 **Learning:** The default Go `http.Server{}` has no timeouts, so a client can hold a connection open indefinitely by trickling data one byte at a time (Slowloris) or by leaving idle connections open — connection/file-descriptor exhaustion (DoS) even on an internal auxiliary server. `ReadHeaderTimeout` specifically bounds header transmission and is the primary Slowloris mitigation.
 **Prevention:** Always construct `http.Server{}` with bounded `ReadTimeout`, `ReadHeaderTimeout`, `WriteTimeout` and `IdleTimeout` instead of relying on the zero-value defaults. Panic-recovery in the serve and shutdown goroutines releases the server via `common.RecoverClose` (Rule 43).
+
+## 2026-10-25 - Enforce Rule 35 limit on Canonical Header Values
+**Vulnerability:** Unbounded memory allocation in `getCanonicalHeaderValue` during SigV4 authentication.
+**Learning:** Parsing network inputs like AWS SigV4 headers without explicit length caps can lead to resource exhaustion if an attacker supplies maliciously large custom headers (e.g., in a presigned URL request or regular S3 REST API call).
+**Prevention:** Strictly enforce a defensive limit (e.g., 4096 bytes) when reading header values off the wire before further processing, and return standard POSIX errors like `syscall.EBADMSG` when violated.

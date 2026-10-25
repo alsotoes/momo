@@ -208,19 +208,27 @@ func buildCanonicalQueryString(values url.Values) (string, error) {
 	return sb.String(), nil
 }
 
-func getCanonicalHeaderValue(req *http.Request, h string) (string, bool) {
+// 🛡️ Sentinel: Enforce Rule 35 (Safe Serialization/Validation) on canonical header values
+// by applying a 4096-byte (4KB) length limit, returning syscall.EBADMSG if exceeded.
+func getCanonicalHeaderValue(req *http.Request, h string) (string, error) {
 	if h == "host" {
-		return req.Host, true
+		if len(req.Host) > 4096 {
+			return "", syscall.EBADMSG
+		}
+		return req.Host, nil
 	}
 	for k, v := range req.Header {
 		if strings.EqualFold(k, h) {
 			if len(v) > 0 {
-				return v[0], true
+				if len(v[0]) > 4096 {
+					return "", syscall.EBADMSG
+				}
+				return v[0], nil
 			}
-			return "", true
+			return "", nil
 		}
 	}
-	return "", false
+	return "", syscall.ENOENT
 }
 
 func parseSignedHeaders(s string, buf []string) ([]string, error) {
@@ -272,9 +280,12 @@ func buildCanonicalHeaders(req *http.Request, signedHeadersStr string) (result s
 		sb.WriteString(h)
 		sb.WriteByte(':')
 
-		val, found := getCanonicalHeaderValue(req, h)
-		if !found {
+		val, err := getCanonicalHeaderValue(req, h)
+		if err == syscall.ENOENT {
 			return "", syscall.EBADMSG
+		}
+		if err != nil {
+			return "", err
 		}
 
 		val = strings.TrimSpace(val)
