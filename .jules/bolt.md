@@ -251,3 +251,7 @@
 ## 2026-10-24 - Zero-Allocation http.Header.Get
 **Learning:** Go's `http.Header.Get(key)` performs an `O(1)` map lookup and is highly optimized. However, if the provided `key` string literal is *not* already in canonical MIME format (e.g., `"Content-SHA256"` instead of `"Content-Sha256"`), `net/textproto.CanonicalMIMEHeaderKey` allocates memory on the heap. Trying to write a custom case-insensitive map iteration (`O(N)`) to bypass this allocation is an algorithmic downgrade that introduces CPU overhead and a DoS vector.
 **Action:** When trying to eliminate heap allocations from `http.Header.Get` on hot paths, do not write a custom loop. Simply fix the string literal in the code to its canonical form (e.g. `"X-Amz-Date"`), enabling the `Get()` zero-allocation fast path.
+
+## 2024-10-25 - MergeFileMetadataLists Pre-allocation
+**Learning:** `MergeFileMetadataLists` in `src/server/query_handler.go` uses an unbounded map (`map[fileKey]bool`) and slice (`[]common.FileMetadata`) which grow dynamically during the processing of potentially large p2p file lists. It processes O(N) items. This causes many heap allocations and map rehashing operations.
+**Action:** Always pre-allocate slices and maps using a sum of lengths when merging lists, and use `struct{}` instead of `bool` for set implementations in maps to reduce memory size overhead.
