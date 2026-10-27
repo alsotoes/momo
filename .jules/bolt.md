@@ -255,3 +255,7 @@
 ## 2024-10-25 - MergeFileMetadataLists Pre-allocation
 **Learning:** `MergeFileMetadataLists` in `src/server/query_handler.go` uses an unbounded map (`map[fileKey]bool`) and slice (`[]common.FileMetadata`) which grow dynamically during the processing of potentially large p2p file lists. It processes O(N) items. This causes many heap allocations and map rehashing operations.
 **Action:** Always pre-allocate slices and maps using a sum of lengths when merging lists, and use `struct{}` instead of `bool` for set implementations in maps to reduce memory size overhead.
+
+## 2026-10-27 - Zero-Allocation map values
+**Learning:** Using `map[K]bool` for simple inclusion checks (sets) consumes 1 byte per entry. When scaling to large structures (like filesystem directories or S3 prefix lists), this causes significant memory overhead. Using `map[K]struct{}` consumes 0 bytes per value, functioning strictly as a zero-overhead set.
+**Action:** When tracking existence (sets) in a map, always use `map[string]struct{}` instead of `map[string]bool`. Convert boolean assignments `m[k] = true` to `m[k] = struct{}{}` and checks `if m[k]` to `if _, ok := m[k]; ok`.

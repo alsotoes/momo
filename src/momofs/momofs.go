@@ -410,21 +410,22 @@ func (f *FS) ReadDir(p string) ([]*Entry, error) {
 	if err != nil && err != syscall.ENOENT && !strings.Contains(err.Error(), syscall.ENOENT.Error()) {
 		return nil, err
 	}
-	seen := map[string]bool{}
+	// ⚡ Bolt: Use map[string]struct{} instead of map[string]bool to eliminate 1-byte per-entry overhead for deduplication set
+	seen := map[string]struct{}{}
 	var out []*Entry
 	if m != nil {
 		for _, e := range m.Entries {
-			seen[e.Name] = true
+			seen[e.Name] = struct{}{}
 			out = append(out, e)
 		}
 	}
 	// R4-C3: union in backing-store children (natively-written objects and
 	// synthetic subdirectories derived from their paths).
 	for name, e := range f.storeChildren(p) {
-		if seen[name] {
+		if _, ok := seen[name]; ok {
 			continue
 		}
-		seen[name] = true
+		seen[name] = struct{}{}
 		out = append(out, e)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
