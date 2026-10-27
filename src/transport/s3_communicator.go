@@ -2420,7 +2420,8 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, s
 	buf.Write(strconv.AppendInt(intBuf[:0], int64(maxKeys), 10))
 	buf.WriteString(`</MaxKeys>`)
 
-	commonPrefixes := make(map[string]bool)
+	// ⚡ Bolt: Use map[string]struct{} instead of map[string]bool to eliminate 1-byte per-entry overhead for deduplication set
+	commonPrefixes := make(map[string]struct{})
 	keyCount := 0
 	truncated := false
 	// last emitted element (used to build the continuation token on truncation).
@@ -2487,14 +2488,14 @@ func FormatListObjectsV2XML(bucketName, prefix, delimiter string, maxKeys int, s
 			delimIdx := strings.Index(relativeKey, delimiter)
 			if delimIdx != -1 {
 				subPrefix := prefix + relativeKey[:delimIdx+1]
-				if commonPrefixes[subPrefix] {
+				if _, ok := commonPrefixes[subPrefix]; ok {
 					continue
 				}
 				if maxKeys > 0 && keyCount >= maxKeys {
 					truncated = true
 					break
 				}
-				commonPrefixes[subPrefix] = true
+				commonPrefixes[subPrefix] = struct{}{}
 				lastKind = continuationKindPrefix
 				lastToken = subPrefix
 				keyCount++
