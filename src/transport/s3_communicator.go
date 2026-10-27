@@ -198,7 +198,7 @@ type VersioningStore interface {
 	GetVersion(bucket, key, versionID string) (rec storage.VersionRecord, err error)
 	GetVersionContent(bucket, key, versionID string) (rc io.ReadCloser, rec storage.VersionRecord, err error)
 	ListVersions(bucket, prefix, keyMarker, versionIDMarker string, maxKeys int) (page storage.VersionPage, err error)
-	DeleteVersion(bucket, key, versionID string) (deleted storage.VersionRecord, err error)
+	DeleteVersion(bucket, key, versionID string, now int64, bypass bool) (deleted storage.VersionRecord, err error)
 	RepointNamespace(name string, hash string) error
 }
 
@@ -1367,7 +1367,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		// R10 Phase 1 (#938): versioned delete semantics (marker or permanent).
 		if m.versioning != nil {
 			if versioned, verr := m.versioning.IsVersioned(bucket); verr == nil && versioned {
-				return m.handleVersionedDelete(bucket, key, req.URL.Query().Get("versionId"))
+				return m.handleVersionedDelete(bucket, key, req.URL.Query().Get("versionId"), time.Now().UTC().Unix(), isGovernanceBypass(req))
 			}
 		} else if req.URL.Query().Get("versionId") != "" {
 			// A store without versioning support cannot honor version-targeted

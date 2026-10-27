@@ -39,6 +39,8 @@ var (
 	bucketObjectVersions = []byte("object_versions") // Maps bucket\x00key\x00versionID -> VersionRecord (R10, #938)
 	bucketLifecycle      = []byte("lifecycle")       // Maps bucket -> JSON LifecycleConfig (R10, #938)
 	bucketNotification   = []byte("notification")    // Maps bucket -> JSON NotificationConfig (R10, #938)
+	bucketObjectLockCfg  = []byte("object_lock")     // Maps bucket -> lock-enabled flag (R10-LK1, #938)
+	bucketLockState      = []byte("object_lock_state") // Maps bucket\x00key\x00versionID -> ObjectLockState JSON (R10-LK1, #938)
 )
 
 // ObjectMeta is the binary metadata stored in the objects bucket.
@@ -286,6 +288,8 @@ var metaBuckets = [][]byte{
 	bucketObjectVersions,
 	bucketLifecycle,
 	bucketNotification,
+	bucketObjectLockCfg,
+	bucketLockState,
 }
 
 // initBuckets creates every metadata bucket if it does not already exist.

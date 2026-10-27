@@ -367,7 +367,12 @@ func paginate(entries []versionEntry, maxKeys int, page *VersionPage) error {
 // was latest, IsLatest re-points to the next-newest record (which may be a
 // delete marker, reviving the object per S3 semantics). The returned record is
 // the deleted one so the caller can decide on blob cleanup.
-func (s *CASStore) DeleteVersion(bucket, key, versionID string) (deleted VersionRecord, err error) {
+// A version protected by an object-lock record denies deletion with
+// syscall.EACCES at Unix-second time now — unless it carries GOVERNANCE
+// retention without a legal hold and the caller presents the S3
+// governance-bypass flag. Delete markers are never protected. The clock is
+// injected by the caller (S3 request layer) so expiry is deterministic.
+func (s *CASStore) DeleteVersion(bucket, key, versionID string, now int64, bypass bool) (deleted VersionRecord, err error) {
 	defer common.RecoverErr("CASStore.DeleteVersion", &err)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -380,6 +385,15 @@ func (s *CASStore) DeleteVersion(bucket, key, versionID string) (deleted Version
 		}
 		if err := json.Unmarshal(v, &deleted); err != nil {
 			return fmt.Errorf("corrupt version record: %w", err)
+		}
+		if !deleted.IsDeleteMarker {
+			denied, err := lockDeniesTx(tx, bucket, key, versionID, now, bypass)
+			if err != nil {
+				return err
+			}
+			if denied {
+				return syscall.EACCES
+			}
 		}
 		if err := b.Delete(k); err != nil {
 			return err
