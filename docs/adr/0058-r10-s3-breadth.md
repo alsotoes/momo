@@ -4,7 +4,7 @@
 Proposed
 
 ## Confidence
-Medium
+High
 
 ## Context
 Momo's S3 gateway implements core data plane (Put/Get/Head/Delete/List/Copy/Multipart) but lacks the **bucket configuration** and **object lifecycle** features that production S3 clients (Veeam, restic, rclone, duplicati, AWS CLI advanced workflows) expect. The gaps are ranked by client impact:
@@ -27,7 +27,7 @@ None documented.
 
 ## Implementation Status
 - **Code**: Partial
-- **Tests**: Partial
+- **Tests**: Done
 - **Docs**: Planned
 - **Blog post**: docs/blog/posts/056-s3-versioning-on-cas.md
 

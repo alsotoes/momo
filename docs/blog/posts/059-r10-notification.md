@@ -16,7 +16,7 @@ artifacts:
     path: openspec/changes/r10-s3-breadth
   - type: adr
     path: docs/adr/0058-r10-s3-breadth.md
-related: ["056-s3-versioning-on-cas", "058-s3-lifecycle-on-cas", "043-reduce-read-verify-hashing", "054-secrets-management-key-rotation"]
+related: ["056-s3-versioning-on-cas", "058-s3-lifecycle-on-cas", "043-reduce-read-verify-hashing", "054-secrets-management-key-rotation", "060-r10-object-lock"]
 difficulty: "intermediate"
 pattern: "event-side-effects"
 teaches:

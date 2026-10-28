@@ -125,7 +125,7 @@ func TestDeleteMarkerReviveAndPurge(t *testing.T) {
 	}
 
 	// Removing the marker revives the previous data version (S3 semantics).
-	deleted, err := s.DeleteVersion("b", "k", marker)
+	deleted, err := s.DeleteVersion("b", "k", marker, 0, false)
 	if err != nil {
 		t.Fatalf("DeleteVersion(marker): %v", err)
 	}
@@ -263,7 +263,7 @@ func TestVersionErrors(t *testing.T) {
 	if _, err := s.GetVersion("b", "missing", "no-such-id"); err != syscall.ENOENT {
 		t.Fatalf("expected ENOENT, got %v", err)
 	}
-	if _, err := s.DeleteVersion("b", "missing", "no-such-id"); err != syscall.ENOENT {
+	if _, err := s.DeleteVersion("b", "missing", "no-such-id", 0, false); err != syscall.ENOENT {
 		t.Fatalf("expected ENOENT, got %v", err)
 	}
 	if _, _, err := s.GetVersionContent("b", "missing", "no-such-id"); err != syscall.ENOENT {

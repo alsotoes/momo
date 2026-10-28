@@ -215,6 +215,13 @@ func (m *S3Communicator) handleGetObjectVersion(bucket, key, versionID string, i
 	b.WriteString("HTTP/1.1 200 OK\r\n")
 	b.WriteString("ETag: \"" + rec.Hash + "\"\r\n")
 	b.WriteString("x-amz-version-id: " + rec.VersionID + "\r\n")
+	// R10 Phase 4 (#938): lock headers are advisory echo; a lookup failure
+	// must not break the content path.
+	if m.lock != nil {
+		if st, ok, lerr := m.lock.VersionLock(bucket, key, versionID); lerr == nil && ok {
+			injectObjectLockHeaders(&b, st)
+		}
+	}
 	b.WriteString("Content-Length: " + strconv.FormatInt(rec.Size, 10) + "\r\n")
 	b.WriteString("Connection: close\r\n")
 	if isHead {
@@ -237,7 +244,14 @@ func (m *S3Communicator) handleGetObjectVersion(bucket, key, versionID string, i
 // handleVersionedDelete implements DELETE on a versioned bucket: without
 // versionId a delete marker is created (the object disappears for plain
 // GETs); with versionId that version is permanently removed.
-func (m *S3Communicator) handleVersionedDelete(bucket, key, versionID string) (int, int64, error) {
+// isGovernanceBypass reports the S3 governance-retention bypass flag
+// (x-amz-bypass-governance-retention, case-insensitive per S3 header rules).
+// GOVERNANCE locks yield to it; COMPLIANCE retention and legal holds never do.
+func isGovernanceBypass(req *http.Request) bool {
+	return req.Header.Get("X-Amz-Bypass-Governance-Retention") == "true"
+}
+
+func (m *S3Communicator) handleVersionedDelete(bucket, key, versionID string, now int64, bypass bool) (int, int64, error) {
 	if versionID == "" {
 		// Delete marker: shadow the object by removing the flat mapping so
 		// plain GETs 404, then record the marker version.
@@ -256,10 +270,15 @@ func (m *S3Communicator) handleVersionedDelete(bucket, key, versionID string) (i
 	}
 
 	// Permanent delete of one specific version.
-	deleted, err := m.versioning.DeleteVersion(bucket, key, versionID)
+	deleted, err := m.versioning.DeleteVersion(bucket, key, versionID, now, bypass)
 	if err != nil {
 		if err == syscall.ENOENT {
 			writeS3Error(m.conn, http.StatusNotFound, "NoSuchVersion", "The specified version does not exist.", key)
+			return 0, 0, ErrRequestHandled
+		}
+		if err == syscall.EACCES {
+			// R10 Phase 4 (#938): the version is protected by retention or a legal hold.
+			_, _ = writeS3Error(m.conn, http.StatusForbidden, "AccessDenied", "The specified version is protected by an object lock.", key)
 			return 0, 0, ErrRequestHandled
 		}
 		writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to delete the specified version.", key)

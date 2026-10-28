@@ -12,6 +12,7 @@ artifacts:
 related:
   - 033-s3-501-discipline-bucket-config
   - 035-s3-501-discipline-remaining-ops
+  - 060-r10-object-lock
   - 008-s3-gateway-core
 ---
 The previous post in this series gave bucket configuration operations an honest
