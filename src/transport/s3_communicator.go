@@ -3560,24 +3560,9 @@ func (m *S3Communicator) handleCompleteMultipartUpload(req *http.Request, bucket
 
 	// Issue #820 (Tier P2): verify the client-supplied checksum over the
 	// assembled bytes before persisting; on mismatch reject 400 BadDigest
-	// without calling store.Put. When the client asked for compute-only, the
-	// computed checksum is persisted for echo on GET/HEAD.
-	if algo, expected, perr := parseChecksum(req); perr != nil {
-		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		writeS3Error(m.conn, http.StatusBadRequest, "InvalidRequest",
-			fmt.Sprintf("Unsupported checksum algorithm: %v", perr), "")
-		return 0, 0, fmt.Errorf("s3 checksum parse: %w", perr)
-	} else if algo != "" {
-		algoHasher := newChecksumHasher(algo)
-		algoHasher.Write(data)
-		computed := base64.StdEncoding.EncodeToString(algoHasher.Sum(nil))
-		if expected != "" && computed != expected {
-			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			writeS3Error(m.conn, http.StatusBadRequest, "BadDigest",
-				"The x-amz-checksum-* value you specified did not match the checksum we calculated.", key)
-			return 0, 0, fmt.Errorf("s3 multipart checksum mismatch: expected %s got %s: %w", expected, computed, syscall.EBADMSG)
-		}
-		m.persistS3Checksum(key, checksumHeaderFor(algo), computed, algo)
+	// without calling store.Put.
+	if cerr := m.verifyMultipartChecksum(req, data, key); cerr != nil {
+		return 0, 0, cerr
 	}
 
 	if m.store == nil {
@@ -3629,6 +3614,34 @@ func (m *S3Communicator) handleCompleteMultipartUpload(req *http.Request, bucket
 	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	writeXMLResponse(m.conn, buf.Bytes())
 	return 0, 0, ErrRequestHandled
+}
+
+// verifyMultipartChecksum validates the client-supplied x-amz-checksum-* value
+// over the assembled bytes, writing the S3 error response and returning a
+// non-nil error on rejection. When the client asked for compute-only, the
+// computed checksum is persisted for echo on GET/HEAD.
+func (m *S3Communicator) verifyMultipartChecksum(req *http.Request, data []byte, key string) error {
+	algo, expected, perr := parseChecksum(req)
+	if perr != nil {
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, _ = writeS3Error(m.conn, http.StatusBadRequest, "InvalidRequest",
+			fmt.Sprintf("Unsupported checksum algorithm: %v", perr), "")
+		return fmt.Errorf("s3 checksum parse: %w", perr)
+	}
+	if algo == "" {
+		return nil
+	}
+	algoHasher := newChecksumHasher(algo)
+	algoHasher.Write(data)
+	computed := base64.StdEncoding.EncodeToString(algoHasher.Sum(nil))
+	if expected != "" && computed != expected {
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, _ = writeS3Error(m.conn, http.StatusBadRequest, "BadDigest",
+			"The x-amz-checksum-* value you specified did not match the checksum we calculated.", key)
+		return fmt.Errorf("s3 multipart checksum mismatch: expected %s got %s: %w", expected, computed, syscall.EBADMSG)
+	}
+	m.persistS3Checksum(key, checksumHeaderFor(algo), computed, algo)
+	return nil
 }
 
 // recordMultipartVersion records a version for a completed multipart upload
