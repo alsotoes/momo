@@ -3553,23 +3553,9 @@ func (m *S3Communicator) handleCompleteMultipartUpload(req *http.Request, bucket
 
 	// R10 Phase 4 (#938): object-lock headers are parsed and version-gated
 	// before persisting, so an unhonorable request never writes bytes.
-	lockState, lerr := ParseS3LockHeaders(req)
+	lockState, lockRequested, lerr := m.multipartLockHeaders(req, bucket, key)
 	if lerr != nil {
-		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		_, _ = writeS3Error(m.conn, http.StatusBadRequest, "InvalidArgument", "Invalid object lock header values.", key)
-		return 0, 0, fmt.Errorf("s3 multipart lock headers: %w", lerr)
-	}
-	lockRequested := lockState.Mode != "" || lockState.RetainUntil > 0 || lockState.LegalHoldOn
-	if lockRequested {
-		versioned := false
-		if m.versioning != nil {
-			versioned, _ = m.versioning.IsVersioned(bucket)
-		}
-		if !versioned {
-			_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			_, _ = writeS3Error(m.conn, http.StatusBadRequest, "InvalidRequest", "Object Lock headers require a versioned bucket.", key)
-			return 0, 0, fmt.Errorf("object lock headers on unversioned multipart upload: %w", syscall.EINVAL)
-		}
+		return 0, 0, lerr
 	}
 
 	// Issue #820 (Tier P2): verify the client-supplied checksum over the
