@@ -18,8 +18,8 @@ import (
 	"syscall"
 	"time"
 
-	bolt "go.etcd.io/bbolt"
 	"github.com/alsotoes/momo/src/common"
+	bolt "go.etcd.io/bbolt"
 )
 
 const (
