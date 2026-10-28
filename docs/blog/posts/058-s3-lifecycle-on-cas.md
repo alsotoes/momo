@@ -17,7 +17,7 @@ artifacts:
     path: openspec/changes/r10-s3-breadth
   - type: issue
     id: 938
-related: ["056-s3-versioning-on-cas", "004-cas-content-addressable-store", "031-core-integrity-verification", "059-r10-notification"]
+related: ["056-s3-versioning-on-cas", "004-cas-content-addressable-store", "031-core-integrity-verification", "059-r10-notification", "060-r10-object-lock"]
 difficulty: "intermediate"
 pattern: "background-reconciliation"
 teaches:

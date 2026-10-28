@@ -116,6 +116,10 @@ type S3Communicator struct {
 	// stores without versioning support — every versioning route then 501s.
 	versioning VersioningStore
 
+	// lock is the R10 object-lock capability of the store. Nil on stores
+	// without lock support — every object-lock route then honest-501s.
+	lock ObjectLockStore
+
 	// lifecycle is the R10 bucket-lifecycle capability of the store. Nil on
 	// stores without lifecycle support — every lifecycle route then 501s.
 	lifecycle LifecycleStore
@@ -214,6 +218,9 @@ func (m *S3Communicator) SetStore(store storage.Store) {
 	}
 	if ns, ok := store.(NotificationStore); ok {
 		m.notification = ns
+	}
+	if ols, ok := store.(ObjectLockStore); ok {
+		m.lock = ols
 	}
 }
 
@@ -908,6 +915,13 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 				}
 				return m.handleGetNotification(bucket)
 			}
+			// R10 Phase 4 (#938): bucket object-lock configuration.
+			if _, hasObjectLock := q["object-lock"]; hasObjectLock {
+				if m.lock == nil {
+					return 0, 0, m.rejectObjectLockUnsupported(bucket)
+				}
+				return m.handleGetBucketObjectLock(bucket)
+			}
 		}
 
 		// ListObjectsV2 (is list if key is empty, or if list-type query is 2)
@@ -1528,6 +1542,16 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			return m.handlePutNotification(req, bucket)
 		}
 
+		// R10 Phase 4 (#938): PUT /{bucket}?object-lock. Momo enables lock
+		// only at bucket creation, so later PUTs are refused (409) in the
+		// handler; the store is still required to be lock-capable.
+		if _, hasObjectLock := q["object-lock"]; hasObjectLock && key == "" {
+			if m.lock == nil {
+				return 0, 0, m.rejectObjectLockUnsupported(bucket)
+			}
+			return m.handlePutBucketObjectLock(req, bucket)
+		}
+
 		// CreateBucket: PUT to a bucket root (key empty) in bucket mode.
 		// Legacy flat mode (no configured bucket) keeps the upload behavior.
 		if m.configuredBucket != "" && key == "" {
@@ -1535,6 +1559,23 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 				writeS3Error(m.conn, http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", bucket)
 				return 0, 0, fmt.Errorf("unknown bucket %q: %w", bucket, syscall.ENOENT)
+			}
+			// R10 Phase 4 (#938): object lock is enabled only at bucket creation
+			// (CreateBucket + x-amz-bucket-object-lock-enabled).
+			if strings.EqualFold(req.Header.Get("X-Amz-Bucket-Object-Lock-Enabled"), "true") {
+				if m.lock == nil {
+					return 0, 0, m.rejectObjectLockUnsupported(bucket)
+				}
+				if lerr := m.lock.SetBucketObjectLock(bucket); lerr != nil {
+					_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+					if lerr == syscall.EPERM {
+						_, _ = writeS3Error(m.conn, http.StatusConflict, "InvalidBucketState", "Object Lock cannot be enabled on a bucket with suspended versioning.", bucket)
+						return 0, 0, ErrRequestHandled
+					}
+					_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to enable object lock.", bucket)
+					return 0, 0, fmt.Errorf("enable bucket object lock: %w", lerr)
+				}
+				m.writeAuditLog("PutObjectLock", bucket, "success")
 			}
 			// CreateBucket succeeds for the configured bucket: 200 + LocationConstraint.
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
@@ -2159,7 +2200,6 @@ var unsupportedBucketConfigSubresources = map[string]string{
 	"replication":         "replication configuration",
 	"requestPayment":      "request-payer configuration",
 	"logging":             "logging configuration",
-	"object-lock":         "object-lock configuration",
 	"notification":        "notification configuration",
 	"analytics":           "bucket analytics configuration",
 	"inventory":           "bucket inventory configuration",
@@ -3511,6 +3551,27 @@ func (m *S3Communicator) handleCompleteMultipartUpload(req *http.Request, bucket
 	finalHash := hex.EncodeToString(hasher.Sum(nil))
 	finalSize := int64(len(data))
 
+	// R10 Phase 4 (#938): object-lock headers are parsed and version-gated
+	// before persisting, so an unhonorable request never writes bytes.
+	lockState, lerr := ParseS3LockHeaders(req)
+	if lerr != nil {
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, _ = writeS3Error(m.conn, http.StatusBadRequest, "InvalidArgument", "Invalid object lock header values.", key)
+		return 0, 0, fmt.Errorf("s3 multipart lock headers: %w", lerr)
+	}
+	lockRequested := lockState.Mode != "" || lockState.RetainUntil > 0 || lockState.LegalHoldOn
+	if lockRequested {
+		versioned := false
+		if m.versioning != nil {
+			versioned, _ = m.versioning.IsVersioned(bucket)
+		}
+		if !versioned {
+			_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			_, _ = writeS3Error(m.conn, http.StatusBadRequest, "InvalidRequest", "Object Lock headers require a versioned bucket.", key)
+			return 0, 0, fmt.Errorf("object lock headers on unversioned multipart upload: %w", syscall.EINVAL)
+		}
+	}
+
 	// Issue #820 (Tier P2): verify the client-supplied checksum over the
 	// assembled bytes before persisting; on mismatch reject 400 BadDigest
 	// without calling store.Put. When the client asked for compute-only, the
@@ -3556,6 +3617,12 @@ func (m *S3Communicator) handleCompleteMultipartUpload(req *http.Request, bucket
 	// R10 Phase 1 (#938): versioned buckets record a version per completed
 	// multipart upload; the response echoes the version id in-gateway.
 	versionID := m.recordMultipartVersion(bucket, key, finalHash, finalSize)
+	if lockRequested {
+		if lerr := m.LockVersion(bucket, key, versionID, lockState); lerr != nil {
+			return 0, 0, lerr
+		}
+		m.writeAuditLog("PutObjectRetention", bucket+"/"+key, "success")
+	}
 
 	// R10 Phase 3 (#938): fire ObjectCreated notifications for the assembled object.
 	m.dispatchNotification(bucket, key, versionID, storage.EventObjectCreatedMultipart)

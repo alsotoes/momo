@@ -41,10 +41,12 @@
 - [x] Tests: `src/storage/notification_test.go` (delivery, filtering, retry backoff, exhausted retries, 4xx no-retry, unsupported target), `src/transport/s3_notification_test.go` (parsing, formatting, handler + error paths, dispatch helper), `src/server/s3_notification_hook_test.go` (ingest hook end-to-end)
 
 ### Object Lock
-- [ ] `src/storage/storage.go`: Add `ObjectLockConfig` to `ObjectMeta` (`Mode`, `RetainUntilDate`, `LegalHold`)
-- [ ] `src/transport/s3_communicator.go`: `handlePutObjectLock` (bucket-level, only at creation)
-- [ ] `src/transport/s3_communicator.go`: In `handlePutObject` / `handleDeleteObject` / `handleCopyObject` — enforce retention/legal hold
-- [ ] `src/transport/s3_communicator.go`: `handleGetObject` / `handleHeadObject` — return `x-amz-object-lock-*` headers
+- [x] `src/storage/objectlock.go`: per-version `ObjectLockState` (`Mode`, `RetainUntil`, `LegalHoldOn`) in its own bucket, keyed bucket/key/versionID; creation-only `SetBucketObjectLock` (implies versioning, refuses suspended buckets); COMPLIANCE extend-only
+- [x] `src/transport/s3_objectlock.go`: `GET/PUT /{bucket}?object-lock` (GET reports enabled or 404; PUT refused 409), creation-time enable via `x-amz-bucket-object-lock-enabled`
+- [x] Delete enforcement in the version store (`DeleteVersion` returns EACCES for retained/held versions; GOVERNANCE yields to the bypass header) and 403 `AccessDenied` mapping in the gateway
+- [x] `GET/HEAD /{bucket}/{key}?versionId=` echo `x-amz-object-lock-*` headers; multipart completion captures lock headers (version id known)
+- [x] Documented ceiling: single-part PUT cannot capture lock headers (response precedes body streaming); use multipart
+- [ ] `?retention` / `?legal-hold` subresource APIs (honest-501 this phase)
 
 ### Config
 - [x] `src/common/config.go`: `[s3] lifecycle_worker_interval` and `notification_retry_max` (default 3, validated ≥ 1)
@@ -58,13 +60,13 @@
 - [x] `TestEvaluateLifecycleTransition` (storage) — verifies the storage-class change
 - [x] `TestEvaluateLifecycleExpiration` (storage) — verifies deletion
 - [x] `TestNotification` — PUT notification config; trigger event; verify webhook received
-- [ ] `TestObjectLock` — enable lock; PUT with retention; verify overwrite/delete denied; legal hold
+- [x] `TestObjectLock` — enable lock at creation; refuse disable (409); version GET lock headers; legal-hold delete denied (403); GOVERNANCE bypass; multipart capture; unversioned rejection
 - [x] `go test ./src/storage/ ./src/transport/ ./src/server/ ./src/common/` — all pass
 - [x] `make test` — full suite passes
 
 ## Compliance
 
-- [ ] OpenSpec change authored (Rule 73)
+- [x] OpenSpec change authored (Rule 73)
 - [ ] ADR generated via `make adr-sync` (Rule 77/78)
 - [ ] Blog post shipped (Rule 76)
-- [ ] PR body includes `Resolves #938` (Rule 11)
+- [x] PR body includes `Part of #938` (umbrella stays open; Rule 11, constraint on closing keywords)
