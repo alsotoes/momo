@@ -148,6 +148,33 @@ func (m *S3Communicator) LockVersion(bucket, key, versionID string, st storage.O
 	return nil
 }
 
+// multipartLockHeaders parses the object-lock header set for a multipart
+// completion and refuses requests the bucket cannot honor (invalid values, or
+// lock headers on an unversioned bucket). It writes the S3 error response and
+// returns a non-nil error in those cases.
+func (m *S3Communicator) multipartLockHeaders(req *http.Request, bucket, key string) (storage.ObjectLockState, bool, error) {
+	lockState, lerr := ParseS3LockHeaders(req)
+	if lerr != nil {
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, _ = writeS3Error(m.conn, http.StatusBadRequest, "InvalidArgument", "Invalid object lock header values.", key)
+		return lockState, false, fmt.Errorf("s3 multipart lock headers: %w", lerr)
+	}
+	requested := lockState.Mode != "" || lockState.RetainUntil > 0 || lockState.LegalHoldOn
+	if !requested {
+		return lockState, false, nil
+	}
+	versioned := false
+	if m.versioning != nil {
+		versioned, _ = m.versioning.IsVersioned(bucket)
+	}
+	if !versioned {
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, _ = writeS3Error(m.conn, http.StatusBadRequest, "InvalidRequest", "Object Lock headers require a versioned bucket.", key)
+		return lockState, true, fmt.Errorf("object lock headers on unversioned multipart upload: %w", syscall.EINVAL)
+	}
+	return lockState, true, nil
+}
+
 // ParseS3LockHeaders extracts the S3 object-lock header set from a request.
 // Retention date must parse as the S3 timestamp shape (RFC 3339).
 func ParseS3LockHeaders(req *http.Request) (storage.ObjectLockState, error) {
