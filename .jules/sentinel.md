@@ -201,3 +201,7 @@
 **Vulnerability:** Unbounded memory allocation in `getCanonicalHeaderValue` during SigV4 authentication.
 **Learning:** Parsing network inputs like AWS SigV4 headers without explicit length caps can lead to resource exhaustion if an attacker supplies maliciously large custom headers (e.g., in a presigned URL request or regular S3 REST API call).
 **Prevention:** Strictly enforce a defensive limit (e.g., 4096 bytes) when reading header values off the wire before further processing, and return standard POSIX errors like `syscall.EBADMSG` when violated.
+## 2026-11-03 - Unbounded Parsing Loop in SigV4 Auth Headers
+**Vulnerability:** `parseSigV4AuthHeader`, `buildCanonicalQueryString`, `getCanonicalHeaderValue`, and `parseSignedHeaders` iterate over inputs without enforcing a cap on loop iterations or header counts, leaving the application vulnerable to resource exhaustion / Denial of Service.
+**Learning:** Parsing network inputs must implement a hard cap to limit iterations preventing malicious large custom inputs.
+**Prevention:** Strictly enforce defensive limits (e.g., 64 loop iterations) on network parsing paths and return early.

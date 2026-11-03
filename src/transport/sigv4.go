@@ -35,8 +35,13 @@ func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
 	rest := authHeader[17:] // len("AWS4-HMAC-SHA256 ")
 	var c sigV4Components
 	partsFound := 0
+	iterations := 0
 
 	for len(rest) > 0 {
+		if iterations >= 64 {
+			return sigV4Components{}, false
+		}
+		iterations++
 		idx := strings.IndexByte(rest, ',')
 		var part string
 		if idx == -1 {
@@ -173,7 +178,12 @@ func encodeCanonicalURI(uri string) (string, error) {
 
 func buildCanonicalQueryString(values url.Values) (string, error) {
 	keys := make([]string, 0, len(values))
+	iterations := 0
 	for k := range values {
+		if iterations >= 64 {
+			return "", syscall.EBADMSG
+		}
+		iterations++
 		if k == "X-Amz-Signature" {
 			continue // the signature itself is never part of the canonical query
 		}
@@ -223,6 +233,9 @@ func getCanonicalHeaderValue(req *http.Request, h string) (val string, err error
 		}
 		return req.Host, nil
 	}
+	if len(req.Header) > 64 {
+		return "", syscall.EBADMSG
+	}
 	for k, v := range req.Header {
 		if strings.EqualFold(k, h) {
 			if len(v) > 0 {
@@ -239,7 +252,12 @@ func getCanonicalHeaderValue(req *http.Request, h string) (val string, err error
 
 func parseSignedHeaders(s string, buf []string) ([]string, error) {
 	headerNames := buf[:0]
+	iterations := 0
 	for {
+		if iterations >= 64 {
+			return nil, syscall.EBADMSG
+		}
+		iterations++
 		idx := strings.IndexByte(s, ';')
 		if idx == -1 {
 			if len(s) > 0 {
