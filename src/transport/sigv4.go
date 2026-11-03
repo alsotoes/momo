@@ -27,21 +27,22 @@ type sigV4Components struct {
 
 // ⚡ Bolt: Eliminate heap allocations in parseSigV4AuthHeader by replacing strings.Split
 // and strings.TrimSpace with a zero-allocation manual parsing loop using strings.IndexByte.
-func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
+func parseSigV4AuthHeader(authHeader string) (c sigV4Components, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Recovered from panic in parseSigV4AuthHeader: %v", r)
+			err = syscall.EIO
+		}
+	}()
 	if !strings.HasPrefix(authHeader, "AWS4-HMAC-SHA256 ") {
-		return sigV4Components{}, false
+		return sigV4Components{}, syscall.EBADMSG
 	}
 
 	rest := authHeader[17:] // len("AWS4-HMAC-SHA256 ")
-	var c sigV4Components
+
 	partsFound := 0
-	iterations := 0
 
 	for len(rest) > 0 {
-		if iterations >= 64 {
-			return sigV4Components{}, false
-		}
-		iterations++
 		idx := strings.IndexByte(rest, ',')
 		var part string
 		if idx == -1 {
@@ -60,21 +61,21 @@ func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
 			cred := part[11:]
 			c1 := strings.IndexByte(cred, '/')
 			if c1 == -1 {
-				return sigV4Components{}, false
+				return sigV4Components{}, syscall.EBADMSG
 			}
 			c2 := strings.IndexByte(cred[c1+1:], '/')
 			if c2 == -1 {
-				return sigV4Components{}, false
+				return sigV4Components{}, syscall.EBADMSG
 			}
 			c2 += c1 + 1
 			c3 := strings.IndexByte(cred[c2+1:], '/')
 			if c3 == -1 {
-				return sigV4Components{}, false
+				return sigV4Components{}, syscall.EBADMSG
 			}
 			c3 += c2 + 1
 			c4 := strings.IndexByte(cred[c3+1:], '/')
 			if c4 == -1 {
-				return sigV4Components{}, false
+				return sigV4Components{}, syscall.EBADMSG
 			}
 
 			c.AccessKey = cred[:c1]
@@ -91,9 +92,9 @@ func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
 	}
 
 	if partsFound < 3 || c.AccessKey == "" || c.Signature == "" || c.SignedHeaders == "" {
-		return sigV4Components{}, false
+		return sigV4Components{}, syscall.EBADMSG
 	}
-	return c, true
+	return c, nil
 }
 
 func sigV4Escape(s string, encodeSlash bool) (string, error) {
@@ -178,12 +179,7 @@ func encodeCanonicalURI(uri string) (string, error) {
 
 func buildCanonicalQueryString(values url.Values) (string, error) {
 	keys := make([]string, 0, len(values))
-	iterations := 0
 	for k := range values {
-		if iterations >= 64 {
-			return "", syscall.EBADMSG
-		}
-		iterations++
 		if k == "X-Amz-Signature" {
 			continue // the signature itself is never part of the canonical query
 		}
@@ -233,9 +229,6 @@ func getCanonicalHeaderValue(req *http.Request, h string) (val string, err error
 		}
 		return req.Host, nil
 	}
-	if len(req.Header) > 64 {
-		return "", syscall.EBADMSG
-	}
 	for k, v := range req.Header {
 		if strings.EqualFold(k, h) {
 			if len(v) > 0 {
@@ -252,12 +245,7 @@ func getCanonicalHeaderValue(req *http.Request, h string) (val string, err error
 
 func parseSignedHeaders(s string, buf []string) ([]string, error) {
 	headerNames := buf[:0]
-	iterations := 0
 	for {
-		if iterations >= 64 {
-			return nil, syscall.EBADMSG
-		}
-		iterations++
 		idx := strings.IndexByte(s, ';')
 		if idx == -1 {
 			if len(s) > 0 {
@@ -489,8 +477,8 @@ func verifySigV4Signature(req *http.Request, authHeader, secretKey string) bool 
 			verifySigV4SignatureWithPayload(req, components, secretKey, emptyStringSHA256)
 	}
 
-	components, ok := parseSigV4AuthHeader(authHeader)
-	if !ok {
+	components, err := parseSigV4AuthHeader(authHeader)
+	if err != nil {
 		return false
 	}
 
