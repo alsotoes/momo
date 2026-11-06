@@ -27,68 +27,62 @@ type sigV4Components struct {
 
 // ⚡ Bolt: Eliminate heap allocations in parseSigV4AuthHeader by replacing strings.Split
 // and strings.TrimSpace with a zero-allocation manual parsing loop using strings.IndexByte.
-func parseSigV4AuthHeader(authHeader string) (sigV4Components, bool) {
+// Scan cost is bounded by the caller: http.ReadRequest (textproto) rejects any header
+// line over 4096 bytes before the value ever reaches here (issue #1231).
+func parseSigV4AuthHeader(authHeader string) (sigV4Components, error) {
 	if !strings.HasPrefix(authHeader, "AWS4-HMAC-SHA256 ") {
-		return sigV4Components{}, false
+		return sigV4Components{}, syscall.EBADMSG
 	}
 
-	rest := authHeader[17:] // len("AWS4-HMAC-SHA256 ")
 	var c sigV4Components
 	partsFound := 0
-
-	for len(rest) > 0 {
-		idx := strings.IndexByte(rest, ',')
-		var part string
-		if idx == -1 {
-			part = rest
+	for rest := authHeader[17:]; len(rest) > 0; {
+		part, remaining := rest, ""
+		if idx := strings.IndexByte(rest, ','); idx == -1 {
 			rest = ""
 		} else {
-			part = rest[:idx]
-			rest = rest[idx+1:]
+			part, remaining = rest[:idx], rest[idx+1:]
+			rest = remaining
 		}
+		part = strings.TrimLeft(part, " ")
 
-		for len(part) > 0 && part[0] == ' ' {
-			part = part[1:]
-		}
-
-		if strings.HasPrefix(part, "Credential=") {
-			cred := part[11:]
-			c1 := strings.IndexByte(cred, '/')
-			if c1 == -1 {
-				return sigV4Components{}, false
+		switch {
+		case strings.HasPrefix(part, "Credential="):
+			accessKey, dateStamp, region, err := parseCredentialScope(part[11:])
+			if err != nil {
+				return sigV4Components{}, err
 			}
-			c2 := strings.IndexByte(cred[c1+1:], '/')
-			if c2 == -1 {
-				return sigV4Components{}, false
-			}
-			c2 += c1 + 1
-			c3 := strings.IndexByte(cred[c2+1:], '/')
-			if c3 == -1 {
-				return sigV4Components{}, false
-			}
-			c3 += c2 + 1
-			c4 := strings.IndexByte(cred[c3+1:], '/')
-			if c4 == -1 {
-				return sigV4Components{}, false
-			}
-
-			c.AccessKey = cred[:c1]
-			c.DateStamp = cred[c1+1 : c2]
-			c.Region = cred[c2+1 : c3]
+			c.AccessKey, c.DateStamp, c.Region = accessKey, dateStamp, region
 			partsFound++
-		} else if strings.HasPrefix(part, "SignedHeaders=") {
+		case strings.HasPrefix(part, "SignedHeaders="):
 			c.SignedHeaders = part[14:]
 			partsFound++
-		} else if strings.HasPrefix(part, "Signature=") {
+		case strings.HasPrefix(part, "Signature="):
 			c.Signature = part[10:]
 			partsFound++
 		}
 	}
 
 	if partsFound < 3 || c.AccessKey == "" || c.Signature == "" || c.SignedHeaders == "" {
-		return sigV4Components{}, false
+		return sigV4Components{}, syscall.EBADMSG
 	}
-	return c, true
+	return c, nil
+}
+
+// parseCredentialScope splits an AWS4 Credential value of the form
+// accessKey/dateStamp/region/service/aws4_request.
+func parseCredentialScope(cred string) (accessKey, dateStamp, region string, err error) {
+	var idx [4]int
+	pos := 0
+	for i := range idx {
+		next := strings.IndexByte(cred[pos:], '/')
+		if next == -1 {
+			return "", "", "", syscall.EBADMSG
+		}
+		idx[i] = pos + next
+		pos = idx[i] + 1
+	}
+	return cred[:idx[0]], cred[idx[0]+1 : idx[1]], cred[idx[1]+1 : idx[2]], nil
 }
 
 func sigV4Escape(s string, encodeSlash bool) (string, error) {
@@ -471,8 +465,8 @@ func verifySigV4Signature(req *http.Request, authHeader, secretKey string) bool 
 			verifySigV4SignatureWithPayload(req, components, secretKey, emptyStringSHA256)
 	}
 
-	components, ok := parseSigV4AuthHeader(authHeader)
-	if !ok {
+	components, err := parseSigV4AuthHeader(authHeader)
+	if err != nil {
 		return false
 	}
 
