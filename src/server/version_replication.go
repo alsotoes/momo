@@ -70,8 +70,10 @@ func versionPlacementKey(bucket, key string, rec storage.VersionRecord) string {
 }
 
 // fanOut replicates one version record. Best-effort: failures are audited,
-// never fatal.
-func (v *versionReplicator) fanOut(ctx context.Context, bucket, key string, rec storage.VersionRecord) {
+// never fatal. Runs in its own goroutine, so it carries the Rule 37 panic
+// guard — a malformed record must not take the node down.
+func (v *versionReplicator) fanOut(ctx context.Context, bucket, key string, rec storage.VersionRecord) (err error) {
+	defer common.RecoverErr("version replication fan-out", &err)
 	status, _, err := v.store.BucketVersioning(bucket)
 	if err != nil {
 		log.Printf("AUDIT: version replication skipped for %s/%s: %v", common.SanitizeLog(bucket), common.SanitizeLog(key), err)
@@ -96,4 +98,5 @@ func (v *versionReplicator) fanOut(ctx context.Context, bucket, key string, rec 
 			log.Printf("AUDIT: version record replication to node %d failed for %s/%s: %v", node.ID, common.SanitizeLog(bucket), common.SanitizeLog(key), rerr)
 		}
 	}
+	return nil
 }
