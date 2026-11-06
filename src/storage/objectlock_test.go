@@ -64,16 +64,16 @@ func TestPutVersionLock_Validations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RecordVersion: %v", err)
 	}
-	if err := s.PutVersionLock("b", "k", "does-not-exist", ObjectLockState{Mode: LockModeCompliance, RetainUntil: future()}); !errors.Is(err, syscall.ENOENT) {
+	if err := s.PutVersionLock("b", "k", "does-not-exist", ObjectLockState{Mode: LockModeCompliance, RetainUntil: future()}, false); !errors.Is(err, syscall.ENOENT) {
 		t.Fatalf("unknown version: want ENOENT, got %v", err)
 	}
-	if err := s.PutVersionLock("b", "k", id, ObjectLockState{Mode: "PARANOID", RetainUntil: future()}); !errors.Is(err, syscall.EINVAL) {
+	if err := s.PutVersionLock("b", "k", id, ObjectLockState{Mode: "PARANOID", RetainUntil: future()}, false); !errors.Is(err, syscall.EINVAL) {
 		t.Fatalf("bad mode: want EINVAL, got %v", err)
 	}
-	if err := s.PutVersionLock("b", "k", id, ObjectLockState{Mode: LockModeCompliance, RetainUntil: 0}); !errors.Is(err, syscall.EINVAL) {
+	if err := s.PutVersionLock("b", "k", id, ObjectLockState{Mode: LockModeCompliance, RetainUntil: 0}, false); !errors.Is(err, syscall.EINVAL) {
 		t.Fatalf("retention without deadline: want EINVAL, got %v", err)
 	}
-	if err := s.PutVersionLock("b", "", id, ObjectLockState{}); !errors.Is(err, syscall.EINVAL) {
+	if err := s.PutVersionLock("b", "", id, ObjectLockState{}, false); !errors.Is(err, syscall.EINVAL) {
 		t.Fatalf("empty key: want EINVAL, got %v", err)
 	}
 }
@@ -91,7 +91,7 @@ func TestVersionLock_RoundTrip(t *testing.T) {
 		t.Fatalf("expected no lock record, ok=%v err=%v", ok, err)
 	}
 	want := ObjectLockState{Mode: LockModeGovernance, RetainUntil: future(), LegalHoldOn: false}
-	if err := s.PutVersionLock("b", "k", id, want); err != nil {
+	if err := s.PutVersionLock("b", "k", id, want, false); err != nil {
 		t.Fatalf("PutVersionLock: %v", err)
 	}
 	got, ok, err := s.VersionLock("b", "k", id)
@@ -112,21 +112,21 @@ func TestDeleteVersion_LockDenials(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RecordVersion compliance: %v", err)
 	}
-	if err := s.PutVersionLock("b", "compliance", idComp, ObjectLockState{Mode: LockModeCompliance, RetainUntil: future()}); err != nil {
+	if err := s.PutVersionLock("b", "compliance", idComp, ObjectLockState{Mode: LockModeCompliance, RetainUntil: future()}, false); err != nil {
 		t.Fatalf("PutVersionLock compliance: %v", err)
 	}
 	vGoid, err := s.RecordVersion("b", "governance", "hash-g", 10)
 	if err != nil {
 		t.Fatalf("RecordVersion governance: %v", err)
 	}
-	if err := s.PutVersionLock("b", "governance", vGoid, ObjectLockState{Mode: LockModeGovernance, RetainUntil: future()}); err != nil {
+	if err := s.PutVersionLock("b", "governance", vGoid, ObjectLockState{Mode: LockModeGovernance, RetainUntil: future()}, false); err != nil {
 		t.Fatalf("PutVersionLock governance: %v", err)
 	}
 	idHold, err := s.RecordVersion("b", "hold", "hash-h", 10)
 	if err != nil {
 		t.Fatalf("RecordVersion hold: %v", err)
 	}
-	if err := s.PutVersionLock("b", "hold", idHold, ObjectLockState{LegalHoldOn: true}); err != nil {
+	if err := s.PutVersionLock("b", "hold", idHold, ObjectLockState{LegalHoldOn: true}, false); err != nil {
 		t.Fatalf("PutVersionLock hold: %v", err)
 	}
 
@@ -151,7 +151,7 @@ func TestDeleteVersion_LockDenials(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RecordVersion governance2: %v", err)
 	}
-	if err := s.PutVersionLock("b", "governance2", idGov2, ObjectLockState{Mode: LockModeGovernance, RetainUntil: future(), LegalHoldOn: true}); err != nil {
+	if err := s.PutVersionLock("b", "governance2", idGov2, ObjectLockState{Mode: LockModeGovernance, RetainUntil: future(), LegalHoldOn: true}, false); err != nil {
 		t.Fatalf("PutVersionLock hold+gov: %v", err)
 	}
 	if _, err := s.DeleteVersion("b", "governance2", idGov2, now, true); !errors.Is(err, syscall.EACCES) {
@@ -177,7 +177,7 @@ func TestDeleteVersion_Unprotected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RecordVersion: %v", err)
 	}
-	if err := s.PutVersionLock("b", "k", idLocked, ObjectLockState{LegalHoldOn: true}); err != nil {
+	if err := s.PutVersionLock("b", "k", idLocked, ObjectLockState{LegalHoldOn: true}, false); err != nil {
 		t.Fatalf("PutVersionLock: %v", err)
 	}
 	if _, err := s.RecordVersion("b", "k", "hash-2", 20); err != nil {
@@ -195,27 +195,153 @@ func TestPutVersionLock_ComplianceTightenOnly(t *testing.T) {
 		t.Fatalf("RecordVersion: %v", err)
 	}
 	base := time.Now().UTC().Add(72 * time.Hour).Unix()
-	if err := s.PutVersionLock("b", "k", id, ObjectLockState{Mode: LockModeCompliance, RetainUntil: base}); err != nil {
+	if err := s.PutVersionLock("b", "k", id, ObjectLockState{Mode: LockModeCompliance, RetainUntil: base}, false); err != nil {
 		t.Fatalf("initial: %v", err)
 	}
 	// Extend: allowed.
-	if err := s.PutVersionLock("b", "k", id, ObjectLockState{Mode: LockModeCompliance, RetainUntil: base + 3600}); err != nil {
+	if err := s.PutVersionLock("b", "k", id, ObjectLockState{Mode: LockModeCompliance, RetainUntil: base + 3600}, false); err != nil {
 		t.Fatalf("extension must be allowed: %v", err)
 	}
 	// Shorten: refused.
-	if err := s.PutVersionLock("b", "k", id, ObjectLockState{Mode: LockModeCompliance, RetainUntil: base - 3600}); !errors.Is(err, syscall.EPERM) {
+	if err := s.PutVersionLock("b", "k", id, ObjectLockState{Mode: LockModeCompliance, RetainUntil: base - 3600}, false); !errors.Is(err, syscall.EPERM) {
 		t.Fatalf("shorten: want EPERM, got %v", err)
 	}
 	// Downgrade: refused.
-	if err := s.PutVersionLock("b", "k", id, ObjectLockState{Mode: LockModeGovernance, RetainUntil: base + 3600}); !errors.Is(err, syscall.EPERM) {
+	if err := s.PutVersionLock("b", "k", id, ObjectLockState{Mode: LockModeGovernance, RetainUntil: base + 3600}, false); !errors.Is(err, syscall.EPERM) {
 		t.Fatalf("downgrade: want EPERM, got %v", err)
 	}
 	// Drop retention: refused.
-	if err := s.PutVersionLock("b", "k", id, ObjectLockState{LegalHoldOn: true}); !errors.Is(err, syscall.EPERM) {
+	if err := s.PutVersionLock("b", "k", id, ObjectLockState{LegalHoldOn: true}, false); !errors.Is(err, syscall.EPERM) {
 		t.Fatalf("drop: want EPERM, got %v", err)
 	}
 	// No record at all: refused (implicit drop).
-	if err := s.PutVersionLock("b", "k", id, ObjectLockState{}); !errors.Is(err, syscall.EPERM) {
+	if err := s.PutVersionLock("b", "k", id, ObjectLockState{}, false); !errors.Is(err, syscall.EPERM) {
 		t.Fatalf("drop to nothing: want EPERM, got %v", err)
+	}
+}
+
+func TestPutVersionLock_GovernanceBypass(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.SetBucketObjectLock("b"); err != nil {
+		t.Fatalf("enable: %v", err)
+	}
+	id, err := s.RecordVersion("b", "k", "hash-gov", 10)
+	if err != nil {
+		t.Fatalf("RecordVersion: %v", err)
+	}
+	base := future()
+	if err := s.PutVersionLock("b", "k", id, ObjectLockState{Mode: LockModeGovernance, RetainUntil: base}, false); err != nil {
+		t.Fatalf("initial governance: %v", err)
+	}
+	// Shorten without bypass: refused.
+	if err := s.PutVersionLock("b", "k", id, ObjectLockState{Mode: LockModeGovernance, RetainUntil: base - 3600}, false); !errors.Is(err, syscall.EPERM) {
+		t.Fatalf("shorten without bypass: want EPERM, got %v", err)
+	}
+	// Remove without bypass: refused.
+	if err := s.PutVersionLock("b", "k", id, ObjectLockState{}, false); !errors.Is(err, syscall.EPERM) {
+		t.Fatalf("remove without bypass: want EPERM, got %v", err)
+	}
+	// Extend without bypass: allowed.
+	if err := s.PutVersionLock("b", "k", id, ObjectLockState{Mode: LockModeGovernance, RetainUntil: base + 3600}, false); err != nil {
+		t.Fatalf("extend without bypass must be allowed: %v", err)
+	}
+	// Shorten with bypass: allowed.
+	if err := s.PutVersionLock("b", "k", id, ObjectLockState{Mode: LockModeGovernance, RetainUntil: base - 3600}, true); err != nil {
+		t.Fatalf("shorten with bypass: %v", err)
+	}
+	// Remove with bypass: allowed.
+	if err := s.PutVersionLock("b", "k", id, ObjectLockState{}, true); err != nil {
+		t.Fatalf("remove with bypass: %v", err)
+	}
+}
+
+func TestPutVersionLock_LegalHoldIndependent(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.SetBucketObjectLock("b"); err != nil {
+		t.Fatalf("enable: %v", err)
+	}
+	id, err := s.RecordVersion("b", "k", "hash-hold", 10)
+	if err != nil {
+		t.Fatalf("RecordVersion: %v", err)
+	}
+	base := future()
+	st := ObjectLockState{Mode: LockModeCompliance, RetainUntil: base, LegalHoldOn: true}
+	if err := s.PutVersionLock("b", "k", id, st, false); err != nil {
+		t.Fatalf("initial compliance+hold: %v", err)
+	}
+	// Turning the hold off never weakens retention, so it needs no bypass.
+	off := ObjectLockState{Mode: LockModeCompliance, RetainUntil: base}
+	if err := s.PutVersionLock("b", "k", id, off, false); err != nil {
+		t.Fatalf("hold off with active compliance retention must be allowed: %v", err)
+	}
+	if got, _, _ := s.VersionLock("b", "k", id); got != off {
+		t.Fatalf("retention must survive hold change: got %+v", got)
+	}
+	// Turning the hold back on is likewise independent.
+	if err := s.PutVersionLock("b", "k", id, st, false); err != nil {
+		t.Fatalf("hold on with active compliance retention must be allowed: %v", err)
+	}
+}
+
+func TestPutVersionRetentionPreservesHold(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.SetBucketObjectLock("b"); err != nil {
+		t.Fatalf("enable: %v", err)
+	}
+	id, err := s.RecordVersion("b", "k", "hash-merge", 10)
+	if err != nil {
+		t.Fatalf("RecordVersion: %v", err)
+	}
+	base := future()
+	if err := s.PutVersionLegalHold("b", "k", id, true); err != nil {
+		t.Fatalf("hold on: %v", err)
+	}
+	if err := s.PutVersionRetention("b", "k", id, LockModeGovernance, base, false); err != nil {
+		t.Fatalf("retention: %v", err)
+	}
+	st, ok, err := s.VersionLock("b", "k", id)
+	if err != nil || !ok {
+		t.Fatalf("read merged state: ok=%v err=%v", ok, err)
+	}
+	if st.Mode != LockModeGovernance || st.RetainUntil != base || !st.LegalHoldOn {
+		t.Fatalf("retention write must preserve the hold: %+v", st)
+	}
+}
+
+func TestPutVersionLegalHoldPreservesRetention(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.SetBucketObjectLock("b"); err != nil {
+		t.Fatalf("enable: %v", err)
+	}
+	id, err := s.RecordVersion("b", "k", "hash-merge2", 10)
+	if err != nil {
+		t.Fatalf("RecordVersion: %v", err)
+	}
+	base := future()
+	if err := s.PutVersionRetention("b", "k", id, LockModeCompliance, base, false); err != nil {
+		t.Fatalf("retention: %v", err)
+	}
+	if err := s.PutVersionLegalHold("b", "k", id, true); err != nil {
+		t.Fatalf("hold on: %v", err)
+	}
+	if err := s.PutVersionLegalHold("b", "k", id, false); err != nil {
+		t.Fatalf("hold off: %v", err)
+	}
+	st, _, _ := s.VersionLock("b", "k", id)
+	if st.Mode != LockModeCompliance || st.RetainUntil != base || st.LegalHoldOn {
+		t.Fatalf("hold write must preserve retention: %+v", st)
+	}
+}
+
+func TestPutVersionFacets_MissingVersion(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.SetBucketObjectLock("b"); err != nil {
+		t.Fatalf("enable: %v", err)
+	}
+	if err := s.PutVersionRetention("b", "missing", "no-version", LockModeGovernance, future(), false); !errors.Is(err, syscall.ENOENT) {
+		t.Fatalf("retention missing version: want ENOENT, got %v", err)
+	}
+	if err := s.PutVersionLegalHold("b", "missing", "no-version", true); !errors.Is(err, syscall.ENOENT) {
+		t.Fatalf("hold missing version: want ENOENT, got %v", err)
 	}
 }

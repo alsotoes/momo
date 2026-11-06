@@ -1023,6 +1023,19 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			writeS3Error(m.conn, http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", bucket)
 			return 0, 0, fmt.Errorf("unknown bucket %q: %w", bucket, syscall.ENOENT)
 		}
+		// R10 Phase 5 (#938): GET /{bucket}/{key}?retention|?legal-hold.
+		if _, hasRetention := q["retention"]; hasRetention {
+			if m.lock == nil {
+				return 0, 0, m.rejectObjectLockUnsupported(key)
+			}
+			return m.handleGetObjectRetention(req, bucket, key)
+		}
+		if _, hasLegalHold := q["legal-hold"]; hasLegalHold {
+			if m.lock == nil {
+				return 0, 0, m.rejectObjectLockUnsupported(key)
+			}
+			return m.handleGetObjectLegalHold(req, bucket, key)
+		}
 		// R10 Phase 1 (#938): GET a specific object version.
 		if versionID := q.Get("versionId"); versionID != "" {
 			if m.versioning == nil {
@@ -1550,6 +1563,23 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 				return 0, 0, m.rejectObjectLockUnsupported(bucket)
 			}
 			return m.handlePutBucketObjectLock(req, bucket)
+		}
+
+		// R10 Phase 5 (#938): PUT /{bucket}/{key}?retention|?legal-hold — set
+		// object retention or legal hold on a version (default: the current one).
+		if key != "" {
+			if _, hasRetention := q["retention"]; hasRetention {
+				if m.lock == nil {
+					return 0, 0, m.rejectObjectLockUnsupported(key)
+				}
+				return m.handlePutObjectRetention(req, bucket, key)
+			}
+			if _, hasLegalHold := q["legal-hold"]; hasLegalHold {
+				if m.lock == nil {
+					return 0, 0, m.rejectObjectLockUnsupported(key)
+				}
+				return m.handlePutObjectLegalHold(req, bucket, key)
+			}
 		}
 
 		// CreateBucket: PUT to a bucket root (key empty) in bucket mode.
@@ -2219,17 +2249,15 @@ func unsupportedBucketConfigSubresource(q url.Values) (string, bool) {
 }
 
 // ─── Unsupported object subresources (P4, #914) ────────────────────────────
-// S3 object-level subresource operations (ACLs, tagging, versioning, retention,
-// legal-hold) are not implemented. Issue #820 (P4) / #914: return a clean
+// S3 object-level subresource operations (ACLs, tagging, SelectObjectContent)
+// are not implemented. Issue #820 (P4) / #914: return a clean
 // S3-compliant 501 NotImplemented instead of silently misrouting these into
 // GetObject/PutObject/DeleteObject. Only object-key addresses (key != "") are
 // intercepted; bucket-root bucket-config handling is #912/#913.
 var unsupportedObjectSubresources = map[string]string{
-	"tagging":    "object tagging",
-	"acl":        "object access-control lists",
-	"retention":  "object retention",
-	"legal-hold": "object legal hold",
-	"select":     "SelectObjectContent",
+	"tagging": "object tagging",
+	"acl":     "object access-control lists",
+	"select":  "SelectObjectContent",
 }
 
 // msgVersioningUnsupported is the honest-501 message used by every versioning
