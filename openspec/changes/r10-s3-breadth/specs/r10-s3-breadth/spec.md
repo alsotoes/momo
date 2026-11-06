@@ -100,6 +100,23 @@ Given an object with `x-amz-object-lock-legal-hold: ON`,
 When overwrite/delete is attempted,
 Then the request is denied regardless of retention date.
 
+**Scenario: Retention subresource API**
+
+Given a lock-enabled bucket and a stored version,
+When `PUT ?retention` (optionally `&versionId=`) supplies `<Retention><Mode>` and `<RetainUntilDate>`,
+Then the version's retention is recorded and `GET ?retention` returns it;
+And shortening or removing an active GOVERNANCE window is denied (`403 AccessDenied`)
+unless the request carries `x-amz-bypass-governance-retention: true`;
+And COMPLIANCE windows can only be extended, never shortened or downgraded, bypass or not.
+
+**Scenario: Legal-hold subresource API**
+
+Given a lock-enabled bucket and a stored version,
+When `PUT ?legal-hold` supplies `<LegalHold><Status>ON|OFF</Status>`,
+Then the hold flag is recorded and `GET ?legal-hold` returns it;
+And changing the hold preserves the version's retention state;
+And neither retention nor hold APIs are available on a bucket without Object Lock (`400 InvalidRequest`).
+
 ## Non-Goals
 
 - Bucket ACL/Policy (deferred to R8 multi-tenancy)

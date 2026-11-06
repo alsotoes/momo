@@ -107,34 +107,64 @@ func (s *CASStore) BucketObjectLockEnabled(bucket string) (enabled bool, err err
 	return enabled, err
 }
 
-// PutVersionLock writes retention and/or legal-hold state for one version.
-// The version record must exist (syscall.ENOENT otherwise). While an active
-// COMPLIANCE retention is in the future it can only be extended — never
-// weakened to GOVERNANCE, a shorter deadline, or no retention (checked with
-// the wall clock, matching S3 request-time semantics for direct calls).
-func (s *CASStore) PutVersionLock(bucket, key, versionID string, state ObjectLockState) (err error) {
-	defer common.RecoverErr("CASStore.PutVersionLock", &err)
+// PutVersionLock writes the complete retention and legal-hold state for one
+// version. The version record must exist (syscall.ENOENT otherwise). While an
+// active COMPLIANCE retention is in the future it can only be extended — never
+// weakened to GOVERNANCE, a shorter deadline, or no retention. An active
+// GOVERNANCE retention may only be shortened or removed when the caller
+// supplies bypassGovernance (S3 x-amz-bypass-governance-retention). Deadline
+// checks use the wall clock, matching S3 request-time semantics.
+func (s *CASStore) PutVersionLock(bucket, key, versionID string, state ObjectLockState, bypassGovernance bool) (err error) {
+	return s.mutateVersionLock(bucket, key, versionID, bypassGovernance, func(st *ObjectLockState) {
+		*st = state
+	})
+}
+
+// PutVersionRetention sets only the retention facet, preserving any legal hold.
+// Merge and validation happen inside one transaction, so a concurrent hold
+// update can never be clobbered by a retention write.
+func (s *CASStore) PutVersionRetention(bucket, key, versionID, mode string, retainUntil int64, bypassGovernance bool) (err error) {
+	return s.mutateVersionLock(bucket, key, versionID, bypassGovernance, func(st *ObjectLockState) {
+		st.Mode = mode
+		st.RetainUntil = retainUntil
+	})
+}
+
+// PutVersionLegalHold sets only the legal-hold facet, preserving retention.
+func (s *CASStore) PutVersionLegalHold(bucket, key, versionID string, on bool) (err error) {
+	return s.mutateVersionLock(bucket, key, versionID, false, func(st *ObjectLockState) {
+		st.LegalHoldOn = on
+	})
+}
+
+// mutateVersionLock applies mutate to the stored lock record inside a single
+// transaction: read, merge, validate, monotonicity-check, write.
+func (s *CASStore) mutateVersionLock(bucket, key, versionID string, bypassGovernance bool, mutate func(*ObjectLockState)) (err error) {
+	defer common.RecoverErr("CASStore.mutateVersionLock", &err)
 	if bucket == "" || key == "" || versionID == "" {
 		return syscall.EINVAL
-	}
-	if err := validateLockState(state); err != nil {
-		return err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.db.Update(func(tx *bolt.Tx) error {
-		var existing ObjectLockState
-		if raw := tx.Bucket([]byte(bucketLockStatus)).Get(lockStatusKey(bucket, key, versionID)); raw != nil {
-			if err := json.Unmarshal(raw, &existing); err != nil {
+		var next ObjectLockState
+		raw := tx.Bucket([]byte(bucketLockStatus)).Get(lockStatusKey(bucket, key, versionID))
+		if raw != nil {
+			if err := json.Unmarshal(raw, &next); err != nil {
 				return fmt.Errorf("corrupt lock record: %w", err)
 			}
-		} else if v := tx.Bucket(bucketObjectVersions).Get(versionKey(bucket, key, versionID)); v == nil {
+		} else if tx.Bucket(bucketObjectVersions).Get(versionKey(bucket, key, versionID)) == nil {
 			return syscall.ENOENT
 		}
-		if err := checkLockTighten(existing, state); err != nil {
+		existing := next
+		mutate(&next)
+		if err := validateLockState(next); err != nil {
 			return err
 		}
-		nv, err := json.Marshal(state)
+		if err := checkLockTighten(existing, next, bypassGovernance); err != nil {
+			return err
+		}
+		nv, err := json.Marshal(next)
 		if err != nil {
 			return err
 		}
@@ -155,21 +185,26 @@ func validateLockState(state ObjectLockState) error {
 	return nil
 }
 
-// checkLockTighten enforces WORM monotonicity for active COMPLIANCE retention:
-// it can only be extended, never shortened, converted to GOVERNANCE, or
-// dropped while its deadline is in the future.
-func checkLockTighten(existing, next ObjectLockState) error {
-	if existing.Mode != LockModeCompliance || existing.RetainUntil <= time.Now().UTC().Unix() {
-		return nil
-	}
-	if next.Mode == LockModeGovernance {
-		return syscall.EPERM
-	}
-	if next.Mode == LockModeCompliance && next.RetainUntil < existing.RetainUntil {
-		return syscall.EPERM
-	}
-	if next.Mode == "" && next.RetainUntil == 0 {
-		return syscall.EPERM
+// checkLockTighten enforces WORM monotonicity for active retention. COMPLIANCE
+// can only be extended, never shortened, converted to GOVERNANCE, or dropped
+// while its deadline is in the future; there is no bypass. GOVERNANCE can be
+// shortened or removed only with bypassGovernance (legal holds are unaffected:
+// they are an independent flag and never block retention changes).
+func checkLockTighten(existing, next ObjectLockState, bypassGovernance bool) error {
+	now := time.Now().UTC().Unix()
+	if existing.RetainUntil > now {
+		switch existing.Mode {
+		case LockModeCompliance:
+			if next.Mode == LockModeGovernance ||
+				(next.Mode == LockModeCompliance && next.RetainUntil < existing.RetainUntil) ||
+				(next.Mode == "" && next.RetainUntil == 0) {
+				return syscall.EPERM
+			}
+		case LockModeGovernance:
+			if !bypassGovernance && next.RetainUntil < existing.RetainUntil {
+				return syscall.EPERM
+			}
+		}
 	}
 	return nil
 }

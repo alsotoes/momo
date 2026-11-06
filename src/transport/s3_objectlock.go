@@ -6,10 +6,11 @@ package transport
 //   - Plain-PUT lock capture is a documented ceiling: the gateway response
 //     precedes body streaming, so x-amz-object-lock-* on single PUTs cannot
 //     reach the version record this phase — lock via multipart uploads.
-//   - ?retention / ?legal-hold subresource APIs stay honest-501 this phase.
+//   - ?retention / ?legal-hold subresource APIs are implemented (Phase 5).
 
 import (
 	"bytes"
+	"encoding/xml"
 	"fmt"
 	"github.com/alsotoes/momo/src/common"
 	"github.com/alsotoes/momo/src/storage"
@@ -24,7 +25,9 @@ import (
 type ObjectLockStore interface {
 	SetBucketObjectLock(bucket string) error
 	BucketObjectLockEnabled(bucket string) (bool, error)
-	PutVersionLock(bucket, key, versionID string, state storage.ObjectLockState) error
+	PutVersionLock(bucket, key, versionID string, state storage.ObjectLockState, bypassGovernance bool) error
+	PutVersionRetention(bucket, key, versionID, mode string, retainUntil int64, bypassGovernance bool) error
+	PutVersionLegalHold(bucket, key, versionID string, on bool) error
 	VersionLock(bucket, key, versionID string) (storage.ObjectLockState, bool, error)
 }
 
@@ -128,7 +131,7 @@ func (m *S3Communicator) LockVersion(bucket, key, versionID string, st storage.O
 		}
 		return nil
 	}
-	if err := m.lock.PutVersionLock(bucket, key, versionID, st); err != nil {
+	if err := m.lock.PutVersionLock(bucket, key, versionID, st, false); err != nil {
 		if err == syscall.ENOENT {
 			_, _ = writeS3Error(m.conn, http.StatusNotFound, "NoSuchVersion", "The version to lock does not exist.", key)
 			return ErrRequestHandled
@@ -204,4 +207,226 @@ func ParseS3LockHeaders(req *http.Request) (storage.ObjectLockState, error) {
 		}
 	}
 	return st, nil
+}
+
+// ─── ?retention / ?legal-hold subresource APIs (R10 Phase 5, #938) ─────────
+// Object-lock state is stored per version. These handlers mutate one facet at
+// a time and merge with the existing record so a retention PUT never clears a
+// legal hold (and vice versa).
+
+// retentionXML is the S3 PUT ?retention body.
+type retentionXML struct {
+	XMLName         xml.Name `xml:"Retention"`
+	XMLNS           string   `xml:"xmlns,attr"`
+	Mode            string   `xml:"Mode"`
+	RetainUntilDate string   `xml:"RetainUntilDate"`
+}
+
+// legalHoldXML is the S3 PUT/GET ?legal-hold document.
+type legalHoldXML struct {
+	XMLName xml.Name `xml:"LegalHold"`
+	XMLNS   string   `xml:"xmlns,attr"`
+	Status  string   `xml:"Status"`
+}
+
+// ParseRetentionXML validates a PUT ?retention body. Mode and RetainUntilDate
+// are both required, matching the S3 schema.
+func ParseRetentionXML(body []byte) (st storage.ObjectLockState, err error) {
+	defer common.RecoverErr("ParseRetentionXML", &err)
+	var doc retentionXML
+	if err := xml.Unmarshal(body, &doc); err != nil {
+		return st, fmt.Errorf("malformed retention document: %v: %w", err, syscall.EINVAL)
+	}
+	mode := strings.ToUpper(strings.TrimSpace(doc.Mode))
+	if mode != storage.LockModeCompliance && mode != storage.LockModeGovernance {
+		return st, syscall.EINVAL
+	}
+	t, err := time.Parse(time.RFC3339, strings.TrimSpace(doc.RetainUntilDate))
+	if err != nil {
+		return st, syscall.EINVAL
+	}
+	return storage.ObjectLockState{Mode: mode, RetainUntil: t.Unix()}, nil
+}
+
+// FormatRetentionXML renders GET ?retention. A version without retention
+// yields the empty document rather than an error. Mode/date constants are
+// schema values, so no escaping is needed.
+func FormatRetentionXML(st storage.ObjectLockState) []byte {
+	if st.Mode == "" || st.RetainUntil <= 0 {
+		return []byte(`<Retention xmlns="` + s3XMLNS + `"></Retention>`)
+	}
+	return []byte(`<Retention xmlns="` + s3XMLNS + `"><Mode>` + st.Mode +
+		`</Mode><RetainUntilDate>` + xmlIso8601(time.Unix(st.RetainUntil, 0)) +
+		`</RetainUntilDate></Retention>`)
+}
+
+// ParseLegalHoldXML validates a PUT ?legal-hold body (ON or OFF).
+func ParseLegalHoldXML(body []byte) (on bool, err error) {
+	defer common.RecoverErr("ParseLegalHoldXML", &err)
+	var doc legalHoldXML
+	if err := xml.Unmarshal(body, &doc); err != nil {
+		return false, fmt.Errorf("malformed legal-hold document: %v: %w", err, syscall.EINVAL)
+	}
+	switch strings.ToUpper(strings.TrimSpace(doc.Status)) {
+	case "ON":
+		return true, nil
+	case "OFF":
+		return false, nil
+	}
+	return false, syscall.EINVAL
+}
+
+// FormatLegalHoldXML renders GET ?legal-hold.
+func FormatLegalHoldXML(on bool) []byte {
+	status := "OFF"
+	if on {
+		status = "ON"
+	}
+	return []byte(`<LegalHold xmlns="` + s3XMLNS + `"><Status>` + status + `</Status></LegalHold>`)
+}
+
+// lockEnabledOrError verifies the bucket has object lock enabled, writing the
+// S3 error when it does not.
+func (m *S3Communicator) lockEnabledOrError(bucket, key string) error {
+	enabled, err := m.lock.BucketObjectLockEnabled(bucket)
+	if err != nil {
+		_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to read object lock configuration.", key)
+		return fmt.Errorf("read bucket object lock status: %w", err)
+	}
+	if !enabled {
+		_, _ = writeS3Error(m.conn, http.StatusBadRequest, "InvalidRequest", "Bucket is missing Object Lock Configuration.", key)
+		return ErrRequestHandled
+	}
+	return nil
+}
+
+// lockTargetVersion resolves the version a retention/legal-hold request
+// targets: the explicit ?versionId, else the object's current version.
+func (m *S3Communicator) lockTargetVersion(bucket, key, versionID string) (string, error) {
+	if versionID != "" {
+		return versionID, nil
+	}
+	if m.versioning == nil {
+		_, _ = writeS3Error(m.conn, http.StatusNotImplemented, "NotImplemented", msgVersioningUnsupported, key)
+		return "", ErrRequestHandled
+	}
+	rec, ok, err := m.versioning.LatestVersion(bucket, key)
+	if err != nil {
+		_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to resolve the current version.", key)
+		return "", fmt.Errorf("resolve latest version: %w", err)
+	}
+	if !ok || rec.IsDeleteMarker {
+		_, _ = writeS3Error(m.conn, http.StatusNotFound, "NoSuchKey", "The specified key does not exist.", key)
+		return "", ErrRequestHandled
+	}
+	return rec.VersionID, nil
+}
+
+// writeLockMutationError maps storage errors from a lock write to S3 responses.
+func (m *S3Communicator) writeLockMutationError(err error, key string) error {
+	switch err {
+	case syscall.ENOENT:
+		_, _ = writeS3Error(m.conn, http.StatusNotFound, "NoSuchVersion", "The specified version does not exist.", key)
+		return ErrRequestHandled
+	case syscall.EPERM:
+		_, _ = writeS3Error(m.conn, http.StatusForbidden, "AccessDenied", "The requested object lock state change is not permitted.", key)
+		return ErrRequestHandled
+	case syscall.EINVAL:
+		_, _ = writeS3Error(m.conn, http.StatusBadRequest, "InvalidArgument", "Invalid object lock values.", key)
+		return ErrRequestHandled
+	}
+	_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to store object lock state.", key)
+	return fmt.Errorf("store object lock state: %w", err)
+}
+
+// handleGetObjectRetention answers GET /{bucket}/{key}?retention.
+func (m *S3Communicator) handleGetObjectRetention(req *http.Request, bucket, key string) (int, int64, error) {
+	if err := m.lockEnabledOrError(bucket, key); err != nil {
+		return 0, 0, err
+	}
+	versionID, err := m.lockTargetVersion(bucket, key, req.URL.Query().Get("versionId"))
+	if err != nil {
+		return 0, 0, err
+	}
+	st, _, err := m.lock.VersionLock(bucket, key, versionID)
+	if err != nil {
+		_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to read object retention.", key)
+		return 0, 0, fmt.Errorf("read object retention: %w", err)
+	}
+	body := FormatRetentionXML(st)
+	return 0, 0, m.writeRawResponse(xmlResponseHeaders(len(body)), body, nil)
+}
+
+// handlePutObjectRetention answers PUT /{bucket}/{key}?retention.
+func (m *S3Communicator) handlePutObjectRetention(req *http.Request, bucket, key string) (int, int64, error) {
+	if err := m.lockEnabledOrError(bucket, key); err != nil {
+		return 0, 0, err
+	}
+	versionID, err := m.lockTargetVersion(bucket, key, req.URL.Query().Get("versionId"))
+	if err != nil {
+		return 0, 0, err
+	}
+	body, rerr := io.ReadAll(io.LimitReader(req.Body, 64*1024))
+	if rerr != nil {
+		_, _ = writeS3Error(m.conn, http.StatusBadRequest, "MalformedXML", "Failed to read request body.", key)
+		return 0, 0, fmt.Errorf("read retention body: %w", rerr)
+	}
+	next, perr := ParseRetentionXML(body)
+	if perr != nil {
+		_, _ = writeS3Error(m.conn, http.StatusBadRequest, "MalformedXML", "The XML you provided was not well-formed or did not validate against our published schema.", key)
+		return 0, 0, fmt.Errorf("invalid retention document: %w", syscall.EINVAL)
+	}
+	// Only the retention facet changes; the storage layer merges the hold
+	// under the same transaction.
+	if perr := m.lock.PutVersionRetention(bucket, key, versionID, next.Mode, next.RetainUntil, isGovernanceBypass(req)); perr != nil {
+		return 0, 0, m.writeLockMutationError(perr, key)
+	}
+	m.writeAuditLog("PutObjectRetention", key, "success")
+	return 0, 0, m.writeRawResponse("HTTP/1.1 200 OK\r\nContent-Length: 0"+s3ConnClose, nil, nil)
+}
+
+// handleGetObjectLegalHold answers GET /{bucket}/{key}?legal-hold.
+func (m *S3Communicator) handleGetObjectLegalHold(req *http.Request, bucket, key string) (int, int64, error) {
+	if err := m.lockEnabledOrError(bucket, key); err != nil {
+		return 0, 0, err
+	}
+	versionID, err := m.lockTargetVersion(bucket, key, req.URL.Query().Get("versionId"))
+	if err != nil {
+		return 0, 0, err
+	}
+	st, _, err := m.lock.VersionLock(bucket, key, versionID)
+	if err != nil {
+		_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to read object legal hold.", key)
+		return 0, 0, fmt.Errorf("read object legal hold: %w", err)
+	}
+	body := FormatLegalHoldXML(st.LegalHoldOn)
+	return 0, 0, m.writeRawResponse(xmlResponseHeaders(len(body)), body, nil)
+}
+
+// handlePutObjectLegalHold answers PUT /{bucket}/{key}?legal-hold.
+func (m *S3Communicator) handlePutObjectLegalHold(req *http.Request, bucket, key string) (int, int64, error) {
+	if err := m.lockEnabledOrError(bucket, key); err != nil {
+		return 0, 0, err
+	}
+	versionID, err := m.lockTargetVersion(bucket, key, req.URL.Query().Get("versionId"))
+	if err != nil {
+		return 0, 0, err
+	}
+	body, rerr := io.ReadAll(io.LimitReader(req.Body, 64*1024))
+	if rerr != nil {
+		_, _ = writeS3Error(m.conn, http.StatusBadRequest, "MalformedXML", "Failed to read request body.", key)
+		return 0, 0, fmt.Errorf("read legal-hold body: %w", rerr)
+	}
+	on, perr := ParseLegalHoldXML(body)
+	if perr != nil {
+		_, _ = writeS3Error(m.conn, http.StatusBadRequest, "MalformedXML", "The XML you provided was not well-formed or did not validate against our published schema.", key)
+		return 0, 0, fmt.Errorf("invalid legal-hold document: %w", syscall.EINVAL)
+	}
+	// Only the hold facet changes; the storage layer merges retention under
+	// the same transaction.
+	if perr := m.lock.PutVersionLegalHold(bucket, key, versionID, on); perr != nil {
+		return 0, 0, m.writeLockMutationError(perr, key)
+	}
+	m.writeAuditLog("PutObjectLegalHold", key, "success")
+	return 0, 0, m.writeRawResponse("HTTP/1.1 200 OK\r\nContent-Length: 0"+s3ConnClose, nil, nil)
 }

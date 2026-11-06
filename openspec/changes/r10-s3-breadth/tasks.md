@@ -46,7 +46,7 @@
 - [x] Delete enforcement in the version store (`DeleteVersion` returns EACCES for retained/held versions; GOVERNANCE yields to the bypass header) and 403 `AccessDenied` mapping in the gateway
 - [x] `GET/HEAD /{bucket}/{key}?versionId=` echo `x-amz-object-lock-*` headers; multipart completion captures lock headers (version id known)
 - [x] Documented ceiling: single-part PUT cannot capture lock headers (response precedes body streaming); use multipart
-- [ ] `?retention` / `?legal-hold` subresource APIs (honest-501 this phase)
+- [x] `?retention` / `?legal-hold` subresource APIs: `handleGet/PutObjectRetention` and `handleGet/PutObjectLegalHold` in `src/transport/s3_objectlock.go`; GOVERNANCE shorten/remove requires `x-amz-bypass-governance-retention`, COMPLIANCE stays extend-only, hold and retention mutations preserve each other; both removed from the P4 501 reject set
 
 ### Config
 - [x] `src/common/config.go`: `[s3] lifecycle_worker_interval` and `notification_retry_max` (default 3, validated ≥ 1)

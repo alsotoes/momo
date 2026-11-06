@@ -120,6 +120,38 @@ A delete attempt against a protected version returns `403 AccessDenied` and
 leaves the record intact. A `GOVERNANCE`-locked version yields to a request
 carrying the bypass header; a `COMPLIANCE`-locked or held version never does.
 
+## Changing Lock State After the Fact
+
+Headers capture lock state at write time, but real workflows change their minds:
+counsel extends a hold, a records policy lengthens a retention window, an
+investigation lifts a hold after a matter closes. The gateway therefore exposes
+the two subresource APIs the S3 model defines, each targeting a specific version
+(the current version by default, or the one named in `versionId`):
+
+- `PUT ?retention` with a `Retention` document carrying `Mode` and
+  `RetainUntilDate`; `GET ?retention` reads it back.
+- `PUT ?legal-hold` with a `LegalHold` document carrying `Status` `ON` or
+  `OFF`; `GET ?legal-hold` reads it back.
+
+The hard part is not the XML. It is making two independent knobs cooperate
+without erasing each other. Each call mutates exactly one facet of the stored
+record and merges the other back in, so setting a legal hold never wipes the
+retention deadline, and refreshing retention never silently clears a hold.
+
+The permission rules are the ones the delete path already uses, applied at
+mutation time:
+
+- Shortening or removing an active `GOVERNANCE` window requires the same
+  `x-amz-bypass-governance-retention: true` signal.
+- `COMPLIANCE` can still only be extended. No header bypasses it.
+- Both APIs refuse a bucket that never had Object Lock enabled, with
+  `400 InvalidRequest` naming the missing configuration.
+
+A useful side effect of routing these calls through the version store instead
+of a handler-local map is that the same monotonicity checks protect against
+race conditions: the read-modify-write happens under the store lock, so two
+concurrent "shorten" attempts cannot both win.
+
 ## Failure Modes Worth Knowing
 
 - **Clock trust.** Retention compares against the request clock, which is the
