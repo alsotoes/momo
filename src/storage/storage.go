@@ -25,21 +25,21 @@ import (
 
 // Buckets used in Bbolt
 var (
-	bucketObjects        = []byte("objects")         // Maps ContentHash -> {ObjectMeta binary}
-	bucketNamespace      = []byte("namespace")       // Maps FileName -> ContentHash
-	bucketPaths          = []byte("paths")           // Maps FileName -> RemotePath
-	bucketTombstones     = []byte("tombstones")      // Maps FileName -> deletion timestamp (unix nano)
-	bucketModTimes       = []byte("modtimes")        // Maps FileName -> modification timestamp (unix nano)
-	bucketS3Meta         = []byte("s3meta")          // Maps FileName -> JSON S3 object metadata (content-type, x-amz-meta-*)
-	bucketQuarantine     = []byte("quarantine")      // Maps ContentHash -> mark-and-hold flag (R2, #930)
-	bucketTenantMeta     = []byte("tenant_meta")     // Maps TenantID -> JSON TenantConfig (R8, #936)
-	bucketAuditLog       = []byte("audit_log")       // Immutable append-only audit log entries (R8, #936)
-	bucketACL            = []byte("acl")             // Bucket/Object ACLs (R8, #936)
-	bucketVersioning     = []byte("versioning")      // Maps bucket -> versioning status (R10, #938)
-	bucketObjectVersions = []byte("object_versions") // Maps bucket\x00key\x00versionID -> VersionRecord (R10, #938)
-	bucketLifecycle      = []byte("lifecycle")       // Maps bucket -> JSON LifecycleConfig (R10, #938)
-	bucketNotification   = []byte("notification")    // Maps bucket -> JSON NotificationConfig (R10, #938)
-	bucketObjectLockCfg  = []byte("object_lock")     // Maps bucket -> lock-enabled flag (R10-LK1, #938)
+	bucketObjects        = []byte("objects")           // Maps ContentHash -> {ObjectMeta binary}
+	bucketNamespace      = []byte("namespace")         // Maps FileName -> ContentHash
+	bucketPaths          = []byte("paths")             // Maps FileName -> RemotePath
+	bucketTombstones     = []byte("tombstones")        // Maps FileName -> deletion timestamp (unix nano)
+	bucketModTimes       = []byte("modtimes")          // Maps FileName -> modification timestamp (unix nano)
+	bucketS3Meta         = []byte("s3meta")            // Maps FileName -> JSON S3 object metadata (content-type, x-amz-meta-*)
+	bucketQuarantine     = []byte("quarantine")        // Maps ContentHash -> mark-and-hold flag (R2, #930)
+	bucketTenantMeta     = []byte("tenant_meta")       // Maps TenantID -> JSON TenantConfig (R8, #936)
+	bucketAuditLog       = []byte("audit_log")         // Immutable append-only audit log entries (R8, #936)
+	bucketACL            = []byte("acl")               // Bucket/Object ACLs (R8, #936)
+	bucketVersioning     = []byte("versioning")        // Maps bucket -> versioning status (R10, #938)
+	bucketObjectVersions = []byte("object_versions")   // Maps bucket\x00key\x00versionID -> VersionRecord (R10, #938)
+	bucketLifecycle      = []byte("lifecycle")         // Maps bucket -> JSON LifecycleConfig (R10, #938)
+	bucketNotification   = []byte("notification")      // Maps bucket -> JSON NotificationConfig (R10, #938)
+	bucketObjectLockCfg  = []byte("object_lock")       // Maps bucket -> lock-enabled flag (R10-LK1, #938)
 	bucketLockState      = []byte("object_lock_state") // Maps bucket\x00key\x00versionID -> ObjectLockState JSON (R10-LK1, #938)
 )
 
@@ -223,6 +223,11 @@ type CASStore struct {
 	// commit / none via WithDurability). nil preserves legacy per-blob fsync
 	// inside the blob backend.
 	durability DurabilityBarrier
+
+	// verHook replicates locally recorded object versions to peers (R10
+	// follow-up, #1233). Guarded by verHookMu; nil disables replication.
+	verHookMu sync.Mutex
+	verHook   func(bucket, key string, rec VersionRecord)
 
 	scrubDone    chan struct{}
 	scrubWG      sync.WaitGroup

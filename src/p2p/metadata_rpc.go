@@ -2,6 +2,7 @@ package p2p
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"strings"
 	"sync"
@@ -16,7 +17,7 @@ import (
 const (
 	// MetadataRPCTTL is the TTL for cached metadata responses.
 	MetadataRPCTTL = 60 * time.Second
-	// MetadataRPCTimeout is the timeout for metadata RPC calls.
+	// MetadataRPCTimeout is the default per-call timeout for metadata RPCs.
 	MetadataRPCTimeout = 5 * time.Second
 )
 
@@ -72,6 +73,24 @@ type ReplicateMetadataArgs struct {
 type ReplicateMetadataReply struct {
 	Success bool
 	Error   string
+}
+
+// ReplicateVersionArgs is the payload for a ReplicateVersion RPC request
+// (R10 follow-up, #1233): one version record plus the bucket's versioning
+// status, so a replica can answer version queries without extra round trips.
+type ReplicateVersionArgs struct {
+	RequestID        uint64
+	Bucket           string
+	Key              string
+	Record           storage.VersionRecord
+	VersioningStatus string
+}
+
+// ReplicateVersionReply is the payload for a ReplicateVersion RPC response.
+type ReplicateVersionReply struct {
+	RequestID uint64
+	Success   bool
+	Error     string
 }
 
 // ListShardArgs is the payload for a ListShard RPC request.
@@ -175,6 +194,28 @@ func DecodeListShardReply(data []byte) (*ListShardReply, error) {
 	return &reply, err
 }
 
+// Encode/Decode for the version replication payloads.
+
+func EncodeReplicateVersionArgs(args *ReplicateVersionArgs) ([]byte, error) {
+	return json.Marshal(args)
+}
+
+func DecodeReplicateVersionArgs(data []byte) (*ReplicateVersionArgs, error) {
+	var args ReplicateVersionArgs
+	err := json.Unmarshal(data, &args)
+	return &args, err
+}
+
+func EncodeReplicateVersionReply(reply *ReplicateVersionReply) ([]byte, error) {
+	return json.Marshal(reply)
+}
+
+func DecodeReplicateVersionReply(data []byte) (*ReplicateVersionReply, error) {
+	var reply ReplicateVersionReply
+	err := json.Unmarshal(data, &reply)
+	return &reply, err
+}
+
 // MetadataRPCProvider handles distributed metadata RPCs.
 type MetadataRPCProvider struct {
 	localID   int32
@@ -185,6 +226,14 @@ type MetadataRPCProvider struct {
 	nextRequestID atomic.Uint64
 	pendingMu     sync.Mutex
 	pending       map[uint64]*pendingMetadata
+
+	// versionPending correlates ReplicateVersion replies by request ID.
+	versionPendingMu sync.Mutex
+	versionPending   map[uint64]chan *ReplicateVersionReply
+
+	// RPCTimeout bounds a request/response call; zero means MetadataRPCTimeout.
+	// Per-instance so tests can shorten it without racing a shared global.
+	RPCTimeout time.Duration
 }
 
 type pendingMetadata struct {
@@ -203,11 +252,13 @@ type MetadataResponse struct {
 // NewMetadataRPCProvider creates a new MetadataRPCProvider.
 func NewMetadataRPCProvider(localID int32, transport Transport, ring *Ring, store *storage.CASStore) *MetadataRPCProvider {
 	return &MetadataRPCProvider{
-		localID:   localID,
-		transport: transport,
-		ring:      ring,
-		store:     store,
-		pending:   make(map[uint64]*pendingMetadata),
+		localID:        localID,
+		transport:      transport,
+		ring:           ring,
+		store:          store,
+		pending:        make(map[uint64]*pendingMetadata),
+		versionPending: make(map[uint64]chan *ReplicateVersionReply),
+		RPCTimeout:     MetadataRPCTimeout,
 	}
 }
 
@@ -235,6 +286,10 @@ func (m *MetadataRPCProvider) HandleRPC(rpc *RPC) {
 		m.handleListShard(rpc)
 	case MsgListShardResponse:
 		m.handleListShardResponse(rpc)
+	case MsgReplicateVersion:
+		m.handleReplicateVersion(rpc)
+	case MsgReplicateVersionResponse:
+		m.handleReplicateVersionResponse(rpc)
 	}
 }
 
@@ -460,6 +515,94 @@ func (m *MetadataRPCProvider) handleListShardResponse(rpc *RPC) {
 		return
 	}
 	m.completePending(rpc.From, reply, err)
+}
+
+// rpcTimeout returns the per-call timeout.
+func (m *MetadataRPCProvider) rpcTimeout() time.Duration {
+	if m.RPCTimeout > 0 {
+		return m.RPCTimeout
+	}
+	return MetadataRPCTimeout
+}
+
+// handleReplicateVersion applies a replicated version record locally and
+// acknowledges. Apply is idempotent; a stale record never demotes a newer one.
+func (m *MetadataRPCProvider) handleReplicateVersion(rpc *RPC) {
+	args, err := DecodeReplicateVersionArgs(rpc.Payload)
+	if err != nil {
+		log.Printf("MetadataRPC: failed to decode ReplicateVersion from peer %d: %v (errno=%d)", rpc.From, err, syscall.EBADMSG)
+		return
+	}
+	reply := &ReplicateVersionReply{RequestID: args.RequestID, Success: true}
+	if args.VersioningStatus != "" {
+		if serr := m.store.SetBucketVersioning(args.Bucket, args.VersioningStatus); serr != nil {
+			reply.Success = false
+			reply.Error = serr.Error()
+		}
+	}
+	if reply.Success {
+		if aerr := m.store.PutVersionRecord(args.Bucket, args.Key, args.Record); aerr != nil {
+			reply.Success = false
+			reply.Error = aerr.Error()
+		}
+	}
+	payload, _ := EncodeReplicateVersionReply(reply)
+	_ = m.transport.Send(rpc.From, &RPC{
+		Type:    MsgReplicateVersionResponse,
+		Payload: payload,
+	})
+}
+
+// handleReplicateVersionResponse wakes the caller waiting on this request.
+func (m *MetadataRPCProvider) handleReplicateVersionResponse(rpc *RPC) {
+	reply, err := DecodeReplicateVersionReply(rpc.Payload)
+	if err != nil {
+		log.Printf("MetadataRPC: failed to decode ReplicateVersionResponse from peer %d: %v (errno=%d)", rpc.From, err, syscall.EBADMSG)
+		return
+	}
+	m.versionPendingMu.Lock()
+	ch, ok := m.versionPending[reply.RequestID]
+	m.versionPendingMu.Unlock()
+	if !ok {
+		return
+	}
+	select {
+	case ch <- reply:
+	default:
+	}
+}
+
+// ReplicateVersion sends one version record to a peer and waits for its
+// acknowledgement, bounded by MetadataRPCTimeout.
+func (m *MetadataRPCProvider) ReplicateVersion(peer int32, args *ReplicateVersionArgs) (*ReplicateVersionReply, error) {
+	requestID := m.nextRequestID.Add(1)
+	args.RequestID = requestID
+	ch := make(chan *ReplicateVersionReply, 1)
+	m.versionPendingMu.Lock()
+	m.versionPending[requestID] = ch
+	m.versionPendingMu.Unlock()
+	defer func() {
+		m.versionPendingMu.Lock()
+		delete(m.versionPending, requestID)
+		m.versionPendingMu.Unlock()
+	}()
+
+	payload, err := EncodeReplicateVersionArgs(args)
+	if err != nil {
+		return nil, fmt.Errorf("encode version replica: %w", err)
+	}
+	if serr := m.transport.Send(peer, &RPC{Type: MsgReplicateVersion, Payload: payload}); serr != nil {
+		return nil, fmt.Errorf("send version replica to peer %d: %w", peer, serr)
+	}
+	select {
+	case reply := <-ch:
+		if !reply.Success {
+			return reply, fmt.Errorf("peer %d rejected version record: %s: %w", peer, reply.Error, syscall.EIO)
+		}
+		return reply, nil
+	case <-time.After(m.rpcTimeout()):
+		return nil, fmt.Errorf("timeout replicating version to peer %d: %w", peer, syscall.ETIMEDOUT)
+	}
 }
 
 // completePending wakes up a waiting caller with the response.

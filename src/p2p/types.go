@@ -120,6 +120,9 @@ const (
 	MsgReplicateMetadataResponse MessageType = 19
 	MsgListShard                 MessageType = 20
 	MsgListShardResponse         MessageType = 21
+	// R10 follow-up (#1233): replicate a version record to a peer.
+	MsgReplicateVersion         MessageType = 22
+	MsgReplicateVersionResponse MessageType = 23
 )
 
 // RPC is a remote procedure call exchanged between peers.

@@ -18,7 +18,7 @@
 - [x] Tests: `src/storage/versioning_test.go` (9), `src/transport/s3_versioning_test.go` (14, incl. full-stack flow through the real CASStore)
 
 ### Versioning follow-ups (tracked)
-- [ ] Cross-node version-record replication via the R6 metadata RPC (Phase 1 keeps version records node-local; PR documents this ceiling)
+- [x] Cross-node version-record replication — shipped as `r10-cross-node-version-records` (#1233): P2P `MsgReplicateVersion` fan-out to the object's CRUSH replica set, idempotent apply, best-effort with audit logging
 - [ ] `x-amz-version-id` response header on plain PUTs (response is written before the body streams; multipart already echoes it)
 
 ### Lifecycle
