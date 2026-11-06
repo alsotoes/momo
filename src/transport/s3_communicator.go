@@ -1024,17 +1024,8 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			return 0, 0, fmt.Errorf("unknown bucket %q: %w", bucket, syscall.ENOENT)
 		}
 		// R10 Phase 5 (#938): GET /{bucket}/{key}?retention|?legal-hold.
-		if _, hasRetention := q["retention"]; hasRetention {
-			if m.lock == nil {
-				return 0, 0, m.rejectObjectLockUnsupported(key)
-			}
-			return m.handleGetObjectRetention(req, bucket, key)
-		}
-		if _, hasLegalHold := q["legal-hold"]; hasLegalHold {
-			if m.lock == nil {
-				return 0, 0, m.rejectObjectLockUnsupported(key)
-			}
-			return m.handleGetObjectLegalHold(req, bucket, key)
+		if handled, code, ts, herr := m.objectLockSubresourceRoute(req, q, bucket, key); handled {
+			return code, ts, herr
 		}
 		// R10 Phase 1 (#938): GET a specific object version.
 		if versionID := q.Get("versionId"); versionID != "" {
@@ -1568,17 +1559,8 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		// R10 Phase 5 (#938): PUT /{bucket}/{key}?retention|?legal-hold — set
 		// object retention or legal hold on a version (default: the current one).
 		if key != "" {
-			if _, hasRetention := q["retention"]; hasRetention {
-				if m.lock == nil {
-					return 0, 0, m.rejectObjectLockUnsupported(key)
-				}
-				return m.handlePutObjectRetention(req, bucket, key)
-			}
-			if _, hasLegalHold := q["legal-hold"]; hasLegalHold {
-				if m.lock == nil {
-					return 0, 0, m.rejectObjectLockUnsupported(key)
-				}
-				return m.handlePutObjectLegalHold(req, bucket, key)
+			if handled, code, ts, herr := m.objectLockSubresourceRoute(req, q, bucket, key); handled {
+				return code, ts, herr
 			}
 		}
 
