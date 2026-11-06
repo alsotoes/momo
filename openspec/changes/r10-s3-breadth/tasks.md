@@ -67,6 +67,6 @@
 ## Compliance
 
 - [x] OpenSpec change authored (Rule 73)
-- [ ] ADR generated via `make adr-sync` (Rule 77/78)
-- [ ] Blog post shipped (Rule 76)
+- [x] ADR generated via `make adr-sync` (Rule 77/78) — ADR 0058
+- [x] Blog post shipped (Rule 76) — post 060
 - [x] PR body includes `Part of #938` (umbrella stays open; Rule 11, constraint on closing keywords)

@@ -1,7 +1,13 @@
 # 0059-r11-rebalance
 
 ## Status
-Proposed
+Superseded
+
+> Superseded by ADR 0072 (`docs/adr/0072-r11-stigmergic-rebalance.md`): a
+> coordinator-driven rebalance reintroduces the single point of failure the
+> metadata layer was designed to avoid, and contradicts the stigmergic
+> local-rule model in `docs/CORE/ADAPTIVE_SYSTEMS.md`. The spec was archived at
+> `openspec/changes/archive/2026-11-06-r11-rebalance/`.
 
 ## Confidence
 Low
@@ -31,6 +37,7 @@ None documented.
 ## References
 - Issue: #939
 - PR: 
-- Spec: `openspec/changes/r11-rebalance/`
+- Spec: `openspec/changes/archive/2026-11-06-r11-rebalance/` (archived, superseded)
+- Superseded by: docs/adr/0072-r11-stigmergic-rebalance.md
 - Blog: 
 
