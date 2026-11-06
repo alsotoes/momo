@@ -15,7 +15,7 @@ summary: "Why S3 versioning and content-addressed storage seem to conflict — m
 artifacts:
   - type: spec
     path: openspec/changes/r10-s3-breadth
-related: ["055-adaptive-volume-storage", "031-core-integrity-verification", "026-metrics-observability", "058-s3-lifecycle-on-cas", "059-r10-notification", "060-r10-object-lock"]
+related: ["055-adaptive-volume-storage", "031-core-integrity-verification", "026-metrics-observability", "058-s3-lifecycle-on-cas", "059-r10-notification", "060-r10-object-lock", "061-cross-node-version-records"]
 difficulty: "intermediate"
 pattern: "layered-identity"
 teaches:
@@ -106,7 +106,7 @@ The lesson generalizes: **pagination markers must be computed in the same orderi
 
 ## Where It Deliberately Stops (The Ceiling)
 
-The version chain is **node-local** in this phase. Every S3 write records its version on the node that ingested it; replication of the version chain across nodes through the R6 metadata RPC is the tracked follow-up. The ceiling is real: if you lose the ingest node, you lose the version *history* (the blobs themselves are already replicated).
+The version chain was **node-local** in this phase: every S3 write recorded its version on the node that ingested it. That gap is now closed — version records replicate to the object's replica set over the peer transport, so the history survives the ingest node (see the cross-node version records dispatch). The blobs themselves were always replicated.
 
 Likewise, plain PUT responses do not echo `x-amz-version-id` yet — the gateway's write response is composed before the body streams, so the header is not reachable on that path. Multipart completions (which are fully gateway-handled) do echo it, and any client can discover version ids via `GET ?versions`.
 

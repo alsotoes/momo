@@ -17,7 +17,7 @@ artifacts:
     path: openspec/changes/r10-s3-breadth
   - type: adr
     path: docs/adr/0058-r10-s3-breadth.md
-related: ["059-r10-notification", "058-s3-lifecycle-on-cas", "056-s3-versioning-on-cas", "034-s3-501-discipline-object-subresources"]
+related: ["059-r10-notification", "058-s3-lifecycle-on-cas", "056-s3-versioning-on-cas", "034-s3-501-discipline-object-subresources", "061-cross-node-version-records"]
 difficulty: "intermediate"
 pattern: "write-once-storage"
 teaches:
