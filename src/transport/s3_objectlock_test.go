@@ -447,30 +447,43 @@ func TestS3ObjectLock_LegalHoldAPI(t *testing.T) {
 }
 
 func TestS3ObjectLock_ComplianceCannotShorten(t *testing.T) {
-	store, _ := newVersionedS3Stack(t)
-	vs := store.(VersioningStore)
-	ols := store.(ObjectLockStore)
-	if err := ols.SetBucketObjectLock("bucket"); err != nil {
-		t.Fatalf("enable lock: %v", err)
-	}
-	hash := strings.Repeat("c", 64)
-	if err := store.Put("c.txt", hash, 3, "", strings.NewReader("abc")); err != nil {
-		t.Fatalf("put: %v", err)
-	}
-	if _, err := vs.RecordVersion("bucket", "c.txt", hash, 3); err != nil {
-		t.Fatalf("record version: %v", err)
-	}
-	until := time.Now().UTC().Add(72 * time.Hour).Truncate(time.Second)
-	body := `<Retention><Mode>COMPLIANCE</Mode><RetainUntilDate>` + until.Format(time.RFC3339) + `</RetainUntilDate></Retention>`
-	resp, _ := runS3RequestCaptureBucket(t, s3Req("PUT", "/bucket/c.txt?retention", body), store, "bucket")
-	if !strings.Contains(resp, "200") {
+	store, _, untilUnix := newLockedVersionStack(t, "c.txt", "c")
+	until := time.Unix(untilUnix, 0).UTC()
+	bypass := map[string]string{"X-Amz-Bypass-Governance-Retention": "true"}
+
+	if resp := s3LockReq(t, store, "PUT", "/bucket/c.txt?retention", retentionDoc("COMPLIANCE", until), nil); !strings.Contains(resp, "200") {
 		t.Fatalf("PUT compliance retention failed:\n%s", resp)
 	}
-	shorter := `<Retention><Mode>COMPLIANCE</Mode><RetainUntilDate>` + until.Add(-time.Hour).Format(time.RFC3339) + `</RetainUntilDate></Retention>`
-	bypassHdrs := map[string]string{"X-Amz-Bypass-Governance-Retention": "true"}
-	resp, _ = runS3RequestCaptureBucket(t, s3ReqWithHeaders("PUT", "/bucket/c.txt?retention", shorter, bypassHdrs), store, "bucket")
-	if !strings.Contains(resp, "403") {
+	shorter := retentionDoc("COMPLIANCE", until.Add(-time.Hour))
+	if resp := s3LockReq(t, store, "PUT", "/bucket/c.txt?retention", shorter, bypass); !strings.Contains(resp, "403") {
 		t.Fatalf("COMPLIANCE must ignore governance bypass when shortened:\n%s", resp)
+	}
+}
+
+func TestS3ObjectLock_RetentionMalformed(t *testing.T) {
+	store, _, _ := newLockedVersionStack(t, "m.txt", "e")
+	if resp := s3LockReq(t, store, "PUT", "/bucket/m.txt?retention", `<Retention><Mode>BOGUS</Mode></Retention>`, nil); !strings.Contains(resp, "400") || !strings.Contains(resp, "MalformedXML") {
+		t.Fatalf("invalid retention document must be 400 MalformedXML:\n%s", resp)
+	}
+	if resp := s3LockReq(t, store, "PUT", "/bucket/m.txt?legal-hold", `<LegalHold><Status>MAYBE</Status></LegalHold>`, nil); !strings.Contains(resp, "400") || !strings.Contains(resp, "MalformedXML") {
+		t.Fatalf("invalid legal-hold document must be 400 MalformedXML:\n%s", resp)
+	}
+}
+
+func TestS3ObjectLock_LockAPIMissingVersion(t *testing.T) {
+	store, _, untilUnix := newLockedVersionStack(t, "v.txt", "f")
+	until := time.Unix(untilUnix, 0).UTC()
+	resp := s3LockReq(t, store, "PUT", "/bucket/v.txt?retention&versionId=no-such-version", retentionDoc("GOVERNANCE", until), nil)
+	if !strings.Contains(resp, "404") || !strings.Contains(resp, "NoSuchVersion") {
+		t.Fatalf("unknown version must be 404 NoSuchVersion:\n%s", resp)
+	}
+	resp = s3LockReq(t, store, "GET", "/bucket/v.txt?retention&versionId=no-such-version", "", nil)
+	if !strings.Contains(resp, "200") {
+		t.Fatalf("GET retention on unknown version yields an empty document:\n%s", resp)
+	}
+	resp = s3LockReq(t, store, "GET", "/bucket/absent.txt?retention", "", nil)
+	if !strings.Contains(resp, "404") || !strings.Contains(resp, "NoSuchKey") {
+		t.Fatalf("absent key must be 404 NoSuchKey:\n%s", resp)
 	}
 }
 
