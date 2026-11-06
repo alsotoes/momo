@@ -201,3 +201,9 @@
 **Vulnerability:** Unbounded memory allocation in `getCanonicalHeaderValue` during SigV4 authentication.
 **Learning:** Parsing network inputs like AWS SigV4 headers without explicit length caps can lead to resource exhaustion if an attacker supplies maliciously large custom headers (e.g., in a presigned URL request or regular S3 REST API call).
 **Prevention:** Strictly enforce a defensive limit (e.g., 4096 bytes) when reading header values off the wire before further processing, and return standard POSIX errors like `syscall.EBADMSG` when violated.
+
+## 2026-11-06 - SigV4 Parsing Bound Audit (reported "unbounded loops" — no vulnerability)
+**Reported:** PR #1230 claimed unbounded iteration in `parseSigV4AuthHeader`, `parseSignedHeaders`, `getCanonicalHeaderValue`, and `buildCanonicalQueryString`, proposing hard caps of 64 per loop.
+**Audit:** The report was unfounded. `S3Communicator.HandshakeServer` bounds the whole handshake read at 64 KiB with `LimitedConnReader.SetLimit(65536)` (Rule 24); `parseSigV4AuthHeader` consumes at least one byte per iteration so it terminates and its cost is linear in an input that cannot exceed the read cap; canonical header values were already capped at 4096 bytes and signed headers at 16 entries.
+**Learning:** Before accepting an "unbounded loop" report, trace the input's upstream bounds. Per-loop iteration counters are dead code when the transport layer already caps total bytes; the right defense is the read limit plus explicit canonical-field caps, both already present here.
+**Prevention:** Verify parser input bounds end-to-end (read limit → per-field caps) before adding counters. When a hardening report is a false positive, close the loop with regression tests that pin the real bound instead of adding redundant guards.
