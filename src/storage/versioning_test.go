@@ -3,10 +3,12 @@ package storage
 import (
 	"bytes"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 )
@@ -359,4 +361,115 @@ func TestRepointNamespace(t *testing.T) {
 func sha256Sum(data []byte) []byte {
 	sum := sha256.Sum256(data)
 	return sum[:]
+}
+
+func TestPutVersionRecord_ReplicationApply(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.SetBucketVersioning("b", VersioningEnabled); err != nil {
+		t.Fatalf("versioning: %v", err)
+	}
+	remote := VersionRecord{VersionID: "remote-1", Hash: strings.Repeat("a", 64), Size: 3, Timestamp: 1000, IsLatest: true}
+	if err := s.PutVersionRecord("b", "k", remote); err != nil {
+		t.Fatalf("PutVersionRecord: %v", err)
+	}
+	got, err := s.GetVersion("b", "k", "remote-1")
+	if err != nil {
+		t.Fatalf("GetVersion: %v", err)
+	}
+	if got.Hash != remote.Hash || got.Size != remote.Size || !got.IsLatest {
+		t.Fatalf("record not applied verbatim: %+v", got)
+	}
+	if err := s.PutVersionRecord("b", "k", remote); err != nil {
+		t.Fatalf("idempotent re-apply: %v", err)
+	}
+}
+
+func TestPutVersionRecord_StaleLatestDoesNotDemote(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.SetBucketVersioning("b", VersioningEnabled); err != nil {
+		t.Fatalf("versioning: %v", err)
+	}
+	local, err := s.RecordVersion("b", "k", strings.Repeat("b", 64), 5)
+	if err != nil {
+		t.Fatalf("RecordVersion: %v", err)
+	}
+	stale := VersionRecord{VersionID: "remote-0", Hash: strings.Repeat("c", 64), Size: 1, Timestamp: 1, IsLatest: true}
+	if err := s.PutVersionRecord("b", "k", stale); err != nil {
+		t.Fatalf("apply stale: %v", err)
+	}
+	latest, ok, err := s.LatestVersion("b", "k")
+	if err != nil || !ok || latest.VersionID != local {
+		t.Fatalf("latest must stay local record %s, got %+v ok=%v err=%v", local, latest, ok, err)
+	}
+	if again, _ := s.GetVersion("b", "k", "remote-0"); again.IsLatest {
+		t.Fatal("stale record must be stored without the latest flag")
+	}
+}
+
+func TestPutVersionRecord_InvalidInput(t *testing.T) {
+	s := newTestStore(t)
+	rec := VersionRecord{VersionID: "v", Hash: "h", Size: 1, Timestamp: 1}
+	if err := s.PutVersionRecord("", "k", rec); !errors.Is(err, syscall.EINVAL) {
+		t.Fatalf("empty bucket: want EINVAL, got %v", err)
+	}
+	if err := s.PutVersionRecord("b", "k", VersionRecord{}); !errors.Is(err, syscall.EINVAL) {
+		t.Fatalf("empty version id: want EINVAL, got %v", err)
+	}
+}
+
+func TestPutVersionRecord_DeleteMarker(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.SetBucketVersioning("b", VersioningEnabled); err != nil {
+		t.Fatalf("versioning: %v", err)
+	}
+	marker := VersionRecord{VersionID: "marker-1", Timestamp: 2000, IsLatest: true, IsDeleteMarker: true}
+	if err := s.PutVersionRecord("b", "k", marker); err != nil {
+		t.Fatalf("apply marker: %v", err)
+	}
+	latest, ok, err := s.LatestVersion("b", "k")
+	if err != nil || !ok || !latest.IsDeleteMarker || latest.VersionID != "marker-1" {
+		t.Fatalf("marker not latest: %+v ok=%v err=%v", latest, ok, err)
+	}
+}
+
+func TestVersionReplicationHook_LocalOnly(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.SetBucketVersioning("b", VersioningEnabled); err != nil {
+		t.Fatalf("versioning: %v", err)
+	}
+	var mu sync.Mutex
+	var seen []string
+	s.SetVersionReplicationHook(func(bucket, key string, rec VersionRecord) {
+		mu.Lock()
+		seen = append(seen, bucket+"/"+key+"/"+rec.VersionID)
+		mu.Unlock()
+	})
+	local, err := s.RecordVersion("b", "k", strings.Repeat("d", 64), 2)
+	if err != nil {
+		t.Fatalf("RecordVersion: %v", err)
+	}
+	if _, err := s.RecordDeleteMarker("b", "k"); err != nil {
+		t.Fatalf("RecordDeleteMarker: %v", err)
+	}
+	// Replicated records must not re-fire the hook.
+	if err := s.PutVersionRecord("b", "k", VersionRecord{VersionID: "remote-9", Timestamp: 5, IsLatest: true}); err != nil {
+		t.Fatalf("PutVersionRecord: %v", err)
+	}
+	mu.Lock()
+	got := append([]string(nil), seen...)
+	mu.Unlock()
+	if len(got) != 2 || got[0] != "b/k/"+local {
+		t.Fatalf("hook must fire once per local record and not for replicated ones: %v", got)
+	}
+	// Disabling works.
+	s.SetVersionReplicationHook(nil)
+	if _, err := s.RecordVersion("b", "k2", strings.Repeat("e", 64), 2); err != nil {
+		t.Fatalf("RecordVersion after disable: %v", err)
+	}
+	mu.Lock()
+	got = append([]string(nil), seen...)
+	mu.Unlock()
+	if len(got) != 2 {
+		t.Fatalf("disabled hook must not fire: %v", got)
+	}
 }

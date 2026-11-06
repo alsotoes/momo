@@ -125,18 +125,20 @@ func (s *CASStore) RecordVersion(bucket, key, hash string, size int64) (versionI
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	rec := VersionRecord{
+		VersionID: versionID,
+		Hash:      hash,
+		Size:      size,
+		Timestamp: time.Now().UnixNano(),
+		IsLatest:  true,
+	}
 	err = s.db.Update(func(tx *bolt.Tx) error {
-		return putVersion(tx, bucket, key, VersionRecord{
-			VersionID: versionID,
-			Hash:      hash,
-			Size:      size,
-			Timestamp: time.Now().UnixNano(),
-			IsLatest:  true,
-		})
+		return putVersion(tx, bucket, key, rec)
 	})
 	if err != nil {
 		return "", err
 	}
+	s.notifyVersionRecorded(bucket, key, rec)
 	return versionID, nil
 }
 
@@ -151,17 +153,19 @@ func (s *CASStore) RecordDeleteMarker(bucket, key string) (versionID string, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	rec := VersionRecord{
+		VersionID:      versionID,
+		Timestamp:      time.Now().UnixNano(),
+		IsLatest:       true,
+		IsDeleteMarker: true,
+	}
 	err = s.db.Update(func(tx *bolt.Tx) error {
-		return putVersion(tx, bucket, key, VersionRecord{
-			VersionID:      versionID,
-			Timestamp:      time.Now().UnixNano(),
-			IsLatest:       true,
-			IsDeleteMarker: true,
-		})
+		return putVersion(tx, bucket, key, rec)
 	})
 	if err != nil {
 		return "", err
 	}
+	s.notifyVersionRecorded(bucket, key, rec)
 	return versionID, nil
 }
 
@@ -191,6 +195,71 @@ func putVersion(tx *bolt.Tx, bucket, key string, rec VersionRecord) error {
 		return err
 	}
 	return b.Put(versionKey(bucket, key, rec.VersionID), nv)
+}
+
+// PutVersionRecord applies a caller-supplied version record verbatim. It is
+// the replication entry point (R10 follow-up, #1233): idempotent by version ID,
+// and it never demotes a newer local record. A record marked IsLatest only
+// re-points the chain when it is at least as new as the current latest.
+func (s *CASStore) PutVersionRecord(bucket, key string, rec VersionRecord) (err error) {
+	defer common.RecoverErr("CASStore.PutVersionRecord", &err)
+	if bucket == "" || key == "" || rec.VersionID == "" {
+		return syscall.EINVAL
+	}
+	rec.Key = ""
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.db.Update(func(tx *bolt.Tx) error {
+		return applyReplicatedRecord(tx, bucket, key, rec)
+	})
+}
+
+// applyReplicatedRecord stores a replicated version record: idempotent by
+// version ID, and IsLatest only moves forward. Caller holds s.mu.
+func applyReplicatedRecord(tx *bolt.Tx, bucket, key string, rec VersionRecord) error {
+	versions := tx.Bucket(bucketObjectVersions)
+	if existing := versions.Get(versionKey(bucket, key, rec.VersionID)); existing != nil {
+		var old VersionRecord
+		if err := json.Unmarshal(existing, &old); err == nil && old == rec {
+			return nil
+		}
+	}
+	if rec.IsLatest {
+		latest, ok, lerr := latestVersionTx(tx, bucket, key)
+		if lerr != nil {
+			return lerr
+		}
+		if !ok || rec.Timestamp >= latest.Timestamp {
+			return putVersion(tx, bucket, key, rec)
+		}
+	}
+	rec.IsLatest = false
+	nv, merr := json.Marshal(rec)
+	if merr != nil {
+		return merr
+	}
+	return versions.Put(versionKey(bucket, key, rec.VersionID), nv)
+}
+
+// SetVersionReplicationHook installs a callback invoked after a locally
+// created version record (never for replicated ones, which arrive through
+// PutVersionRecord). A nil callback disables replication. The callback runs
+// while the store lock is held, so it must not call back into the store
+// synchronously — hand the work to a goroutine.
+func (s *CASStore) SetVersionReplicationHook(fn func(bucket, key string, rec VersionRecord)) {
+	s.verHookMu.Lock()
+	s.verHook = fn
+	s.verHookMu.Unlock()
+}
+
+// notifyVersionRecorded fires the replication hook, if any.
+func (s *CASStore) notifyVersionRecorded(bucket, key string, rec VersionRecord) {
+	s.verHookMu.Lock()
+	fn := s.verHook
+	s.verHookMu.Unlock()
+	if fn != nil {
+		fn(bucket, key, rec)
+	}
 }
 
 // latestVersionTx finds the newest record for a key inside a live view.

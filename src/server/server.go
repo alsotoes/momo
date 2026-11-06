@@ -1034,6 +1034,26 @@ func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, d
 		oprfProvider = p2p.NewOPRFProvider(int32(serverId), transport, evaluator)
 	}
 
+	// R10 follow-up (#1233): replicate version records across the object's
+	// replica set so version listing/get/lock agree on every node.
+	if cs, ok := store.(*storage.CASStore); ok {
+		ids := make([]int32, len(daemons))
+		for i := range daemons {
+			ids[i] = int32(i)
+		}
+		mFactor := cfg.Momofs.MetadataReplication
+		if mFactor <= 0 {
+			mFactor = cfg.Global.ReplicationFactor
+		}
+		verProvider := p2p.NewMetadataRPCProvider(int32(serverId), transport, p2p.NewRing(ids, mFactor), cs)
+		gossip.SetMetadataRPCProvider(verProvider)
+		verMapNodes := make([]*common.Node, len(daemons))
+		for i, d := range daemons {
+			verMapNodes[i] = &common.Node{ID: i, Weight: 1, Addr: d.Host, Domain: d.FailureDomain}
+		}
+		installVersionReplication(ctx, cs, &common.ClusterMap{Nodes: verMapNodes}, verProvider, int32(serverId), cfg.Global.ReplicationFactor)
+	}
+
 	gossip.SetScatterGather(scatterGather)
 	gossip.SetLeaseManager(leaseManager)
 	if oprfProvider != nil {
