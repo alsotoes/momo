@@ -161,3 +161,21 @@ func TestReplicateVersionErrors(t *testing.T) {
 		t.Fatalf("want EIO on rejection, got %v", err)
 	}
 }
+
+func TestRPCTimeoutFallback(t *testing.T) {
+	p := &MetadataRPCProvider{}
+	if p.rpcTimeout() != MetadataRPCTimeout {
+		t.Fatalf("zero RPCTimeout must fall back to the constant")
+	}
+	p.RPCTimeout = time.Millisecond
+	if p.rpcTimeout() != time.Millisecond {
+		t.Fatalf("explicit RPCTimeout must win")
+	}
+}
+
+func TestReplicateVersionResponseUnknownRequest(t *testing.T) {
+	p, _, _ := newVersionTestProvider(t)
+	payload, _ := EncodeReplicateVersionReply(&ReplicateVersionReply{RequestID: 999, Success: true})
+	p.handleReplicateVersionResponse(&RPC{From: 2, Type: MsgReplicateVersionResponse, Payload: payload})
+	p.handleReplicateVersionResponse(&RPC{From: 2, Type: MsgReplicateVersionResponse, Payload: []byte("bad")})
+}

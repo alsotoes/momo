@@ -21,9 +21,9 @@ func installVersionReplication(ctx context.Context, cs *storage.CASStore, cmap *
 	if cs == nil || cmap == nil || provider == nil || rf <= 1 {
 		return
 	}
-	rep := &versionReplicator{ctx: ctx, store: cs, cmap: cmap, provider: provider, self: self, rf: rf}
+	rep := &versionReplicator{store: cs, cmap: cmap, provider: provider, self: self, rf: rf}
 	cs.SetVersionReplicationHook(func(bucket, key string, rec storage.VersionRecord) {
-		go rep.fanOut(bucket, key, rec)
+		go rep.fanOut(ctx, bucket, key, rec)
 	})
 }
 
@@ -52,7 +52,6 @@ func wireVersionReplication(ctx context.Context, cfg common.Configuration, daemo
 
 // versionReplicator fans one version record out to an object's replica set.
 type versionReplicator struct {
-	ctx      context.Context
 	store    *storage.CASStore
 	cmap     *common.ClusterMap
 	provider *p2p.MetadataRPCProvider
@@ -72,7 +71,7 @@ func versionPlacementKey(bucket, key string, rec storage.VersionRecord) string {
 
 // fanOut replicates one version record. Best-effort: failures are audited,
 // never fatal.
-func (v *versionReplicator) fanOut(bucket, key string, rec storage.VersionRecord) {
+func (v *versionReplicator) fanOut(ctx context.Context, bucket, key string, rec storage.VersionRecord) {
 	status, _, err := v.store.BucketVersioning(bucket)
 	if err != nil {
 		log.Printf("AUDIT: version replication skipped for %s/%s: %v", common.SanitizeLog(bucket), common.SanitizeLog(key), err)
@@ -84,7 +83,7 @@ func (v *versionReplicator) fanOut(bucket, key string, rec storage.VersionRecord
 		return
 	}
 	for _, node := range placement {
-		if int32(node.ID) == v.self || v.ctx.Err() != nil {
+		if int32(node.ID) == v.self || ctx.Err() != nil {
 			continue
 		}
 		args := &p2p.ReplicateVersionArgs{
