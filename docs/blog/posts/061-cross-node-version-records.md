@@ -16,7 +16,7 @@ artifacts:
     path: openspec/changes/r10-cross-node-version-records
   - type: adr
     path: docs/adr/0087-r10-cross-node-version-records.md
-related: ["060-r10-object-lock", "056-s3-versioning-on-cas"]
+related: ["060-r10-object-lock", "056-s3-versioning-on-cas", "062-stigmergic-disk-shedding"]
 difficulty: "intermediate"
 pattern: "replicated-metadata"
 teaches:

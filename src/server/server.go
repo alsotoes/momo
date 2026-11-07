@@ -124,6 +124,17 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 	}
 	defer store.Close()
 
+	// R11: shedding removes local bytes while metadata stays, so reads depend
+	// on the survivor fallback — never enable it without degraded read.
+	if cs, ok := store.(*storage.CASStore); ok && rebuildSrc != nil && cfg.Rebalance.Enabled {
+		if !cfg.Storage.DegradedRead {
+			log.Printf("AUDIT: [rebalance] enabled requires storage degraded_read=true; rebalance disabled")
+		} else {
+			rebuildSrc.SetStore(cs)
+			startRebalanceLoop(ctx, cs, rebuildSrc, rebuildSrc.cmap, serverId, cfg.Global.ReplicationFactor, cfg.Rebalance)
+		}
+	}
+
 	server, err := factory.Listen(daemons[serverId].Host)
 	if err != nil {
 		return fmt.Errorf("Error listening: %v", err)

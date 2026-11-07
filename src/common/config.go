@@ -28,6 +28,8 @@ const (
 	sectionMomofs = "momofs"
 	// sectionS3 is the name of the optional [s3] section in the configuration file.
 	sectionS3 = "s3"
+	// sectionRebalance is the name of the optional [rebalance] section (R11, #1143).
+	sectionRebalance = "rebalance"
 	// sectionTenants is the name of the [tenants] section in the configuration file (R8, #936).
 	sectionTenants = "tenants"
 	// sectionAudit is the name of the [audit] section in the configuration file (R8, #936).
@@ -203,6 +205,17 @@ func GetConfig(path string) (Configuration, error) {
 		config.S3 = defaultS3Config()
 	}
 
+	// Load [rebalance] section (optional, R11 #1143).
+	rebalanceSec, err := cfg.GetSection(sectionRebalance)
+	if err == nil {
+		config.Rebalance, err = loadRebalanceConfig(rebalanceSec)
+		if err != nil {
+			return Configuration{}, fmt.Errorf("failed to load [%s] section: %w", sectionRebalance, err)
+		}
+	} else {
+		config.Rebalance = defaultRebalanceConfig()
+	}
+
 	// Load [momofs] section (optional). consistency=cached is deprecated:
 	// kernel-level consistency makes it redundant, so it is ignored with an
 	// AUDIT log (issue #980).
@@ -267,6 +280,48 @@ func GetConfig(path string) (Configuration, error) {
 }
 
 // loadMomofsConfig loads the optional [momofs] section from the configuration.
+// defaults for the R11 rebalance loop.
+const (
+	defaultRebalanceInterval = 60
+	defaultRebalanceHigh     = 85.0
+	defaultRebalanceLow      = 70.0
+	defaultRebalanceMaxShed  = 64
+)
+
+func defaultRebalanceConfig() ConfigurationRebalance {
+	return ConfigurationRebalance{
+		Enabled:         false,
+		Interval:        defaultRebalanceInterval,
+		DiskHighWater:   defaultRebalanceHigh,
+		DiskLowWater:    defaultRebalanceLow,
+		MaxShedPerCycle: defaultRebalanceMaxShed,
+	}
+}
+
+// loadRebalanceConfig parses and validates the [rebalance] section (R11, #1143).
+func loadRebalanceConfig(section *ini.Section) (ConfigurationRebalance, error) {
+	rc := defaultRebalanceConfig()
+	rc.Enabled = section.Key("enabled").MustBool(false)
+	rc.Interval = section.Key("interval").MustInt(defaultRebalanceInterval)
+	rc.DiskHighWater = section.Key("disk_high_water").MustFloat64(defaultRebalanceHigh)
+	rc.DiskLowWater = section.Key("disk_low_water").MustFloat64(defaultRebalanceLow)
+	rc.MaxShedPerCycle = section.Key("max_shed_per_cycle").MustInt(defaultRebalanceMaxShed)
+
+	if rc.Interval <= 0 {
+		return ConfigurationRebalance{}, fmt.Errorf("'interval' must be > 0: %w", syscall.EINVAL)
+	}
+	if rc.DiskHighWater <= 0 || rc.DiskHighWater > 100 {
+		return ConfigurationRebalance{}, fmt.Errorf("'disk_high_water' must be in (0, 100]: %w", syscall.EINVAL)
+	}
+	if rc.DiskLowWater < 0 || rc.DiskLowWater >= rc.DiskHighWater {
+		return ConfigurationRebalance{}, fmt.Errorf("'disk_low_water' must be in [0, disk_high_water): %w", syscall.EINVAL)
+	}
+	if rc.MaxShedPerCycle <= 0 {
+		return ConfigurationRebalance{}, fmt.Errorf("'max_shed_per_cycle' must be > 0: %w", syscall.EINVAL)
+	}
+	return rc, nil
+}
+
 func loadMomofsConfig(section *ini.Section) (ConfigurationMomofs, error) {
 	var momofsCfg ConfigurationMomofs
 	momofsCfg.Enabled = section.Key("enabled").MustBool(false)

@@ -1,0 +1,114 @@
+---
+title: "Shedding Load Without a Coordinator"
+date: "2026-11-07T03:09:12Z"
+draft: false
+post_type: architecture
+tags:
+  - r11
+  - rebalance
+  - storage
+categories:
+  - storage
+summary: "A cluster that only ever writes leaves every node holding data it no longer has room for, and the usual fix — a rebalance coordinator — reintroduces the single point of failure the storage layer was designed to avoid. This change gives each node a local rule instead: when its disk crosses a high-water mark, it moves its coldest blobs to a peer that already holds a replica, and only drops the local bytes after that peer confirms them."
+artifacts:
+  - type: spec
+    path: openspec/changes/r11-stigmergic-rebalance
+  - type: adr
+    path: docs/adr/0072-r11-stigmergic-rebalance.md
+related: ["061-cross-node-version-records"]
+difficulty: "intermediate"
+pattern: "stigmergy"
+teaches:
+  - "Why a local high-water rule beats a rebalance coordinator"
+  - "How to shed bytes without ever risking the last copy"
+  - "Why the coldest blob is the right first mover"
+---
+
+## The Real Problem
+
+Storage clusters fill unevenly. A node that took more than its share of writes
+reaches its disk limit while its peers sit half empty, and from then on every
+write it receives fails — even though the cluster as a whole has room.
+
+The instinctive fix is a rebalance coordinator: one process that watches the
+cluster and tells nodes what to move. That is the wrong shape for this system.
+Momo's storage layer is built so that any node can serve any object and no
+single process is required for correctness. Introducing a coordinator to keep
+the disks even would hand a coordinator-shaped failure back to a system that was
+designed not to have one — and if the coordinator dies, disks keep filling with
+nobody watching.
+
+## A Rule, Not a Plan
+
+Instead of a central plan, each node carries one local rule:
+
+> If my disk is above the high-water mark, move my coldest blob to a peer that
+> already holds a copy — and only after that peer confirms it has the bytes,
+> drop my copy.
+
+That is all. There is no global view, no negotiation, and no leader. The
+behavior of the cluster is the sum of every node applying the same rule to its
+own state. This is stigmergy: local agents reacting to local conditions produce
+a coherent global outcome, the same way ants leave and follow traces instead of
+sharing a map.
+
+The rule has three properties that make it safe to run unattended.
+
+**The peer already holds a copy.** The target is not an arbitrary healthy node;
+it is a node in the blob's placement set. Shedding therefore does not add a
+replica or change durability — it just moves bytes to a node that was already
+supposed to have them. If placement says the blob belongs on that peer anyway,
+the cluster gets strictly more even.
+
+**Confirmation before deletion.** The push is a real protocol exchange: metadata,
+payload, acknowledgement. Local bytes are removed only after that
+acknowledgement. A node that cannot reach a peer keeps its data and tries again
+on the next tick. Damage requires two independent failures at the same moment.
+
+**Reads survive the move.** Metadata is not part of the shed. The object still
+resolves to the same content hash; only the bytes moved. A local read on the
+now-lighter node falls back to the survivor path, fetches a verified copy from
+the peer, and repairs itself. That is why the loop refuses to start unless
+degraded read is enabled — shedding without that fallback would turn a
+housekeeping action into an outage.
+
+## Choosing What to Move
+
+The cheapest useful signal for "cold" is time. The node sorts its blobs by
+modification time and starts with the oldest — the bytes that have gone longest
+without being written. It is an approximation: a read-heavy object written once
+a year ago may be hot. But it is free, it needs no new bookkeeping, and it
+degrades gracefully — if the guess is wrong, the object is fetched again from
+its replica and the cost is one extra network read, not data loss.
+
+The loop keeps its own budget. It stops when disk usage falls below the
+low-water mark, and it moves at most a configured number of blobs per pass. That
+second bound matters: a node that is very full should recover over several
+cycles, not by saturating its uplink for ten minutes while foreground traffic
+starves.
+
+## What It Refuses to Do
+
+- **Single-node clusters never shed.** With no peer in the placement set there
+  is nowhere safe to move bytes, so the rule is a no-op.
+- **Below the high-water mark, nothing happens.** An idle loop is silent.
+- **A failed push is not a move.** The local copy stays, the failure is audit
+  logged, and the next cycle may succeed.
+- **The last copy is never removed.** A blob is only dropped after one of its
+  peers confirmed holding the bytes; a node alone in the placement keeps
+  everything.
+
+## What Is Still Missing
+
+This is load balancing by disk pressure, not a full rebalance. When a node
+joins, the existing data does not automatically flow toward it — only nodes that
+are actually full shed. Replication repair after a node leaves is handled by the
+self-heal loop, and failure-domain spread by placement, so this rule does not
+duplicate either. Load-aware request redirection would need per-peer request
+counters that do not exist yet, and is deliberately left out rather than faked.
+
+## References / Dig deeper
+
+- OpenSpec change: `openspec/changes/r11-stigmergic-rebalance`
+- ADR: `docs/adr/0072-r11-stigmergic-rebalance.md`
+- Tracking issue: https://github.com/alsotoes/momo/issues/1143

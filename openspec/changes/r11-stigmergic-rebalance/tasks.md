@@ -1,11 +1,11 @@
 # Tasks — R11: Auto-Rebalance via Stigmergic Local Rules
 
 ## Phase 1 — Core Infrastructure: Local Rule Engine
-- [ ] Create `src/rebalance/controller.go` — local rule engine struct
+- [x] Local rule engine — `src/server/rebalance.go` (`startRebalanceLoop` + `rebalanceCycle`), wired in `server.go`; no coordinator, no separate package (Rule 74 seam is the `rebalancePusher` interface)
   - `RebalanceController` with nodeID, store, peers, cmap, config
   - `Run(ctx)` — background goroutine with ticker
   - `runHomeostaticChecks()` — disk pressure, replication factor, domain spread
-- [ ] Create `src/rebalance/shed.go` — blob shedding logic
+- [x] Blob shedding — `rebalanceCycle` picks coldest local blobs (modtime proxy), pushes to a placement peer, and drops local bytes only after the peer ack (`DaemonRebuildSource.Push`); `CASStore.ListBlobs`/`DropBlob`/`GetBlobByHash` + `LocalBlobStore.WalkBlobs`
   - `shedToPeer(peer)` — select cold blobs, stream with semaphore + bandwidth limiter
   - `selectColdBlobs(n)` — least accessed via access stats (or LRU)
   - `streamBlobToPeer(hash, peer)` — P2P transport with rate limiting
@@ -16,10 +16,10 @@
 - [ ] Create `src/rebalance/domain.go` — failure domain spread check
   - `checkFailureDomainSpread()` — detect >1 replica in same domain
   - `migrateToDifferentDomain(obj)` — CRUSH target selection
-- [ ] Config parsing: `[rebalance]` section in `config.go`
+- [x] Config parsing: `[rebalance]` section (`enabled`, `interval`, `disk_high_water`, `disk_low_water`, `max_shed_per_cycle`) with validation and defaults
   - `enabled`, `interval`, `max_concurrent`, `max_bandwidth_mbps`
   - `disk_high_water`, `disk_low_water`, `request_rate_ratio`
-- [ ] Unit tests: `rebalance_controller_test.go` (mock peers, verify rules)
+- [x] Unit tests: storage blob listing/drop, config parsing/validation, cycle behavior (shed cap, below high water, push failure, no peer)
 
 ## Phase 2 — SWIM Integration + Membership Events
 - [ ] Wire `OnPeerJoin` / `OnPeerLeave` in `bootstrapP2P` (server.go)
