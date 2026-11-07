@@ -34,11 +34,11 @@ func TestGetConfig_RebalanceDefaults(t *testing.T) {
 }
 
 func TestGetConfig_RebalanceExplicit(t *testing.T) {
-	cfg, err := GetConfig(writeRebalanceConfig(t, "enabled = true\ninterval = 120\ndisk_high_water = 90\ndisk_low_water = 60\nmax_shed_per_cycle = 8\n"))
+	cfg, err := GetConfig(writeRebalanceConfig(t, "enabled = true\ninterval = 120\ndisk_high_water = 90\ndisk_low_water = 60\nmax_shed_per_cycle = 8\nmax_bandwidth_mbps = 50\n"))
 	if err != nil {
 		t.Fatalf("GetConfig: %v", err)
 	}
-	want := ConfigurationRebalance{Enabled: true, Interval: 120, DiskHighWater: 90, DiskLowWater: 60, MaxShedPerCycle: 8}
+	want := ConfigurationRebalance{Enabled: true, Interval: 120, DiskHighWater: 90, DiskLowWater: 60, MaxShedPerCycle: 8, MaxBandwidthMbps: 50}
 	if cfg.Rebalance != want {
 		t.Fatalf("got %+v want %+v", cfg.Rebalance, want)
 	}
@@ -46,11 +46,12 @@ func TestGetConfig_RebalanceExplicit(t *testing.T) {
 
 func TestGetConfig_RebalanceValidation(t *testing.T) {
 	cases := map[string]string{
-		"zero interval":     "interval = 0\n",
-		"high out of range": "disk_high_water = 0\n",
-		"low >= high":       "disk_high_water = 80\ndisk_low_water = 80\n",
-		"negative low":      "disk_low_water = -1\n",
-		"zero max shed":     "max_shed_per_cycle = 0\n",
+		"zero interval":      "interval = 0\n",
+		"high out of range":  "disk_high_water = 0\n",
+		"low >= high":        "disk_high_water = 80\ndisk_low_water = 80\n",
+		"negative low":       "disk_low_water = -1\n",
+		"zero max shed":      "max_shed_per_cycle = 0\n",
+		"negative bandwidth": "max_bandwidth_mbps = -1\n",
 	}
 	for name, section := range cases {
 		t.Run(name, func(t *testing.T) {

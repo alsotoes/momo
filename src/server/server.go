@@ -131,6 +131,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 			log.Printf("AUDIT: [rebalance] enabled requires storage degraded_read=true; rebalance disabled")
 		} else {
 			rebuildSrc.SetStore(cs)
+			rebuildSrc.SetBandwidthLimit(cfg.Rebalance.MaxBandwidthMbps)
 			startRebalanceLoop(ctx, cs, rebuildSrc, rebuildSrc.cmap, serverId, cfg.Global.ReplicationFactor, cfg.Rebalance)
 		}
 	}

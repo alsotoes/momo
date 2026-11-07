@@ -24,7 +24,7 @@ type recordingPusher struct {
 	fail   bool
 }
 
-func (r *recordingPusher) Push(hash string, _ int) error {
+func (r *recordingPusher) Push(_ context.Context, hash string, _ int) error {
 	if r.fail {
 		return fmt.Errorf("unreachable peer")
 	}
@@ -85,7 +85,7 @@ func testCmap(t *testing.T) *common.ClusterMap {
 func TestRebalanceCycleShedsColdBlobs(t *testing.T) {
 	store, _ := rebalanceTestStore(t, 3)
 	pusher := &recordingPusher{}
-	moved, err := rebalanceCycle(store, pusher, testCmap(t), 0, 2, alwaysShedConfig(2))
+	moved, err := rebalanceCycle(context.Background(), store, pusher, testCmap(t), 0, 2, alwaysShedConfig(2))
 	if err != nil {
 		t.Fatalf("cycle: %v", err)
 	}
@@ -106,7 +106,7 @@ func TestRebalanceCycleBelowHighWaterNoOp(t *testing.T) {
 	pusher := &recordingPusher{}
 	cfg := alwaysShedConfig(2)
 	cfg.DiskHighWater, cfg.DiskLowWater = 100, 99
-	moved, err := rebalanceCycle(store, pusher, testCmap(t), 0, 2, cfg)
+	moved, err := rebalanceCycle(context.Background(), store, pusher, testCmap(t), 0, 2, cfg)
 	if err != nil {
 		t.Fatalf("cycle: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestRebalanceCycleBelowHighWaterNoOp(t *testing.T) {
 func TestRebalanceCycleKeepsBlobWhenPushFails(t *testing.T) {
 	store, _ := rebalanceTestStore(t, 2)
 	pusher := &recordingPusher{fail: true}
-	moved, err := rebalanceCycle(store, pusher, testCmap(t), 0, 2, alwaysShedConfig(2))
+	moved, err := rebalanceCycle(context.Background(), store, pusher, testCmap(t), 0, 2, alwaysShedConfig(2))
 	if err != nil {
 		t.Fatalf("cycle: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestRebalanceCycleNoPeerKeepsBlob(t *testing.T) {
 	pusher := &recordingPusher{}
 	// Single-node placement: no shed target.
 	cmap := &common.ClusterMap{Nodes: []*common.Node{{ID: 0, Weight: 1}}}
-	moved, err := rebalanceCycle(store, pusher, cmap, 0, 1, alwaysShedConfig(4))
+	moved, err := rebalanceCycle(context.Background(), store, pusher, cmap, 0, 1, alwaysShedConfig(4))
 	if err != nil {
 		t.Fatalf("cycle: %v", err)
 	}
@@ -205,7 +205,7 @@ func TestPickShedTargetInvalidMap(t *testing.T) {
 
 func TestPushWithoutStore(t *testing.T) {
 	src := &DaemonRebuildSource{}
-	if err := src.Push("hash", 1); !errors.Is(err, syscall.EINVAL) {
+	if err := src.Push(context.Background(), "hash", 1); !errors.Is(err, syscall.EINVAL) {
 		t.Fatalf("want EINVAL, got %v", err)
 	}
 }
@@ -215,7 +215,7 @@ func TestPushReadsLocalBlobAndFailsCleanlyWhenMissing(t *testing.T) {
 	src := &DaemonRebuildSource{}
 	src.SetStore(store)
 	// Unknown hash: read fails before any transport work.
-	if err := src.Push("does-not-exist", 1); err == nil {
+	if err := src.Push(context.Background(), "does-not-exist", 1); err == nil {
 		t.Fatal("expected read error for a missing blob")
 	}
 }
@@ -233,7 +233,7 @@ func TestPushSuccessPath(t *testing.T) {
 		}
 		return nil
 	}
-	if err := src.Push(hashes[0], 1); err != nil {
+	if err := src.Push(context.Background(), hashes[0], 1); err != nil {
 		t.Fatalf("Push: %v", err)
 	}
 	if gotHash != hashes[0] || gotSize == 0 {

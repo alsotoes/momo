@@ -222,6 +222,9 @@ rule and the cluster converges as a side effect (stigmergy, not scheduling).
   single-node clusters never shed, and the loop refuses to start unless
   `storage.degraded_read=true` — the local read then falls back to a verified
   survivor while the rebuild loop re-establishes the replica count.
+- **Throttling**: `max_bandwidth_mbps` (default `0` = unlimited) spends a token
+  bucket per 64 KiB write (`writeThrottled`), so a shed or migration pass cannot
+  starve foreground traffic on the same uplink.
 - **Ownership**: re-replication after a leave and failure-domain spread stay with
   the R2 rebuild loop and R1 placement; R11 does not duplicate them.
 

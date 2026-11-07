@@ -306,6 +306,7 @@ func loadRebalanceConfig(section *ini.Section) (ConfigurationRebalance, error) {
 	rc.DiskHighWater = section.Key("disk_high_water").MustFloat64(defaultRebalanceHigh)
 	rc.DiskLowWater = section.Key("disk_low_water").MustFloat64(defaultRebalanceLow)
 	rc.MaxShedPerCycle = section.Key("max_shed_per_cycle").MustInt(defaultRebalanceMaxShed)
+	rc.MaxBandwidthMbps = section.Key("max_bandwidth_mbps").MustFloat64(0)
 
 	if rc.Interval <= 0 {
 		return ConfigurationRebalance{}, fmt.Errorf("'interval' must be > 0: %w", syscall.EINVAL)
@@ -318,6 +319,9 @@ func loadRebalanceConfig(section *ini.Section) (ConfigurationRebalance, error) {
 	}
 	if rc.MaxShedPerCycle <= 0 {
 		return ConfigurationRebalance{}, fmt.Errorf("'max_shed_per_cycle' must be > 0: %w", syscall.EINVAL)
+	}
+	if rc.MaxBandwidthMbps < 0 {
+		return ConfigurationRebalance{}, fmt.Errorf("'max_bandwidth_mbps' must be >= 0: %w", syscall.EINVAL)
 	}
 	return rc, nil
 }

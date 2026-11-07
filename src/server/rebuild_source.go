@@ -3,6 +3,7 @@
 package server
 
 import (
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"io"
@@ -31,6 +32,19 @@ type DaemonRebuildSource struct {
 	store *storage.CASStore
 	// pushFn overrides the transport push in tests; nil means pushToPeer.
 	pushFn func(targetID int, hash string, data []byte, meta *common.FileMetadata) error
+	// limiter throttles rebalance pushes so they cannot starve foreground
+	// traffic (R11). Nil means unlimited.
+	limiter *bandwidthLimiter
+}
+
+// SetBandwidthLimit caps rebalance pushes at mbps megabytes per second.
+// Zero or negative leaves them unlimited.
+func (d *DaemonRebuildSource) SetBandwidthLimit(mbps float64) {
+	if mbps <= 0 {
+		d.limiter = nil
+		return
+	}
+	d.limiter = newBandwidthLimiter(mbps)
 }
 
 // SetStore attaches the local CAS store used to read blob bytes for
@@ -42,7 +56,7 @@ func (d *DaemonRebuildSource) SetStore(store *storage.CASStore) {
 // Push sends the local copy of blob hash to one peer and waits for its ack.
 // It is the rebalance loop's transport; the caller drops the local bytes only
 // after a nil return.
-func (d *DaemonRebuildSource) Push(hash string, targetID int) (err error) {
+func (d *DaemonRebuildSource) Push(ctx context.Context, hash string, targetID int) (err error) {
 	defer common.RecoverErr("DaemonRebuildSource.Push", &err)
 	if d.store == nil {
 		return fmt.Errorf("rebalance push without a store: %w", syscall.EINVAL)
@@ -60,7 +74,7 @@ func (d *DaemonRebuildSource) Push(hash string, targetID int) (err error) {
 	if d.pushFn != nil {
 		return d.pushFn(targetID, hash, data, meta)
 	}
-	return d.pushToPeer(targetID, hash, data, meta)
+	return d.pushToPeer(ctx, targetID, hash, data, meta)
 }
 
 // NewDaemonRebuildSource creates a RebuildSource backed by the daemon's
@@ -288,7 +302,7 @@ func (d *DaemonRebuildSource) Restore(hash string, content io.Reader) error {
 		wg.Add(1)
 		go func(targetID int) {
 			defer wg.Done()
-			if err := d.pushToPeer(targetID, hash, data, meta); err != nil {
+			if err := d.pushToPeer(context.Background(), targetID, hash, data, meta); err != nil {
 				errChan <- fmt.Errorf("push to peer %d: %w", targetID, err)
 			}
 		}(targetID)
@@ -303,7 +317,7 @@ func (d *DaemonRebuildSource) Restore(hash string, content io.Reader) error {
 }
 
 // pushToPeer pushes a pre-verified blob to a single peer.
-func (d *DaemonRebuildSource) pushToPeer(targetID int, hash string, data []byte, meta *common.FileMetadata) error {
+func (d *DaemonRebuildSource) pushToPeer(ctx context.Context, targetID int, hash string, data []byte, meta *common.FileMetadata) error {
 	comm, err := d.dialPeer(targetID)
 	if err != nil {
 		return fmt.Errorf("dial peer %d: %w", targetID, err)
@@ -320,8 +334,8 @@ func (d *DaemonRebuildSource) pushToPeer(targetID int, hash string, data []byte,
 		return nil
 	}
 
-	// Send payload
-	if _, err := comm.Write(data); err != nil {
+	// Send payload, throttled when a rebalance bandwidth cap is set.
+	if err := writeThrottled(ctx, comm, data, d.limiter); err != nil {
 		return fmt.Errorf("send payload to peer %d: %w", targetID, err)
 	}
 
