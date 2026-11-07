@@ -51,6 +51,14 @@ type clusterStatsProvider interface {
 	ActiveLeases() int
 	ScatterCounters() (queries, timeouts uint64)
 	GetReplicationStatus() (mode string, pending int)
+	PeerLoads() []PeerLoadSample
+}
+
+// PeerLoadSample is one peer's last published load report.
+type PeerLoadSample struct {
+	PeerID           int32
+	DiskUsedPercent  uint8
+	InflightRequests uint32
 }
 
 // swinState constants mirrored from the p2p package so the exporter does not
@@ -477,6 +485,22 @@ func (m *MetricsCollector) writeClusterMetrics(w io.Writer) {
 	fmt.Fprintf(w, "# HELP momo_scatter_timeout_total Total scatter-gather timeout expiries.\n")
 	fmt.Fprintf(w, "# TYPE momo_scatter_timeout_total counter\n")
 	fmt.Fprintf(w, "momo_scatter_timeout_total %d\n", timeouts)
+
+	// R11 (#1261): peer load as published over gossip. Absent until a report
+	// arrives, which is why the samples are emitted per peer rather than as a
+	// zero-valued total.
+	if cp != nil {
+		_, _ = fmt.Fprintf(w, "# HELP momo_peer_disk_used_percent Peer data-disk utilisation as last reported.\n")
+		_, _ = fmt.Fprintf(w, "# TYPE momo_peer_disk_used_percent gauge\n")
+		for _, load := range cp.PeerLoads() {
+			_, _ = fmt.Fprintf(w, "momo_peer_disk_used_percent{peer=\"%d\"} %d\n", load.PeerID, load.DiskUsedPercent)
+		}
+		_, _ = fmt.Fprintf(w, "# HELP momo_peer_inflight_requests Peer in-flight requests as last reported.\n")
+		_, _ = fmt.Fprintf(w, "# TYPE momo_peer_inflight_requests gauge\n")
+		for _, load := range cp.PeerLoads() {
+			_, _ = fmt.Fprintf(w, "momo_peer_inflight_requests{peer=\"%d\"} %d\n", load.PeerID, load.InflightRequests)
+		}
+	}
 }
 
 // writeLatencyHistograms emits R5 phase 4 opt-in histograms as Prometheus

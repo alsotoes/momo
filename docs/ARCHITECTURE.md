@@ -367,7 +367,7 @@ Momo includes a built-in Prometheus metrics exporter (`src/server/metrics_export
 | **Storage** | `momo_disk_used_bytes`, `momo_disk_free_bytes` (Statfs), `momo_blob_count`, `momo_stored_bytes_total` | gauge |
 | **CAS** | `momo_dedup_hits_total`, `momo_cas_gc_runs_total`, `momo_cas_gc_evicted_bytes` | counter |
 | **Replication** | `momo_replication_bytes_total`, `momo_replication_failures_total`, `momo_replication_latency_seconds` (opt-in histogram) | counter / histogram |
-| **P2P** | `momo_cluster_peers`, `momo_swim_alive_count`, `momo_swim_suspect_count`, `momo_swim_offline_count`, `momo_swim_ping_latency_seconds` (mean EWMA RTT) | gauge |
+| **P2P** | `momo_cluster_peers`, `momo_swim_alive_count`, `momo_swim_suspect_count`, `momo_swim_offline_count`, `momo_swim_ping_latency_seconds` (mean EWMA RTT), `momo_peer_disk_used_percent{peer}`, `momo_peer_inflight_requests{peer}` (last gossip report; absent until one arrives) | gauge |
 | **Leases** | `momo_leases_active` | gauge |
 | **Scatter/Gather** | `momo_scatter_queries_total`, `momo_scatter_timeout_total` | counter |
 | **Latency Histograms** | `momo_request_latency_seconds{operation}` (upload/download/delete/list), `momo_replication_latency_seconds` | opt-in histogram |

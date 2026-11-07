@@ -8,4 +8,5 @@
 - [x] Daemon sampler: disk utilisation from storage, in-flight from metrics (queue reserved)
 - [x] Unit tests: payload round trip, malformed input, publication with/without provider, storage, unknown peer, sampler fallbacks
 - [x] Documentation: architecture section and engineering-journal post
+- [x] Metrics: `momo_peer_disk_used_percent{peer}` and `momo_peer_inflight_requests{peer}` exported per peer
 - [ ] Redirect contract and admission rule (tracked in #1261)
