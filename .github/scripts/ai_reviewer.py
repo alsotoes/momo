@@ -450,21 +450,47 @@ def classify_sonar_checks(rollup):
     return pending, failed, settled
 
 
+def sonar_wait_verdict(pending, failed, settled, seen_sonar, timed_out, timeout=SONAR_WAIT_TIMEOUT):
+    """Decide what the Sonar gate should do on one poll.
+
+    Returns (action, reason) where action is "fail", "ok" or "wait".
+
+    A merge must not happen *before* Sonar registers: at review time the check
+    often does not exist yet, and treating that as "settled" merged PRs that
+    Sonar then failed (#1255). So the gate waits for a Sonar check to appear,
+    and only skips when none ever does (a repo without Sonar).
+    """
+    if failed:
+        return "fail", f"Sonar checks failed: {', '.join(failed)}"
+    if pending:
+        if timed_out:
+            return "fail", f"Sonar checks still running after {timeout}s: {', '.join(pending)}"
+        return "wait", f"Waiting for Sonar before merging: {', '.join(pending)}"
+    if seen_sonar:
+        return "ok", f"{settled} Sonar check(s) settled"
+    if timed_out:
+        return "ok", "no Sonar checks registered (advisory gate skipped)"
+    return "wait", "Waiting for Sonar checks to register"
+
+
 def wait_for_sonar_checks(pr_number, timeout=SONAR_WAIT_TIMEOUT, interval=SONAR_WAIT_INTERVAL):
     """Poll until every Sonar check has settled. Returns (ok, reason)."""
     deadline = time.time() + timeout
+    seen_sonar = False
     while True:
         cmd = ["gh", "pr", "view", pr_number, "--json", "statusCheckRollup"]
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         rollup = json.loads(result.stdout).get("statusCheckRollup", [])
         pending, failed, settled = classify_sonar_checks(rollup)
-        if failed:
-            return False, f"Sonar checks failed: {', '.join(failed)}"
-        if not pending:
-            return True, f"{settled} Sonar check(s) settled"
-        if time.time() >= deadline:
-            return False, f"Sonar checks still running after {timeout}s: {', '.join(pending)}"
-        print(f"Waiting for Sonar before merging: {', '.join(pending)}")
+        if pending or settled:
+            seen_sonar = True
+        action, reason = sonar_wait_verdict(
+            pending, failed, settled, seen_sonar, time.time() >= deadline, timeout)
+        if action == "fail":
+            return False, reason
+        if action == "ok":
+            return True, reason
+        print(reason)
         time.sleep(interval)
 
 
