@@ -159,7 +159,8 @@ func TestRunRebalanceTicksAndStops(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
-		runRebalance(ctx, store, pusher, testCmap(t), 0, 2, alwaysShedConfig(10), 5*time.Millisecond)
+		r := &rebalanceRunner{store: store, pusher: pusher, cmap: testCmap(t), self: 0, rf: 2, cfg: alwaysShedConfig(10)}
+		r.run(ctx, 5*time.Millisecond)
 		close(done)
 	}()
 	deadline := time.Now().Add(3 * time.Second)
