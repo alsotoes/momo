@@ -236,6 +236,11 @@ rule and the cluster converges as a side effect (stigmergy, not scheduling).
   `momo_rebalance_bytes_moved_total`, `momo_rebalance_cycles_total`, and
   `momo_rebalance_failures_total` are recorded at the push choke point, so they
   count bytes that actually left the node.
+- **Metadata is not presence**: a shed blob keeps metadata, so `Put` asks the
+  backend (`blobPresence`) whether the bytes are physically present and rewrites
+  them when they are not. Without this, a peer could acknowledge a push it did
+  not store and the sender would drop the last copy (found by
+  `TestRebalanceChaosNeverLosesTheLastCopy`).
 - **Serialized passes**: one mutex covers a whole evaluation pass, so a timer
   tick and a join migration cannot push the same blob twice; the waiting pass
   re-reads the blob list afterwards.

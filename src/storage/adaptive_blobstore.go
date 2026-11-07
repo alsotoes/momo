@@ -74,6 +74,19 @@ func (a *AdaptiveBlobStore) PutBlob(hash string, content io.Reader) (err error) 
 }
 
 // GetBlob resolves from the volume store first; a miss (ENOENT) falls back.
+// BlobExists reports whether either backing store physically holds the blob.
+func (a *AdaptiveBlobStore) BlobExists(hash string) (bool, error) {
+	if a.volume != nil {
+		if ok, err := a.volume.BlobExists(hash); err == nil && ok {
+			return true, nil
+		}
+	}
+	if p, ok := a.fallback.(blobPresence); ok {
+		return p.BlobExists(hash)
+	}
+	return false, nil
+}
+
 func (a *AdaptiveBlobStore) GetBlob(hash string) (rc io.ReadCloser, err error) {
 	defer common.RecoverErr("AdaptiveBlobStore.GetBlob", &err)
 

@@ -644,3 +644,8 @@ func TestPassesAreSerialized(t *testing.T) {
 		t.Fatal("expected pushes")
 	}
 }
+
+// rebalanceCycleForTest exposes one evaluation pass to the chaos test.
+func (r *rebalanceRunner) rebalanceCycleForTest(ctx context.Context) (int, error) {
+	return rebalanceCycle(ctx, r.store, r.pusher, r.cmap, r.self, r.rf, r.cfg)
+}

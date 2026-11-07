@@ -64,7 +64,7 @@
 - [x] Blog post 062 (Rule 76)
 
 ## Phase 5 — Chaos Testing + Validation
-- [ ] Chaos test: random join/leave/fail in 10-node cluster — partially mitigated: overlapping passes are serialized by `runMu` and covered by `TestPassesAreSerialized`
+- [x] Chaos test: 8 seeds × 60 randomized shed/join rounds over 5 nodes with 30% push failures (`TestRebalanceChaosNeverLosesTheLastCopy`). It found a real data-loss bug: a node that had shed a blob kept its metadata, so a later push acknowledged without storing bytes and the sender dropped the last copy. Fixed by the `blobPresence` check in `Put`.
   - Verify convergence to balanced state (disk usage, replica count)
   - Verify no data loss (all objects have RF replicas)
   - Verify read availability throughout (degraded read works)
