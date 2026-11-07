@@ -88,5 +88,36 @@ class ClassifySonarChecksTest(unittest.TestCase):
         self.assertEqual(settled, 1)
 
 
+class SonarWaitVerdictTest(unittest.TestCase):
+    """The gate must wait for Sonar to register before declaring success."""
+
+    def test_no_checks_yet_waits(self):
+        action, _ = reviewer.sonar_wait_verdict([], [], 0, False, False)
+        self.assertEqual(action, "wait")
+
+    def test_no_checks_after_timeout_skips(self):
+        action, reason = reviewer.sonar_wait_verdict([], [], 0, False, True)
+        self.assertEqual(action, "ok")
+        self.assertIn("no Sonar checks registered", reason)
+
+    def test_registered_and_settled_is_ok(self):
+        action, reason = reviewer.sonar_wait_verdict([], [], 1, True, False)
+        self.assertEqual(action, "ok")
+        self.assertIn("1 Sonar check(s) settled", reason)
+
+    def test_registered_and_pending_waits(self):
+        action, _ = reviewer.sonar_wait_verdict(["SonarCloud"], [], 0, True, False)
+        self.assertEqual(action, "wait")
+
+    def test_registered_and_pending_after_timeout_fails(self):
+        action, reason = reviewer.sonar_wait_verdict(["SonarCloud"], [], 0, True, True)
+        self.assertEqual(action, "fail")
+        self.assertIn("still running", reason)
+
+    def test_failure_always_fails(self):
+        action, _ = reviewer.sonar_wait_verdict([], ["SonarCloud"], 0, True, False)
+        self.assertEqual(action, "fail")
+
+
 if __name__ == "__main__":
     unittest.main()
