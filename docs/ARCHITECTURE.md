@@ -225,6 +225,10 @@ rule and the cluster converges as a side effect (stigmergy, not scheduling).
 - **Throttling**: `max_bandwidth_mbps` (default `0` = unlimited) spends a token
   bucket per 64 KiB write (`writeThrottled`), so a shed or migration pass cannot
   starve foreground traffic on the same uplink.
+- **Observability**: `momo_rebalance_blobs_moved_total`,
+  `momo_rebalance_bytes_moved_total`, `momo_rebalance_cycles_total`, and
+  `momo_rebalance_failures_total` are recorded at the push choke point, so they
+  count bytes that actually left the node.
 - **Ownership**: re-replication after a leave and failure-domain spread stay with
   the R2 rebuild loop and R1 placement; R11 does not duplicate them.
 

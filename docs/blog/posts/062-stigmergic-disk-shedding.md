@@ -104,6 +104,24 @@ failed transfer does not permanently eat the budget. And the budget is spent
 *before* the write, not after, which is what actually protects the socket queue
 from a burst of buffered blobs.
 
+## Can You Tell It Is Working?
+
+A background process that moves data and says nothing is impossible to operate:
+when disks stay full you cannot tell whether the rule is misfiring, whether the
+pushes are failing, or whether the loop is not running at all.
+
+So the path is instrumented at the choke point — the push — not at the decision.
+Each successful push adds one to a moved-blob counter and its byte count; each
+failure adds to a failure counter; each tick adds to a cycles counter. Because
+the counters sit on the transport step, they measure bytes that actually left
+the node rather than blobs the loop intended to move, which is the number that
+matters when you are diagnosing a stuck drain.
+
+All four are plain monotonic counters, so a rate over time answers the useful
+questions: bytes per second tells you whether the throttle is binding, failures
+per minute tells you whether a peer is unreachable, and a flat cycles counter
+tells you the loop is not running even though the config says it should be.
+
 ## What It Refuses to Do
 
 - **Single-node clusters never shed.** With no peer in the placement set there

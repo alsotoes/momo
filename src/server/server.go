@@ -165,6 +165,9 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 	// Start Prometheus metrics endpoint if configured. Per-daemon override
 	// (metrics_host / metrics_port) falls back to the global [metrics] bind.
 	metricsCollector := NewMetricsCollector()
+	if rebuildSrc != nil {
+		rebuildSrc.SetMetrics(metricsCollector)
+	}
 	metricsHost := daemons[serverId].MetricsBindHost
 	if metricsHost == "" {
 		metricsHost = cfg.Metrics.PrometheusBindHost

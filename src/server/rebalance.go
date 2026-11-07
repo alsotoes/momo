@@ -49,6 +49,9 @@ func (r *rebalanceRunner) run(ctx context.Context, interval time.Duration) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			if c, ok := r.pusher.(interface{ IncRebalanceCycles() }); ok {
+				c.IncRebalanceCycles()
+			}
 			if moved, err := rebalanceCycle(ctx, r.store, r.pusher, r.cmap, r.self, r.rf, r.cfg); err != nil {
 				log.Printf("AUDIT: rebalance cycle failed: %v", err)
 			} else if moved > 0 {
