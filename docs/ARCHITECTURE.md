@@ -205,6 +205,26 @@ free:
   `storage.NewStoreWithRebuild`. Without a wired source, R2 behavior is inert and
   single-node semantics are unchanged.
 
+### 4g-bis. Stigmergic Rebalance (R11, issue #1143)
+R11 balances disk usage with no coordinator: every node applies the same local
+rule and the cluster converges as a side effect (stigmergy, not scheduling).
+
+- **Disk-pressure shedding (`[rebalance]`, default disabled)**: each tick
+  compares local used-disk percentage against `disk_high_water`; above it, the
+  node moves its coldest blobs (oldest write time as the access proxy, capped by
+  `max_shed_per_cycle`) to a peer that already holds a replica, and stops at
+  `disk_low_water`.
+- **Membership migration**: when a configured peer joins, blobs whose CRUSH
+  placement moved to that peer and no longer includes this node are pushed and
+  then dropped locally.
+- **Safety invariants**: bytes leave only after the peer acknowledges them
+  (`DaemonRebuildSource.Push`), placement still containing this node never sheds,
+  single-node clusters never shed, and the loop refuses to start unless
+  `storage.degraded_read=true` — the local read then falls back to a verified
+  survivor while the rebuild loop re-establishes the replica count.
+- **Ownership**: re-replication after a leave and failure-domain spread stay with
+  the R2 rebuild loop and R1 placement; R11 does not duplicate them.
+
 ### 4h. Write Durability + Consistency Model (R3, issue #931)
 R3 defines the durability-and-ack contract for writes and the single-object
 consistency model, both enforced in the storage core and documented here.

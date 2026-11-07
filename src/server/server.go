@@ -233,7 +233,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 	var leaseManager *p2p.LeaseManager
 	var oprfProvider *p2p.OPRFProvider
 	if cfg.P2P.Enabled {
-		scatterGather, leaseManager, oprfProvider = bootstrapP2P(ctx, cfg, serverId, daemons, store)
+		scatterGather, leaseManager, oprfProvider = bootstrapP2P(ctx, cfg, serverId, daemons, store, rebuildSrc)
 	}
 	// R5 phase 3: install scrape-time P2P cluster gauge source (nil-safe when
 	// P2P is disabled — exporter degrades to zero gauges per spec GIVEN p2p).
@@ -980,7 +980,32 @@ func buildP2PTLSConfig(cfg common.Configuration) *tls.Config {
 // It connects to all configured daemon peers as bootstrap seeds and begins
 // exchanging heartbeats for dynamic membership discovery.
 // Returns the ScatterGather and LeaseManager instances for use by the server.
-func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, daemons []*common.Daemon, store storage.Store) (*p2p.ScatterGather, *p2p.LeaseManager, *p2p.OPRFProvider) {
+// joinHandler logs joins and, when membership rebalancing is on, migrates the
+// blobs the joining peer now owns.
+func joinHandler(ctx context.Context, rb *rebalanceRunner) func(*p2p.Peer) {
+	return func(peer *p2p.Peer) {
+		log.Printf("P2P: peer %d joined cluster from %s", peer.ID, peer.Addr)
+		if rb != nil {
+			go rb.onPeerJoin(ctx, int(peer.ID))
+		}
+	}
+}
+
+// newJoinMigrator builds the runner used on peer join, or nil when membership
+// rebalancing is off or unsafe (no CAS store, no rebuild source, degraded read
+// disabled).
+func newJoinMigrator(ctx context.Context, cfg common.Configuration, serverId int, store storage.Store, rebuildSrc *DaemonRebuildSource) *rebalanceRunner {
+	if !cfg.Rebalance.Enabled || !cfg.Storage.DegradedRead || rebuildSrc == nil {
+		return nil
+	}
+	cs, ok := store.(*storage.CASStore)
+	if !ok {
+		return nil
+	}
+	return &rebalanceRunner{store: cs, pusher: rebuildSrc, cmap: rebuildSrc.cmap, self: serverId, rf: cfg.Global.ReplicationFactor, cfg: cfg.Rebalance}
+}
+
+func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, daemons []*common.Daemon, store storage.Store, rebuildSrc *DaemonRebuildSource) (*p2p.ScatterGather, *p2p.LeaseManager, *p2p.OPRFProvider) {
 	gossipAddr := daemons[serverId].Host
 	host, _, err := net.SplitHostPort(gossipAddr)
 	if err != nil {
@@ -1021,9 +1046,11 @@ func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, d
 	}
 
 	gossip := p2p.NewGossiper(gossipCfg, transport)
-	gossip.OnJoin(func(peer *p2p.Peer) {
-		log.Printf("P2P: peer %d joined cluster from %s", peer.ID, peer.Addr)
-	})
+
+	// R11: a joining peer now owns blobs this node holds — migrate them.
+	rbRunner := newJoinMigrator(ctx, cfg, serverId, store, rebuildSrc)
+
+	gossip.OnJoin(joinHandler(ctx, rbRunner))
 	gossip.OnLeave(func(peerID int32) {
 		log.Printf("P2P: peer %d left cluster", peerID)
 	})

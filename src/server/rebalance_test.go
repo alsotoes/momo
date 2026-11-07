@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -12,6 +14,7 @@ import (
 	"time"
 
 	"github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/p2p"
 	"github.com/alsotoes/momo/src/storage"
 )
 
@@ -60,6 +63,15 @@ func alwaysShedConfig(max int) common.ConfigurationRebalance {
 	// high water 0 forces a shed on every cycle; low water 0 stops only when
 	// the cycle cap or the blob list runs out.
 	return common.ConfigurationRebalance{Enabled: true, Interval: 60, DiskHighWater: 0.0001, DiskLowWater: 0, MaxShedPerCycle: max}
+}
+
+func testCmap3(t *testing.T) *common.ClusterMap {
+	t.Helper()
+	return &common.ClusterMap{Nodes: []*common.Node{
+		{ID: 0, Weight: 1},
+		{ID: 1, Weight: 1, Domain: "b"},
+		{ID: 2, Weight: 1, Domain: "c"},
+	}}
 }
 
 func testCmap(t *testing.T) *common.ClusterMap {
@@ -226,5 +238,294 @@ func TestPushSuccessPath(t *testing.T) {
 	}
 	if gotHash != hashes[0] || gotSize == 0 {
 		t.Fatalf("unexpected push args hash=%s size=%d", gotHash, gotSize)
+	}
+}
+
+func findPlacementHash(t *testing.T, cmap *common.ClusterMap, rf int, self, peer int, wantSelf bool) (string, []byte) {
+	t.Helper()
+	for i := 0; i < 10000; i++ {
+		payload := []byte(fmt.Sprintf("placement-probe-%d", i))
+		hash := common.HashBytes(payload)
+		placement, err := cmap.Placement(hash, rf)
+		if err != nil {
+			t.Fatalf("placement: %v", err)
+		}
+		var hasSelf, hasPeer bool
+		for _, n := range placement {
+			hasSelf = hasSelf || n.ID == self
+			hasPeer = hasPeer || n.ID == peer
+		}
+		if hasSelf == wantSelf && hasPeer {
+			return hash, payload
+		}
+	}
+	t.Fatalf("no hash found with self=%v peer=%d", wantSelf, peer)
+	return "", nil
+}
+
+func putBlob(t *testing.T, store *storage.CASStore, name, hash string, payload []byte) {
+	t.Helper()
+	if err := store.Put(name, hash, int64(len(payload)), "", bytes.NewReader(payload)); err != nil {
+		t.Fatalf("put %s: %v", name, err)
+	}
+}
+
+func joinRunner(t *testing.T, store *storage.CASStore, pusher rebalancePusher, cmap *common.ClusterMap, self, rf, max int) *rebalanceRunner {
+	t.Helper()
+	return &rebalanceRunner{store: store, pusher: pusher, cmap: cmap, self: self, rf: rf, cfg: common.ConfigurationRebalance{Enabled: true, Interval: 60, DiskHighWater: 85, DiskLowWater: 70, MaxShedPerCycle: max}}
+}
+
+func TestMigrateToPeerMovesOwnedBlob(t *testing.T) {
+	store, err := storage.NewCASStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	cmap := testCmap3(t)
+	hash, payload := findPlacementHash(t, cmap, 2, 0, 1, false)
+	putBlob(t, store, "moved", hash, payload)
+
+	pusher := &recordingPusher{}
+	r := joinRunner(t, store, pusher, cmap, 0, 2, 8)
+	moved, err := r.migrateToPeer(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if moved != 1 || pusher.count() != 1 {
+		t.Fatalf("expected 1 move, got moved=%d pushed=%d", moved, pusher.count())
+	}
+	if blobs, _ := store.ListBlobs(); len(blobs) != 0 {
+		t.Fatalf("local bytes must be dropped after ack, got %d", len(blobs))
+	}
+}
+
+func TestMigrateToPeerKeepsBlobThisNodeStillOwns(t *testing.T) {
+	store, err := storage.NewCASStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	cmap := testCmap3(t)
+	hash, payload := findPlacementHash(t, cmap, 2, 0, 1, true)
+	putBlob(t, store, "kept", hash, payload)
+
+	r := joinRunner(t, store, &recordingPusher{}, cmap, 0, 2, 8)
+	moved, err := r.migrateToPeer(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if moved != 0 {
+		t.Fatalf("a blob this node still owns must not move")
+	}
+	if blobs, _ := store.ListBlobs(); len(blobs) != 1 {
+		t.Fatalf("blob must stay local, got %d", len(blobs))
+	}
+}
+
+func TestMigrateToPeerPushFailureKeepsBytes(t *testing.T) {
+	store, err := storage.NewCASStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	cmap := testCmap3(t)
+	hash, payload := findPlacementHash(t, cmap, 2, 0, 1, false)
+	putBlob(t, store, "kept", hash, payload)
+
+	r := joinRunner(t, store, &recordingPusher{fail: true}, cmap, 0, 2, 8)
+	moved, err := r.migrateToPeer(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if moved != 0 {
+		t.Fatal("failed push must not count as a move")
+	}
+	if blobs, _ := store.ListBlobs(); len(blobs) != 1 {
+		t.Fatalf("failed push must keep local bytes, got %d", len(blobs))
+	}
+}
+
+func putMovableBlobs(t *testing.T, store *storage.CASStore, cmap *common.ClusterMap, self, peer, n int) {
+	t.Helper()
+	made := 0
+	for i := 0; made < n && i < 100000; i++ {
+		payload := []byte(fmt.Sprintf("cap-probe-%d", i))
+		hash := common.HashBytes(payload)
+		peerOwns, selfOwns, err := placementOwnership(cmap, hash, 2, self, peer)
+		if err != nil {
+			t.Fatalf("placement: %v", err)
+		}
+		if peerOwns && !selfOwns {
+			putBlob(t, store, fmt.Sprintf("cap-%d", made), hash, payload)
+			made++
+		}
+	}
+	if made != n {
+		t.Fatalf("setup: only %d blobs", made)
+	}
+}
+
+func TestMigrateToPeerRespectsCap(t *testing.T) {
+	store, err := storage.NewCASStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	cmap := testCmap3(t)
+	putMovableBlobs(t, store, cmap, 0, 1, 3)
+
+	r := joinRunner(t, store, &recordingPusher{}, cmap, 0, 2, 2)
+	moved, err := r.migrateToPeer(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if moved != 2 {
+		t.Fatalf("cap must bound a pass to 2, got %d", moved)
+	}
+	if blobs, _ := store.ListBlobs(); len(blobs) != 1 {
+		t.Fatalf("one blob should remain, got %d", len(blobs))
+	}
+}
+
+func TestOnPeerJoinLogsAndMigrates(t *testing.T) {
+	store, err := storage.NewCASStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	cmap := testCmap3(t)
+	hash, payload := findPlacementHash(t, cmap, 2, 0, 1, false)
+	putBlob(t, store, "joined", hash, payload)
+
+	r := joinRunner(t, store, &recordingPusher{}, cmap, 0, 2, 8)
+	r.onPeerJoin(context.Background(), 1)
+	if blobs, _ := store.ListBlobs(); len(blobs) != 0 {
+		t.Fatalf("onPeerJoin must migrate, %d blobs left", len(blobs))
+	}
+}
+
+func TestJoinHandler(t *testing.T) {
+	// Nil runner: logs only, no panic.
+	joinHandler(context.Background(), nil)(&p2p.Peer{ID: 7})
+
+	store, err := storage.NewCASStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	cmap := testCmap3(t)
+	hash, payload := findPlacementHash(t, cmap, 2, 0, 1, false)
+	putBlob(t, store, "join", hash, payload)
+
+	r := joinRunner(t, store, &recordingPusher{}, cmap, 0, 2, 8)
+	joinHandler(context.Background(), r)(&p2p.Peer{ID: 1})
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if blobs, _ := store.ListBlobs(); len(blobs) == 0 {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("join handler must migrate asynchronously")
+}
+
+func TestNewJoinMigrator(t *testing.T) {
+	store, err := storage.NewCASStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	src := &DaemonRebuildSource{}
+
+	cfg := common.Configuration{}
+	cfg.Rebalance.Enabled = true
+	cfg.Storage.DegradedRead = true
+	if newJoinMigrator(context.Background(), cfg, 0, store, src) == nil {
+		t.Fatal("expected a migrator when enabled, degraded read on, and a source present")
+	}
+	if newJoinMigrator(context.Background(), cfg, 0, store, nil) != nil {
+		t.Fatal("nil rebuild source must disable migration")
+	}
+	cfg.Rebalance.Enabled = false
+	if newJoinMigrator(context.Background(), cfg, 0, store, src) != nil {
+		t.Fatal("disabled rebalance must yield nil")
+	}
+}
+
+func TestMigrateToPeerStoreError(t *testing.T) {
+	store, err := storage.NewCASStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	_ = store.Close()
+	r := joinRunner(t, store, &recordingPusher{}, testCmap3(t), 0, 2, 8)
+	// A closed store must not panic the join path; errors are logged.
+	r.onPeerJoin(context.Background(), 1)
+}
+
+func TestMigrateToPeerContextCancelled(t *testing.T) {
+	store, err := storage.NewCASStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	cmap := testCmap3(t)
+	hash, payload := findPlacementHash(t, cmap, 2, 0, 1, false)
+	putBlob(t, store, "cancel", hash, payload)
+
+	r := joinRunner(t, store, &recordingPusher{}, cmap, 0, 2, 8)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	moved, err := r.migrateToPeer(ctx, 1)
+	if err != nil || moved != 0 {
+		t.Fatalf("cancelled context must stop the pass, moved=%d err=%v", moved, err)
+	}
+}
+
+func TestDiskUsedPercentMissingDir(t *testing.T) {
+	dir := t.TempDir()
+	store, err := storage.NewCASStore(dir)
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	_ = store.Close()
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	if _, err := diskUsedPercent(store); err == nil {
+		t.Fatal("statfs on a missing dir must fail")
+	}
+}
+
+func TestPlacementOwnershipError(t *testing.T) {
+	if _, _, err := placementOwnership(&common.ClusterMap{}, "hash", 2, 0, 1); err == nil {
+		t.Fatal("empty cluster map must error")
+	}
+}
+
+func TestMigrateBlobDropFailureKeepsBytes(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("permission-based failure is bypassed by root")
+	}
+	dir := t.TempDir()
+	store, err := storage.NewCASStore(dir)
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	cmap := testCmap3(t)
+	hash, payload := findPlacementHash(t, cmap, 2, 0, 1, false)
+	putBlob(t, store, "keep", hash, payload)
+
+	leaf := filepath.Join(dir, "blobs", hash[0:2], hash[2:4], hash[4:6])
+	t.Cleanup(func() { _ = os.Chmod(leaf, 0o755) })
+	if err := os.Chmod(leaf, 0o555); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+
+	r := joinRunner(t, store, &recordingPusher{}, cmap, 0, 2, 8)
+	if moved, err := r.migrateToPeer(context.Background(), 1); err != nil || moved != 0 {
+		t.Fatalf("drop failure must not count as a move, moved=%d err=%v", moved, err)
 	}
 }

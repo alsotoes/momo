@@ -98,6 +98,28 @@ starves.
   peers confirmed holding the bytes; a node alone in the placement keeps
   everything.
 
+## The Other Trigger: A Peer Appears
+
+Disk pressure is not the only reason bytes should move. When a node joins, the
+placement function starts assigning new blobs to it — but the blobs it now owns
+under the new placement may already be sitting elsewhere, written before it
+arrived.
+
+The same rule covers this case with one extra condition. On join, a node looks
+at its local blobs and asks, for each: does placement now include the newcomer,
+and does it still include me? If the answer is yes-then-no, the blob belongs on
+the newcomer, so it is pushed and dropped locally. If placement still includes
+this node, the blob stays: moving it would not change anyone's ownership, and
+dropping it would reduce the replica count.
+
+That single condition — "only migrate when I no longer own a copy" — is what
+keeps membership rebalance from trading availability for tidiness. A node never
+sheds itself out of the replica set of a blob it is supposed to hold.
+
+In this system membership is declared in configuration, so "join" means a
+configured peer becoming reachable. The rule is the same either way: the trigger
+changes, the safety condition does not.
+
 ## What Is Still Missing
 
 This is load balancing by disk pressure, not a full rebalance. When a node

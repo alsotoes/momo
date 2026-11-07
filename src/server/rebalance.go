@@ -100,6 +100,74 @@ func rebalanceCycle(cs *storage.CASStore, pusher rebalancePusher, cmap *common.C
 	return moved, nil
 }
 
+// onPeerJoin migrates blobs whose placement moved to the joining peer: the
+// cluster config is static, so a "join" is a configured peer becoming
+// reachable, and the blobs it should hold were previously stored locally.
+func (r *rebalanceRunner) onPeerJoin(ctx context.Context, peerID int) (err error) {
+	defer common.RecoverErr("rebalance peer join", &err)
+	moved, merr := r.migrateToPeer(ctx, peerID)
+	if merr != nil {
+		log.Printf("AUDIT: rebalance on join of node %d failed: %v", peerID, merr)
+		return merr
+	}
+	if moved > 0 {
+		log.Printf("REBALANCE: moved %d blob(s) to joining node %d", moved, peerID)
+	}
+	return nil
+}
+
+// migrateToPeer pushes local blobs that the peer now owns and that this node no
+// longer owns, then drops the local bytes after the peer's ack. It never
+// deletes when placement still includes this node, so it cannot reduce the
+// replica count.
+func (r *rebalanceRunner) migrateToPeer(ctx context.Context, peerID int) (int, error) {
+	blobs, err := r.store.ListBlobs()
+	if err != nil {
+		return 0, err
+	}
+	sort.Slice(blobs, func(i, j int) bool { return blobs[i].ModTime < blobs[j].ModTime })
+	moved := 0
+	for _, blob := range blobs {
+		if moved >= r.cfg.MaxShedPerCycle || ctx.Err() != nil {
+			break
+		}
+		if r.migrateBlob(blob.Hash, peerID) {
+			moved++
+		}
+	}
+	return moved, nil
+}
+
+// migrateBlob moves one blob when the peer owns it and this node does not.
+func (r *rebalanceRunner) migrateBlob(hash string, peerID int) bool {
+	peerOwns, selfOwns, err := placementOwnership(r.cmap, hash, r.rf, r.self, peerID)
+	if err != nil || !peerOwns || selfOwns {
+		return false
+	}
+	if err := r.pusher.Push(hash, peerID); err != nil {
+		log.Printf("AUDIT: rebalance migration of %s to node %d failed: %v", common.SanitizeLog(hash), peerID, err)
+		return false
+	}
+	if err := r.store.DropBlob(hash); err != nil {
+		log.Printf("AUDIT: rebalance migration drop of %s failed: %v", common.SanitizeLog(hash), err)
+		return false
+	}
+	return true
+}
+
+// placementOwnership reports whether the peer and this node own a blob.
+func placementOwnership(cmap *common.ClusterMap, hash string, rf, self, peerID int) (peerOwns, selfOwns bool, err error) {
+	placement, err := cmap.Placement(hash, rf)
+	if err != nil {
+		return false, false, err
+	}
+	for _, node := range placement {
+		peerOwns = peerOwns || node.ID == peerID
+		selfOwns = selfOwns || node.ID == self
+	}
+	return peerOwns, selfOwns, nil
+}
+
 // pickShedTarget returns a peer in the blob's placement that is not this node.
 func pickShedTarget(cmap *common.ClusterMap, hash string, self int, rf int) (int, bool) {
 	placement, err := cmap.Placement(hash, rf)
