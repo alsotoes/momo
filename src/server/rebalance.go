@@ -25,24 +25,26 @@ func startRebalanceLoop(ctx context.Context, cs *storage.CASStore, pusher rebala
 	if !rc.Enabled {
 		return
 	}
-	interval := time.Duration(rc.Interval) * time.Second
-	go func() {
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				if moved, err := rebalanceCycle(cs, pusher, cmap, self, rf, rc); err != nil {
-					log.Printf("AUDIT: rebalance cycle failed: %v", err)
-				} else if moved > 0 {
-					log.Printf("REBALANCE: shed %d blob(s) to peers", moved)
-				}
+	go runRebalance(ctx, cs, pusher, cmap, self, rf, rc, time.Duration(rc.Interval)*time.Second)
+	log.Printf("R11: stigmergic rebalance enabled (interval=%ds, high=%.0f%%, low=%.0f%%)", rc.Interval, rc.DiskHighWater, rc.DiskLowWater)
+}
+
+// runRebalance is the ticker loop, separated so tests can use a short period.
+func runRebalance(ctx context.Context, cs *storage.CASStore, pusher rebalancePusher, cmap *common.ClusterMap, self int, rf int, rc common.ConfigurationRebalance, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if moved, err := rebalanceCycle(cs, pusher, cmap, self, rf, rc); err != nil {
+				log.Printf("AUDIT: rebalance cycle failed: %v", err)
+			} else if moved > 0 {
+				log.Printf("REBALANCE: shed %d blob(s) to peers", moved)
 			}
 		}
-	}()
-	log.Printf("R11: stigmergic rebalance enabled (interval=%ds, high=%.0f%%, low=%.0f%%)", rc.Interval, rc.DiskHighWater, rc.DiskLowWater)
+	}
 }
 
 // rebalanceCycle performs one evaluation. It returns how many blobs moved.

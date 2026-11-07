@@ -29,6 +29,8 @@ type DaemonRebuildSource struct {
 	// store reads local blob bytes for rebalance pushes (R11). Nil until the
 	// daemon sets it after opening storage.
 	store *storage.CASStore
+	// pushFn overrides the transport push in tests; nil means pushToPeer.
+	pushFn func(targetID int, hash string, data []byte, meta *common.FileMetadata) error
 }
 
 // SetStore attaches the local CAS store used to read blob bytes for
@@ -55,6 +57,9 @@ func (d *DaemonRebuildSource) Push(hash string, targetID int) (err error) {
 		return fmt.Errorf("read local blob %s: %w", hash, err)
 	}
 	meta := &common.FileMetadata{Name: hash, Hash: hash, Size: int64(len(data))}
+	if d.pushFn != nil {
+		return d.pushFn(targetID, hash, data, meta)
+	}
 	return d.pushToPeer(targetID, hash, data, meta)
 }
 

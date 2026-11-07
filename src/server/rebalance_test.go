@@ -2,15 +2,21 @@ package server
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"strings"
+	"sync"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/alsotoes/momo/src/common"
 	"github.com/alsotoes/momo/src/storage"
 )
 
 type recordingPusher struct {
+	mu     sync.Mutex
 	pushed []string
 	fail   bool
 }
@@ -19,8 +25,16 @@ func (r *recordingPusher) Push(hash string, _ int) error {
 	if r.fail {
 		return fmt.Errorf("unreachable peer")
 	}
+	r.mu.Lock()
 	r.pushed = append(r.pushed, hash)
+	r.mu.Unlock()
 	return nil
+}
+
+func (r *recordingPusher) count() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.pushed)
 }
 
 func rebalanceTestStore(t *testing.T, n int) (*storage.CASStore, []string) {
@@ -136,5 +150,80 @@ func TestPickShedTarget(t *testing.T) {
 	}
 	if _, ok := pickShedTarget(cmap, "some-hash", 0, 1); ok {
 		t.Fatal("rf=1 has no peer to shed to")
+	}
+}
+
+func TestRunRebalanceTicksAndStops(t *testing.T) {
+	store, _ := rebalanceTestStore(t, 2)
+	pusher := &recordingPusher{}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		runRebalance(ctx, store, pusher, testCmap(t), 0, 2, alwaysShedConfig(10), 5*time.Millisecond)
+		close(done)
+	}()
+	deadline := time.Now().Add(3 * time.Second)
+	for pusher.count() == 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("loop did not stop on context cancel")
+	}
+	if pusher.count() == 0 {
+		t.Fatal("expected at least one shed")
+	}
+}
+
+func TestStartRebalanceLoop_EnabledLogsAndRuns(t *testing.T) {
+	store, _ := rebalanceTestStore(t, 1)
+	startRebalanceLoop(t.Context(), store, &recordingPusher{}, testCmap(t), 0, 1, common.ConfigurationRebalance{
+		Enabled: true, Interval: 3600, DiskHighWater: 99, DiskLowWater: 90, MaxShedPerCycle: 1,
+	})
+}
+
+func TestPickShedTargetInvalidMap(t *testing.T) {
+	if _, ok := pickShedTarget(&common.ClusterMap{}, "hash", 0, 2); ok {
+		t.Fatal("empty cluster map must yield no target")
+	}
+}
+
+func TestPushWithoutStore(t *testing.T) {
+	src := &DaemonRebuildSource{}
+	if err := src.Push("hash", 1); !errors.Is(err, syscall.EINVAL) {
+		t.Fatalf("want EINVAL, got %v", err)
+	}
+}
+
+func TestPushReadsLocalBlobAndFailsCleanlyWhenMissing(t *testing.T) {
+	store, _ := rebalanceTestStore(t, 1)
+	src := &DaemonRebuildSource{}
+	src.SetStore(store)
+	// Unknown hash: read fails before any transport work.
+	if err := src.Push("does-not-exist", 1); err == nil {
+		t.Fatal("expected read error for a missing blob")
+	}
+}
+
+func TestPushSuccessPath(t *testing.T) {
+	store, hashes := rebalanceTestStore(t, 1)
+	src := &DaemonRebuildSource{}
+	src.SetStore(store)
+	var gotHash string
+	var gotSize int64
+	src.pushFn = func(_ int, hash string, data []byte, meta *common.FileMetadata) error {
+		gotHash, gotSize = hash, meta.Size
+		if int64(len(data)) != meta.Size {
+			t.Errorf("payload/meta size mismatch")
+		}
+		return nil
+	}
+	if err := src.Push(hashes[0], 1); err != nil {
+		t.Fatalf("Push: %v", err)
+	}
+	if gotHash != hashes[0] || gotSize == 0 {
+		t.Fatalf("unexpected push args hash=%s size=%d", gotHash, gotSize)
 	}
 }
