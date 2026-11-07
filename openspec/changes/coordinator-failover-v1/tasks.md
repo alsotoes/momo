@@ -32,18 +32,23 @@
 - [ ] Unit tests: `coordinator_health_test.go` (mock health, verify resignation)
 
 ## Phase 3 — Split-Brain Prevention (Quorum)
-- [ ] Extend `src/p2p/lease.go` — quorum-based lease acquisition
-  - `AcquireLeaseWithQuorum(role RoleType) (bool, error)`
-  - `GetQuorumSize() int` — `(aliveCount/2)+1`
-  - `HasQuorum() bool` — check alive peer count
-- [ ] Modify `LeaseManager.AcquireLease`:
-  - If `split_brain_prevention=true`: call `AcquireLeaseWithQuorum`
-  - If quorum not met: return error, schedule retry
-- [ ] Quorum loss handling:
-  - Monitor alive peer count in `PeerMap`
-  - If quorum lost: release all leases, log "coordination suspended"
-  - If quorum restored: resume normal election
-- [ ] Unit tests: `lease_quorum_test.go` (mock peers, verify quorum logic)
+- [x] `LeaseManager.SetClusterSize(n)` / `ClusterQuorum()` / `HasQuorum()` —
+  quorum is a majority of the **configured** cluster (2 of 3, 3 of 5), not of
+  whichever nodes happen to be reachable; unknown size (0) keeps the legacy
+  reachable-peer heuristic for tests and embedded use
+- [x] `Acquire` refuses to start in a minority partition
+  (`EHOSTUNREACH`, "coordination suspended: cluster quorum lost")
+- [x] Quorum loss releases **all** held leases (not just individually
+  unsatisfiable ones) and audits the suspension
+- [x] Daemon wires `SetClusterSize(len(daemons))`
+- [x] Unit tests `lease_quorum_test.go`: quorum table, majority-cohort
+  requirement, minority acquisition refused, suspension on quorum loss,
+  single-node cluster unaffected
+- [ ] Configurable `split_brain_prevention` toggle / retry scheduling — not
+  needed: the guard is always on when the cluster size is known, and callers
+  already retry acquisition on their own schedule
+- [ ] Quorum-restored resume: no state machine needed; coordination resumes when
+  the next `Acquire` succeeds
 
 ## Phase 4 — State Synchronization Protocol
 - [ ] Create `src/coordination/state_sync.go`:

@@ -1106,6 +1106,7 @@ func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, d
 	// R11 step 1 (#1261): publish this node's load on every gossip interval.
 	gossip.SetLoadProvider(loadSampler)
 	gossip.SetScatterGather(scatterGather)
+	leaseManager.SetClusterSize(len(daemons))
 	gossip.SetLeaseManager(leaseManager)
 	// Coordinator failover Phase 1: degrade leases as soon as SWIM suspects a
 	// peer, instead of waiting for the lease TTL.

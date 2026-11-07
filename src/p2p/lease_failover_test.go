@@ -88,7 +88,9 @@ func TestLeaseManagerRevokesOnPeerFailure(t *testing.T) {
 
 	// The only granter is gone: the lease must be released immediately.
 	tr.setAlive(2, false)
-	lm.OnPeerFailure(2)
+	if err := lm.OnPeerFailure(2); err != nil {
+		t.Fatalf("OnPeerFailure: %v", err)
+	}
 
 	if got := lm.ActiveLeases(); got != 0 {
 		t.Fatalf("lease must be dropped on quorum loss, %d remain", got)
@@ -106,7 +108,9 @@ func TestLeaseManagerKeepsLeaseWhenQuorumSurvives(t *testing.T) {
 	// One of two peers failed: a single reachable peer still satisfies a quorum
 	// of one, so the lease stays.
 	tr.setAlive(2, false)
-	lm.OnPeerFailure(2)
+	if err := lm.OnPeerFailure(2); err != nil {
+		t.Fatalf("OnPeerFailure: %v", err)
+	}
 
 	if got := lm.ActiveLeases(); got != 1 {
 		t.Fatalf("lease must survive while quorum holds, %d remain", got)
@@ -118,8 +122,8 @@ func TestLeaseManagerIgnoresSelfAndUnknown(t *testing.T) {
 	lm := NewLeaseManager(1, tr)
 	lm.held[9] = &Lease{LeaseID: 9, HolderID: 1, Key: "k", QuorumSize: 0}
 
-	lm.OnPeerFailure(1)  // self
-	lm.OnPeerFailure(99) // unknown
+	_ = lm.OnPeerFailure(1)  // self
+	_ = lm.OnPeerFailure(99) // unknown
 	if got := lm.ActiveLeases(); got != 1 {
 		t.Fatalf("zero-quorum lease must survive, %d remain", got)
 	}
