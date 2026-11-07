@@ -194,6 +194,16 @@ func (m *MetricsCollector) AddBytesReplicated(n uint64) {
 // IncReplicationFailures records a replication forwarding failure (R5 phase 3).
 func (m *MetricsCollector) IncReplicationFailures() { m.replicationFails.Add(1) }
 
+// ActiveConnections reports the current number of open connections (used by
+// the gossip load publisher, R11 step 1).
+func (m *MetricsCollector) ActiveConnections() uint32 {
+	n := m.activeConnections.Load()
+	if n < 0 {
+		return 0
+	}
+	return uint32(n)
+}
+
 // IncRebalanceMoved counts blobs relocated by the R11 rebalance path.
 func (m *MetricsCollector) IncRebalanceMoved() { m.rebalanceMoved.Add(1) }
 

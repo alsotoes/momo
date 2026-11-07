@@ -662,3 +662,34 @@ func TestRebalanceCyclePanicSafe(t *testing.T) {
 type panicPusher struct{}
 
 func (panicPusher) Push(context.Context, string, int) error { panic("boom") }
+
+func TestLoadSamplerReportsDiskAndInflight(t *testing.T) {
+	store, err := storage.NewCASStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	m := NewMetricsCollector()
+	m.IncConnections() // one active connection
+
+	sampler := newLoadSampler(store, m)
+	load := sampler()
+	if load.DiskUsedPercent > 100 {
+		t.Fatalf("disk percent out of range: %d", load.DiskUsedPercent)
+	}
+	if load.InflightRequests != 1 {
+		t.Fatalf("inflight = %d, want 1", load.InflightRequests)
+	}
+	if load.UpdatedUnixNano == 0 {
+		t.Fatal("timestamp must be set")
+	}
+}
+
+func TestLoadSamplerWithoutDiskStats(t *testing.T) {
+	m := NewMetricsCollector()
+	sampler := newLoadSampler(nil, m)
+	load := sampler()
+	if load.DiskUsedPercent != 0 {
+		t.Fatalf("no disk stats must report 0, got %d", load.DiskUsedPercent)
+	}
+}

@@ -137,6 +137,10 @@ type Gossiper struct {
 	oprfProvider  *OPRFProvider
 	metadataRPC   *MetadataRPCProvider
 
+	// loadProvider samples local load for MsgLoad broadcasts (R11, #1261).
+	// Nil disables publishing; receivers then keep no load view.
+	loadProvider func() PeerLoad
+
 	rtt          *rttTracker
 	pendingMu    sync.Mutex
 	pendingPings map[uint64]*pendingPing
@@ -166,6 +170,40 @@ func (g *Gossiper) OnLeave(fn func(peerID int32)) {
 	g.cbMu.Lock()
 	g.onLeave = fn
 	g.cbMu.Unlock()
+}
+
+// SetLoadProvider installs the sampler published to peers on every gossip
+// interval (R11 step 1, #1261). Passing nil stops publication.
+func (g *Gossiper) SetLoadProvider(fn func() PeerLoad) {
+	g.cbMu.Lock()
+	g.loadProvider = fn
+	g.cbMu.Unlock()
+}
+
+// PeerLoad returns the last load report received from a peer.
+func (g *Gossiper) PeerLoad(peerID int32) (PeerLoad, bool) {
+	peer := g.transport.Peers().Get(peerID)
+	if peer == nil {
+		return PeerLoad{}, false
+	}
+	return peer.Load()
+}
+
+// broadcastLoad publishes the local load summary to the given peers.
+func (g *Gossiper) broadcastLoad(peers []*Peer) {
+	g.cbMu.RLock()
+	provider := g.loadProvider
+	g.cbMu.RUnlock()
+	if provider == nil {
+		return
+	}
+	load := provider()
+	rpc := &RPC{From: g.cfg.LocalID, Type: MsgLoad, Payload: load.Encode()}
+	for _, peer := range peers {
+		if err := g.transport.Send(peer.ID, rpc); err != nil {
+			log.Printf("Gossip load to peer %d failed: %v (errno=%d)", peer.ID, err, syscall.EHOSTUNREACH)
+		}
+	}
 }
 
 // SetScatterGather attaches a ScatterGather instance whose query RPCs will be
@@ -265,6 +303,7 @@ func (g *Gossiper) sendHeartbeat() {
 		Payload: encoded,
 	}
 
+	g.broadcastLoad(peers)
 	for _, peer := range peers {
 		if err := g.transport.Send(peer.ID, rpc); err != nil {
 			log.Printf("Gossip heartbeat to peer %d failed: %v (errno=%d)", peer.ID, err, syscall.EHOSTUNREACH)
@@ -473,6 +512,18 @@ func (g *Gossiper) handlePing(rpc *RPC) {
 }
 
 // handleAck matches an ack to a pending ping and signals the waiting goroutine.
+// handleLoad records a peer's load report.
+func (g *Gossiper) handleLoad(rpc *RPC) {
+	load, err := DecodeLoadPayload(rpc.Payload)
+	if err != nil {
+		log.Printf("Gossip: bad load report from peer %d: %v (errno=%d)", rpc.From, err, syscall.EBADMSG)
+		return
+	}
+	if peer := g.transport.Peers().Get(rpc.From); peer != nil {
+		peer.SetLoad(*load)
+	}
+}
+
 func (g *Gossiper) handleAck(rpc *RPC) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -662,6 +713,8 @@ func (g *Gossiper) HandleRPC(rpc *RPC) {
 		g.handleAck(rpc)
 	case MsgIndirectPing:
 		g.handleIndirectPing(rpc)
+	case MsgLoad:
+		g.handleLoad(rpc)
 	case MsgQuery, MsgQueryResponse:
 		g.cbMu.RLock()
 		sg := g.scatterGather

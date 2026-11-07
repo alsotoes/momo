@@ -26,6 +26,9 @@ func startRebalanceLoop(ctx context.Context, cs *storage.CASStore, pusher rebala
 	if !rc.Enabled {
 		return
 	}
+	if rc.MaxBandwidthMbps <= 0 {
+		log.Printf("AUDIT: rebalance is enabled with unlimited bandwidth (max_bandwidth_mbps=0); set a cap so shedding cannot starve foreground traffic")
+	}
 	runner := &rebalanceRunner{store: cs, pusher: pusher, cmap: cmap, self: self, rf: rf, cfg: rc}
 	go runner.run(ctx, time.Duration(rc.Interval)*time.Second)
 	log.Printf("R11: stigmergic rebalance enabled (interval=%ds, high=%.0f%%, low=%.0f%%)", rc.Interval, rc.DiskHighWater, rc.DiskLowWater)

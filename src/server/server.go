@@ -237,7 +237,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 	var leaseManager *p2p.LeaseManager
 	var oprfProvider *p2p.OPRFProvider
 	if cfg.P2P.Enabled {
-		scatterGather, leaseManager, oprfProvider = bootstrapP2P(ctx, cfg, serverId, daemons, store, rebuildSrc)
+		scatterGather, leaseManager, oprfProvider = bootstrapP2P(ctx, cfg, serverId, daemons, store, rebuildSrc, newLoadSampler(store, metricsCollector))
 	}
 	// R5 phase 3: install scrape-time P2P cluster gauge source (nil-safe when
 	// P2P is disabled — exporter degrades to zero gauges per spec GIVEN p2p).
@@ -1009,7 +1009,30 @@ func newJoinMigrator(ctx context.Context, cfg common.Configuration, serverId int
 	return &rebalanceRunner{store: cs, pusher: rebuildSrc, cmap: rebuildSrc.cmap, self: serverId, rf: cfg.Global.ReplicationFactor, cfg: cfg.Rebalance}
 }
 
-func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, daemons []*common.Daemon, store storage.Store, rebuildSrc *DaemonRebuildSource) (*p2p.ScatterGather, *p2p.LeaseManager, *p2p.OPRFProvider) {
+// newLoadSampler builds the gossip load publisher: disk utilisation from the
+// storage backend and in-flight requests from the metrics collector. The
+// replication queue is not tracked per node yet, so it reports zero.
+func newLoadSampler(store storage.Store, metrics *MetricsCollector) func() p2p.PeerLoad {
+	return func() p2p.PeerLoad {
+		var pct uint8
+		if du, ok := store.(interface {
+			GetDiskUsage() (uint64, uint64, error)
+		}); ok {
+			if used, free, err := du.GetDiskUsage(); err == nil {
+				if total := used + free; total > 0 {
+					pct = uint8(used * 100 / total)
+				}
+			}
+		}
+		return p2p.PeerLoad{
+			DiskUsedPercent:  pct,
+			InflightRequests: metrics.ActiveConnections(),
+			UpdatedUnixNano:  time.Now().UnixNano(),
+		}
+	}
+}
+
+func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, daemons []*common.Daemon, store storage.Store, rebuildSrc *DaemonRebuildSource, loadSampler func() p2p.PeerLoad) (*p2p.ScatterGather, *p2p.LeaseManager, *p2p.OPRFProvider) {
 	gossipAddr := daemons[serverId].Host
 	host, _, err := net.SplitHostPort(gossipAddr)
 	if err != nil {
@@ -1080,6 +1103,8 @@ func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, d
 	// replica set so version listing/get/lock agree on every node.
 	wireVersionReplication(ctx, cfg, daemons, int32(serverId), store, transport, gossip)
 
+	// R11 step 1 (#1261): publish this node's load on every gossip interval.
+	gossip.SetLoadProvider(loadSampler)
 	gossip.SetScatterGather(scatterGather)
 	gossip.SetLeaseManager(leaseManager)
 	if oprfProvider != nil {
