@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -478,5 +480,52 @@ func TestMigrateToPeerContextCancelled(t *testing.T) {
 	moved, err := r.migrateToPeer(ctx, 1)
 	if err != nil || moved != 0 {
 		t.Fatalf("cancelled context must stop the pass, moved=%d err=%v", moved, err)
+	}
+}
+
+func TestDiskUsedPercentMissingDir(t *testing.T) {
+	dir := t.TempDir()
+	store, err := storage.NewCASStore(dir)
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	_ = store.Close()
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	if _, err := diskUsedPercent(store); err == nil {
+		t.Fatal("statfs on a missing dir must fail")
+	}
+}
+
+func TestPlacementOwnershipError(t *testing.T) {
+	if _, _, err := placementOwnership(&common.ClusterMap{}, "hash", 2, 0, 1); err == nil {
+		t.Fatal("empty cluster map must error")
+	}
+}
+
+func TestMigrateBlobDropFailureKeepsBytes(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("permission-based failure is bypassed by root")
+	}
+	dir := t.TempDir()
+	store, err := storage.NewCASStore(dir)
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	cmap := testCmap3(t)
+	hash, payload := findPlacementHash(t, cmap, 2, 0, 1, false)
+	putBlob(t, store, "keep", hash, payload)
+
+	leaf := filepath.Join(dir, "blobs", hash[0:2], hash[2:4], hash[4:6])
+	t.Cleanup(func() { _ = os.Chmod(leaf, 0o755) })
+	if err := os.Chmod(leaf, 0o555); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+
+	r := joinRunner(t, store, &recordingPusher{}, cmap, 0, 2, 8)
+	if moved, err := r.migrateToPeer(context.Background(), 1); err != nil || moved != 0 {
+		t.Fatalf("drop failure must not count as a move, moved=%d err=%v", moved, err)
 	}
 }
