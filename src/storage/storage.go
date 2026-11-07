@@ -393,10 +393,21 @@ func (s *CASStore) PutWithMetadata(name string, hash string, size int64, remoteP
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// 1. Check if we already have the blob
+	// 1. Check if we already have the blob. Metadata says "exists" for a blob
+	// whose bytes were shed; trusting it would ack a write without storing
+	// anything, so ask the backend when it can tell us.
 	exists, err := s.hasInternal(hash)
 	if err != nil {
 		return fmt.Errorf("failed to check blob existence: %w", err)
+	}
+	if exists {
+		if p, ok := s.blobs.(blobPresence); ok {
+			physical, perr := p.BlobExists(hash)
+			if perr != nil {
+				return fmt.Errorf("failed to check blob presence: %w", perr)
+			}
+			exists = physical
+		}
 	}
 	if !exists && content != nil {
 		if err := s.blobs.PutBlob(hash, content); err != nil {

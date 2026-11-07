@@ -82,3 +82,35 @@ func TestBlobSize(t *testing.T) {
 		t.Fatalf("want EINVAL, got %v", err)
 	}
 }
+
+func TestPutRestoresShedBlobBytes(t *testing.T) {
+	s := newTestStore(t)
+	payload := []byte(strings.Repeat("r", 24))
+	hash := common.HashBytes(payload)
+	if err := s.Put("keep", hash, int64(len(payload)), "", strings.NewReader(string(payload))); err != nil {
+		t.Fatalf("put: %v", err)
+	}
+	// Shedding removes bytes but keeps metadata (rebalance design).
+	if err := s.DropBlob(hash); err != nil {
+		t.Fatalf("drop: %v", err)
+	}
+	if _, err := s.GetBlobByHash(hash); err == nil {
+		t.Fatal("bytes should be gone after a shed")
+	}
+	// A push re-storing the same hash must write the bytes again, not just ack.
+	if err := s.Put("keep", hash, int64(len(payload)), "", strings.NewReader(string(payload))); err != nil {
+		t.Fatalf("re-put: %v", err)
+	}
+	rc, err := s.GetBlobByHash(hash)
+	if err != nil {
+		t.Fatalf("blob bytes were not restored: %v", err)
+	}
+	data, _ := io.ReadAll(rc)
+	_ = rc.Close()
+	if string(data) != string(payload) {
+		t.Fatalf("restored bytes mismatch: %q", data)
+	}
+	if blobs, _ := s.ListBlobs(); len(blobs) != 1 {
+		t.Fatalf("expected one blob, got %d", len(blobs))
+	}
+}

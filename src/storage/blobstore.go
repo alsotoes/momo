@@ -8,6 +8,14 @@ import "io"
 // Metadata (refcounts, tombstones, namespace mappings) is handled by
 // the CASStore wrapper via bbolt, so BlobStore implementations only
 // manage raw blob bytes.
+// blobPresence is the optional seam for backends that can distinguish "the
+// metadata says the blob exists" from "the bytes are physically here". After a
+// rebalance shed removes bytes but keeps metadata, an optimistic Put would
+// acknowledge without storing anything — and the sender then drops its copy.
+type blobPresence interface {
+	BlobExists(hash string) (bool, error)
+}
+
 type BlobStore interface {
 	io.Closer
 	// PutBlob stores a blob identified by its content hash.

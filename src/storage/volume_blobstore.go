@@ -369,6 +369,21 @@ func (vbs *VolumeBlobStore) PutBlob(hash string, content io.Reader) (err error) 
 	return nil
 }
 
+// BlobExists reports whether a needle for the hash is present.
+func (vbs *VolumeBlobStore) BlobExists(hash string) (exists bool, err error) {
+	defer common.RecoverErr("VolumeBlobStore.BlobExists", &err)
+	if _, derr := decodeContentHash(hash); derr != nil {
+		return false, derr
+	}
+	if _, err := vbs.getNeedleMetadata(hash); err != nil {
+		if errors.Is(err, syscall.ENOENT) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
 func (vbs *VolumeBlobStore) GetBlob(hash string) (rc io.ReadCloser, err error) {
 	defer common.RecoverErr("VolumeBlobStore.GetBlob", &err)
 

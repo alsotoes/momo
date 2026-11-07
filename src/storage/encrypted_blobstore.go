@@ -111,6 +111,15 @@ func (e *EncryptedBlobStore) PutBlob(hash string, content io.Reader) (err error)
 // GetBlob retrieves the ciphertext from the underlying BlobStore and
 // returns a streaming reader that decrypts on read. The caller must
 // close the returned ReadCloser.
+// BlobExists forwards the physical-presence probe to the inner backend when it
+// supports one (R11 shed safety).
+func (e *EncryptedBlobStore) BlobExists(hash string) (bool, error) {
+	if p, ok := e.inner.(blobPresence); ok {
+		return p.BlobExists(hash)
+	}
+	return true, nil
+}
+
 func (e *EncryptedBlobStore) GetBlob(hash string) (result io.ReadCloser, err error) {
 	// 🛡️ Zero-Crash: If a panic occurs after opening the inner reader,
 	// close it to prevent zombie file descriptors (Rule 43).

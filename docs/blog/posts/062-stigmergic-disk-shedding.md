@@ -173,6 +173,30 @@ operation, and there is no benefit to running two against the same disk.
 The throughput cost of serialization is real only if passes were cheap, and they
 are not. Correctness first, and in this case it is also simpler.
 
+## The Bug That Only a Chaos Test Could Find
+
+A randomized test across five nodes, with 30% of pushes failing and hundreds of
+shed and join passes, reported the one outcome that must never happen: an object
+with zero copies.
+
+The path was subtle. Shedding intentionally keeps metadata and removes only
+bytes — that is what lets a read fall back to a survivor. But the write path
+asked the *metadata* whether the blob already existed, and on a node that had
+shed it, the answer was yes. So when a peer was asked to receive that blob, it
+acknowledged the write and stored nothing. The sender, trusting the
+acknowledgement, dropped its copy. Every actor behaved correctly; the ensemble
+lost the object.
+
+The fix is a second question: after metadata says "exists", ask the storage
+backend whether the bytes are physically there, and write them if they are not.
+That capability is an optional seam, so backends that cannot answer keep the old
+behavior instead of pretending.
+
+This is why the chaotic test earns its keep. The unit tests all passed — each
+component did exactly what it was written to do. Only randomized interleaving of
+shedding, migration, and failure exposed the composition error, and it did so in
+a second, deterministically, on a laptop.
+
 ## What It Refuses to Do
 
 - **Single-node clusters never shed.** With no peer in the placement set there

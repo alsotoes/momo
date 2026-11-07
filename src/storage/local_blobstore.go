@@ -259,6 +259,22 @@ func (b *LocalBlobStore) blobPath(hash string) string {
 	return filepath.Join(b.base, "blobs", hash[0:2], hash[2:4], hash[4:6], hash)
 }
 
+// BlobExists reports whether the blob's bytes are physically present.
+func (b *LocalBlobStore) BlobExists(hash string) (exists bool, err error) {
+	defer common.RecoverErr("LocalBlobStore.BlobExists", &err)
+	if common.HasPathTraversalChars(hash) {
+		return false, fmt.Errorf("storage error: invalid hash contains path traversal characters: %w", syscall.EINVAL)
+	}
+	_, err = os.Stat(b.blobPath(hash))
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, fmt.Errorf("storage error: failed to stat blob: %w", syscall.EIO)
+}
+
 // BlobSize reports a blob's size from its directory entry.
 func (b *LocalBlobStore) BlobSize(hash string) (size int64, err error) {
 	defer common.RecoverErr("LocalBlobStore.BlobSize", &err)
