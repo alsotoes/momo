@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"syscall"
 	"testing"
 
 	"github.com/alsotoes/momo/src/common"
@@ -17,7 +18,7 @@ import (
 type failingPusher struct{}
 
 func (failingPusher) Push(context.Context, string, int) error {
-	return fmt.Errorf("unreachable")
+	return fmt.Errorf("unreachable: %w", syscall.EHOSTUNREACH)
 }
 
 // benchRebalanceStore builds a store with n blobs, all on one node.

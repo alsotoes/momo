@@ -649,3 +649,16 @@ func TestPassesAreSerialized(t *testing.T) {
 func (r *rebalanceRunner) rebalanceCycleForTest(ctx context.Context) (int, error) {
 	return rebalanceCycle(ctx, r.store, r.pusher, r.cmap, r.self, r.rf, r.cfg)
 }
+
+func TestRebalanceCyclePanicSafe(t *testing.T) {
+	// A panicking pusher must not take the loop down; the pass returns an error.
+	store, _ := rebalanceTestStore(t, 1)
+	_, err := rebalanceCycle(context.Background(), store, panicPusher{}, testCmap(t), 0, 2, alwaysShedConfig(1))
+	if err == nil {
+		t.Fatal("a panic must surface as an error, not a crash")
+	}
+}
+
+type panicPusher struct{}
+
+func (panicPusher) Push(context.Context, string, int) error { panic("boom") }
