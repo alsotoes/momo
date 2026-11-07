@@ -10,6 +10,7 @@ import (
 	"log"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/alsotoes/momo/src/common"
 	"github.com/alsotoes/momo/src/storage"
@@ -199,7 +200,9 @@ func (d *DaemonRebuildSource) dialPeer(peerID int) (transport.Communicator, erro
 
 	// Perform peer handshake (auth token + zero timestamp + peer mode)
 	peerToken := d.peerTokens[peerID]
-	if _, err := comm.HandshakeClient(peerToken, 0, common.ReplicationNone); err != nil {
+	// The plaintext handshake carries an anti-replay timestamp (issue #657);
+	// a zero value is stale and the peer rejects it.
+	if _, err := comm.HandshakeClient(peerToken, time.Now().UnixNano(), common.ReplicationNone); err != nil {
 		comm.Close()
 		return nil, fmt.Errorf("peer handshake with %d: %w", peerID, err)
 	}

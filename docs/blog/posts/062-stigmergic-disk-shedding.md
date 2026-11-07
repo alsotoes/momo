@@ -173,6 +173,27 @@ In this system membership is declared in configuration, so "join" means a
 configured peer becoming reachable. The rule is the same either way: the trigger
 changes, the safety condition does not.
 
+## Test What You Cannot See
+
+A rebalance push is four steps the unit tests can each fake: dial the peer,
+shake hands, negotiate metadata, stream the bytes, wait for the acknowledgement.
+Fake all four and the code looks perfect while the real path is broken. Ours was.
+
+The peer handshake carries a timestamp that the receiver checks for freshness —
+a cheap defence against replaying a captured handshake. The rebalance code sent
+zero. Every mocked test passed, because a mock does not check timestamps. Over a
+real socket the peer rejected the connection and the sender saw an EOF.
+
+The fix is one line — send the current time — but finding it needed a test that
+goes through an actual TCP listener with the actual handshake. That test now
+covers the whole sequence end to end, and it fails if the timestamp is stale, so
+the regression cannot come back silently.
+
+The lesson generalizes: protocols have rules that only the real implementation
+enforces. When a code path exists only in production — a peer-to-peer push, a
+replication fetch — a unit test with a fake transport proves the plumbing, not
+the contract.
+
 ## What Is Still Missing
 
 This is load balancing by disk pressure, not a full rebalance. When a node
