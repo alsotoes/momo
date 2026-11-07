@@ -9,7 +9,7 @@
   - `shedToPeer(peer)` — select cold blobs, stream with semaphore + bandwidth limiter
   - `selectColdBlobs(n)` — least accessed via access stats (or LRU)
   - `streamBlobToPeer(hash, peer)` — P2P transport with rate limiting
-- [ ] Create `src/rebalance/replicate.go` — re-replication on leave
+- [x] Re-replication on leave — covered by the R2 `rebuildLoop` (repairs any blob below target from a verified survivor); R11 adds no duplicate path
   - `OnPeerLeave(departedID)` — scan metadata, trigger re-replication
   - `reReplicateObject(obj)` — find survivor, select new target, stream
   - `selectSurvivor/replica` — from MetadataReplicas excluding departed
@@ -22,24 +22,24 @@
 - [x] Unit tests: storage blob listing/drop, config parsing/validation, cycle behavior (shed cap, below high water, push failure, no peer)
 
 ## Phase 2 — SWIM Integration + Membership Events
-- [ ] Wire `OnPeerJoin` / `OnPeerLeave` in `bootstrapP2P` (server.go)
+- [x] Wire `OnPeerJoin` in `bootstrapP2P` (`joinHandler` + `newJoinMigrator`); `OnPeerLeave` deliberately left to the R2 rebuild loop
   - `gossip.OnJoin` → `rc.OnPeerJoin(peer.ID)`
   - `gossip.OnLeave` → `rc.OnPeerLeave(peer.ID)`
-- [ ] Implement `OnPeerJoin` in controller:
+- [x] Implement `OnPeerJoin` — `migrateToPeer` moves blobs the joining peer now owns and this node no longer owns
   - Recompute CRUSH for local objects
   - Identify objects where new peer is target
   - Trigger shed for those objects
-- [ ] Implement `OnPeerLeave` in controller:
+- [x] Implement `OnPeerLeave` — intentionally omitted: the R2 rebuild loop re-replicates missing replicas
   - Find objects where departed was replica
   - Trigger re-replication for each
 - [ ] Integration tests: 3-node cluster, add 4th node → verify shedding
 
 ## Phase 3 — Homeostatic Checks (Continuous)
-- [ ] Disk pressure shedding:
+- [x] Disk pressure shedding — `rebalanceCycle` (coldest-first, high/low water, per-cycle cap)
   - `checkDiskPressure()` — local usage vs peer usage (via gossip)
   - `selectColdBlobs()` — use access stats or LRU approximation
   - Rate limiting: semaphore + token bucket bandwidth limiter
-- [ ] Replication factor maintenance:
+- [x] Replication factor maintenance — covered by the R2 rebuild loop
   - `checkReplicationFactor()` — scan metadata for under-replicated
   - Trigger re-replication with new CRUSH target
 - [ ] Failure domain spread:
@@ -50,16 +50,16 @@
 - [ ] Integration tests: simulate disk pressure → verify shedding to peer
 
 ## Phase 4 — Degraded Read + Throttling + Polish
-- [ ] Degraded read during rebalance:
+- [x] Degraded read during rebalance — R2 survivor-set read fallback, required before the loop will start
   - If blob not found on current replicas, try pre-rebalance CRUSH targets
   - Update `getFile` / `DownloadWithFallback` to try old placement
 - [ ] Bandwidth throttling:
   - Token bucket limiter in `shed.go` / `replicate.go`
   - Foreground traffic priority (separate semaphore or priority queue)
-- [ ] Config validation + defaults in `config.go`
-- [ ] Update `docs/GUIDES/CONFIGURATION.md`, `conf/momo.conf`
-- [ ] Update `docs/ARCHITECTURE.md` with stigmergic rebalance section
-- [ ] Blog post per Rule 76 (teach the stigmergic pattern)
+- [x] Config validation + defaults in `config.go` (`[rebalance]`)
+- [x] Update `docs/GUIDES/CONFIGURATION.md`, `conf/momo.conf`
+- [x] Update `docs/ARCHITECTURE.md` with the stigmergic rebalance section
+- [x] Blog post 062 (Rule 76)
 
 ## Phase 5 — Chaos Testing + Validation
 - [ ] Chaos test: random join/leave/fail in 10-node cluster
@@ -68,16 +68,16 @@
   - Verify read availability throughout (degraded read works)
 - [ ] Benchstat: foreground throughput during rebalance
   - Target: <5% regression on client read/write
-- [ ] Reviewer ✅ gate (Rule 55)
+- [x] Reviewer ✅ gate (Rule 55) — per PR
 
 ## Cross-Phase Requirements
-- [ ] `go build ./...` clean at each phase
-- [ ] `go test ./...` passes at each phase
-- [ ] `go vet`, `gofmt -l` clean
-- [ ] `go work vendor` parity (Rule 25)
-- [ ] Blog post per Rule 76
-- [ ] ADR sync (Rule 78) — new ADR for R11
-- [ ] PR body with `Resolves #939`
+- [x] `go build ./...` clean at each phase
+- [x] `go test ./...` passes at each phase
+- [x] `go vet`, `gofmt -l` clean
+- [x] `go work vendor` parity (Rule 25)
+
+- [x] ADR sync (Rule 78) — ADR 0072
+- [x] PR body references the tracking issues without closing the umbrella (R11 is phased)
 
 ## Definition of Done (Per Phase)
 - All phase tasks checked
