@@ -247,6 +247,11 @@ rule and the cluster converges as a side effect (stigmergy, not scheduling).
 - **Preconditions**: validated at config load (P2P enabled, `degraded_read`,
   `replication_factor >= 2`, at least two daemons) so a misconfigured loop fails
   at startup instead of never running.
+- **Lease failover**: SWIM degradation events (SUSPECT/OFFLINE) notify the lease
+  manager, which immediately releases any held lease whose quorum is no longer
+  satisfiable and broadcasts the release. Coordination therefore stops in
+  seconds rather than waiting for the lease TTL, and a healthy node can take the
+  role over without a coordinator.
 - **Peer load gossip**: every node publishes a fixed 20-byte summary (disk
   percent, in-flight requests, reserved queue depth, timestamp) to the peers that
   receive its heartbeat, and stores the latest report per peer. The channel is

@@ -26,14 +26,14 @@ Without this, the distributed coordination has a gap: if the lease holder dies, 
 None documented.
 
 ## Implementation Status
-- **Code**: Planned
-- **Tests**: Planned
+- **Code**: Partial
+- **Tests**: Partial
 - **Docs**: Planned
-- **Blog post**: 
+- **Blog post**: docs/blog/posts/064-failing-over-coordination-in-seconds.md
 
 ## References
 - Issue: #1147
 - PR: 
 - Spec: `openspec/changes/coordinator-failover-v1/`
-- Blog: 
+- Blog: docs/blog/posts/064-failing-over-coordination-in-seconds.md
 
