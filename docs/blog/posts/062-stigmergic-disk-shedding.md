@@ -279,13 +279,21 @@ replication fetch — a unit test with a fake transport proves the plumbing, not
 the contract.
 
 ## What Is Still Missing
+Two pieces of the original design are deliberately absent, and both are
+missing inputs rather than missing code.
 
-This is load balancing by disk pressure, not a full rebalance. When a node
-joins, the existing data does not automatically flow toward it — only nodes that
-are actually full shed. Replication repair after a node leaves is handled by the
-self-heal loop, and failure-domain spread by placement, so this rule does not
-duplicate either. Load-aware request redirection would need per-peer request
-counters that do not exist yet, and is deliberately left out rather than faked.
+**Failure-domain migration** needs to know where a blob's replicas physically
+are. Placement computes an intended set, but repairs, sheds and migrations drift
+from it, and nothing records the truth. Without that record a pass cannot tell
+"two replicas share a rack" from "two replicas are spread" — so the item waits on
+replica-location tracking. New writes are already spread by the placement rule,
+and repairs already prefer a survivor in another domain.
+
+**Request-rate redirection** needs per-peer load. Membership tells a node who is
+alive, not who is busy, so there is nothing to compare at admission time. It also
+needs a redirect contract per protocol, which the S3 gateway does not have today.
+Shedding is the honest alternative in the meantime: move cold bytes off a full
+node instead of pointing hot requests at a different one.
 
 ## References / Dig deeper
 

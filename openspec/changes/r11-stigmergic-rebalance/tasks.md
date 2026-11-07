@@ -13,7 +13,7 @@
   - `OnPeerLeave(departedID)` — scan metadata, trigger re-replication
   - `reReplicateObject(obj)` — find survivor, select new target, stream
   - `selectSurvivor/replica` — from MetadataReplicas excluding departed
-- [ ] Failure-domain migration — blocked by design: momo has no per-blob replica-location record to audit, so a concentrated replica set cannot be detected. R1 placement spreads new writes and R2 `Restore` prefers a different domain on repair; a real migration needs replica tracking first (see #1233 for the version-record analogue)
+- [ ] Failure-domain migration — blocked: needs per-blob replica location records. Tracked in #1260. R1 spreads new writes and R2 `Restore` prefers another domain on repair meanwhile.
   - `checkFailureDomainSpread()` — detect >1 replica in same domain
   - `migrateToDifferentDomain(obj)` — CRUSH target selection
 - [x] Config parsing: `[rebalance]` section (`enabled`, `interval`, `disk_high_water`, `disk_low_water`, `max_shed_per_cycle`) with validation and defaults
@@ -42,10 +42,10 @@
 - [x] Replication factor maintenance — covered by the R2 rebuild loop
   - `checkReplicationFactor()` — scan metadata for under-replicated
   - Trigger re-replication with new CRUSH target
-- [ ] Failure domain spread — see the note above (needs replica tracking; new writes already spread by R1)
+- [ ] Failure domain spread — see the note above (needs replica tracking; new writes already spread by R1). Tracked in #1260.
   - `checkFailureDomainSpread()` — analyze MetadataReplicas domains
   - Migrate one replica if concentrated
-- [ ] Request rate redirection:
+- [ ] Request rate redirection — blocked: needs a gossip load signal and a redirect contract. Tracked in #1261.
 - [x] Rebalance observability — `momo_rebalance_{blobs_moved,bytes_moved,cycles,failures}_total` counters recorded on the push choke point
   - Extend existing proxy path: if peer has blob + lower load, redirect
 - [x] Integration test: real TCP push through dial, handshake, metadata, streamed payload, ACK (`TestRebalancePushEndToEnd`); caught a stale handshake timestamp on the peer dial path
