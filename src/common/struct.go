@@ -453,6 +453,24 @@ type Configuration struct {
 	Secrets SecretsConfig
 	// S3 is the optional [s3] gateway tuning configuration (R10, #938).
 	S3 ConfigurationS3
+	// Rebalance is the optional [rebalance] configuration (R11, #1143).
+	Rebalance ConfigurationRebalance
+}
+
+// ConfigurationRebalance controls the stigmergic, coordinator-free blob
+// shedding loop (R11, #1143). It only ever relocates bytes that a peer has
+// acknowledged; it never deletes the last copy.
+type ConfigurationRebalance struct {
+	// Enabled starts the shedding loop. Default false.
+	Enabled bool
+	// Interval is how often the loop evaluates disk pressure, in seconds.
+	Interval int
+	// DiskHighWater is the used-disk percentage that starts shedding.
+	DiskHighWater float64
+	// DiskLowWater is the used-disk percentage at which shedding stops.
+	DiskLowWater float64
+	// MaxShedPerCycle bounds how many blobs move in one evaluation.
+	MaxShedPerCycle int
 }
 
 // Permission represents a S3/bucket operation permission.

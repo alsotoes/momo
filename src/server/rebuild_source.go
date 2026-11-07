@@ -26,6 +26,36 @@ type DaemonRebuildSource struct {
 	cfg               common.Configuration
 	transportCache    sync.Map // maps peerID -> transport.Communicator
 	peerTokens        map[int]string
+	// store reads local blob bytes for rebalance pushes (R11). Nil until the
+	// daemon sets it after opening storage.
+	store *storage.CASStore
+}
+
+// SetStore attaches the local CAS store used to read blob bytes for
+// rebalance pushes (R11, #1143).
+func (d *DaemonRebuildSource) SetStore(store *storage.CASStore) {
+	d.store = store
+}
+
+// Push sends the local copy of blob hash to one peer and waits for its ack.
+// It is the rebalance loop's transport; the caller drops the local bytes only
+// after a nil return.
+func (d *DaemonRebuildSource) Push(hash string, targetID int) (err error) {
+	defer common.RecoverErr("DaemonRebuildSource.Push", &err)
+	if d.store == nil {
+		return fmt.Errorf("rebalance push without a store: %w", syscall.EINVAL)
+	}
+	rc, err := d.store.GetBlobByHash(hash)
+	if err != nil {
+		return fmt.Errorf("read local blob %s: %w", hash, err)
+	}
+	defer func() { _ = rc.Close() }()
+	data, err := io.ReadAll(rc)
+	if err != nil {
+		return fmt.Errorf("read local blob %s: %w", hash, err)
+	}
+	meta := &common.FileMetadata{Name: hash, Hash: hash, Size: int64(len(data))}
+	return d.pushToPeer(targetID, hash, data, meta)
 }
 
 // NewDaemonRebuildSource creates a RebuildSource backed by the daemon's

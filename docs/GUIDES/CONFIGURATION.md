@@ -401,6 +401,21 @@ This section controls the Content-Addressable Storage (CAS) engine, including ba
     -   **Type:** Integer
     -   **Default:** `4`
 
+### `[rebalance]` — Stigmergic Load Balancing (R11, issue #1143)
+
+Coordinator-free: every node evaluates its own disk pressure and acts locally.
+A node above `disk_high_water` moves its coldest blobs (oldest write, as an
+access-time proxy) to peers that already hold a replica of that blob, and drops
+its local copy only after that peer acknowledges the bytes. Requires
+`storage.degraded_read=true` — shedding leaves metadata in place, so reads fall
+back to a verified survivor. Single-node deployments never shed.
+
+-   **`enabled`** — Type: Boolean. Default: `false`.
+-   **`interval`** — Evaluation period in seconds. Default: `60`.
+-   **`disk_high_water`** — Used-disk percentage that starts shedding. Default: `85`.
+-   **`disk_low_water`** — Used-disk percentage at which shedding stops. Must be below `disk_high_water`. Default: `70`.
+-   **`max_shed_per_cycle`** — Upper bound on blobs moved per evaluation. Default: `64`.
+
 -   **`durability`**
     -   **Description:** The R3 write-durability barrier selected before a write is acknowledged (issue #931). `fsync` (default) fsyncs each blob's bytes before ack — the historical fully-durable behavior. `group-commit` covers a batch of renames with one winner-driven directory-fsync barrier and skips the per-blob data fsync (amortized cost; content addressing plus the R2 verified-read/self-heal loop covers any torn block between the barrier and OS writeback). `none` acknowledges buffered writes without any fsync — best-effort and explicitly **non-durable** (a crash may lose acknowledged writes). Applies to the local (and encrypted-local) backend; backends without fsync primitives rely on their own persistence guarantee.
     -   **Type:** String (`fsync` | `group-commit` | `none`)

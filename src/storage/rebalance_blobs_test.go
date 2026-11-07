@@ -1,0 +1,62 @@
+package storage
+
+import (
+	"errors"
+	"io"
+	"strings"
+	"syscall"
+	"testing"
+
+	"github.com/alsotoes/momo/src/common"
+)
+
+func TestListBlobsAndDrop(t *testing.T) {
+	s := newTestStore(t)
+	payload := strings.Repeat("x", 32)
+	hash := common.HashBytes([]byte(payload))
+	if err := s.Put("a", hash, int64(len(payload)), "", strings.NewReader(payload)); err != nil {
+		t.Fatalf("put: %v", err)
+	}
+	blobs, err := s.ListBlobs()
+	if err != nil {
+		t.Fatalf("ListBlobs: %v", err)
+	}
+	if len(blobs) != 1 || blobs[0].Size != 32 || blobs[0].ModTime == 0 {
+		t.Fatalf("unexpected blobs: %+v", blobs)
+	}
+	if blobs[0].Hash != hash {
+		t.Fatalf("unexpected hash %s", blobs[0].Hash)
+	}
+
+	rc, err := s.GetBlobByHash(hash)
+	if err != nil {
+		t.Fatalf("GetBlobByHash: %v", err)
+	}
+	data, _ := io.ReadAll(rc)
+	_ = rc.Close()
+	if string(data) != payload {
+		t.Fatalf("blob bytes mismatch")
+	}
+
+	if err := s.DropBlob(hash); err != nil {
+		t.Fatalf("DropBlob: %v", err)
+	}
+	blobs, err = s.ListBlobs()
+	if err != nil {
+		t.Fatalf("ListBlobs after drop: %v", err)
+	}
+	if len(blobs) != 0 {
+		t.Fatalf("blob not dropped: %+v", blobs)
+	}
+	// Metadata survives: the namespace still points at the hash.
+	if _, err := s.GetMeta("a"); err != nil {
+		t.Fatalf("metadata must survive a shed: %v", err)
+	}
+}
+
+func TestGetBlobByHashRejectsTraversal(t *testing.T) {
+	s := newTestStore(t)
+	if _, err := s.GetBlobByHash("../etc/passwd"); !errors.Is(err, syscall.EINVAL) {
+		t.Fatalf("want EINVAL, got %v", err)
+	}
+}

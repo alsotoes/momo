@@ -28,8 +28,8 @@ When a node joins or leaves the cluster, the CRUSH placement changes — some ob
 None documented.
 
 ## Implementation Status
-- **Code**: Planned
-- **Tests**: Planned
+- **Code**: Partial
+- **Tests**: Partial
 - **Docs**: Planned
 - **Blog post**: 
 

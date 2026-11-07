@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -256,4 +257,31 @@ func (b *LocalBlobStore) blobPath(hash string) string {
 		return filepath.Join(b.base, "blobs", hash)
 	}
 	return filepath.Join(b.base, "blobs", hash[0:2], hash[2:4], hash[4:6], hash)
+}
+
+// WalkBlobs enumerates locally stored blobs. File names are content hashes;
+// size and mtime feed the rebalance loop's coldness heuristic (R11).
+func (b *LocalBlobStore) WalkBlobs(fn func(hash string, size, modTime int64) error) (err error) {
+	defer common.RecoverErr("LocalBlobStore.WalkBlobs", &err)
+	root := filepath.Join(b.base, "blobs")
+	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, werr error) error {
+		if werr != nil {
+			if os.IsNotExist(werr) {
+				return nil
+			}
+			return werr
+		}
+		if d.IsDir() {
+			return nil
+		}
+		info, ierr := d.Info()
+		if ierr != nil {
+			return ierr
+		}
+		return fn(d.Name(), info.Size(), info.ModTime().UnixNano())
+	})
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
 }
