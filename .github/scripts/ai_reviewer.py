@@ -4,6 +4,7 @@ import json
 import http.client
 import sys
 import re
+import time
 
 # ECC Tools PR-audit comment marker (issue #1134):
 #   <!-- ecc-tools:pr-audit:ECC Tools / <dimension>:<sha> -->
@@ -419,6 +420,54 @@ def create_missing_issue(pr_number, pr_title, pr_body):
         print(f"Failed to create autonomous issue: {e}", file=sys.stderr)
         return False
 
+SONAR_CHECK_PREFIX = "Sonar"
+SONAR_WAIT_TIMEOUT = 600  # seconds
+SONAR_WAIT_INTERVAL = 20
+
+
+def classify_sonar_checks(rollup):
+    """Split Sonar checks into (pending, failed, settled_ok).
+
+    A check is pending until its status is COMPLETED and it carries a
+    conclusion. SonarCloud is not a required check, so GitHub's auto-merge
+    fires before it reports unless we wait for a settled conclusion.
+    """
+    pending, failed, settled = [], [], 0
+    for check in rollup or []:
+        name = check.get("name") or check.get("context") or ""
+        if SONAR_CHECK_PREFIX.lower() not in name.lower():
+            continue
+        conclusion = (check.get("conclusion") or "").upper()
+        status = (check.get("status") or "").upper()
+        if conclusion in ("FAILURE", "TIMED_OUT", "CANCELLED"):
+            failed.append(name)
+        elif conclusion in ("SUCCESS", "NEUTRAL", "SKIPPED"):
+            settled += 1
+        elif status == "COMPLETED" and conclusion:
+            settled += 1
+        else:
+            pending.append(name)
+    return pending, failed, settled
+
+
+def wait_for_sonar_checks(pr_number, timeout=SONAR_WAIT_TIMEOUT, interval=SONAR_WAIT_INTERVAL):
+    """Poll until every Sonar check has settled. Returns (ok, reason)."""
+    deadline = time.time() + timeout
+    while True:
+        cmd = ["gh", "pr", "view", pr_number, "--json", "statusCheckRollup"]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        rollup = json.loads(result.stdout).get("statusCheckRollup", [])
+        pending, failed, settled = classify_sonar_checks(rollup)
+        if failed:
+            return False, f"Sonar checks failed: {', '.join(failed)}"
+        if not pending:
+            return True, f"{settled} Sonar check(s) settled"
+        if time.time() >= deadline:
+            return False, f"Sonar checks still running after {timeout}s: {', '.join(pending)}"
+        print(f"Waiting for Sonar before merging: {', '.join(pending)}")
+        time.sleep(interval)
+
+
 def check_ci_and_merge(pr_number):
     try:
         # Use gh to get the status rollup of all checks
@@ -433,6 +482,15 @@ def check_ci_and_merge(pr_number):
         if failures:
             print(f"Merge aborted: {len(failures)} checks failed.")
             return
+
+        # 🛡️ Sonar is advisory to GitHub but blocking for master's quality
+        # gate. Enabling auto-merge while it still runs lands a red merge
+        # (issues #1156, #1234, #1238), so wait for it to settle first.
+        ok, reason = wait_for_sonar_checks(pr_number)
+        if not ok:
+            print(f"Merge aborted: {reason}")
+            return
+        print(reason)
 
         # ⚡ Bolt: Execute automated merge. 
         # Using --auto handles PENDING checks by enabling GitHub's auto-merge feature.
