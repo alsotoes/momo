@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"sort"
+	"sync"
 	"syscall"
 	"time"
 
@@ -32,6 +33,9 @@ func startRebalanceLoop(ctx context.Context, cs *storage.CASStore, pusher rebala
 
 // rebalanceRunner holds one node's shedding state.
 type rebalanceRunner struct {
+	// runMu serializes evaluation passes: a tick and a join migration could
+	// otherwise push the same blob twice before either drop lands.
+	runMu  sync.Mutex
 	store  *storage.CASStore
 	pusher rebalancePusher
 	cmap   *common.ClusterMap
@@ -49,10 +53,13 @@ func (r *rebalanceRunner) run(ctx context.Context, interval time.Duration) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			r.runMu.Lock()
 			if c, ok := r.pusher.(interface{ IncRebalanceCycles() }); ok {
 				c.IncRebalanceCycles()
 			}
-			if moved, err := rebalanceCycle(ctx, r.store, r.pusher, r.cmap, r.self, r.rf, r.cfg); err != nil {
+			moved, err := rebalanceCycle(ctx, r.store, r.pusher, r.cmap, r.self, r.rf, r.cfg)
+			r.runMu.Unlock()
+			if err != nil {
 				log.Printf("AUDIT: rebalance cycle failed: %v", err)
 			} else if moved > 0 {
 				log.Printf("REBALANCE: shed %d blob(s) to peers", moved)
@@ -108,6 +115,8 @@ func rebalanceCycle(ctx context.Context, cs *storage.CASStore, pusher rebalanceP
 // reachable, and the blobs it should hold were previously stored locally.
 func (r *rebalanceRunner) onPeerJoin(ctx context.Context, peerID int) (err error) {
 	defer common.RecoverErr("rebalance peer join", &err)
+	r.runMu.Lock()
+	defer r.runMu.Unlock()
 	moved, merr := r.migrateToPeer(ctx, peerID)
 	if merr != nil {
 		log.Printf("AUDIT: rebalance on join of node %d failed: %v", peerID, merr)

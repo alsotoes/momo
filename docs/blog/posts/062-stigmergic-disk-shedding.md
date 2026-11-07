@@ -156,6 +156,23 @@ path (`degraded_read`), and it needs cluster membership (`p2p`).
 This is a small piece of code carrying a large operational rule: a feature that
 can be silently inert is a feature you cannot trust during an incident.
 
+## One Pass at a Time
+
+The loop has two triggers — a timer tick and a peer joining — and both want to
+move the same bytes. Left alone they can interleave: a tick pushes a cold blob
+while a join migration pushes the same blob, the peer receives it twice, and one
+of the two drops arrives after the other has already removed the file.
+
+The fix is not a clever lock per blob. It is a single mutex around the whole
+evaluation pass. Only one pass runs at a time on a node; the second waits its
+turn and then re-reads the local blob list, which no longer contains what the
+first pass moved. That makes the duplicate workload impossible rather than
+merely unlikely, and it costs nothing: a pass is already a long, I/O-bound
+operation, and there is no benefit to running two against the same disk.
+
+The throughput cost of serialization is real only if passes were cheap, and they
+are not. Correctness first, and in this case it is also simpler.
+
 ## What It Refuses to Do
 
 - **Single-node clusters never shed.** With no peer in the placement set there
