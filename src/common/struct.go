@@ -471,6 +471,8 @@ type ConfigurationRebalance struct {
 	DiskLowWater float64
 	// MaxShedPerCycle bounds how many blobs move in one evaluation.
 	MaxShedPerCycle int
+	// MaxBandwidthMbps caps rebalance traffic; 0 means unlimited.
+	MaxBandwidthMbps float64
 }
 
 // Permission represents a S3/bucket operation permission.

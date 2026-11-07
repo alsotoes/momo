@@ -14,7 +14,7 @@ import (
 // rebalancePusher ships one local blob to a peer and confirms the peer holds
 // it. The rebalance loop drops local bytes only after a nil return.
 type rebalancePusher interface {
-	Push(hash string, targetID int) error
+	Push(ctx context.Context, hash string, targetID int) error
 }
 
 // startRebalanceLoop runs the stigmergic shedding loop (R11, #1143): each tick
@@ -49,7 +49,7 @@ func (r *rebalanceRunner) run(ctx context.Context, interval time.Duration) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if moved, err := rebalanceCycle(r.store, r.pusher, r.cmap, r.self, r.rf, r.cfg); err != nil {
+			if moved, err := rebalanceCycle(ctx, r.store, r.pusher, r.cmap, r.self, r.rf, r.cfg); err != nil {
 				log.Printf("AUDIT: rebalance cycle failed: %v", err)
 			} else if moved > 0 {
 				log.Printf("REBALANCE: shed %d blob(s) to peers", moved)
@@ -59,7 +59,7 @@ func (r *rebalanceRunner) run(ctx context.Context, interval time.Duration) {
 }
 
 // rebalanceCycle performs one evaluation. It returns how many blobs moved.
-func rebalanceCycle(cs *storage.CASStore, pusher rebalancePusher, cmap *common.ClusterMap, self int, rf int, rc common.ConfigurationRebalance) (int, error) {
+func rebalanceCycle(ctx context.Context, cs *storage.CASStore, pusher rebalancePusher, cmap *common.ClusterMap, self int, rf int, rc common.ConfigurationRebalance) (int, error) {
 	usedPct, err := diskUsedPercent(cs)
 	if err != nil {
 		return 0, err
@@ -84,7 +84,7 @@ func rebalanceCycle(cs *storage.CASStore, pusher rebalancePusher, cmap *common.C
 		if !ok {
 			continue
 		}
-		if err := pusher.Push(blob.Hash, target); err != nil {
+		if err := pusher.Push(ctx, blob.Hash, target); err != nil {
 			log.Printf("AUDIT: rebalance push of %s to node %d failed: %v", common.SanitizeLog(blob.Hash), target, err)
 			continue
 		}
@@ -131,7 +131,7 @@ func (r *rebalanceRunner) migrateToPeer(ctx context.Context, peerID int) (int, e
 		if moved >= r.cfg.MaxShedPerCycle || ctx.Err() != nil {
 			break
 		}
-		if r.migrateBlob(blob.Hash, peerID) {
+		if r.migrateBlob(ctx, blob.Hash, peerID) {
 			moved++
 		}
 	}
@@ -139,12 +139,12 @@ func (r *rebalanceRunner) migrateToPeer(ctx context.Context, peerID int) (int, e
 }
 
 // migrateBlob moves one blob when the peer owns it and this node does not.
-func (r *rebalanceRunner) migrateBlob(hash string, peerID int) bool {
+func (r *rebalanceRunner) migrateBlob(ctx context.Context, hash string, peerID int) bool {
 	peerOwns, selfOwns, err := placementOwnership(r.cmap, hash, r.rf, r.self, peerID)
 	if err != nil || !peerOwns || selfOwns {
 		return false
 	}
-	if err := r.pusher.Push(hash, peerID); err != nil {
+	if err := r.pusher.Push(ctx, hash, peerID); err != nil {
 		log.Printf("AUDIT: rebalance migration of %s to node %d failed: %v", common.SanitizeLog(hash), peerID, err)
 		return false
 	}

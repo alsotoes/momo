@@ -87,6 +87,23 @@ second bound matters: a node that is very full should recover over several
 cycles, not by saturating its uplink for ten minutes while foreground traffic
 starves.
 
+## Staying Out of the Way
+
+A rebalance that competes with user traffic is not a rebalance; it is an outage
+with extra steps. Shedding a large blob is exactly the moment when a node is
+busy and its uplink is precious, so the rule needs a brake.
+
+The brake is a token bucket: `max_bandwidth_mbps` sets how many bytes per second
+the rebalance path may spend, refilled continuously, and each 64 KiB write must
+pay for itself before it goes out. Foreground requests keep their own path and
+are never blocked behind a shed. When the cap is zero, the bucket is removed and
+the old behavior returns — useful for labs where the rebalance link is dedicated.
+
+Two details matter in practice. The bucket is per push attempt, not global, so a
+failed transfer does not permanently eat the budget. And the budget is spent
+*before* the write, not after, which is what actually protects the socket queue
+from a burst of buffered blobs.
+
 ## What It Refuses to Do
 
 - **Single-node clusters never shed.** With no peer in the placement set there
