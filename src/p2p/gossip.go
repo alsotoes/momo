@@ -384,34 +384,19 @@ func (g *Gossiper) sendPing() {
 
 	select {
 	case <-pp.ackCh:
-		rtt := time.Since(pp.sentAt)
-		ewma := g.rtt.Update(target.ID, rtt)
-		target.SetRTT(ewma)
+		g.recordPingSuccess(target, pp)
 		g.removePendingPing(pingID)
 	case <-time.After(g.cfg.PingTimeout):
-		helperContacted := g.sendIndirectPing(target.ID, pingID, now)
-		if !helperContacted {
-			if peer := g.transport.Peers().Get(target.ID); peer != nil {
-				if peer.State() == PeerStateAlive {
-					peer.SetState(PeerStateSuspect)
-					log.Printf("Gossip: peer %d marked SUSPECT (ping failed, no helper contacted)", target.ID)
-				}
-			}
+		if !g.sendIndirectPing(target.ID, pingID, now) {
+			g.markSuspectIfAlive(target.ID, "ping failed, no helper contacted")
 			g.removePendingPing(pingID)
 			return
 		}
 		select {
 		case <-pp.ackCh:
-			rtt := time.Since(pp.sentAt)
-			ewma := g.rtt.Update(target.ID, rtt)
-			target.SetRTT(ewma)
+			g.recordPingSuccess(target, pp)
 		case <-time.After(g.cfg.PingTimeout):
-			if peer := g.transport.Peers().Get(target.ID); peer != nil {
-				if peer.State() == PeerStateAlive {
-					peer.SetState(PeerStateSuspect)
-					log.Printf("Gossip: peer %d marked SUSPECT (ping + indirect ping ack timeout)", target.ID)
-				}
-			}
+			g.markSuspectIfAlive(target.ID, "ping + indirect ping ack timeout")
 		case <-g.done:
 			g.removePendingPing(pingID)
 			return
@@ -421,6 +406,22 @@ func (g *Gossiper) sendPing() {
 		g.removePendingPing(pingID)
 		return
 	}
+}
+
+// recordPingSuccess updates the RTT EWMA for an acknowledged ping.
+func (g *Gossiper) recordPingSuccess(target *Peer, pp *pendingPing) {
+	ewma := g.rtt.Update(target.ID, time.Since(pp.sentAt))
+	target.SetRTT(ewma)
+}
+
+// markSuspectIfAlive downgrades an alive peer to suspect and audits why.
+func (g *Gossiper) markSuspectIfAlive(peerID int32, reason string) {
+	peer := g.transport.Peers().Get(peerID)
+	if peer == nil || peer.State() != PeerStateAlive {
+		return
+	}
+	peer.SetState(PeerStateSuspect)
+	log.Printf("Gossip: peer %d marked SUSPECT (%s)", peerID, reason)
 }
 
 // sendIndirectPing asks K random peers to ping the target on our behalf.
