@@ -26,8 +26,8 @@ Without this, the distributed coordination has a gap: if the lease holder dies, 
 None documented.
 
 ## Implementation Status
-- **Code**: Planned
-- **Tests**: Planned
+- **Code**: Partial
+- **Tests**: Partial
 - **Docs**: Planned
 - **Blog post**: 
 

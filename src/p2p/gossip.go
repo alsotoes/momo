@@ -129,13 +129,16 @@ type Gossiper struct {
 	mu        sync.Mutex
 	wg        sync.WaitGroup
 
-	cbMu          sync.RWMutex
-	onJoin        func(peer *Peer)
-	onLeave       func(peerID int32)
-	scatterGather *ScatterGather
-	leaseManager  *LeaseManager
-	oprfProvider  *OPRFProvider
-	metadataRPC   *MetadataRPCProvider
+	cbMu    sync.RWMutex
+	onJoin  func(peer *Peer)
+	onLeave func(peerID int32)
+	// stateObservers are notified when a peer degrades to SUSPECT or OFFLINE
+	// (R11/coordinator failover: leases react in ~5 s instead of the TTL).
+	stateObservers []func(peerID int32, state PeerState)
+	scatterGather  *ScatterGather
+	leaseManager   *LeaseManager
+	oprfProvider   *OPRFProvider
+	metadataRPC    *MetadataRPCProvider
 
 	// loadProvider samples local load for MsgLoad broadcasts (R11, #1261).
 	// Nil disables publishing; receivers then keep no load view.
@@ -163,6 +166,35 @@ func (g *Gossiper) OnJoin(fn func(peer *Peer)) {
 	g.cbMu.Lock()
 	g.onJoin = fn
 	g.cbMu.Unlock()
+}
+
+// OnPeerStateChange registers an observer for peer degradation events
+// (SUSPECT/OFFLINE). Multiple observers are allowed; recovery to ALIVE is not
+// reported here.
+func (g *Gossiper) OnPeerStateChange(fn func(peerID int32, state PeerState)) {
+	g.cbMu.Lock()
+	g.stateObservers = append(g.stateObservers, fn)
+	g.cbMu.Unlock()
+}
+
+// setPeerState transitions a peer and notifies observers on degradation.
+// Returns true when the state actually changed.
+func (g *Gossiper) setPeerState(peer *Peer, state PeerState) bool {
+	if peer.State() == state {
+		return false
+	}
+	peer.SetState(state)
+	if state != PeerStateSuspect && state != PeerStateOffline {
+		return true
+	}
+	g.cbMu.RLock()
+	observers := make([]func(int32, PeerState), len(g.stateObservers))
+	copy(observers, g.stateObservers)
+	g.cbMu.RUnlock()
+	for _, fn := range observers {
+		fn(peer.ID, state)
+	}
+	return true
 }
 
 // OnLeave sets a callback invoked when a peer leaves the cluster.
@@ -420,7 +452,7 @@ func (g *Gossiper) markSuspectIfAlive(peerID int32, reason string) {
 	if peer == nil || peer.State() != PeerStateAlive {
 		return
 	}
-	peer.SetState(PeerStateSuspect)
+	g.setPeerState(peer, PeerStateSuspect)
 	log.Printf("Gossip: peer %d marked SUSPECT (%s)", peerID, reason)
 }
 
@@ -658,12 +690,12 @@ func (g *Gossiper) checkSuspicion() {
 		switch p.State() {
 		case PeerStateAlive:
 			if elapsed > timeout {
-				p.SetState(PeerStateSuspect)
+				g.setPeerState(p, PeerStateSuspect)
 				log.Printf("Gossip: peer %d marked SUSPECT (last seen %v ago, timeout=%v)", p.ID, elapsed, timeout)
 			}
 		case PeerStateSuspect:
 			if elapsed > 2*timeout {
-				p.SetState(PeerStateOffline)
+				g.setPeerState(p, PeerStateOffline)
 				log.Printf("Gossip: peer %d marked OFFLINE (last seen %v ago, timeout=%v)", p.ID, elapsed, timeout)
 				g.cbMu.RLock()
 				onLeave := g.onLeave
@@ -840,7 +872,7 @@ func (g *Gossiper) handleSuspect(rpc *RPC) {
 
 	if peer := g.transport.Peers().Get(suspectID); peer != nil {
 		if peer.State() == PeerStateAlive {
-			peer.SetState(PeerStateSuspect)
+			g.setPeerState(peer, PeerStateSuspect)
 			log.Printf("Gossip: peer %d marked SUSPECT via announcement from %d", suspectID, rpc.From)
 		}
 	}

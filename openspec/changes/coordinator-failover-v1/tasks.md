@@ -1,14 +1,20 @@
 # Tasks — Coordinator Failover (SWIM-Based Leadership Election)
 
 ## Phase 1 — Core Infrastructure: SWIM-Integrated Lease Failure Detection
-- [ ] Extend `src/p2p/lease.go` — `LeaseManager` with SWIM hooks
-  - Add `OnPeerStateChange(peerID int32, state PeerState)` callback
-  - `RevokeLease(peerID int32, role RoleType)` — immediate revocation
-  - Register callback in `Gossiper` consumer loop for SUSPECT/OFFLINE events
-- [ ] Modify `src/p2p/gossip.go`:
-  - Add `OnPeerStateChange` callback registration
-  - Call callback on `PeerState` transitions to SUSPECT/OFFLINE
-- [ ] Unit tests: `lease_failover_test.go` (mock SWIM, verify revocation)
+- [x] `LeaseManager.OnPeerFailure(peerID)` — releases every held lease whose
+  quorum is no longer satisfiable and broadcasts the release so a healthy node
+  can take the role over immediately (conservative: a lease records the grant
+  count, not the granters)
+- [x] `Gossiper.OnPeerStateChange` — multi-observer hook fired on SUSPECT and
+  OFFLINE transitions through a single `setPeerState` helper; recovery to ALIVE
+  is not reported
+- [x] Daemon wiring: gossip degradation events call `LeaseManager.OnPeerFailure`
+- [x] Unit tests `lease_failover_test.go`: revocation on quorum loss, retention
+  while quorum holds, self/unknown peer ignored, observer notification sequence,
+  idempotent transitions
+- [ ] `RevokeLease(peerID, role)` per-role API — not needed yet: roles are keyed
+  leases (`metrics-controller`, `replication-propagator`), so the quorum rule
+  supersedes a role-specific call
 
 ## Phase 2 — Proactive Leadership Handoff
 - [ ] Extend `src/coordination/election.go` — `Coordinator` health monitoring

@@ -1107,6 +1107,11 @@ func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, d
 	gossip.SetLoadProvider(loadSampler)
 	gossip.SetScatterGather(scatterGather)
 	gossip.SetLeaseManager(leaseManager)
+	// Coordinator failover Phase 1: degrade leases as soon as SWIM suspects a
+	// peer, instead of waiting for the lease TTL.
+	gossip.OnPeerStateChange(func(peerID int32, _ p2p.PeerState) {
+		leaseManager.OnPeerFailure(peerID)
+	})
 	if oprfProvider != nil {
 		gossip.SetOPRFProvider(oprfProvider)
 	}
