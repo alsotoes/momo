@@ -270,7 +270,7 @@ func putBlob(t *testing.T, store *storage.CASStore, name, hash string, payload [
 
 func joinRunner(t *testing.T, store *storage.CASStore, pusher rebalancePusher, cmap *common.ClusterMap, self, rf, max int) *rebalanceRunner {
 	t.Helper()
-	return &rebalanceRunner{ctx: context.Background(), store: store, pusher: pusher, cmap: cmap, self: self, rf: rf, cfg: common.ConfigurationRebalance{Enabled: true, Interval: 60, DiskHighWater: 85, DiskLowWater: 70, MaxShedPerCycle: max}}
+	return &rebalanceRunner{store: store, pusher: pusher, cmap: cmap, self: self, rf: rf, cfg: common.ConfigurationRebalance{Enabled: true, Interval: 60, DiskHighWater: 85, DiskLowWater: 70, MaxShedPerCycle: max}}
 }
 
 func TestMigrateToPeerMovesOwnedBlob(t *testing.T) {
@@ -285,7 +285,7 @@ func TestMigrateToPeerMovesOwnedBlob(t *testing.T) {
 
 	pusher := &recordingPusher{}
 	r := joinRunner(t, store, pusher, cmap, 0, 2, 8)
-	moved, err := r.migrateToPeer(1)
+	moved, err := r.migrateToPeer(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
@@ -308,7 +308,7 @@ func TestMigrateToPeerKeepsBlobThisNodeStillOwns(t *testing.T) {
 	putBlob(t, store, "kept", hash, payload)
 
 	r := joinRunner(t, store, &recordingPusher{}, cmap, 0, 2, 8)
-	moved, err := r.migrateToPeer(1)
+	moved, err := r.migrateToPeer(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
@@ -331,7 +331,7 @@ func TestMigrateToPeerPushFailureKeepsBytes(t *testing.T) {
 	putBlob(t, store, "kept", hash, payload)
 
 	r := joinRunner(t, store, &recordingPusher{fail: true}, cmap, 0, 2, 8)
-	moved, err := r.migrateToPeer(1)
+	moved, err := r.migrateToPeer(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
@@ -373,7 +373,7 @@ func TestMigrateToPeerRespectsCap(t *testing.T) {
 	putMovableBlobs(t, store, cmap, 0, 1, 3)
 
 	r := joinRunner(t, store, &recordingPusher{}, cmap, 0, 2, 2)
-	moved, err := r.migrateToPeer(1)
+	moved, err := r.migrateToPeer(context.Background(), 1)
 	if err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
@@ -396,7 +396,7 @@ func TestOnPeerJoinLogsAndMigrates(t *testing.T) {
 	putBlob(t, store, "joined", hash, payload)
 
 	r := joinRunner(t, store, &recordingPusher{}, cmap, 0, 2, 8)
-	r.onPeerJoin(1)
+	r.onPeerJoin(context.Background(), 1)
 	if blobs, _ := store.ListBlobs(); len(blobs) != 0 {
 		t.Fatalf("onPeerJoin must migrate, %d blobs left", len(blobs))
 	}
@@ -404,7 +404,7 @@ func TestOnPeerJoinLogsAndMigrates(t *testing.T) {
 
 func TestJoinHandler(t *testing.T) {
 	// Nil runner: logs only, no panic.
-	joinHandler(nil)(&p2p.Peer{ID: 7})
+	joinHandler(context.Background(), nil)(&p2p.Peer{ID: 7})
 
 	store, err := storage.NewCASStore(t.TempDir())
 	if err != nil {
@@ -416,7 +416,7 @@ func TestJoinHandler(t *testing.T) {
 	putBlob(t, store, "join", hash, payload)
 
 	r := joinRunner(t, store, &recordingPusher{}, cmap, 0, 2, 8)
-	joinHandler(r)(&p2p.Peer{ID: 1})
+	joinHandler(context.Background(), r)(&p2p.Peer{ID: 1})
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
@@ -448,5 +448,35 @@ func TestNewJoinMigrator(t *testing.T) {
 	cfg.Rebalance.Enabled = false
 	if newJoinMigrator(context.Background(), cfg, 0, store, src) != nil {
 		t.Fatal("disabled rebalance must yield nil")
+	}
+}
+
+func TestMigrateToPeerStoreError(t *testing.T) {
+	store, err := storage.NewCASStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	_ = store.Close()
+	r := joinRunner(t, store, &recordingPusher{}, testCmap3(t), 0, 2, 8)
+	// A closed store must not panic the join path; errors are logged.
+	r.onPeerJoin(context.Background(), 1)
+}
+
+func TestMigrateToPeerContextCancelled(t *testing.T) {
+	store, err := storage.NewCASStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	cmap := testCmap3(t)
+	hash, payload := findPlacementHash(t, cmap, 2, 0, 1, false)
+	putBlob(t, store, "cancel", hash, payload)
+
+	r := joinRunner(t, store, &recordingPusher{}, cmap, 0, 2, 8)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	moved, err := r.migrateToPeer(ctx, 1)
+	if err != nil || moved != 0 {
+		t.Fatalf("cancelled context must stop the pass, moved=%d err=%v", moved, err)
 	}
 }

@@ -982,11 +982,11 @@ func buildP2PTLSConfig(cfg common.Configuration) *tls.Config {
 // Returns the ScatterGather and LeaseManager instances for use by the server.
 // joinHandler logs joins and, when membership rebalancing is on, migrates the
 // blobs the joining peer now owns.
-func joinHandler(rb *rebalanceRunner) func(*p2p.Peer) {
+func joinHandler(ctx context.Context, rb *rebalanceRunner) func(*p2p.Peer) {
 	return func(peer *p2p.Peer) {
 		log.Printf("P2P: peer %d joined cluster from %s", peer.ID, peer.Addr)
 		if rb != nil {
-			go rb.onPeerJoin(int(peer.ID))
+			go rb.onPeerJoin(ctx, int(peer.ID))
 		}
 	}
 }
@@ -1002,7 +1002,7 @@ func newJoinMigrator(ctx context.Context, cfg common.Configuration, serverId int
 	if !ok {
 		return nil
 	}
-	return &rebalanceRunner{ctx: ctx, store: cs, pusher: rebuildSrc, cmap: rebuildSrc.cmap, self: serverId, rf: cfg.Global.ReplicationFactor, cfg: cfg.Rebalance}
+	return &rebalanceRunner{store: cs, pusher: rebuildSrc, cmap: rebuildSrc.cmap, self: serverId, rf: cfg.Global.ReplicationFactor, cfg: cfg.Rebalance}
 }
 
 func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, daemons []*common.Daemon, store storage.Store, rebuildSrc *DaemonRebuildSource) (*p2p.ScatterGather, *p2p.LeaseManager, *p2p.OPRFProvider) {
@@ -1050,7 +1050,7 @@ func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, d
 	// R11: a joining peer now owns blobs this node holds — migrate them.
 	rbRunner := newJoinMigrator(ctx, cfg, serverId, store, rebuildSrc)
 
-	gossip.OnJoin(joinHandler(rbRunner))
+	gossip.OnJoin(joinHandler(ctx, rbRunner))
 	gossip.OnLeave(func(peerID int32) {
 		log.Printf("P2P: peer %d left cluster", peerID)
 	})

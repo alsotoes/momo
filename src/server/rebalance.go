@@ -25,14 +25,13 @@ func startRebalanceLoop(ctx context.Context, cs *storage.CASStore, pusher rebala
 	if !rc.Enabled {
 		return
 	}
-	runner := &rebalanceRunner{ctx: ctx, store: cs, pusher: pusher, cmap: cmap, self: self, rf: rf, cfg: rc}
+	runner := &rebalanceRunner{store: cs, pusher: pusher, cmap: cmap, self: self, rf: rf, cfg: rc}
 	go runner.run(ctx, time.Duration(rc.Interval)*time.Second)
 	log.Printf("R11: stigmergic rebalance enabled (interval=%ds, high=%.0f%%, low=%.0f%%)", rc.Interval, rc.DiskHighWater, rc.DiskLowWater)
 }
 
 // rebalanceRunner holds one node's shedding state.
 type rebalanceRunner struct {
-	ctx    context.Context
 	store  *storage.CASStore
 	pusher rebalancePusher
 	cmap   *common.ClusterMap
@@ -104,8 +103,8 @@ func rebalanceCycle(cs *storage.CASStore, pusher rebalancePusher, cmap *common.C
 // onPeerJoin migrates blobs whose placement moved to the joining peer: the
 // cluster config is static, so a "join" is a configured peer becoming
 // reachable, and the blobs it should hold were previously stored locally.
-func (r *rebalanceRunner) onPeerJoin(peerID int) {
-	moved, err := r.migrateToPeer(peerID)
+func (r *rebalanceRunner) onPeerJoin(ctx context.Context, peerID int) {
+	moved, err := r.migrateToPeer(ctx, peerID)
 	if err != nil {
 		log.Printf("AUDIT: rebalance on join of node %d failed: %v", peerID, err)
 		return
@@ -119,7 +118,7 @@ func (r *rebalanceRunner) onPeerJoin(peerID int) {
 // longer owns, then drops the local bytes after the peer's ack. It never
 // deletes when placement still includes this node, so it cannot reduce the
 // replica count.
-func (r *rebalanceRunner) migrateToPeer(peerID int) (int, error) {
+func (r *rebalanceRunner) migrateToPeer(ctx context.Context, peerID int) (int, error) {
 	blobs, err := r.store.ListBlobs()
 	if err != nil {
 		return 0, err
@@ -127,7 +126,7 @@ func (r *rebalanceRunner) migrateToPeer(peerID int) (int, error) {
 	sort.Slice(blobs, func(i, j int) bool { return blobs[i].ModTime < blobs[j].ModTime })
 	moved := 0
 	for _, blob := range blobs {
-		if moved >= r.cfg.MaxShedPerCycle || r.ctx.Err() != nil {
+		if moved >= r.cfg.MaxShedPerCycle || ctx.Err() != nil {
 			break
 		}
 		if r.migrateBlob(blob.Hash, peerID) {
