@@ -247,6 +247,11 @@ rule and the cluster converges as a side effect (stigmergy, not scheduling).
 - **Preconditions**: validated at config load (P2P enabled, `degraded_read`,
   `replication_factor >= 2`, at least two daemons) so a misconfigured loop fails
   at startup instead of never running.
+- **Proactive handoff**: when `[coordination_failover]` is enabled, the node
+  samples CPU, memory and goroutines; breaching a threshold resigns every held
+  lease (broadcast) so a healthy peer takes over, with a cooldown against churn.
+  CPU/memory are read from `/proc` on Linux and reported as unknown elsewhere,
+  so those dimensions never fire on platforms that cannot observe them.
 - **Split-brain prevention**: lease acquisition requires a majority of the
   configured cluster (not of the reachable subset), so a minority partition can
   never grant coordination. Losing quorum releases every held lease and audits

@@ -442,6 +442,26 @@ func (lm *LeaseManager) OnPeerFailure(peerID int32) (err error) {
 	return nil
 }
 
+// ResignAll releases every held lease and audits why. Used for proactive
+// handoff when the node is unhealthy (coordinator failover Phase 2): stepping
+// down early is cheaper than failing mid-operation.
+func (lm *LeaseManager) ResignAll(reason string) (count int) {
+	lm.heldMu.Lock()
+	lost := make([]*Lease, 0, len(lm.held))
+	for id, lease := range lm.held {
+		lost = append(lost, lease)
+		delete(lm.held, id)
+	}
+	lm.heldMu.Unlock()
+
+	for _, lease := range lost {
+		log.Printf("AUDIT: resigning lease %q (%s)", lease.Key, reason)
+		payload := &LeasePayload{LeaseID: lease.LeaseID, Key: lease.Key, Expiry: 0}
+		lm.transport.Broadcast(&RPC{From: lm.localID, Type: MsgLeaseRelease, Payload: payload.Encode()})
+	}
+	return len(lost)
+}
+
 // ActiveLeases returns the number of leases currently held by this node.
 // R5 scrape-time cluster gauge (momo_leases_active) (#933).
 func (lm *LeaseManager) ActiveLeases() int {

@@ -455,6 +455,29 @@ type Configuration struct {
 	S3 ConfigurationS3
 	// Rebalance is the optional [rebalance] configuration (R11, #1143).
 	Rebalance ConfigurationRebalance
+	// CoordinationFailover holds the proactive coordination handoff settings.
+	CoordinationFailover ConfigurationCoordinationFailover
+}
+
+// ConfigurationCoordinationFailover controls proactive coordination handoff:
+// a node that is running out of CPU, memory or goroutines resigns its leases so
+// a healthy peer can take over (coordinator failover Phase 2, #1148).
+type ConfigurationCoordinationFailover struct {
+	// Enabled starts the health monitor. Default false.
+	Enabled bool
+	// Interval is how often the node samples its own health, in seconds.
+	Interval int
+	// CPUThreshold is the CPU percentage that triggers resignation (0 disables).
+	CPUThreshold float64
+	// MemoryThreshold is the memory percentage that triggers resignation
+	// (0 disables).
+	MemoryThreshold float64
+	// GoroutineThreshold is the goroutine count that triggers resignation
+	// (0 disables).
+	GoroutineThreshold int
+	// Cooldown suppresses repeated resignations while the node stays unhealthy,
+	// in seconds.
+	Cooldown int
 }
 
 // ConfigurationRebalance controls the stigmergic, coordinator-free blob

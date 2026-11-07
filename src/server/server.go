@@ -1108,6 +1108,25 @@ func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, d
 	gossip.SetScatterGather(scatterGather)
 	leaseManager.SetClusterSize(len(daemons))
 	gossip.SetLeaseManager(leaseManager)
+	// Coordinator failover Phase 2: step down proactively when this node is
+	// running out of CPU, memory, or goroutines.
+	if cfg.CoordinationFailover.Enabled {
+		monitor := p2p.NewHealthMonitor(p2p.HealthMonitorConfig{
+			Interval: time.Duration(cfg.CoordinationFailover.Interval) * time.Second,
+			Cooldown: time.Duration(cfg.CoordinationFailover.Cooldown) * time.Second,
+			Limits: p2p.HealthLimits{
+				CPUPercent:    cfg.CoordinationFailover.CPUThreshold,
+				MemPercent:    cfg.CoordinationFailover.MemoryThreshold,
+				Goroutines:    cfg.CoordinationFailover.GoroutineThreshold,
+				MinGoroutines: 8,
+			},
+		}, nil, leaseManager)
+		go monitor.Run(ctx)
+		log.Printf("P2P: coordination health monitor enabled (interval=%ds, cpu>%.0f%%, mem>%.0f%%, goroutines>%d)",
+			cfg.CoordinationFailover.Interval, cfg.CoordinationFailover.CPUThreshold,
+			cfg.CoordinationFailover.MemoryThreshold, cfg.CoordinationFailover.GoroutineThreshold)
+	}
+
 	// Coordinator failover Phase 1: degrade leases as soon as SWIM suspects a
 	// peer, instead of waiting for the lease TTL.
 	gossip.OnPeerStateChange(func(peerID int32, _ p2p.PeerState) {
