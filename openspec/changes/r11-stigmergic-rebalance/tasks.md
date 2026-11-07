@@ -54,6 +54,7 @@
 - [x] Degraded read during rebalance — R2 survivor-set read fallback, required before the loop will start
   - If blob not found on current replicas, try pre-rebalance CRUSH targets
   - Update `getFile` / `DownloadWithFallback` to try old placement
+- [x] Streaming push — `BlobSize` + `pushReaderToPeer`/`writeThrottledReader`; no `io.ReadAll` on the rebalance path
 - [x] Bandwidth throttling — `max_bandwidth_mbps` token bucket (`writeThrottled` + `bandwidthLimiter`) on every rebalance push; 0 = unlimited
   - Token bucket limiter in `shed.go` / `replicate.go`
   - Foreground traffic priority (separate semaphore or priority queue)

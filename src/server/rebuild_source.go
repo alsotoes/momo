@@ -37,6 +37,8 @@ type DaemonRebuildSource struct {
 	limiter *bandwidthLimiter
 	// metrics receives rebalance counters (R11). Nil disables recording.
 	metrics *MetricsCollector
+	// dialFn overrides peer dialing in tests; nil means dialPeer.
+	dialFn func(peerID int) (transport.Communicator, error)
 }
 
 // SetMetrics attaches the collector that receives rebalance counters.
@@ -91,6 +93,19 @@ func (d *DaemonRebuildSource) Push(ctx context.Context, hash string, targetID in
 		return fmt.Errorf("read local blob %s: %w", hash, err)
 	}
 	defer func() { _ = rc.Close() }()
+
+	// Rebalance must not buffer a whole blob: a large object would spike memory
+	// on the node that is already under pressure (R11). Size is known from the
+	// directory entry, so the payload streams straight from disk to the peer.
+	if d.pushFn == nil {
+		size, serr := d.store.BlobSize(hash)
+		if serr == nil {
+			err = d.pushReaderToPeer(ctx, targetID, hash, size, rc)
+			d.recordRebalancePush(int(size), err != nil)
+			return err
+		}
+	}
+
 	data, err := io.ReadAll(rc)
 	if err != nil {
 		return fmt.Errorf("read local blob %s: %w", hash, err)
@@ -159,6 +174,9 @@ func (d *DaemonRebuildSource) Survivors(hash string) ([]storage.Peer, error) {
 
 // dialPeer establishes a transport connection to the given peer.
 func (d *DaemonRebuildSource) dialPeer(peerID int) (transport.Communicator, error) {
+	if d.dialFn != nil {
+		return d.dialFn(peerID)
+	}
 	if peerID < 0 || peerID >= len(d.daemons) {
 		return nil, fmt.Errorf("peer ID %d out of range", peerID)
 	}
@@ -341,6 +359,33 @@ func (d *DaemonRebuildSource) Restore(hash string, content io.Reader) error {
 	for err := range errChan {
 		return err // return first error
 	}
+	return nil
+}
+
+// pushReaderToPeer streams a blob of known size to a peer with throttling.
+func (d *DaemonRebuildSource) pushReaderToPeer(ctx context.Context, targetID int, hash string, size int64, r io.Reader) error {
+	comm, err := d.dialPeer(targetID)
+	if err != nil {
+		return fmt.Errorf("dial peer %d: %w", targetID, err)
+	}
+	defer func() { _ = comm.Close() }()
+
+	meta := &common.FileMetadata{Name: hash, Hash: hash, Size: size}
+	status, err := comm.SendMetadata(meta)
+	if err != nil {
+		return fmt.Errorf("send metadata to peer %d: %w", targetID, err)
+	}
+	if status == transport.MetadataStatusSkipPayload {
+		log.Printf("STORAGE REBUILD: peer %d already has %s, skipping push", targetID, hash)
+		return nil
+	}
+	if err := writeThrottledReader(ctx, comm, r, d.limiter); err != nil {
+		return fmt.Errorf("send payload to peer %d: %w", targetID, err)
+	}
+	if err := comm.ReceiveACK(); err != nil {
+		return fmt.Errorf("receive ACK from peer %d: %w", targetID, err)
+	}
+	log.Printf("STORAGE REBALANCE: pushed %s to peer %d", hash, targetID)
 	return nil
 }
 

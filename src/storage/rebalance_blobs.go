@@ -15,6 +15,12 @@ type BlobInfo struct {
 	ModTime int64 // unix nano, used as the coldness proxy
 }
 
+// blobSizer is the optional seam for backends that can report a blob's size
+// without reading it (lets rebalance stream instead of buffering, R11).
+type blobSizer interface {
+	BlobSize(hash string) (int64, error)
+}
+
 // blobWalker is the Rule 74 seam for backends that can enumerate their own
 // bytes. Backends that cannot (S3, raw) simply do not support rebalancing.
 type blobWalker interface {
@@ -41,6 +47,17 @@ func (s *CASStore) ListBlobs() (blobs []BlobInfo, err error) {
 func (s *CASStore) GetBlobByHash(hash string) (rc io.ReadCloser, err error) {
 	defer common.RecoverErr("CASStore.GetBlobByHash", &err)
 	return s.blobs.GetBlob(hash)
+}
+
+// BlobSize returns the on-disk size of a blob, or ENOTSUP when the backend
+// cannot report it.
+func (s *CASStore) BlobSize(hash string) (size int64, err error) {
+	defer common.RecoverErr("CASStore.BlobSize", &err)
+	sizer, ok := s.blobs.(blobSizer)
+	if !ok {
+		return 0, fmt.Errorf("blob backend cannot report sizes: %w", syscall.ENOTSUP)
+	}
+	return sizer.BlobSize(hash)
 }
 
 // DropBlob removes the local copy of a blob's bytes without touching metadata.

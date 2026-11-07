@@ -259,6 +259,22 @@ func (b *LocalBlobStore) blobPath(hash string) string {
 	return filepath.Join(b.base, "blobs", hash[0:2], hash[2:4], hash[4:6], hash)
 }
 
+// BlobSize reports a blob's size from its directory entry.
+func (b *LocalBlobStore) BlobSize(hash string) (size int64, err error) {
+	defer common.RecoverErr("LocalBlobStore.BlobSize", &err)
+	if common.HasPathTraversalChars(hash) {
+		return 0, fmt.Errorf("storage error: invalid hash contains path traversal characters: %w", syscall.EINVAL)
+	}
+	info, err := os.Stat(b.blobPath(hash))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, err
+		}
+		return 0, fmt.Errorf("storage error: failed to stat blob: %w", syscall.EIO)
+	}
+	return info.Size(), nil
+}
+
 // WalkBlobs enumerates locally stored blobs. File names are content hashes;
 // size and mtime feed the rebalance loop's coldness heuristic (R11).
 func (b *LocalBlobStore) WalkBlobs(fn func(hash string, size, modTime int64) error) (err error) {
