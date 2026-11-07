@@ -32,7 +32,7 @@
 - [x] Implement `OnPeerLeave` — intentionally omitted: the R2 rebuild loop re-replicates missing replicas
   - Find objects where departed was replica
   - Trigger re-replication for each
-- [ ] Integration tests: 3-node cluster, add 4th node → verify shedding
+- [x] Integration test: joining peer receives the migrated blob over a real TCP push and the sender drops only after the ack (`TestRebalanceJoinMigrationEndToEnd`, 3-node placement)
 
 ## Phase 3 — Homeostatic Checks (Continuous)
 - [x] Disk pressure shedding — `rebalanceCycle` (coldest-first, high/low water, per-cycle cap)
