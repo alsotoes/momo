@@ -73,7 +73,8 @@ func TestRebalancePushEndToEnd(t *testing.T) {
 
 // serveOneRebalancePush accepts one peer connection and plays the daemon's
 // receive side: handshake, mode, metadata, payload, ACK.
-func serveOneRebalancePush(listener net.Listener, store storage.Store, auth string) error {
+func serveOneRebalancePush(listener net.Listener, store storage.Store, auth string) (err error) {
+	defer common.RecoverErr("serveOneRebalancePush", &err)
 	conn, err := listener.Accept()
 	if err != nil {
 		return err
