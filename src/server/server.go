@@ -1009,6 +1009,24 @@ func newJoinMigrator(ctx context.Context, cfg common.Configuration, serverId int
 	return &rebalanceRunner{store: cs, pusher: rebuildSrc, cmap: rebuildSrc.cmap, self: serverId, rf: cfg.Global.ReplicationFactor, cfg: cfg.Rebalance}
 }
 
+// newCoordinationHealthMonitor maps the configuration onto a health monitor, or
+// returns nil when proactive handoff is disabled.
+func newCoordinationHealthMonitor(cfg common.ConfigurationCoordinationFailover, lm *p2p.LeaseManager) *p2p.HealthMonitor {
+	if !cfg.Enabled {
+		return nil
+	}
+	return p2p.NewHealthMonitor(p2p.HealthMonitorConfig{
+		Interval: time.Duration(cfg.Interval) * time.Second,
+		Cooldown: time.Duration(cfg.Cooldown) * time.Second,
+		Limits: p2p.HealthLimits{
+			CPUPercent:    cfg.CPUThreshold,
+			MemPercent:    cfg.MemoryThreshold,
+			Goroutines:    cfg.GoroutineThreshold,
+			MinGoroutines: 8,
+		},
+	}, nil, lm)
+}
+
 // newLoadSampler builds the gossip load publisher: disk utilisation from the
 // storage backend and in-flight requests from the metrics collector. The
 // replication queue is not tracked per node yet, so it reports zero.
@@ -1110,17 +1128,7 @@ func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, d
 	gossip.SetLeaseManager(leaseManager)
 	// Coordinator failover Phase 2: step down proactively when this node is
 	// running out of CPU, memory, or goroutines.
-	if cfg.CoordinationFailover.Enabled {
-		monitor := p2p.NewHealthMonitor(p2p.HealthMonitorConfig{
-			Interval: time.Duration(cfg.CoordinationFailover.Interval) * time.Second,
-			Cooldown: time.Duration(cfg.CoordinationFailover.Cooldown) * time.Second,
-			Limits: p2p.HealthLimits{
-				CPUPercent:    cfg.CoordinationFailover.CPUThreshold,
-				MemPercent:    cfg.CoordinationFailover.MemoryThreshold,
-				Goroutines:    cfg.CoordinationFailover.GoroutineThreshold,
-				MinGoroutines: 8,
-			},
-		}, nil, leaseManager)
+	if monitor := newCoordinationHealthMonitor(cfg.CoordinationFailover, leaseManager); monitor != nil {
 		go monitor.Run(ctx)
 		log.Printf("P2P: coordination health monitor enabled (interval=%ds, cpu>%.0f%%, mem>%.0f%%, goroutines>%d)",
 			cfg.CoordinationFailover.Interval, cfg.CoordinationFailover.CPUThreshold,
