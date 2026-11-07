@@ -55,6 +55,22 @@ expose it by peer ID.
 - WHEN a malformed report arrives
 - THEN the stored value is unchanged
 
+### Requirement: Peer load is exported as metrics
+The system SHALL export the last report per peer as `momo_peer_disk_used_percent{peer}`
+and `momo_peer_inflight_requests{peer}` gauges, and SHALL declare the families
+even before any report arrives.
+
+#### Scenario: Reports present
+- GIVEN peers 2 and 3 reported 91%/17 and 12%/0
+- WHEN the metrics endpoint is scraped
+- THEN both peers appear with their reported values
+
+#### Scenario: No reports yet
+- GIVEN no peer has reported
+- WHEN the metrics endpoint is scraped
+- THEN no per-peer samples are emitted
+- AND both family declarations are still present
+
 ## Out of scope
 
 - Any redirect or admission decision (tracked in #1261).

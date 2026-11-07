@@ -61,6 +61,28 @@ func (c *p2pClusterStats) GetReplicationStatus() (string, int) {
 	return "unknown", 0
 }
 
+// PeerLoads implements clusterStatsProvider: the last load report each peer
+// published over gossip (R11 step 1, #1261).
+func (c *p2pClusterStats) PeerLoads() []PeerLoadSample {
+	if c.peers == nil {
+		return nil
+	}
+	all := c.peers.All()
+	out := make([]PeerLoadSample, 0, len(all))
+	for _, peer := range all {
+		load, ok := peer.Load()
+		if !ok {
+			continue
+		}
+		out = append(out, PeerLoadSample{
+			PeerID:           peer.ID,
+			DiskUsedPercent:  load.DiskUsedPercent,
+			InflightRequests: load.InflightRequests,
+		})
+	}
+	return out
+}
+
 // newP2PClusterStats wires the available p2p handles, tolerating any nil
 // (p2p disabled). The scatter handle also carries the peer map.
 func newP2PClusterStats(scatterGather *p2p.ScatterGather, leaseManager *p2p.LeaseManager) clusterStatsProvider {

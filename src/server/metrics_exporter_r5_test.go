@@ -31,6 +31,7 @@ type fakeClusterStats struct {
 	leases   int
 	queries  uint64
 	timeouts uint64
+	loads    []PeerLoadSample
 }
 
 func (f *fakeClusterStats) PeerCount() int { return f.peers }
@@ -41,6 +42,7 @@ func (f *fakeClusterStats) AvgPingLatencySeconds() float64      { return f.laten
 func (f *fakeClusterStats) ActiveLeases() int                   { return f.leases }
 func (f *fakeClusterStats) ScatterCounters() (uint64, uint64)   { return f.queries, f.timeouts }
 func (f *fakeClusterStats) GetReplicationStatus() (string, int) { return "test", 0 }
+func (f *fakeClusterStats) PeerLoads() []PeerLoadSample         { return f.loads }
 
 // TestR5_ReplicationAndDedupCounters verifies replication bytes/failures and
 // the dedup-hit counter surface in the scrape output.

@@ -63,6 +63,22 @@ Three properties make this affordable:
 The receiving side keeps only the latest report per peer, stored atomically, so
 reading a peer's load is a pointer load rather than a lock or a network call.
 
+## Making It Visible First
+
+A signal nobody can see is a signal nobody trusts. Before any node acts on peer
+load, the reports are exported as metrics: one gauge per peer for disk
+utilisation, and one for in-flight requests, both labelled by peer ID.
+
+The shape matters. These are per-peer samples, not a cluster total, because
+averaging utilisation across nodes hides exactly the case that matters — one
+node pinned at 99% while the rest idle. And the families are declared even when
+no reports exist yet, so a dashboard can distinguish "no data" from "a healthy
+zero".
+
+Exporting first also gives operators a chance to sanity-check the numbers
+against reality before the same numbers are allowed to influence where traffic
+goes.
+
 ## What This Is Not
 
 This is not a redirect rule, and it deliberately does not become one yet.
