@@ -103,15 +103,17 @@ func rebalanceCycle(cs *storage.CASStore, pusher rebalancePusher, cmap *common.C
 // onPeerJoin migrates blobs whose placement moved to the joining peer: the
 // cluster config is static, so a "join" is a configured peer becoming
 // reachable, and the blobs it should hold were previously stored locally.
-func (r *rebalanceRunner) onPeerJoin(ctx context.Context, peerID int) {
-	moved, err := r.migrateToPeer(ctx, peerID)
-	if err != nil {
-		log.Printf("AUDIT: rebalance on join of node %d failed: %v", peerID, err)
-		return
+func (r *rebalanceRunner) onPeerJoin(ctx context.Context, peerID int) (err error) {
+	defer common.RecoverErr("rebalance peer join", &err)
+	moved, merr := r.migrateToPeer(ctx, peerID)
+	if merr != nil {
+		log.Printf("AUDIT: rebalance on join of node %d failed: %v", peerID, merr)
+		return merr
 	}
 	if moved > 0 {
 		log.Printf("REBALANCE: moved %d blob(s) to joining node %d", moved, peerID)
 	}
+	return nil
 }
 
 // migrateToPeer pushes local blobs that the peer now owns and that this node no
