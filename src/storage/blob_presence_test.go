@@ -3,6 +3,8 @@ package storage
 import (
 	"bytes"
 	"testing"
+
+	"go.uber.org/goleak"
 )
 
 func seedBlob(t *testing.T, store BlobStore, payload []byte) string {
@@ -36,6 +38,7 @@ func assertPresence(t *testing.T, store blobPresence, hash string) {
 }
 
 func TestLocalBlobStore_BlobExists(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	store, err := NewLocalBlobStore(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewLocalBlobStore: %v", err)
@@ -48,6 +51,7 @@ func TestLocalBlobStore_BlobExists(t *testing.T) {
 }
 
 func TestVolumeBlobStore_BlobExists(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	store, err := NewVolumeBlobStore(t.TempDir(), DefaultVolumeSize)
 	if err != nil {
 		t.Fatalf("NewVolumeBlobStore: %v", err)
@@ -61,6 +65,7 @@ func TestVolumeBlobStore_BlobExists(t *testing.T) {
 }
 
 func TestAdaptiveBlobStore_BlobExists(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	a, _, cleanup := newTestAdaptiveStore(t, 1<<10)
 	defer cleanup()
 
@@ -88,6 +93,7 @@ func TestAdaptiveBlobStore_BlobExists(t *testing.T) {
 }
 
 func TestAdaptiveBlobStore_BlobExistsWithoutVolume(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	local, err := NewLocalBlobStore(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewLocalBlobStore: %v", err)
@@ -102,6 +108,7 @@ func TestAdaptiveBlobStore_BlobExistsWithoutVolume(t *testing.T) {
 }
 
 func TestEncryptedBlobStore_BlobExistsForwards(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	inner, err := NewLocalBlobStore(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewLocalBlobStore: %v", err)
@@ -118,6 +125,7 @@ func TestEncryptedBlobStore_BlobExistsForwards(t *testing.T) {
 type opaqueStore struct{ BlobStore }
 
 func TestEncryptedBlobStore_BlobExistsWithoutInnerSupport(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	enc, err := NewEncryptedBlobStore(opaqueStore{}, "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff")
 	if err != nil {
 		t.Fatalf("NewEncryptedBlobStore: %v", err)
