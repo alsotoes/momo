@@ -29,11 +29,11 @@ None documented.
 - **Code**: Partial
 - **Tests**: Partial
 - **Docs**: Planned
-- **Blog post**: 
+- **Blog post**: docs/blog/posts/064-failing-over-coordination-in-seconds.md
 
 ## References
 - Issue: #1147
 - PR: 
 - Spec: `openspec/changes/coordinator-failover-v1/`
-- Blog: 
+- Blog: docs/blog/posts/064-failing-over-coordination-in-seconds.md
 

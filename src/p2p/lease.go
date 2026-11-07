@@ -3,6 +3,8 @@ package p2p
 import (
 	"fmt"
 	"log"
+
+	"github.com/alsotoes/momo/src/common"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -349,7 +351,8 @@ func (lm *LeaseManager) ReleaseByKey(key string) error {
 // needed, not which peers granted them, so if the number of reachable peers
 // drops below that count the holder stops acting. Releasing broadcasts a
 // release so a healthy node can take the role over right away.
-func (lm *LeaseManager) OnPeerFailure(peerID int32) {
+func (lm *LeaseManager) OnPeerFailure(peerID int32) (err error) {
+	defer common.RecoverErr("LeaseManager.OnPeerFailure", &err)
 	alive := 0
 	for _, p := range lm.transport.Peers().AliveByQuality() {
 		if p.ID != lm.localID {
@@ -373,6 +376,7 @@ func (lm *LeaseManager) OnPeerFailure(peerID int32) {
 		payload := &LeasePayload{LeaseID: lease.LeaseID, Key: lease.Key, Expiry: 0}
 		lm.transport.Broadcast(&RPC{From: lm.localID, Type: MsgLeaseRelease, Payload: payload.Encode()})
 	}
+	return nil
 }
 
 // ActiveLeases returns the number of leases currently held by this node.

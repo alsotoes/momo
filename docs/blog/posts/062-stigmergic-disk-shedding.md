@@ -15,7 +15,7 @@ artifacts:
     path: openspec/changes/r11-stigmergic-rebalance
   - type: adr
     path: docs/adr/0072-r11-stigmergic-rebalance.md
-related: ["061-cross-node-version-records", "063-gossip-load-without-a-coordinator"]
+related: ["061-cross-node-version-records", "063-gossip-load-without-a-coordinator", "064-failing-over-coordination-in-seconds"]
 difficulty: "intermediate"
 pattern: "stigmergy"
 teaches:

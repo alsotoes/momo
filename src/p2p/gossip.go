@@ -171,6 +171,10 @@ func (g *Gossiper) OnJoin(fn func(peer *Peer)) {
 // OnPeerStateChange registers an observer for peer degradation events
 // (SUSPECT/OFFLINE). Multiple observers are allowed; recovery to ALIVE is not
 // reported here.
+//
+// Observers run on the gossip loop, so implementations must be short and must
+// not block: a slow observer delays dissemination for every peer. A panicking
+// observer is recovered and logged rather than taking the loop down.
 func (g *Gossiper) OnPeerStateChange(fn func(peerID int32, state PeerState)) {
 	g.cbMu.Lock()
 	g.stateObservers = append(g.stateObservers, fn)
@@ -191,10 +195,22 @@ func (g *Gossiper) setPeerState(peer *Peer, state PeerState) bool {
 	observers := make([]func(int32, PeerState), len(g.stateObservers))
 	copy(observers, g.stateObservers)
 	g.cbMu.RUnlock()
-	for _, fn := range observers {
-		fn(peer.ID, state)
-	}
+	notifyStateObservers(peer.ID, state, observers)
 	return true
+}
+
+// notifyStateObservers invokes each observer, isolating panics (Rule 37).
+func notifyStateObservers(peerID int32, state PeerState, observers []func(int32, PeerState)) {
+	for _, fn := range observers {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("Gossip: peer state observer panicked for peer %d: %v (errno=%d)", peerID, r, syscall.EIO)
+				}
+			}()
+			fn(peerID, state)
+		}()
+	}
 }
 
 // OnLeave sets a callback invoked when a peer leaves the cluster.
