@@ -72,6 +72,10 @@ type MetricsCollector struct {
 	activeConnections atomic.Int64
 	bytesUploaded     atomic.Uint64
 	bytesDownloaded   atomic.Uint64
+	rebalanceMoved    atomic.Uint64
+	rebalanceBytes    atomic.Uint64
+	rebalanceCycles   atomic.Uint64
+	rebalanceFailures atomic.Uint64
 	startTime         time.Time
 	hostname          string
 
@@ -190,6 +194,18 @@ func (m *MetricsCollector) AddBytesReplicated(n uint64) {
 // IncReplicationFailures records a replication forwarding failure (R5 phase 3).
 func (m *MetricsCollector) IncReplicationFailures() { m.replicationFails.Add(1) }
 
+// IncRebalanceMoved counts blobs relocated by the R11 rebalance path.
+func (m *MetricsCollector) IncRebalanceMoved() { m.rebalanceMoved.Add(1) }
+
+// AddRebalanceBytes counts bytes relocated by the R11 rebalance path.
+func (m *MetricsCollector) AddRebalanceBytes(n uint64) { m.rebalanceBytes.Add(n) }
+
+// IncRebalanceCycles counts rebalance evaluations.
+func (m *MetricsCollector) IncRebalanceCycles() { m.rebalanceCycles.Add(1) }
+
+// IncRebalanceFailures counts rebalance pushes that failed or were aborted.
+func (m *MetricsCollector) IncRebalanceFailures() { m.rebalanceFailures.Add(1) }
+
 // SetStorageStats installs the optional scrape-time storage/CAS gauge source
 // (R5 phase 2). A nil source is allowed and skips those gauges.
 func (m *MetricsCollector) SetStorageStats(s storageStatsProvider) { m.storageOverride = s }
@@ -255,6 +271,22 @@ func (m *MetricsCollector) writeMetrics(w io.Writer) {
 	fmt.Fprintf(w, "# HELP momo_deletes_total Total number of file deletes.\n")
 	fmt.Fprintf(w, "# TYPE momo_deletes_total counter\n")
 	fmt.Fprintf(w, "momo_deletes_total %d\n", m.deletesTotal.Load())
+
+	_, _ = fmt.Fprintf(w, "# HELP momo_rebalance_blobs_moved_total Blobs relocated by the rebalance loop.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE momo_rebalance_blobs_moved_total counter\n")
+	_, _ = fmt.Fprintf(w, "momo_rebalance_blobs_moved_total %d\n", m.rebalanceMoved.Load())
+
+	_, _ = fmt.Fprintf(w, "# HELP momo_rebalance_bytes_moved_total Bytes relocated by the rebalance loop.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE momo_rebalance_bytes_moved_total counter\n")
+	_, _ = fmt.Fprintf(w, "momo_rebalance_bytes_moved_total %d\n", m.rebalanceBytes.Load())
+
+	_, _ = fmt.Fprintf(w, "# HELP momo_rebalance_cycles_total Rebalance evaluations run.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE momo_rebalance_cycles_total counter\n")
+	_, _ = fmt.Fprintf(w, "momo_rebalance_cycles_total %d\n", m.rebalanceCycles.Load())
+
+	_, _ = fmt.Fprintf(w, "# HELP momo_rebalance_failures_total Rebalance pushes that failed or were aborted.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE momo_rebalance_failures_total counter\n")
+	_, _ = fmt.Fprintf(w, "momo_rebalance_failures_total %d\n", m.rebalanceFailures.Load())
 
 	fmt.Fprintf(w, "# HELP momo_replication_total Total number of replication operations.\n")
 	fmt.Fprintf(w, "# TYPE momo_replication_total counter\n")

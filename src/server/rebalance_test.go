@@ -529,3 +529,52 @@ func TestMigrateBlobDropFailureKeepsBytes(t *testing.T) {
 		t.Fatalf("drop failure must not count as a move, moved=%d err=%v", moved, err)
 	}
 }
+
+func TestPushRecordsRebalanceMetrics(t *testing.T) {
+	store, hashes := rebalanceTestStore(t, 1)
+	src := &DaemonRebuildSource{}
+	src.SetStore(store)
+	src.SetMetrics(NewMetricsCollector())
+	src.pushFn = func(int, string, []byte, *common.FileMetadata) error { return nil }
+	if err := src.Push(context.Background(), hashes[0], 1); err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	if got := src.metrics.rebalanceMoved.Load(); got != 1 {
+		t.Fatalf("moved = %d, want 1", got)
+	}
+	if src.metrics.rebalanceBytes.Load() == 0 {
+		t.Fatal("byte counter must advance")
+	}
+	src.pushFn = func(int, string, []byte, *common.FileMetadata) error { return errors.New("boom") }
+	if err := src.Push(context.Background(), hashes[0], 1); err == nil {
+		t.Fatal("expected push error")
+	}
+	if got := src.metrics.rebalanceFailures.Load(); got != 1 {
+		t.Fatalf("failures = %d, want 1", got)
+	}
+	src.IncRebalanceCycles()
+	if got := src.metrics.rebalanceCycles.Load(); got != 1 {
+		t.Fatalf("cycles = %d, want 1", got)
+	}
+}
+
+func TestRebalanceMetricsRendered(t *testing.T) {
+	m := NewMetricsCollector()
+	m.IncRebalanceMoved()
+	m.AddRebalanceBytes(1234)
+	m.IncRebalanceCycles()
+	m.IncRebalanceFailures()
+	var buf bytes.Buffer
+	m.writeMetrics(&buf)
+	out := buf.String()
+	for _, want := range []string{
+		"momo_rebalance_blobs_moved_total 1",
+		"momo_rebalance_bytes_moved_total 1234",
+		"momo_rebalance_cycles_total 1",
+		"momo_rebalance_failures_total 1",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in metrics output", want)
+		}
+	}
+}

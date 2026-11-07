@@ -46,6 +46,7 @@
   - `checkFailureDomainSpread()` — analyze MetadataReplicas domains
   - Migrate one replica if concentrated
 - [ ] Request rate redirection:
+- [x] Rebalance observability — `momo_rebalance_{blobs_moved,bytes_moved,cycles,failures}_total` counters recorded on the push choke point
   - Extend existing proxy path: if peer has blob + lower load, redirect
 - [ ] Integration tests: simulate disk pressure → verify shedding to peer
 

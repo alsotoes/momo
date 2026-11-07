@@ -35,6 +35,31 @@ type DaemonRebuildSource struct {
 	// limiter throttles rebalance pushes so they cannot starve foreground
 	// traffic (R11). Nil means unlimited.
 	limiter *bandwidthLimiter
+	// metrics receives rebalance counters (R11). Nil disables recording.
+	metrics *MetricsCollector
+}
+
+// SetMetrics attaches the collector that receives rebalance counters.
+func (d *DaemonRebuildSource) SetMetrics(m *MetricsCollector) { d.metrics = m }
+
+// IncRebalanceCycles records one rebalance evaluation.
+func (d *DaemonRebuildSource) IncRebalanceCycles() {
+	if d.metrics != nil {
+		d.metrics.IncRebalanceCycles()
+	}
+}
+
+// recordRebalancePush counts a completed or failed rebalance push.
+func (d *DaemonRebuildSource) recordRebalancePush(n int, failed bool) {
+	if d.metrics == nil {
+		return
+	}
+	if failed {
+		d.metrics.IncRebalanceFailures()
+		return
+	}
+	d.metrics.IncRebalanceMoved()
+	d.metrics.AddRebalanceBytes(uint64(n))
 }
 
 // SetBandwidthLimit caps rebalance pushes at mbps megabytes per second.
@@ -72,9 +97,12 @@ func (d *DaemonRebuildSource) Push(ctx context.Context, hash string, targetID in
 	}
 	meta := &common.FileMetadata{Name: hash, Hash: hash, Size: int64(len(data))}
 	if d.pushFn != nil {
-		return d.pushFn(targetID, hash, data, meta)
+		err = d.pushFn(targetID, hash, data, meta)
+	} else {
+		err = d.pushToPeer(ctx, targetID, hash, data, meta)
 	}
-	return d.pushToPeer(ctx, targetID, hash, data, meta)
+	d.recordRebalancePush(len(data), err != nil)
+	return err
 }
 
 // NewDaemonRebuildSource creates a RebuildSource backed by the daemon's
