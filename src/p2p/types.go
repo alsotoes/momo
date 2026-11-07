@@ -32,7 +32,8 @@ type Peer struct {
 	Addr     string
 	state    atomic.Int32
 	lastSeen atomic.Int64
-	rtt      atomic.Int64 // EWMA round-trip time in nanoseconds (0 = unknown)
+	rtt      atomic.Int64             // EWMA round-trip time in nanoseconds (0 = unknown)
+	load     atomic.Pointer[PeerLoad] // last load report, nil until received
 	conn     net.Conn
 	mu       sync.Mutex
 	writeMu  sync.Mutex
@@ -123,6 +124,8 @@ const (
 	// R10 follow-up (#1233): replicate a version record to a peer.
 	MsgReplicateVersion         MessageType = 22
 	MsgReplicateVersionResponse MessageType = 23
+	// R11 step 1 (#1261): publish this node's load to its gossip peers.
+	MsgLoad MessageType = 24
 )
 
 // RPC is a remote procedure call exchanged between peers.
@@ -380,6 +383,66 @@ func DecodeLeasePayload(data []byte) (*LeasePayload, error) {
 		Key:     key,
 		Expiry:  expiry,
 	}, nil
+}
+
+// PeerLoad is the bounded load summary a node publishes to its gossip peers
+// (R11 step 1, #1261). It exists so a future redirect rule can compare nodes
+// using only the local gossip view — no coordinator, no query fan-out.
+type PeerLoad struct {
+	// DiskUsedPercent is the local data-disk utilisation, 0-100.
+	DiskUsedPercent uint8
+	// InflightRequests is the number of requests currently being served.
+	InflightRequests uint32
+	// ReplicationQueue is the number of blobs awaiting replication.
+	ReplicationQueue uint32
+	// UpdatedUnixNano is when the reporting node sampled the values.
+	UpdatedUnixNano int64
+}
+
+// LoadPayload is the wire form of MsgLoad.
+// Wire format: [1B disk%] [3B reserved] [4B inflight] [4B queue] [8B updated]
+const loadPayloadSize = 20
+
+// Encode serializes a LoadPayload into its fixed 20-byte wire form.
+func (l *PeerLoad) Encode() []byte {
+	buf := make([]byte, loadPayloadSize)
+	buf[0] = l.DiskUsedPercent
+	binary.BigEndian.PutUint32(buf[4:8], l.InflightRequests)
+	binary.BigEndian.PutUint32(buf[8:12], l.ReplicationQueue)
+	binary.BigEndian.PutUint64(buf[12:20], uint64(l.UpdatedUnixNano))
+	return buf
+}
+
+// DecodeLoadPayload parses a MsgLoad payload, rejecting oversized, short, or
+// out-of-range values (a peer must not be able to claim 300% disk).
+func DecodeLoadPayload(data []byte) (*PeerLoad, error) {
+	if len(data) > maxPayloadSize {
+		return nil, fmt.Errorf("load payload too large: %d (errno=%d)", len(data), syscall.EFBIG)
+	}
+	if len(data) < loadPayloadSize {
+		return nil, fmt.Errorf("load payload too short: %w", syscall.EBADMSG)
+	}
+	if data[0] > 100 {
+		return nil, fmt.Errorf("load payload disk percent out of range: %d: %w", data[0], syscall.EBADMSG)
+	}
+	return &PeerLoad{
+		DiskUsedPercent:  data[0],
+		InflightRequests: binary.BigEndian.Uint32(data[4:8]),
+		ReplicationQueue: binary.BigEndian.Uint32(data[8:12]),
+		UpdatedUnixNano:  int64(binary.BigEndian.Uint64(data[12:20])),
+	}, nil
+}
+
+// SetLoad stores the latest load report for the peer.
+func (p *Peer) SetLoad(l PeerLoad) { p.load.Store(&l) }
+
+// Load returns the last load report a peer published, or false if none yet.
+func (p *Peer) Load() (PeerLoad, bool) {
+	l := p.load.Load()
+	if l == nil {
+		return PeerLoad{}, false
+	}
+	return *l, true
 }
 
 // PingPayload is the payload of MsgPing, MsgAck, and MsgIndirectPing RPCs.

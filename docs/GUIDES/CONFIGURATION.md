@@ -416,7 +416,7 @@ back to a verified survivor. Single-node deployments never shed.
 -   **`disk_low_water`** — Used-disk percentage at which shedding stops. Must be below `disk_high_water`. Default: `70`.
 -   **`max_shed_per_cycle`** — Upper bound on blobs moved per evaluation. Default: `64`.
 -   **Preconditions:** `enabled=true` is rejected at load time unless `[p2p] enabled=true`, `storage.degraded_read=true`, `replication_factor >= 2`, and at least two daemons are configured — a shed blob must stay readable through a survivor, and a single node has nowhere to shed.
--   **`max_bandwidth_mbps`** — Cap on rebalance traffic in megabits per second, so shedding cannot starve foreground requests. `0` means unlimited. Default: `0`.
+-   **`max_bandwidth_mbps`** — Cap on rebalance traffic in megabits per second, so shedding cannot starve foreground requests. `0` means unlimited; production deployments should set an explicit cap. Default: `0`.
 
 -   **`durability`**
     -   **Description:** The R3 write-durability barrier selected before a write is acknowledged (issue #931). `fsync` (default) fsyncs each blob's bytes before ack — the historical fully-durable behavior. `group-commit` covers a batch of renames with one winner-driven directory-fsync barrier and skips the per-blob data fsync (amortized cost; content addressing plus the R2 verified-read/self-heal loop covers any torn block between the barrier and OS writeback). `none` acknowledges buffered writes without any fsync — best-effort and explicitly **non-durable** (a crash may lose acknowledged writes). Applies to the local (and encrypted-local) backend; backends without fsync primitives rely on their own persistence guarantee.

@@ -247,6 +247,11 @@ rule and the cluster converges as a side effect (stigmergy, not scheduling).
 - **Preconditions**: validated at config load (P2P enabled, `degraded_read`,
   `replication_factor >= 2`, at least two daemons) so a misconfigured loop fails
   at startup instead of never running.
+- **Peer load gossip**: every node publishes a fixed 20-byte summary (disk
+  percent, in-flight requests, reserved queue depth, timestamp) to the peers that
+  receive its heartbeat, and stores the latest report per peer. The channel is
+  bounded and optional (no provider = no traffic); no decision consumes it yet —
+  the redirect contract is tracked in #1261.
 - **Ownership**: re-replication after a leave and failure-domain spread stay with
   the R2 rebuild loop and R1 placement; R11 does not duplicate them.
 
