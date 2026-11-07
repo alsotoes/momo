@@ -10,6 +10,7 @@ import (
 	"log"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/alsotoes/momo/src/common"
 	"github.com/alsotoes/momo/src/storage"
@@ -173,15 +174,16 @@ func (d *DaemonRebuildSource) Survivors(hash string) ([]storage.Peer, error) {
 }
 
 // dialPeer establishes a transport connection to the given peer.
-func (d *DaemonRebuildSource) dialPeer(peerID int) (transport.Communicator, error) {
+func (d *DaemonRebuildSource) dialPeer(peerID int) (comm transport.Communicator, err error) {
+	defer common.RecoverErr("DaemonRebuildSource.dialPeer", &err)
 	if d.dialFn != nil {
 		return d.dialFn(peerID)
 	}
 	if peerID < 0 || peerID >= len(d.daemons) {
-		return nil, fmt.Errorf("peer ID %d out of range", peerID)
+		return nil, fmt.Errorf("peer ID %d out of range: %w", peerID, syscall.EINVAL)
 	}
 	if peerID == d.serverID {
-		return nil, fmt.Errorf("cannot dial self")
+		return nil, fmt.Errorf("cannot dial self: %w", syscall.EINVAL)
 	}
 
 	// Check cache first
@@ -192,16 +194,18 @@ func (d *DaemonRebuildSource) dialPeer(peerID int) (transport.Communicator, erro
 	}
 
 	factory := transport.NewProtocolFactory(d.cfg)
-	comm, err := factory.Dial(d.daemons[peerID].Host)
+	comm, err = factory.Dial(d.daemons[peerID].Host)
 	if err != nil {
 		return nil, fmt.Errorf("dial peer %d at %s: %w", peerID, d.daemons[peerID].Host, err)
 	}
 
 	// Perform peer handshake (auth token + zero timestamp + peer mode)
 	peerToken := d.peerTokens[peerID]
-	if _, err := comm.HandshakeClient(peerToken, 0, common.ReplicationNone); err != nil {
+	// The plaintext handshake carries an anti-replay timestamp (issue #657);
+	// a zero value is stale and the peer rejects it.
+	if _, herr := comm.HandshakeClient(peerToken, time.Now().UnixNano(), common.ReplicationNone); herr != nil {
 		comm.Close()
-		return nil, fmt.Errorf("peer handshake with %d: %w", peerID, err)
+		return nil, fmt.Errorf("peer handshake with %d: %v: %w", peerID, herr, syscall.EPROTO)
 	}
 
 	// Cache for reuse
