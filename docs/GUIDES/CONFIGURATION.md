@@ -416,6 +416,20 @@ back to a verified survivor. Single-node deployments never shed.
 -   **`disk_low_water`** — Used-disk percentage at which shedding stops. Must be below `disk_high_water`. Default: `70`.
 -   **`max_shed_per_cycle`** — Upper bound on blobs moved per evaluation. Default: `64`.
 -   **Preconditions:** `enabled=true` is rejected at load time unless `[p2p] enabled=true`, `storage.degraded_read=true`, `replication_factor >= 2`, and at least two daemons are configured — a shed blob must stay readable through a survivor, and a single node has nowhere to shed.
+-   **[`coordination_failover`]** — proactive handoff of coordination leases
+    (coordinator failover Phase 2). Requires `[p2p] enabled=true`.
+    -   **`enabled`** — start the health monitor. Default: `false`.
+    -   **`interval`** — sampling period in seconds. Default: `10`.
+    -   **`cpu_threshold`** — resign when local CPU exceeds this percentage
+        (0 disables; Linux reads `/proc/stat`, other platforms report unknown).
+        Default: `90`.
+    -   **`memory_threshold`** — resign when used memory exceeds this percentage
+        (0 disables; Linux reads `/proc/meminfo`). Default: `90`.
+    -   **`goroutine_threshold`** — resign when the goroutine count exceeds this
+        value (0 disables; samples from very small processes are ignored).
+        Default: `100000`.
+    -   **`cooldown`** — seconds to suppress repeat resignations while the node
+        remains unhealthy. Default: `60`.
 -   **`max_bandwidth_mbps`** — Cap on rebalance traffic in megabits per second, so shedding cannot starve foreground requests. `0` means unlimited; production deployments should set an explicit cap. Default: `0`.
 
 -   **`durability`**

@@ -1009,6 +1009,24 @@ func newJoinMigrator(ctx context.Context, cfg common.Configuration, serverId int
 	return &rebalanceRunner{store: cs, pusher: rebuildSrc, cmap: rebuildSrc.cmap, self: serverId, rf: cfg.Global.ReplicationFactor, cfg: cfg.Rebalance}
 }
 
+// newCoordinationHealthMonitor maps the configuration onto a health monitor, or
+// returns nil when proactive handoff is disabled.
+func newCoordinationHealthMonitor(cfg common.ConfigurationCoordinationFailover, lm *p2p.LeaseManager) *p2p.HealthMonitor {
+	if !cfg.Enabled {
+		return nil
+	}
+	return p2p.NewHealthMonitor(p2p.HealthMonitorConfig{
+		Interval: time.Duration(cfg.Interval) * time.Second,
+		Cooldown: time.Duration(cfg.Cooldown) * time.Second,
+		Limits: p2p.HealthLimits{
+			CPUPercent:    cfg.CPUThreshold,
+			MemPercent:    cfg.MemoryThreshold,
+			Goroutines:    cfg.GoroutineThreshold,
+			MinGoroutines: 8,
+		},
+	}, nil, lm)
+}
+
 // newLoadSampler builds the gossip load publisher: disk utilisation from the
 // storage backend and in-flight requests from the metrics collector. The
 // replication queue is not tracked per node yet, so it reports zero.
@@ -1108,6 +1126,15 @@ func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, d
 	gossip.SetScatterGather(scatterGather)
 	leaseManager.SetClusterSize(len(daemons))
 	gossip.SetLeaseManager(leaseManager)
+	// Coordinator failover Phase 2: step down proactively when this node is
+	// running out of CPU, memory, or goroutines.
+	if monitor := newCoordinationHealthMonitor(cfg.CoordinationFailover, leaseManager); monitor != nil {
+		go monitor.Run(ctx)
+		log.Printf("P2P: coordination health monitor enabled (interval=%ds, cpu>%.0f%%, mem>%.0f%%, goroutines>%d)",
+			cfg.CoordinationFailover.Interval, cfg.CoordinationFailover.CPUThreshold,
+			cfg.CoordinationFailover.MemoryThreshold, cfg.CoordinationFailover.GoroutineThreshold)
+	}
+
 	// Coordinator failover Phase 1: degrade leases as soon as SWIM suspects a
 	// peer, instead of waiting for the lease TTL.
 	gossip.OnPeerStateChange(func(peerID int32, _ p2p.PeerState) {

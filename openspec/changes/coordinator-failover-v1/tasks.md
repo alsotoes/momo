@@ -16,20 +16,25 @@
   leases (`metrics-controller`, `replication-propagator`), so the quorum rule
   supersedes a role-specific call
 
-## Phase 2 — Proactive Leadership Handoff
-- [ ] Extend `src/coordination/election.go` — `Coordinator` health monitoring
-  - `StartHealthMonitor(ctx, interval)` — background goroutine
-  - `CheckHealth() bool` — evaluates CPU, memory, goroutines
-  - `ResignAll()` — graceful resignation of all held leases
-- [ ] Health check implementation:
-  - `GetCPUUsage() float64` — from `gopsutil`
-  - `GetMemoryUsage() float64` — from `gopsutil`
-  - `GetGoroutineCount() int` — `runtime.NumGoroutine()`
-- [ ] Graceful resignation:
-  - `Resign(role RoleType)` → persist state, broadcast intent, release lease
-  - `ResignAll()` → resign all held roles
-- [ ] Config parsing: `[coordination_failover]` section in `config.go`
-- [ ] Unit tests: `coordinator_health_test.go` (mock health, verify resignation)
+## Phase 2 — Proactive Leadership Handoff (delivered as a health monitor on the lease layer)
+- [x] `src/p2p/health.go` — `HealthSnapshot`, `HealthLimits` (per-dimension
+  disable via zero, startup-sample guard), injectable `HealthSampler`
+- [x] Samplers: `health_linux.go` reads `/proc/stat` (CPU delta, not lifetime
+  average) and `/proc/meminfo` (MemAvailable); `health_other.go` reports
+  goroutines only, so CPU/memory thresholds never fire where unobservable.
+  No new dependency: `gopsutil` was avoided in favour of a small /proc reader.
+- [x] `LeaseManager.ResignAll(reason)` — releases and broadcasts every held
+  lease with an AUDIT trail
+- [x] `HealthMonitor` — interval sampling, cooldown against repeated
+  resignations, context-cancellable `Run`
+- [x] Config: `[coordination_failover]` (`enabled`, `interval`,
+  `cpu_threshold`, `memory_threshold`, `goroutine_threshold`, `cooldown`) with
+  validation and a P2P requirement
+- [x] Daemon wiring: monitor started in `bootstrapP2P` when enabled
+- [x] Tests: threshold matrix, disabled dimensions, startup-sample guard,
+  resign-once-per-cooldown, healthy samples ignored, no-manager no-op, Run
+  cancellation, config defaults/overrides/rejections
+- [x] Documentation: `conf/momo.conf` sample, configuration guide, architecture
 
 ## Phase 3 — Split-Brain Prevention (Quorum)
 - [x] `LeaseManager.SetClusterSize(n)` / `ClusterQuorum()` / `HasQuorum()` —

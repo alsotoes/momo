@@ -36,6 +36,9 @@ const (
 	sectionAudit = "audit"
 	// sectionSecrets is the name of the [secrets] section in the configuration file (R9, #937).
 	sectionSecrets = "secrets"
+	// sectionCoordinationFailover is the optional [coordination_failover] section
+	// (coordinator failover Phase 2, #1148).
+	sectionCoordinationFailover = "coordination_failover"
 	// prefixDaemon is the prefix for daemon sections in the configuration file (e.g., [daemon.0]).
 	prefixDaemon = "daemon."
 	// prefixTenant is the prefix for tenant sections in the configuration file (e.g., [tenant.xxx]).
@@ -206,6 +209,17 @@ func GetConfig(path string) (Configuration, error) {
 	}
 
 	// Load [rebalance] section (optional, R11 #1143).
+	coordinationSec, cerr := cfg.GetSection(sectionCoordinationFailover)
+	if cerr == nil {
+		config.CoordinationFailover, err = loadCoordinationFailoverConfig(coordinationSec)
+		if err != nil {
+			return Configuration{}, fmt.Errorf("failed to load [%s] section: %w", sectionCoordinationFailover, err)
+		}
+		if config.CoordinationFailover.Enabled && !config.P2P.Enabled {
+			return Configuration{}, fmt.Errorf("[coordination_failover] enabled=true requires [p2p] enabled=true: %w", syscall.EINVAL)
+		}
+	}
+
 	rebalanceSec, err := cfg.GetSection(sectionRebalance)
 	if err == nil {
 		config.Rebalance, err = loadRebalanceConfig(rebalanceSec)
@@ -348,6 +362,33 @@ func loadRebalanceConfig(section *ini.Section) (ConfigurationRebalance, error) {
 		return ConfigurationRebalance{}, fmt.Errorf("'max_bandwidth_mbps' must be >= 0: %w", syscall.EINVAL)
 	}
 	return rc, nil
+}
+
+func loadCoordinationFailoverConfig(section *ini.Section) (ConfigurationCoordinationFailover, error) {
+	cf := ConfigurationCoordinationFailover{
+		Enabled:            section.Key("enabled").MustBool(false),
+		Interval:           section.Key("interval").MustInt(10),
+		CPUThreshold:       section.Key("cpu_threshold").MustFloat64(90),
+		MemoryThreshold:    section.Key("memory_threshold").MustFloat64(90),
+		GoroutineThreshold: section.Key("goroutine_threshold").MustInt(100000),
+		Cooldown:           section.Key("cooldown").MustInt(60),
+	}
+	if cf.Interval <= 0 {
+		return ConfigurationCoordinationFailover{}, fmt.Errorf("'interval' must be > 0: %w", syscall.EINVAL)
+	}
+	if cf.CPUThreshold < 0 || cf.CPUThreshold > 100 {
+		return ConfigurationCoordinationFailover{}, fmt.Errorf("'cpu_threshold' must be in [0, 100]: %w", syscall.EINVAL)
+	}
+	if cf.MemoryThreshold < 0 || cf.MemoryThreshold > 100 {
+		return ConfigurationCoordinationFailover{}, fmt.Errorf("'memory_threshold' must be in [0, 100]: %w", syscall.EINVAL)
+	}
+	if cf.GoroutineThreshold < 0 {
+		return ConfigurationCoordinationFailover{}, fmt.Errorf("'goroutine_threshold' must be >= 0: %w", syscall.EINVAL)
+	}
+	if cf.Cooldown < 0 {
+		return ConfigurationCoordinationFailover{}, fmt.Errorf("'cooldown' must be >= 0: %w", syscall.EINVAL)
+	}
+	return cf, nil
 }
 
 func loadMomofsConfig(section *ini.Section) (ConfigurationMomofs, error) {

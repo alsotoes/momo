@@ -96,6 +96,35 @@ as its coordinator.
 The old reachable-peer heuristic remains only as a fallback for embedded and
 single-process use, where no configured cluster exists to take a majority of.
 
+## Stepping Down Before You Fall Over
+
+Detection handles a node that is already gone. It does not help with the more
+common failure: a node that is alive, answering, and slowly drowning. Its CPU is
+pinned, its memory is nearly exhausted, its goroutine count is climbing — and it
+is still the coordinator.
+
+Waiting for membership to declare such a node offline is the wrong move. Gossip
+sees a node that replies; a struggling process replies fine right up until it
+does not, and by then the work it accepted is already in flight.
+
+So the node watches itself. On an interval it samples CPU, memory and goroutine
+count, and if it crosses a configured threshold it steps down: every held lease
+is released and broadcast, and a healthy peer can pick the role up immediately.
+
+Two details keep this from becoming its own outage. A zero threshold disables a
+dimension, and a dimension the platform cannot observe reports unknown rather
+than idle — a guess of "0% busy" would be worse than no guess. And resignations
+are rate-limited by a cooldown, so a node with a genuinely hot workload does not
+thrash the role between itself and its peers every ten seconds.
+
+The sample-based CPU figure deserves a note: it is a delta between two readings,
+not the machine's lifetime average. The lifetime average is smooth, comforting,
+and completely blind to the spike that is happening right now.
+
+Reading `/proc` directly instead of taking a dependency keeps the deployment
+surface unchanged — no extra libraries to vendor, and platforms without `/proc`
+simply fall back to the goroutine dimension.
+
 ## What Changes for an Operator
 
 Failover time stops being "the lease TTL" and becomes "the suspicion timeout".

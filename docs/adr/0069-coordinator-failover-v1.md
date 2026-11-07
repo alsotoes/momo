@@ -28,7 +28,7 @@ None documented.
 ## Implementation Status
 - **Code**: Partial
 - **Tests**: Partial
-- **Docs**: Planned
+- **Docs**: Partial
 - **Blog post**: docs/blog/posts/064-failing-over-coordination-in-seconds.md
 
 ## References
