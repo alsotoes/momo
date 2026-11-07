@@ -60,3 +60,25 @@ func TestGetBlobByHashRejectsTraversal(t *testing.T) {
 		t.Fatalf("want EINVAL, got %v", err)
 	}
 }
+
+func TestBlobSize(t *testing.T) {
+	s := newTestStore(t)
+	payload := []byte(strings.Repeat("z", 40))
+	hash := common.HashBytes(payload)
+	if err := s.Put("size", hash, int64(len(payload)), "", strings.NewReader(string(payload))); err != nil {
+		t.Fatalf("put: %v", err)
+	}
+	got, err := s.BlobSize(hash)
+	if err != nil {
+		t.Fatalf("BlobSize: %v", err)
+	}
+	if got != int64(len(payload)) {
+		t.Fatalf("size = %d, want %d", got, len(payload))
+	}
+	if _, err := s.BlobSize("missing"); err == nil {
+		t.Fatal("missing blob must error")
+	}
+	if _, err := s.BlobSize("../etc/passwd"); !errors.Is(err, syscall.EINVAL) {
+		t.Fatalf("want EINVAL, got %v", err)
+	}
+}

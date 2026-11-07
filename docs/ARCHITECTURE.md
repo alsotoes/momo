@@ -222,6 +222,9 @@ rule and the cluster converges as a side effect (stigmergy, not scheduling).
   single-node clusters never shed, and the loop refuses to start unless
   `storage.degraded_read=true` — the local read then falls back to a verified
   survivor while the rebuild loop re-establishes the replica count.
+- **Streaming**: a rebalance push reports the blob's directory-entry size and
+  streams it from disk through the throttled writer, so memory never scales with
+  object size. Integrity is enforced at ingest and on read.
 - **Throttling**: `max_bandwidth_mbps` (default `0` = unlimited) spends a token
   bucket per 64 KiB write (`writeThrottled`), so a shed or migration pass cannot
   starve foreground traffic on the same uplink.

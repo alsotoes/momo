@@ -104,6 +104,24 @@ failed transfer does not permanently eat the budget. And the budget is spent
 *before* the write, not after, which is what actually protects the socket queue
 from a burst of buffered blobs.
 
+## Shedding Without Buffering
+
+There is a subtle trap in moving bytes: the obvious implementation reads the
+blob into memory and then writes it out. For a small object that is invisible.
+For a multi-gigabyte archive it means the node that is already under disk
+pressure also spikes its memory — the wrong resource at the wrong moment.
+
+The size of a blob is already known from its directory entry, so the rebalance
+push reports that size to the peer and streams the file straight from disk
+through the throttling writer. No intermediate copy, no `readAll`, no memory
+proportional to object size. The peer learns the exact length up front, which
+also keeps the transfer framing honest.
+
+Streaming does give up one thing: the whole-payload checks the buffered path
+could do before sending. That check is not lost — every node verifies the
+content hash on ingest and on read, so a corrupted stream is rejected where it
+lands rather than trusted because it was checked at the source.
+
 ## Can You Tell It Is Working?
 
 A background process that moves data and says nothing is impossible to operate:

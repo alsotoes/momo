@@ -63,6 +63,52 @@ func (l *bandwidthLimiter) waitN(ctx context.Context, n int) error {
 	}
 }
 
+// writeThrottledReader streams r into w in chunks, spending bandwidth budget
+// before each write. A nil limiter degrades to a plain copy.
+func writeThrottledReader(ctx context.Context, w io.Writer, r io.Reader, limiter *bandwidthLimiter) error {
+	if limiter == nil {
+		_, err := io.Copy(w, r)
+		return err
+	}
+	chunk := chunkSize
+	if int(limiter.burst) < chunk {
+		chunk = int(limiter.burst)
+	}
+	if chunk < 1 {
+		chunk = 1
+	}
+	buf := make([]byte, chunk)
+	for {
+		n, rerr := r.Read(buf)
+		if err := copyChunk(ctx, w, buf[:n], limiter); err != nil {
+			return err
+		}
+		if rerr != nil {
+			return eofOr(rerr)
+		}
+	}
+}
+
+// copyChunk spends budget and writes one chunk.
+func copyChunk(ctx context.Context, w io.Writer, chunk []byte, limiter *bandwidthLimiter) error {
+	if len(chunk) == 0 {
+		return nil
+	}
+	if err := limiter.waitN(ctx, len(chunk)); err != nil {
+		return err
+	}
+	_, err := w.Write(chunk)
+	return err
+}
+
+// eofOr maps io.EOF to nil so copy loops end cleanly.
+func eofOr(err error) error {
+	if err == io.EOF {
+		return nil
+	}
+	return err
+}
+
 // writeThrottled copies data to w in chunks, spending bandwidth budget before
 // each chunk. A nil limiter writes everything in one call.
 func writeThrottled(ctx context.Context, w io.Writer, data []byte, limiter *bandwidthLimiter) error {
