@@ -41,6 +41,49 @@ type LeaseManager struct {
 	closed bool
 	done   chan struct{}
 	wg     sync.WaitGroup
+
+	// clusterSize is the number of configured nodes, used for split-brain
+	// prevention (quorum of the whole cluster, not of whichever nodes happen to
+	// be reachable). Zero means "unknown": the manager falls back to the
+	// reachable-peer heuristic so tests and single-process use keep working.
+	clusterSize int
+}
+
+// SetClusterSize declares the configured cluster size so lease acquisition
+// requires a majority of the whole cluster and a partition cannot grant leases
+// with a minority (split-brain prevention, coordinator failover Phase 3).
+func (lm *LeaseManager) SetClusterSize(n int) {
+	lm.stopMu.Lock()
+	lm.clusterSize = n
+	lm.stopMu.Unlock()
+}
+
+// ClusterQuorum returns the number of nodes (including self) that must be
+// reachable for coordination, or 0 when the cluster size is unknown.
+func (lm *LeaseManager) ClusterQuorum() int {
+	lm.stopMu.Lock()
+	size := lm.clusterSize
+	lm.stopMu.Unlock()
+	if size <= 0 {
+		return 0
+	}
+	// Majority of the whole cluster, including self: 2 of 3, 3 of 5.
+	return size/2 + 1
+}
+
+// HasQuorum reports whether enough nodes are reachable to coordinate.
+func (lm *LeaseManager) HasQuorum() bool {
+	need := lm.ClusterQuorum()
+	if need == 0 {
+		return true
+	}
+	reachable := 1 // self
+	for _, p := range lm.transport.Peers().AliveByQuality() {
+		if p.ID != lm.localID {
+			reachable++
+		}
+	}
+	return reachable >= need
 }
 
 // NewLeaseManager creates a new LeaseManager.
@@ -214,6 +257,18 @@ func (lm *LeaseManager) Acquire(key string, duration time.Duration) (*Lease, err
 		}
 	}
 
+	// Split-brain prevention (coordinator failover Phase 3): with a known
+	// cluster size, a minority partition must not grant leases at all, even if
+	// every reachable peer would agree.
+	if !lm.HasQuorum() {
+		return nil, fmt.Errorf("coordination suspended: cluster quorum lost: %w", syscall.EHOSTUNREACH)
+	}
+	if need := lm.ClusterQuorum(); need > 0 {
+		if reachable := 1 + peerCount; reachable < need {
+			return nil, fmt.Errorf("coordination suspended: %d/%d nodes reachable, need %d (errno=%d)", reachable, lm.clusterSize, need, syscall.EHOSTUNREACH)
+		}
+	}
+
 	// Split-brain guard (issue #630): if the cluster is configured with peers
 	// (the peer map is non-empty) but none of them are currently reachable, this
 	// is a network partition, not a single-node cluster. Granting a zero-quorum
@@ -360,15 +415,23 @@ func (lm *LeaseManager) OnPeerFailure(peerID int32) (err error) {
 		}
 	}
 
+	// Losing cluster quorum suspends all coordination: release everything, not
+	// only the leases that are individually unsatisfiable.
+	suspended := !lm.HasQuorum()
+
 	var lost []*Lease
 	lm.heldMu.Lock()
 	for id, lease := range lm.held {
-		if alive < lease.QuorumSize {
+		if suspended || alive < lease.QuorumSize {
 			lost = append(lost, lease)
 			delete(lm.held, id)
 		}
 	}
 	lm.heldMu.Unlock()
+
+	if suspended {
+		log.Printf("AUDIT: coordination suspended: cluster quorum lost after peer %d failed", peerID)
+	}
 
 	for _, lease := range lost {
 		log.Printf("AUDIT: coordination suspended for %q: peer %d failed, %d peer(s) reachable, lease required %d",

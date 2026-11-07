@@ -77,6 +77,25 @@ an actual change, so repeated suspicion does not cascade into repeated lease
 work. And every observer runs behind a panic guard — a bug in one listener must
 not be able to take down gossip dissemination for the whole node.
 
+## The Majority That Matters
+
+Fast revocation answers "the peers I relied on are gone". It does not answer a
+subtler question: how many nodes should count as a majority in the first place?
+
+Counting a majority of *reachable* peers is circular — a minority partition
+would happily elect itself, because in its own view it is the entire world. So
+the cluster size is declared once at startup, and coordination requires a
+majority of that configured set: three of five, two of three, one of one.
+
+Two consequences follow naturally. Acquisition refuses to begin in a minority
+partition instead of negotiating with whoever answers. And losing quorum releases
+every held lease at once, not just the ones that are individually short of
+grants — if the cluster can no longer form a majority, no node should be acting
+as its coordinator.
+
+The old reachable-peer heuristic remains only as a fallback for embedded and
+single-process use, where no configured cluster exists to take a majority of.
+
 ## What Changes for an Operator
 
 Failover time stops being "the lease TTL" and becomes "the suspicion timeout".

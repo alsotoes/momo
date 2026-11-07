@@ -247,6 +247,10 @@ rule and the cluster converges as a side effect (stigmergy, not scheduling).
 - **Preconditions**: validated at config load (P2P enabled, `degraded_read`,
   `replication_factor >= 2`, at least two daemons) so a misconfigured loop fails
   at startup instead of never running.
+- **Split-brain prevention**: lease acquisition requires a majority of the
+  configured cluster (not of the reachable subset), so a minority partition can
+  never grant coordination. Losing quorum releases every held lease and audits
+  the suspension; a single-node cluster is unaffected.
 - **Lease failover**: SWIM degradation events (SUSPECT/OFFLINE) notify the lease
   manager, which immediately releases any held lease whose quorum is no longer
   satisfiable and broadcasts the release. Coordination therefore stops in
