@@ -4,7 +4,7 @@
 Proposed
 
 ## Confidence
-Medium
+High
 
 ## Context
 When a node joins or leaves the cluster, the CRUSH placement changes — some objects now map to different replica sets. Currently Momo has no automatic rebalancing: the new topology is used only for new writes, while existing data stays on old replicas. This leads to:
@@ -29,7 +29,7 @@ None documented.
 
 ## Implementation Status
 - **Code**: Partial
-- **Tests**: Partial
+- **Tests**: Done
 - **Docs**: Done
 - **Blog post**: docs/blog/posts/062-stigmergic-disk-shedding.md
 
