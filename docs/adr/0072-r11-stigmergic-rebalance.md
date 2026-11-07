@@ -31,11 +31,11 @@ None documented.
 - **Code**: Partial
 - **Tests**: Partial
 - **Docs**: Planned
-- **Blog post**: 
+- **Blog post**: docs/blog/posts/062-stigmergic-disk-shedding.md
 
 ## References
 - Issue: #1143
 - PR: 
 - Spec: `openspec/changes/r11-stigmergic-rebalance/`
-- Blog: 
+- Blog: docs/blog/posts/062-stigmergic-disk-shedding.md
 
