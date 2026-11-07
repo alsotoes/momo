@@ -197,6 +197,27 @@ component did exactly what it was written to do. Only randomized interleaving of
 shedding, migration, and failure exposed the composition error, and it did so in
 a second, deterministically, on a laptop.
 
+## What It Costs
+
+Two numbers decide whether a background rule is safe to enable on a busy node:
+what one pass costs, and what one throttled push costs.
+
+A pass over a thousand blobs takes about 25 milliseconds on ordinary hardware.
+That is a statfs call, a walk of the blob directory, a sort by write time, and a
+placement calculation per candidate. The cost is linear in blob count, so a node
+holding a million blobs pays roughly twenty-five seconds per pass — worth knowing
+before you shorten the interval. The pass only runs when the disk is above the
+high-water mark, so a healthy node pays a single statfs.
+
+Throttling is nearly free where it matters. At a 10 Gbps budget the token bucket
+adds about 1.2 microseconds per megabyte, because the budget is spent per 64 KiB
+chunk and the arithmetic is a multiplication and a comparison. The limiter only
+becomes the bottleneck when the operator sets it below the link speed, which is
+exactly the intent.
+
+Both numbers come from benchmarks in the repository, so a regression shows up in
+review rather than in production.
+
 ## What It Refuses to Do
 
 - **Single-node clusters never shed.** With no peer in the placement set there

@@ -69,7 +69,8 @@ func (r *rebalanceRunner) run(ctx context.Context, interval time.Duration) {
 }
 
 // rebalanceCycle performs one evaluation. It returns how many blobs moved.
-func rebalanceCycle(ctx context.Context, cs *storage.CASStore, pusher rebalancePusher, cmap *common.ClusterMap, self int, rf int, rc common.ConfigurationRebalance) (int, error) {
+func rebalanceCycle(ctx context.Context, cs *storage.CASStore, pusher rebalancePusher, cmap *common.ClusterMap, self int, rf int, rc common.ConfigurationRebalance) (moved int, err error) {
+	defer common.RecoverErr("rebalanceCycle", &err)
 	usedPct, err := diskUsedPercent(cs)
 	if err != nil {
 		return 0, err
@@ -85,7 +86,6 @@ func rebalanceCycle(ctx context.Context, cs *storage.CASStore, pusher rebalanceP
 	// the oldest blob is the best available guess at "least recently useful".
 	sort.Slice(blobs, func(i, j int) bool { return blobs[i].ModTime < blobs[j].ModTime })
 
-	moved := 0
 	for _, blob := range blobs {
 		if moved >= rc.MaxShedPerCycle || usedPct <= rc.DiskLowWater {
 			break
@@ -195,7 +195,8 @@ func pickShedTarget(cmap *common.ClusterMap, hash string, self int, rf int) (int
 }
 
 // diskUsedPercent reports the local filesystem's used percentage.
-func diskUsedPercent(cs *storage.CASStore) (float64, error) {
+func diskUsedPercent(cs *storage.CASStore) (pct float64, err error) {
+	defer common.RecoverErr("diskUsedPercent", &err)
 	used, free, err := cs.GetDiskUsage()
 	if err != nil {
 		return 0, err
