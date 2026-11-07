@@ -212,6 +212,11 @@ func GetConfig(path string) (Configuration, error) {
 		if err != nil {
 			return Configuration{}, fmt.Errorf("failed to load [%s] section: %w", sectionRebalance, err)
 		}
+		if config.Rebalance.Enabled {
+			if err := validateRebalanceConfig(config); err != nil {
+				return Configuration{}, err
+			}
+		}
 	} else {
 		config.Rebalance = defaultRebalanceConfig()
 	}
@@ -296,6 +301,25 @@ func defaultRebalanceConfig() ConfigurationRebalance {
 		DiskLowWater:    defaultRebalanceLow,
 		MaxShedPerCycle: defaultRebalanceMaxShed,
 	}
+}
+
+// validateRebalanceConfig rejects configurations where shedding cannot be safe
+// or meaningful, so an operator learns at startup instead of never seeing a
+// cycle run (R11, #1143).
+func validateRebalanceConfig(config Configuration) error {
+	if !config.P2P.Enabled {
+		return fmt.Errorf("[rebalance] enabled=true requires [p2p] enabled=true: %w", syscall.EINVAL)
+	}
+	if !config.Storage.DegradedRead {
+		return fmt.Errorf("[rebalance] enabled=true requires storage degraded_read=true (a shed blob must stay readable via a survivor): %w", syscall.EINVAL)
+	}
+	if config.Global.ReplicationFactor < 2 {
+		return fmt.Errorf("[rebalance] enabled=true requires replication_factor >= 2: %w", syscall.EINVAL)
+	}
+	if len(config.Daemons) < 2 {
+		return fmt.Errorf("[rebalance] enabled=true requires at least two daemons: %w", syscall.EINVAL)
+	}
+	return nil
 }
 
 // loadRebalanceConfig parses and validates the [rebalance] section (R11, #1143).

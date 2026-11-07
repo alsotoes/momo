@@ -236,6 +236,9 @@ rule and the cluster converges as a side effect (stigmergy, not scheduling).
   `momo_rebalance_bytes_moved_total`, `momo_rebalance_cycles_total`, and
   `momo_rebalance_failures_total` are recorded at the push choke point, so they
   count bytes that actually left the node.
+- **Preconditions**: validated at config load (P2P enabled, `degraded_read`,
+  `replication_factor >= 2`, at least two daemons) so a misconfigured loop fails
+  at startup instead of never running.
 - **Ownership**: re-replication after a leave and failure-domain spread stay with
   the R2 rebuild loop and R1 placement; R11 does not duplicate them.
 

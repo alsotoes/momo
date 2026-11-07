@@ -415,6 +415,7 @@ back to a verified survivor. Single-node deployments never shed.
 -   **`disk_high_water`** — Used-disk percentage that starts shedding. Default: `85`.
 -   **`disk_low_water`** — Used-disk percentage at which shedding stops. Must be below `disk_high_water`. Default: `70`.
 -   **`max_shed_per_cycle`** — Upper bound on blobs moved per evaluation. Default: `64`.
+-   **Preconditions:** `enabled=true` is rejected at load time unless `[p2p] enabled=true`, `storage.degraded_read=true`, `replication_factor >= 2`, and at least two daemons are configured — a shed blob must stay readable through a survivor, and a single node has nowhere to shed.
 -   **`max_bandwidth_mbps`** — Cap on rebalance traffic in megabits per second, so shedding cannot starve foreground requests. `0` means unlimited. Default: `0`.
 
 -   **`durability`**

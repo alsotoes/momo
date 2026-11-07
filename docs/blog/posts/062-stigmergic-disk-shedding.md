@@ -140,6 +140,22 @@ questions: bytes per second tells you whether the throttle is binding, failures
 per minute tells you whether a peer is unreachable, and a flat cycles counter
 tells you the loop is not running even though the config says it should be.
 
+## Fail at Startup, Not at 3 a.m.
+
+A background rule that cannot run should say so immediately. If shedding is
+enabled but the node is alone, or replication is set to one, or degraded read is
+off, the loop has nothing safe to do — and the worst outcome is silence: disks
+fill while the config claims a rebalance is enabled.
+
+So the preconditions are checked when the configuration loads, and any violation
+aborts startup with a message that names the missing piece. The three that
+matter are structural, not tunable: shedding needs a peer to shed to
+(`replication_factor >= 2`, at least two daemons), it needs the survivor read
+path (`degraded_read`), and it needs cluster membership (`p2p`).
+
+This is a small piece of code carrying a large operational rule: a feature that
+can be silently inert is a feature you cannot trust during an incident.
+
 ## What It Refuses to Do
 
 - **Single-node clusters never shed.** With no peer in the placement set there
