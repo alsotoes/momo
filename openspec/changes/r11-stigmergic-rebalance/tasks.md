@@ -64,7 +64,7 @@
 - [x] Blog post 062 (Rule 76)
 
 ## Phase 5 — Chaos Testing + Validation
-- [ ] Chaos test: random join/leave/fail in 10-node cluster
+- [ ] Chaos test: random join/leave/fail in 10-node cluster — partially mitigated: overlapping passes are serialized by `runMu` and covered by `TestPassesAreSerialized`
   - Verify convergence to balanced state (disk usage, replica count)
   - Verify no data loss (all objects have RF replicas)
   - Verify read availability throughout (degraded read works)

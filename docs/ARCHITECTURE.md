@@ -236,6 +236,9 @@ rule and the cluster converges as a side effect (stigmergy, not scheduling).
   `momo_rebalance_bytes_moved_total`, `momo_rebalance_cycles_total`, and
   `momo_rebalance_failures_total` are recorded at the push choke point, so they
   count bytes that actually left the node.
+- **Serialized passes**: one mutex covers a whole evaluation pass, so a timer
+  tick and a join migration cannot push the same blob twice; the waiting pass
+  re-reads the blob list afterwards.
 - **Preconditions**: validated at config load (P2P enabled, `degraded_read`,
   `replication_factor >= 2`, at least two daemons) so a misconfigured loop fails
   at startup instead of never running.

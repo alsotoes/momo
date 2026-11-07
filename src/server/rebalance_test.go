@@ -578,3 +578,69 @@ func TestRebalanceMetricsRendered(t *testing.T) {
 		}
 	}
 }
+
+// blockingPusher holds the first push until released, so two passes overlap.
+type blockingPusher struct {
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+	mu      sync.Mutex
+	n       int
+}
+
+func (b *blockingPusher) Push(_ context.Context, _ string, _ int) error {
+	b.mu.Lock()
+	b.n++
+	b.mu.Unlock()
+	b.once.Do(func() { close(b.entered) })
+	<-b.release
+	return nil
+}
+
+func (b *blockingPusher) count() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.n
+}
+
+func TestPassesAreSerialized(t *testing.T) {
+	store, err := storage.NewCASStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	cmap := testCmap3(t)
+	putMovableBlobs(t, store, cmap, 0, 1, 1)
+	pusher := &blockingPusher{entered: make(chan struct{}), release: make(chan struct{})}
+	r := joinRunner(t, store, pusher, cmap, 0, 2, 4)
+
+	done := make(chan struct{})
+	go func() {
+		_ = r.onPeerJoin(context.Background(), 1)
+		close(done)
+	}()
+	<-pusher.entered
+
+	// A second pass must wait for the first rather than push the same blobs.
+	tryPass := func() {
+		r.runMu.Lock()
+		defer r.runMu.Unlock()
+	}
+	second := make(chan struct{})
+	go func() {
+		tryPass()
+		close(second)
+	}()
+	select {
+	case <-second:
+		t.Fatal("second pass acquired the lock while the first was mid-push")
+	case <-time.After(30 * time.Millisecond):
+	}
+
+	close(pusher.release)
+	<-done
+	<-second
+	if pusher.count() == 0 {
+		t.Fatal("expected pushes")
+	}
+}
