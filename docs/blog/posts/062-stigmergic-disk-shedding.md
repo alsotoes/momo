@@ -205,6 +205,12 @@ goes through an actual TCP listener with the actual handshake. That test now
 covers the whole sequence end to end, and it fails if the timestamp is stale, so
 the regression cannot come back silently.
 
+Two sequences are covered that way: a pressure-driven shed, and a join-driven
+migration, where the blob is only dropped after the joining peer confirms it has
+the bytes. Both use ephemeral ports and a real store on the receiving side, so
+the test also proves the peer actually persists the object rather than merely
+acknowledging it.
+
 The lesson generalizes: protocols have rules that only the real implementation
 enforces. When a code path exists only in production — a peer-to-peer push, a
 replication fetch — a unit test with a fake transport proves the plumbing, not
