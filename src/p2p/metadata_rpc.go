@@ -794,10 +794,7 @@ func (m *MetadataRPCProvider) replicateAll(replicas []int32, args *PutMetadataAr
 	var firstErr error
 	results := make(chan error, len(remote))
 	for _, peer := range remote {
-		go func(p int32) {
-			_, err := m.replicateToPeer(p, replicaArgs)
-			results <- err
-		}(peer)
+		go func(p int32) { results <- m.replicateSafely(p, replicaArgs) }(peer)
 	}
 	for i := 0; i < len(remote); i++ {
 		if err := <-results; err != nil {
@@ -809,6 +806,15 @@ func (m *MetadataRPCProvider) replicateAll(replicas []int32, args *PutMetadataAr
 		acks++
 	}
 	return acks, firstErr
+}
+
+// replicateSafely wraps one replica send with recovery (Rule 37): a panic in a
+// transport implementation becomes an EIO error for this replica instead of
+// crashing the node mid-quorum.
+func (m *MetadataRPCProvider) replicateSafely(peer int32, args *ReplicateMetadataArgs) (err error) {
+	defer common.RecoverErrWith("MetadataRPC.replicateToPeer", syscall.EIO, &err)
+	_, err = m.replicateToPeer(peer, args)
+	return err
 }
 
 // quorumFailureReply builds the failure reply for a write that did not reach W.

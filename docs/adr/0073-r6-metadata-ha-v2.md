@@ -28,11 +28,11 @@ None documented.
 - **Code**: Partial
 - **Tests**: Partial
 - **Docs**: Partial
-- **Blog post**: 
+- **Blog post**: docs/blog/posts/065-metadata-writes-that-need-a-majority.md
 
 ## References
 - Issue: #1142
 - PR: 
 - Spec: `openspec/changes/r6-metadata-ha-v2/`
-- Blog: 
+- Blog: docs/blog/posts/065-metadata-writes-that-need-a-majority.md
 

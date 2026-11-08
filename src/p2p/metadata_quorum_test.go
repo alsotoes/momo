@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/alsotoes/momo/src/storage"
+	"go.uber.org/goleak"
 )
 
 // quorumTransport acks ReplicateMetadata from the peers in ackPeer and stays
@@ -64,6 +65,7 @@ func newQuorumProvider(t *testing.T, local int32, ids []int32, m int, ack ...int
 }
 
 func TestPutMetadataQuorumReachedWithLocalAndOnePeer(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	p, store, _ := newQuorumProvider(t, 0, []int32{0, 1, 2}, 3, 1) // peer 2 silent
 	args := &PutMetadataArgs{
 		Name: "obj", Hash: "abc", Size: 3, MetadataReplicas: []int32{0, 1, 2},
@@ -88,6 +90,7 @@ func TestPutMetadataQuorumReachedWithLocalAndOnePeer(t *testing.T) {
 }
 
 func TestPutMetadataFailsBelowQuorum(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	p, _, _ := newQuorumProvider(t, 0, []int32{0, 1, 2}, 3) // no peer acks
 	args := &PutMetadataArgs{Name: "obj", Hash: "abc", MetadataReplicas: []int32{0, 1, 2}}
 	reply, err := p.PutMetadata(args)
@@ -103,6 +106,7 @@ func TestPutMetadataFailsBelowQuorum(t *testing.T) {
 }
 
 func TestPutMetadataSingleReplicaIsLocalOnly(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	p, store, _ := newQuorumProvider(t, 0, []int32{0}, 1)
 	reply, err := p.PutMetadata(&PutMetadataArgs{Name: "solo", Hash: "h", MetadataReplicas: []int32{0}})
 	if err != nil || !reply.Success {
@@ -114,6 +118,7 @@ func TestPutMetadataSingleReplicaIsLocalOnly(t *testing.T) {
 }
 
 func TestPutMetadataDerivesShardKeyAndReplicas(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	p, _, _ := newQuorumProvider(t, 0, []int32{0, 1, 2}, 3, 1)
 	args := &PutMetadataArgs{Name: "auto", Hash: "h"}
 	if _, err := p.PutMetadata(args); err != nil {
@@ -128,6 +133,7 @@ func TestPutMetadataDerivesShardKeyAndReplicas(t *testing.T) {
 }
 
 func TestReplicateMetadataRejectsNamelessRecord(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	store, err := storage.NewCASStore(t.TempDir())
 	if err != nil {
 		t.Fatalf("store: %v", err)
@@ -145,6 +151,7 @@ func TestReplicateMetadataRejectsNamelessRecord(t *testing.T) {
 }
 
 func TestReplicateMetadataReplyCorrelation(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	p, _, _ := newQuorumProvider(t, 0, []int32{0, 1}, 2)
 	// A reply for an unknown request must be dropped without blocking.
 	payload, _ := EncodeReplicateMetadataReply(&ReplicateMetadataReply{RequestID: 999, Success: true})
