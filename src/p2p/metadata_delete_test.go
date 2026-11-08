@@ -182,3 +182,40 @@ func TestDeleteMetadataFailsWhenLocalIsNotAReplica(t *testing.T) {
 		t.Fatal("an unacknowledged remote-only delete must fail")
 	}
 }
+
+func TestHandleReplicateMetadataStoresValidRecord(t *testing.T) {
+	store, err := storage.NewCASStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	tr := &deleteAckTransport{ackPeer: map[int32]bool{}}
+	p := NewMetadataRPCProvider(0, tr, NewRing([]int32{0}, 1), store)
+	tr.provider = p
+
+	args := &ReplicateMetadataArgs{
+		RequestID: 3,
+		ShardKey:  "shard",
+		Meta: map[string]interface{}{
+			"Name":             "replicated",
+			"Hash":             "hash-x",
+			"Size":             float64(9),
+			"RemotePath":       "remote/path",
+			"ShardKey":         "shard",
+			"VectorClock":      []interface{}{float64(1), float64(2)},
+			"MetadataReplicas": []interface{}{float64(0)},
+		},
+	}
+	payload, _ := EncodeReplicateMetadataArgs(args)
+	p.HandleRPC(&RPC{From: 0, Type: MsgReplicateMetadata, Payload: payload})
+
+	meta, err := store.GetMeta("replicated")
+	if err != nil {
+		t.Fatalf("replica record must be stored: %v", err)
+	}
+	if meta.Hash != "hash-x" || meta.Size != 9 || meta.RemotePath != "remote/path" {
+		t.Fatalf("stored record mismatch: %+v", meta)
+	}
+	// Malformed payload must be ignored, not panic.
+	p.HandleRPC(&RPC{From: 0, Type: MsgReplicateMetadata, Payload: []byte("bad")})
+}
