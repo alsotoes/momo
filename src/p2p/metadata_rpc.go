@@ -2,6 +2,7 @@ package p2p
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -44,18 +45,23 @@ type PutMetadataReply struct {
 
 // ResolveMetadataArgs is the payload for a ResolveMetadata RPC request.
 type ResolveMetadataArgs struct {
-	Name     string
-	ShardKey string
+	// RequestID correlates the reply with the waiting read.
+	RequestID uint64
+	Name      string
+	ShardKey  string
 }
 
 // ResolveMetadataReply is the payload for a ResolveMetadata RPC response.
 type ResolveMetadataReply struct {
+	// RequestID echoes the read's correlation ID.
+	RequestID        uint64
 	Hash             string
 	Size             int64
 	RemotePath       string
 	S3Headers        map[string]string
 	DataReplicas     []int32
 	MetadataReplicas []int32
+	ShardKey         string
 	DeletedAt        time.Time
 	VectorClock      []uint64
 	Checksum         uint32
@@ -285,6 +291,10 @@ type MetadataRPCProvider struct {
 	deletePendingMu sync.Mutex
 	deletePending   map[uint64]chan *DeleteMetadataReply
 
+	// resolvePending correlates metadata read replies by request ID.
+	resolvePendingMu sync.Mutex
+	resolvePending   map[uint64]chan *ResolveMetadataReply
+
 	// RPCTimeout bounds a request/response call; zero means MetadataRPCTimeout.
 	// Per-instance so tests can shorten it without racing a shared global.
 	RPCTimeout time.Duration
@@ -314,6 +324,7 @@ func NewMetadataRPCProvider(localID int32, transport Transport, ring *Ring, stor
 		versionPending: make(map[uint64]chan *ReplicateVersionReply),
 		replicaPending: make(map[uint64]chan *ReplicateMetadataReply),
 		deletePending:  make(map[uint64]chan *DeleteMetadataReply),
+		resolvePending: make(map[uint64]chan *ResolveMetadataReply),
 		RPCTimeout:     MetadataRPCTimeout,
 	}
 }
@@ -401,11 +412,12 @@ func (m *MetadataRPCProvider) handleResolveMetadata(rpc *RPC) {
 		return
 	}
 
-	// Read metadata from local store
-	meta, err := m.store.GetMeta(args.Name)
-	reply := &ResolveMetadataReply{}
+	// Read the full local record: the vector clock is what lets the reader
+	// order concurrent writes (Phase 3).
+	meta, err := m.store.GetDistributedMeta(args.Name)
+	reply := &ResolveMetadataReply{RequestID: args.RequestID}
 	if err != nil {
-		if err == syscall.ENOENT {
+		if errors.Is(err, syscall.ENOENT) {
 			reply.Error = "not found"
 		} else {
 			reply.Error = err.Error()
@@ -414,8 +426,9 @@ func (m *MetadataRPCProvider) handleResolveMetadata(rpc *RPC) {
 		reply.Hash = meta.Hash
 		reply.Size = meta.Size
 		reply.RemotePath = meta.RemotePath
-		reply.S3Headers = meta.S3Headers
-		// ModTime needs to be converted
+		reply.VectorClock = meta.VectorClock
+		reply.ShardKey = meta.ShardKey
+		reply.MetadataReplicas = meta.MetadataReplicas
 		reply.ModTime = meta.ModTime
 	}
 	payload, _ := EncodeResolveMetadataReply(reply)
@@ -432,7 +445,16 @@ func (m *MetadataRPCProvider) handleResolveMetadataResponse(rpc *RPC) {
 		log.Printf("MetadataRPC: failed to decode ResolveMetadataResponse from peer %d: %v (errno=%d)", rpc.From, err, syscall.EBADMSG)
 		return
 	}
-	m.completePending(rpc.From, reply, err)
+	m.resolvePendingMu.Lock()
+	ch, ok := m.resolvePending[reply.RequestID]
+	m.resolvePendingMu.Unlock()
+	if !ok {
+		return
+	}
+	select {
+	case ch <- reply:
+	default:
+	}
 }
 
 // handleReplicateMetadata processes an incoming ReplicateMetadata request.
@@ -1018,11 +1040,257 @@ func (m *MetadataRPCProvider) applyLocally(args *PutMetadataArgs) error {
 	return nil
 }
 
-// ResolveMetadata calls ResolveMetadata on the shard owner or a replica.
-// This is the Phase 2/3 read path.
+// resolveToPeer asks one replica for its record.
+func (m *MetadataRPCProvider) resolveToPeer(peer int32, args *ResolveMetadataArgs) (*ResolveMetadataReply, error) {
+	requestID := m.nextRequestID.Add(1)
+	call := *args
+	call.RequestID = requestID
+	ch := make(chan *ResolveMetadataReply, 1)
+	m.resolvePendingMu.Lock()
+	m.resolvePending[requestID] = ch
+	m.resolvePendingMu.Unlock()
+	defer func() {
+		m.resolvePendingMu.Lock()
+		delete(m.resolvePending, requestID)
+		m.resolvePendingMu.Unlock()
+	}()
+
+	payload, err := EncodeResolveMetadataArgs(&call)
+	if err != nil {
+		return nil, fmt.Errorf("encode resolve: %w", err)
+	}
+	if serr := m.transport.Send(peer, &RPC{Type: MsgResolveMetadata, Payload: payload}); serr != nil {
+		return nil, fmt.Errorf("send resolve to peer %d: %w", peer, serr)
+	}
+	select {
+	case reply := <-ch:
+		return reply, nil
+	case <-time.After(m.rpcTimeout()):
+		return nil, fmt.Errorf("timeout resolving metadata on peer %d: %w", peer, syscall.ETIMEDOUT)
+	}
+}
+
+// resolveSafely wraps one replica read with recovery (Rule 37).
+func (m *MetadataRPCProvider) resolveSafely(peer int32, args *ResolveMetadataArgs) (reply *ResolveMetadataReply, err error) {
+	defer common.RecoverErrWith("MetadataRPC.resolveToPeer", syscall.EIO, &err)
+	return m.resolveToPeer(peer, args)
+}
+
+// ResolveMetadata reads one object's metadata from the shard's replica set,
+// orders conflicting records by vector clock and repairs stale replicas
+// (R6 v2 Phase 3, #1142).
+//
+// Any replica may answer. Because a write needs a majority, the freshest record
+// is present on at least one reachable replica; the reader picks the dominating
+// vector clock, and for genuinely concurrent writes (neither dominates) it
+// breaks the tie deterministically (newest modtime, then hash) and logs the
+// conflict.
 func (m *MetadataRPCProvider) ResolveMetadata(args *ResolveMetadataArgs) (*ResolveMetadataReply, error) {
-	// Phase 1: just compile; Phase 2/3 will implement read logic
-	return &ResolveMetadataReply{Error: "not implemented"}, nil
+	if args == nil || args.Name == "" {
+		return &ResolveMetadataReply{Error: "missing name"}, fmt.Errorf("metadata resolve: empty name: %w", syscall.EINVAL)
+	}
+	shardKey := args.ShardKey
+	if shardKey == "" {
+		shardKey = ShardKey(args.Name)
+	}
+	replicas := m.ring.Replicas(shardKey, m.ring.ReplicationFactor())
+	if len(replicas) == 0 {
+		return &ResolveMetadataReply{Error: "no replicas"}, fmt.Errorf("metadata resolve: no replicas for shard %q: %w", shardKey, syscall.ENOTSUP)
+	}
+
+	found := m.collectReplicaRecords(replicas, args.Name)
+	if len(found) == 0 {
+		return &ResolveMetadataReply{Error: "not found", VectorClock: nil}, fmt.Errorf("metadata resolve: %q not found on any replica: %w", args.Name, syscall.ENOENT)
+	}
+
+	winner := pickWinner(found)
+	if winner.conflict {
+		log.Printf("AUDIT: metadata conflict for %q: concurrent vector clocks resolved deterministically (hash=%s)", args.Name, winner.reply.Hash)
+	}
+	m.repairReplicas(replicas, args.Name, found, winner.reply)
+	m.applyResolvedLocally(replicas, args.Name, winner.reply, shardKey)
+	return winner.reply, nil
+}
+
+// replicaRecord is one replica's answer, with the fields needed for ordering.
+type replicaRecord struct {
+	peer  int32
+	reply *ResolveMetadataReply
+}
+
+// winnerRecord is the chosen record plus whether it was a concurrent conflict.
+type winnerRecord struct {
+	reply    *ResolveMetadataReply
+	conflict bool
+}
+
+// collectReplicaRecords reads from the local replica (when this node is one) and
+// every remote replica concurrently, keeping only records that exist.
+func (m *MetadataRPCProvider) collectReplicaRecords(replicas []int32, name string) []replicaRecord {
+	var found []replicaRecord
+	if m.isLocalReplica(replicas) {
+		if dm, err := m.store.GetDistributedMeta(name); err == nil {
+			found = append(found, replicaRecord{peer: m.localID, reply: &ResolveMetadataReply{
+				Hash: dm.Hash, Size: dm.Size, RemotePath: dm.RemotePath,
+				VectorClock: dm.VectorClock, ShardKey: dm.ShardKey,
+				MetadataReplicas: dm.MetadataReplicas, ModTime: dm.ModTime,
+			}})
+		}
+	}
+
+	remote := make([]int32, 0, len(replicas))
+	for _, id := range replicas {
+		if id != m.localID {
+			remote = append(remote, id)
+		}
+	}
+	type answer struct {
+		peer  int32
+		reply *ResolveMetadataReply
+	}
+	answers := make(chan answer, len(remote))
+	args := &ResolveMetadataArgs{Name: name}
+	for _, peer := range remote {
+		go func(p int32) {
+			reply, err := m.resolveSafely(p, args)
+			if err != nil || reply == nil || reply.Hash == "" {
+				answers <- answer{peer: p}
+				return
+			}
+			answers <- answer{peer: p, reply: reply}
+		}(peer)
+	}
+	for i := 0; i < len(remote); i++ {
+		a := <-answers
+		if a.reply != nil {
+			found = append(found, replicaRecord(a))
+		}
+	}
+	return found
+}
+
+// pickWinner chooses the dominating record, breaking concurrent ties
+// deterministically.
+func pickWinner(records []replicaRecord) winnerRecord {
+	winner := records[0]
+	conflict := false
+	for _, rec := range records[1:] {
+		cmp := compareVectorClocks(rec.reply.VectorClock, winner.reply.VectorClock)
+		switch {
+		case cmp > 0:
+			winner = rec
+		case cmp == 0:
+			// Concurrent (or identical): keep the deterministic tie-break.
+			if tieBreakBeats(rec.reply, winner.reply) {
+				winner = rec
+				conflict = true
+			} else if !sameRecord(rec.reply, winner.reply) {
+				conflict = true
+			}
+		}
+	}
+	return winnerRecord{reply: winner.reply, conflict: conflict}
+}
+
+// compareVectorClocks returns 1 when a dominates b, -1 when b dominates a, and
+// 0 when they are concurrent or equal.
+func compareVectorClocks(a, b []uint64) int {
+	aLess, aGreater := false, false
+	n := len(a)
+	if len(b) > n {
+		n = len(b)
+	}
+	for i := 0; i < n; i++ {
+		var av, bv uint64
+		if i < len(a) {
+			av = a[i]
+		}
+		if i < len(b) {
+			bv = b[i]
+		}
+		if av < bv {
+			aLess = true
+		}
+		if av > bv {
+			aGreater = true
+		}
+	}
+	switch {
+	case aGreater && !aLess:
+		return 1
+	case aLess && !aGreater:
+		return -1
+	default:
+		return 0
+	}
+}
+
+// tieBreakBeats reports whether a should win over b when their clocks are
+// concurrent: newest modification time, then lexicographically greater hash.
+func tieBreakBeats(a, b *ResolveMetadataReply) bool {
+	if a.ModTime != b.ModTime {
+		return a.ModTime > b.ModTime
+	}
+	return a.Hash > b.Hash
+}
+
+// sameRecord reports whether two replies carry the same record.
+func sameRecord(a, b *ResolveMetadataReply) bool {
+	return a.Hash == b.Hash && a.Size == b.Size && a.RemotePath == b.RemotePath
+}
+
+// repairReplicas pushes the winner to replicas whose record differs, and to
+// replicas that did not answer at all is out of scope (they re-learn on the next
+// write or read-repair). Best-effort by design.
+func (m *MetadataRPCProvider) repairReplicas(replicas []int32, name string, records []replicaRecord, winner *ResolveMetadataReply) {
+	have := make(map[int32]*ResolveMetadataReply, len(records))
+	for _, rec := range records {
+		have[rec.peer] = rec.reply
+	}
+	meta := map[string]interface{}{
+		"Name":        "",
+		"Hash":        winner.Hash,
+		"Size":        winner.Size,
+		"RemotePath":  winner.RemotePath,
+		"VectorClock": winner.VectorClock,
+		"ShardKey":    winner.ShardKey,
+	}
+	_ = meta
+	for _, peer := range replicas {
+		if peer == m.localID {
+			continue
+		}
+		rec := have[peer]
+		if rec != nil && sameRecord(rec, winner) && compareVectorClocks(rec.VectorClock, winner.VectorClock) == 0 {
+			continue
+		}
+		if err := m.replicateSafely(peer, &ReplicateMetadataArgs{ShardKey: winner.ShardKey, Meta: map[string]interface{}{
+			"Name":             name,
+			"Hash":             winner.Hash,
+			"Size":             winner.Size,
+			"RemotePath":       winner.RemotePath,
+			"VectorClock":      winner.VectorClock,
+			"ShardKey":         winner.ShardKey,
+			"MetadataReplicas": winner.MetadataReplicas,
+		}}); err != nil {
+			log.Printf("AUDIT: read repair to peer %d failed: %v", peer, err)
+		}
+	}
+}
+
+// applyResolvedLocally caches the winner when this node is a replica.
+func (m *MetadataRPCProvider) applyResolvedLocally(replicas []int32, name string, winner *ResolveMetadataReply, shardKey string) {
+	if !m.isLocalReplica(replicas) {
+		return
+	}
+	if dm, err := m.store.GetDistributedMeta(name); err == nil &&
+		dm.Hash == winner.Hash && compareVectorClocks(dm.VectorClock, winner.VectorClock) >= 0 {
+		return
+	}
+	if err := m.store.PutWithMetadata(name, winner.Hash, winner.Size, winner.RemotePath, nil,
+		winner.VectorClock, shardKey, winner.MetadataReplicas); err != nil {
+		log.Printf("AUDIT: failed to cache resolved metadata for %q: %v", name, err)
+	}
 }
 
 // ReplicateMetadata calls ReplicateMetadata on a replica.

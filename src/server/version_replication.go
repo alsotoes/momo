@@ -50,6 +50,7 @@ func wireVersionReplication(ctx context.Context, cfg common.Configuration, daemo
 	installVersionReplication(ctx, cs, &common.ClusterMap{Nodes: nodes}, provider, self, cfg.Global.ReplicationFactor)
 	installQuorumMetadataPublish(cfg, provider, mFactor)
 	installMetadataDeletePropagation(cs, provider, cfg.Momofs.Enabled && mFactor > 1)
+	installMetadataResolver(cs, provider, cfg.Momofs.Enabled && mFactor > 1)
 }
 
 // versionReplicator fans one version record out to an object's replica set.

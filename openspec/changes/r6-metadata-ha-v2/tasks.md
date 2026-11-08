@@ -58,7 +58,17 @@
   acknowledged). Replica-side deletes use `DeleteReplica` (no hook), so
   propagation cannot loop. Without this, a deleted object stayed resolvable on
   the other replicas and could be served again.
-- [ ] **Vector clock conflict detection** on read (compare VClocks from multiple replicas) — Phase 3 read path
+- [x] **Any-node read**: `CASStore.GetMeta` falls back to the replica set when
+  this node misses (`SetMetadataResolver`), and the resolved record is applied
+  locally so the next read is local. Tombstoned names are never resolved —
+  otherwise a delete would resurrect from a replica (found by test).
+- [x] **Vector-clock conflict detection on read**: `ResolveMetadata` reads all
+  replicas, picks the dominating clock, and breaks genuine concurrency
+  deterministically (newest modtime, then greater hash) with an AUDIT log.
+- [x] **Read repair**: replicas holding a stale or missing record receive the
+  winner (`MsgReplicateMetadata`), best-effort.
+- [ ] **Hinted handoff**: owner stores hints for downed replicas — deferred;
+  read repair + the next write converge the record instead.
 - [ ] **Integration tests**: 3-node cluster, concurrent writes → conflict detection, quorum with 1 replica down — needs the read path to observe conflicts
 
 ## Phase 3 — Any-Node Read Path + Repair
@@ -80,7 +90,11 @@
 - [ ] **Read repair**: on version mismatch, compare VectorClocks → propagate winner to stale replicas
 - [ ] **Hinted handoff**: owner stores hints for downed replicas; on recovery, replay hints
 - [ ] **SWIM integration**: on SUSPECT/OFFLINE for replica, invalidate cache entries, failover to other replicas
-- [ ] Integration tests: owner down → fallback to replica; cache hit after 2 reads; read repair on stale replica
+- [x] Unit coverage for the read path: dominant clock wins, concurrent conflict is
+  deterministic, tie-break on hash, not-found, empty name, stale replica
+  repaired, local cache updated; storage resolver miss/error/tombstone paths.
+- [ ] Integration test with three real daemons — deferred; the unit suite drives
+  the same code paths with an in-process transport.
 
 ## Phase 4 — ListObjects + Config + Backward Compat
 - [x] Implement shard-aware `ListShard` RPC:

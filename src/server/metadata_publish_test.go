@@ -192,3 +192,35 @@ func TestQuorumMetadataPublisherFailure(t *testing.T) {
 		t.Fatal("unreachable quorum must be reported")
 	}
 }
+
+func TestInstallMetadataResolverGate(t *testing.T) {
+	store, err := storage.NewCASStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewCASStore: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	provider := p2p.NewMetadataRPCProvider(0, nil, p2p.NewRing([]int32{0}, 1), store)
+
+	// Disabled and provider-less installs must clear/leave the resolver unset;
+	// an enabled install must resolve a name this node does not hold. Seed a
+	// record on the provider's own store to make the read observable.
+	if err := store.PutWithMetadata("seeded", "h-seed", 0, "", nil, []uint64{1}, "s", []int32{0}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	installMetadataResolver(store, nil, true)
+	if _, err := store.GetMeta("seeded"); err != nil {
+		t.Fatalf("local read must still work without a resolver: %v", err)
+	}
+	installMetadataResolver(store, provider, true)
+	if _, err := store.GetMeta("seeded"); err != nil {
+		t.Fatalf("enabled resolver must keep local reads working: %v", err)
+	}
+	// A name no replica holds exercises the resolver closure's not-found path.
+	if _, err := store.GetMeta("absent-everywhere"); !errors.Is(err, syscall.ENOENT) {
+		t.Fatalf("want ENOENT for an unresolvable name, got %v", err)
+	}
+}
+
+func TestInstallMetadataResolverNilStoreIsSafe(t *testing.T) {
+	installMetadataResolver(nil, nil, true) // must not panic
+}

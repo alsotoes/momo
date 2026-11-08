@@ -232,6 +232,9 @@ type CASStore struct {
 	// metaDeleteHook propagates tombstones to the metadata replica set.
 	metaDeleteHook func(name string)
 
+	// metaResolver fetches metadata from the replica set when this node misses.
+	metaResolver func(name string) (DistributedMeta, error)
+
 	scrubDone    chan struct{}
 	scrubWG      sync.WaitGroup
 	scrubOnce    sync.Once
@@ -618,15 +621,70 @@ func (s *CASStore) Get(name string) (rc io.ReadCloser, meta common.FileMetadata,
 // GetMeta returns only the metadata for name without opening the content
 // stream (issue #660). Query paths that only need metadata use this to avoid an
 // unnecessary blob open on large objects or remote S3 backends.
-func (s *CASStore) GetMeta(name string) (meta common.FileMetadata, err error) {
+// GetMeta returns one object's metadata, falling back to the distributed
+// replica set when this node does not hold it (R6 v2 read path, #1142). The
+// resolved record is applied locally, so the next read is a cache hit.
+func (s *CASStore) GetMeta(name string) (common.FileMetadata, error) {
+	meta, err := s.getMetaLocal(name)
+	if err == nil || !errors.Is(err, syscall.ENOENT) || s.metadataResolver() == nil || s.isTombstoned(name) {
+		return meta, err
+	}
+	if !s.loadMetaFromReplicas(name) {
+		return meta, err
+	}
+	return s.getMetaLocal(name)
+}
+
+// getMetaLocal reads metadata from this node only.
+func (s *CASStore) getMetaLocal(name string) (meta common.FileMetadata, err error) {
 	// 🛡️ Zero-Crash: Recover from any unexpected panics during metadata parsing.
 	defer common.RecoverErr("CASStore.GetMeta", &err)
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	return s.readMetaLocalTx(name)
+}
 
-	var hash string
+// readMetaLocalTx reads one record from the local database.
+func (s *CASStore) readMetaLocalTx(name string) (common.FileMetadata, error) {
+	hash, err := s.lookupHash(name)
+	if err != nil {
+		return common.FileMetadata{}, err
+	}
+	var size int64
+	var remotePath string
+	var modTime int64
 	err = s.db.View(func(tx *bbolt.Tx) error {
+		val := tx.Bucket(bucketObjects).Get([]byte(hash))
+		if val == nil {
+			return fmt.Errorf("metadata missing for hash %s: %w", hash, syscall.ENOENT)
+		}
+		decoded, derr := decodeObjectMeta(val)
+		if derr != nil {
+			return derr
+		}
+		size = decoded.Size
+		if size < 0 {
+			return fmt.Errorf("invalid size %d for hash %s: %w", size, hash, syscall.EBADMSG)
+		}
+		if p := tx.Bucket(bucketPaths).Get([]byte(name)); p != nil {
+			remotePath = string(p)
+		}
+		if mt := tx.Bucket(bucketModTimes).Get([]byte(name)); len(mt) >= 8 {
+			modTime = int64(binary.BigEndian.Uint64(mt[:8]))
+		}
+		return nil
+	})
+	if err != nil {
+		return common.FileMetadata{}, err
+	}
+	return common.FileMetadata{Name: name, Hash: hash, Size: size, RemotePath: remotePath, ModTime: modTime}, nil
+}
+
+// lookupHash resolves a live name to its content hash, honouring tombstones.
+func (s *CASStore) lookupHash(name string) (string, error) {
+	var hash string
+	err := s.db.View(func(tx *bbolt.Tx) error {
 		// Check tombstone first — deleted names should appear as not found.
 		if ts := tx.Bucket(bucketTombstones).Get([]byte(name)); ts != nil {
 			return syscall.ENOENT
@@ -639,42 +697,115 @@ func (s *CASStore) GetMeta(name string) (meta common.FileMetadata, err error) {
 		return nil
 	})
 	if err != nil {
-		return common.FileMetadata{}, err
+		return "", err
 	}
+	return hash, nil
+}
 
-	// Read metadata from DB in a single View (size, remotePath, modTime).
-	var size int64
-	var remotePath string
-	var modTime int64
+// DistributedMeta is the metadata a replica holds for one name, including the
+// vector clock used by the distributed catalog to order concurrent writes.
+type DistributedMeta struct {
+	Hash             string
+	Size             int64
+	RemotePath       string
+	VectorClock      []uint64
+	ShardKey         string
+	MetadataReplicas []int32
+	ModTime          int64
+}
+
+// GetDistributedMeta returns the full local record for a name, including the
+// vector clock (R6 v2 read path, #1142).
+func (s *CASStore) GetDistributedMeta(name string) (dm DistributedMeta, err error) {
+	defer common.RecoverErr("CASStore.GetDistributedMeta", &err)
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	err = s.db.View(func(tx *bbolt.Tx) error {
-		val := tx.Bucket(bucketObjects).Get([]byte(hash))
+		if tx.Bucket(bucketTombstones).Get([]byte(name)) != nil {
+			return syscall.ENOENT
+		}
+		h := tx.Bucket(bucketNamespace).Get([]byte(name))
+		if h == nil {
+			return syscall.ENOENT
+		}
+		dm.Hash = string(h)
+		val := tx.Bucket(bucketObjects).Get(h)
 		if val == nil {
-			return fmt.Errorf("metadata missing for hash %s: %w", hash, syscall.ENOENT)
+			return syscall.ENOENT
 		}
-
-		decoded, err := decodeObjectMeta(val)
-		if err != nil {
-			return err
+		meta, derr := decodeObjectMeta(val)
+		if derr != nil {
+			return derr
 		}
-		size = decoded.Size
-		if size < 0 {
-			return fmt.Errorf("invalid size %d for hash %s: %w", size, hash, syscall.EBADMSG)
-		}
-
+		dm.Size = meta.Size
+		dm.VectorClock = meta.VectorClock
+		dm.ShardKey = meta.ShardKey
+		dm.MetadataReplicas = meta.MetadataReplicas
 		if p := tx.Bucket(bucketPaths).Get([]byte(name)); p != nil {
-			remotePath = string(p)
+			dm.RemotePath = string(p)
 		}
-
 		if mt := tx.Bucket(bucketModTimes).Get([]byte(name)); len(mt) >= 8 {
-			modTime = int64(binary.BigEndian.Uint64(mt[:8]))
+			dm.ModTime = int64(binary.BigEndian.Uint64(mt[:8]))
 		}
 		return nil
 	})
-	if err != nil {
-		return common.FileMetadata{}, err
-	}
+	return dm, err
+}
 
-	return common.FileMetadata{Name: name, Hash: hash, Size: size, RemotePath: remotePath, ModTime: modTime}, nil
+// SetMetadataResolver installs a fallback that fetches metadata from the
+// distributed replica set when this node does not hold it (R6 v2 read path,
+// #1142). nil disables the fallback.
+func (s *CASStore) SetMetadataResolver(fn func(name string) (DistributedMeta, error)) {
+	s.mu.Lock()
+	s.metaResolver = fn
+	s.mu.Unlock()
+}
+
+// isTombstoned reports whether this node recorded a deletion for the name.
+// A tombstoned name must never be resolved from replicas: doing so would
+// resurrect an object the owner deleted.
+func (s *CASStore) isTombstoned(name string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	found := false
+	_ = s.db.View(func(tx *bbolt.Tx) error {
+		found = tx.Bucket(bucketTombstones).Get([]byte(name)) != nil
+		return nil
+	})
+	return found
+}
+
+// metadataResolver returns the configured resolver (nil when disabled).
+func (s *CASStore) metadataResolver() func(string) (DistributedMeta, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.metaResolver
+}
+
+// loadMetaFromReplicas applies the replica-set record for name locally.
+func (s *CASStore) loadMetaFromReplicas(name string) bool {
+	resolve := s.metadataResolver()
+	if resolve == nil {
+		return false
+	}
+	dm, err := resolve(name)
+	if err != nil {
+		if !errors.Is(err, syscall.ENOENT) {
+			log.Printf("AUDIT: metadata resolve failed for %q: %v", name, err)
+		}
+		return false
+	}
+	if dm.Hash == "" {
+		return false
+	}
+	// Metadata-only write: at-rest bytes are irrelevant here.
+	if perr := s.PutWithMetadata(name, dm.Hash, dm.Size, dm.RemotePath, nil, dm.VectorClock, dm.ShardKey, dm.MetadataReplicas); perr != nil {
+		log.Printf("AUDIT: failed to apply resolved metadata for %q: %v", name, perr)
+		return false
+	}
+	return true
 }
 
 // getCachedMeta retrieves metadata from the local cache if present and not expired.
