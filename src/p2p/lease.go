@@ -47,6 +47,16 @@ type LeaseManager struct {
 	// be reachable). Zero means "unknown": the manager falls back to the
 	// reachable-peer heuristic so tests and single-process use keep working.
 	clusterSize int
+
+	// Coordination counters (coordinator failover Phase 5): proactive
+	// resignations and quorum-loss suspensions, exposed as metrics.
+	handoffs   atomic.Uint64
+	quorumLoss atomic.Uint64
+}
+
+// CoordinationCounters returns (proactive handoffs, quorum-loss suspensions).
+func (lm *LeaseManager) CoordinationCounters() (handoffs, quorumLoss uint64) {
+	return lm.handoffs.Load(), lm.quorumLoss.Load()
 }
 
 // SetClusterSize declares the configured cluster size so lease acquisition
@@ -430,6 +440,7 @@ func (lm *LeaseManager) OnPeerFailure(peerID int32) (err error) {
 	lm.heldMu.Unlock()
 
 	if suspended {
+		lm.quorumLoss.Add(1)
 		log.Printf("AUDIT: coordination suspended: cluster quorum lost after peer %d failed", peerID)
 	}
 
@@ -454,6 +465,9 @@ func (lm *LeaseManager) ResignAll(reason string) (count int) {
 	}
 	lm.heldMu.Unlock()
 
+	if len(lost) > 0 {
+		lm.handoffs.Add(1)
+	}
 	for _, lease := range lost {
 		log.Printf("AUDIT: resigning lease %q (%s)", lease.Key, reason)
 		payload := &LeasePayload{LeaseID: lease.LeaseID, Key: lease.Key, Expiry: 0}

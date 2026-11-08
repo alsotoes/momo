@@ -61,6 +61,14 @@ func (c *p2pClusterStats) GetReplicationStatus() (string, int) {
 	return "unknown", 0
 }
 
+// CoordinationCounters implements clusterStatsProvider.
+func (c *p2pClusterStats) CoordinationCounters() (uint64, uint64) {
+	if c.leases == nil {
+		return 0, 0
+	}
+	return c.leases.CoordinationCounters()
+}
+
 // PeerLoads implements clusterStatsProvider: the last load report each peer
 // published over gossip (R11 step 1, #1261).
 func (c *p2pClusterStats) PeerLoads() []PeerLoadSample {
