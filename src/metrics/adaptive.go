@@ -97,17 +97,17 @@ type LearnedThresholds struct {
 // maximum. Both are clamped to [adaptiveMinFloor, adaptiveMaxCeiling] and the
 // minimum always keeps a gap of at least 10 points under the maximum.
 func ComputeThresholds(cfgMax, cfgMin float64, mean, stddev float64) LearnedThresholds {
-	max := math.Max(cfgMax, mean+2*stddev+5)
-	max = math.Min(math.Max(max, adaptiveMaxFloor), adaptiveMaxCeiling)
-	min := math.Min(cfgMin, mean*0.8)
-	min = math.Min(math.Max(min, adaptiveMinFloor), adaptiveMinCeiling)
-	if max-min < 10 {
-		min = max - 10
+	upper := math.Max(cfgMax, mean+2*stddev+5)
+	upper = math.Min(math.Max(upper, adaptiveMaxFloor), adaptiveMaxCeiling)
+	lower := math.Min(cfgMin, mean*0.8)
+	lower = math.Min(math.Max(lower, adaptiveMinFloor), adaptiveMinCeiling)
+	if upper-lower < 10 {
+		lower = upper - 10
 	}
-	if min < adaptiveMinFloor {
-		min = adaptiveMinFloor
+	if lower < adaptiveMinFloor {
+		lower = adaptiveMinFloor
 	}
-	return LearnedThresholds{Max: math.Round(max), Min: math.Round(min)}
+	return LearnedThresholds{Max: math.Round(upper), Min: math.Round(lower)}
 }
 
 // AdaptiveThresholds couples the learner with persistence and hysteresis.
@@ -268,7 +268,7 @@ func setAdaptiveSnapshot(a *AdaptiveThresholds) {
 }
 
 // AdaptiveGauges returns the learned thresholds and sample count for export.
-func AdaptiveGauges() (max, min float64, samples int, ok bool) {
+func AdaptiveGauges() (upper, lower float64, samples int, ok bool) {
 	adaptiveMu.RLock()
 	a := adaptiveSnapshot
 	adaptiveMu.RUnlock()

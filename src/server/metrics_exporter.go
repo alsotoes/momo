@@ -755,13 +755,13 @@ func StartMetricsServer(ctx context.Context, host string, port int, collector *M
 // writeAdaptiveGauges emits the learned threshold gauges. Write errors are
 // ignored deliberately: the scrape response is already streaming, and the
 // handler cannot retry a partially written body.
-func writeAdaptiveGauges(w io.Writer, max, min float64, samples int) {
+func writeAdaptiveGauges(w io.Writer, upper, lower float64, samples int) {
 	fmt.Fprintf(w, "# HELP momo_adaptive_max_threshold Learned upper utilisation threshold (percent).\n")       //nolint:errcheck
 	fmt.Fprintf(w, "# TYPE momo_adaptive_max_threshold gauge\n")                                                //nolint:errcheck
-	fmt.Fprintf(w, "momo_adaptive_max_threshold %.0f\n", max)                                                   //nolint:errcheck
+	fmt.Fprintf(w, "momo_adaptive_max_threshold %.0f\n", upper)                                                 //nolint:errcheck
 	fmt.Fprintf(w, "# HELP momo_adaptive_min_threshold Learned lower utilisation threshold (percent).\n")       //nolint:errcheck
 	fmt.Fprintf(w, "# TYPE momo_adaptive_min_threshold gauge\n")                                                //nolint:errcheck
-	fmt.Fprintf(w, "momo_adaptive_min_threshold %.0f\n", min)                                                   //nolint:errcheck
+	fmt.Fprintf(w, "momo_adaptive_min_threshold %.0f\n", lower)                                                 //nolint:errcheck
 	fmt.Fprintf(w, "# HELP momo_adaptive_threshold_samples Observations collected by the threshold learner.\n") //nolint:errcheck
 	fmt.Fprintf(w, "# TYPE momo_adaptive_threshold_samples gauge\n")                                            //nolint:errcheck
 	fmt.Fprintf(w, "momo_adaptive_threshold_samples %d\n", samples)                                             //nolint:errcheck

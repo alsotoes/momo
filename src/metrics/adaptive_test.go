@@ -4,6 +4,9 @@ import (
 	"math"
 	"testing"
 	"time"
+
+	"github.com/alsotoes/momo/src/common"
+	bolt "go.etcd.io/bbolt"
 )
 
 func TestEWMALearnerTracksMean(t *testing.T) {
@@ -126,17 +129,94 @@ func TestAdaptiveGaugesReflectActiveController(t *testing.T) {
 	setAdaptiveSnapshot(a)
 	defer setAdaptiveSnapshot(nil)
 	a.Observe(95)
-	max, min, samples, ok := AdaptiveGauges()
+	upper, lower, samples, ok := AdaptiveGauges()
 	if !ok || samples == 0 {
 		t.Fatalf("gauges not exported: ok=%v samples=%d", ok, samples)
 	}
-	if max < 70 || min < adaptiveMinFloor {
-		t.Fatalf("gauge values out of range: max=%v min=%v", max, min)
+	if upper < 70 || lower < adaptiveMinFloor {
+		t.Fatalf("gauge values out of range: max=%v min=%v", upper, lower)
 	}
 }
 
 func TestDataDirFor(t *testing.T) {
 	if dataDirFor(nil, 0) != "" {
 		t.Fatal("nil daemons must yield no dir")
+	}
+}
+
+func TestAdaptiveNilReceiverIsSafe(t *testing.T) {
+	var a *AdaptiveThresholds
+	if t2 := a.Thresholds(); t2.Max != 0 || t2.Min != 0 {
+		t.Fatalf("nil receiver thresholds = %+v", t2)
+	}
+	if err := a.Close(); err != nil {
+		t.Fatalf("nil Close: %v", err)
+	}
+	a.MaybePersist(time.Now()) // no panic
+}
+
+func TestMaybePersistNoIntervalIsNoOp(t *testing.T) {
+	dir := t.TempDir()
+	a, err := NewAdaptiveThresholds(0.5, 1, 70, 40, 0, dir)
+	if err != nil {
+		t.Fatalf("NewAdaptiveThresholds: %v", err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	a.Observe(90)
+	a.MaybePersist(time.Now()) // saveEvery=0: nothing written
+}
+
+func TestAdaptiveLearnerStableValueDoesNotTwitch(t *testing.T) {
+	a, err := NewAdaptiveThresholds(0.5, 3, 70, 40, 0, "")
+	if err != nil {
+		t.Fatalf("NewAdaptiveThresholds: %v", err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	for i := 0; i < 10; i++ {
+		a.Observe(85)
+	}
+	first := a.Thresholds()
+	for i := 0; i < 5; i++ {
+		a.Observe(85)
+	}
+	if got := a.Thresholds(); got != first {
+		t.Fatalf("a stable signal must not move thresholds: %+v -> %+v", first, got)
+	}
+}
+
+func TestLoadRejectsCorruptPersistedValues(t *testing.T) {
+	dir := t.TempDir()
+	a, err := NewAdaptiveThresholds(0.5, 1, 70, 40, 0, dir)
+	if err != nil {
+		t.Fatalf("NewAdaptiveThresholds: %v", err)
+	}
+	if err := a.db.Update(func(tx *bolt.Tx) error {
+		b, berr := tx.CreateBucketIfNotExists(adaptiveBucket)
+		if berr != nil {
+			return berr
+		}
+		if perr := b.Put([]byte("max"), []byte("not-a-number")); perr != nil {
+			return perr
+		}
+		return b.Put([]byte("min"), []byte("40"))
+	}); err != nil {
+		t.Fatalf("seed corrupt state: %v", err)
+	}
+	if err := a.load(); err == nil {
+		t.Fatal("corrupt persisted state must be reported")
+	}
+	if err := a.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+}
+
+func TestDataDirForUsesConfiguredDaemon(t *testing.T) {
+	dir := t.TempDir()
+	daemons := []*common.Daemon{{Data: dir}}
+	if got := dataDirFor(daemons, 0); got != dir {
+		t.Fatalf("dataDirFor = %q, want %q", got, dir)
+	}
+	if got := dataDirFor(daemons, 3); got != "" {
+		t.Fatalf("out-of-range daemon must yield no dir, got %q", got)
 	}
 }
