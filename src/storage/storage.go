@@ -75,12 +75,13 @@ func (m ObjectMeta) encode() []byte {
 	}
 	buf = append(buf, vcBuf...)
 
-	// Shard key
+	// Shard key: 4-byte length prefix, then the raw bytes. The length header
+	// must be exactly 4 bytes — allocating it with the payload size appended
+	// len(shardKey) zero bytes and corrupted every following field.
 	skBytes := []byte(m.ShardKey)
-	skLen := len(skBytes)
-	skBuf := make([]byte, 4+skLen)
-	binary.BigEndian.PutUint32(skBuf[0:4], uint32(skLen))
-	buf = append(buf, skBuf...)
+	skLenBuf := make([]byte, 4)
+	binary.BigEndian.PutUint32(skLenBuf[0:4], uint32(len(skBytes)))
+	buf = append(buf, skLenBuf...)
 	buf = append(buf, skBytes...)
 
 	// Metadata replicas

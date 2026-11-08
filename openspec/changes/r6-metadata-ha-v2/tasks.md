@@ -29,9 +29,26 @@
 - [x] Update `metadata_rpc.go` to call `store.PutWithMetadata`
 - [x] Vector clock handling in ObjectMeta encode/decode with backward compatibility
 - [x] Config: `[momofs] metadata_replication`, `metadata_quorum`, `enabled` (parsing in config.go)
-- [ ] **Quorum write protocol**: concurrent RPC to ALL M replicas, wait for W=(M/2)+1 acks
-- [ ] **Vector clock conflict detection** on read (compare VClocks from multiple replicas)
-- [ ] **Integration tests**: 3-node cluster, concurrent writes → conflict detection, quorum with 1 replica down
+- [x] **Quorum write protocol**: concurrent RPC to all M replicas, wait for
+  W=(M/2)+1 acks (`PutMetadata`); the local replica applies in-process, remotes
+  are awaited with per-request correlation (`replicaPending`) and a bounded
+  timeout. Partial success is an error, never a false ack.
+- [x] **Vector clock advance on write**: the writer bumps its own clock entry
+  before fan-out, and the advanced clock is returned to the caller
+- [x] **Shard key and replica set resolution**: derived from the ring when the
+  caller omits them
+- [x] **Fail-closed replica validation**: a replica rejects nameless/hashless
+  records with `EBADMSG` instead of storing an unreachable record
+- [x] **Encoding fix found by this work**: the v2 metadata shard-key header was
+  written with a payload-sized buffer, appending `len(shardKey)` zero bytes and
+  corrupting every following field — every non-empty shard key failed to decode
+  (`truncated replica data`). Fixed and covered by a round-trip table
+  (ASCII, multibyte, combining marks) plus a store-level test.
+- [x] **Tests**: quorum reached with local + one ack, quorum failure below W,
+  single-replica local-only write, derived shard/replica set, nameless record
+  rejected, unknown-request reply ignored, race-free concurrent fan-out
+- [ ] **Vector clock conflict detection** on read (compare VClocks from multiple replicas) — Phase 3 read path
+- [ ] **Integration tests**: 3-node cluster, concurrent writes → conflict detection, quorum with 1 replica down — needs the read path to observe conflicts
 
 ## Phase 3 — Any-Node Read Path + Repair
 - [x] Implement `ResolveMetadata` RPC handler in `metadata_rpc.go`:
