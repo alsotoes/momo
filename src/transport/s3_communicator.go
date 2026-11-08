@@ -2731,12 +2731,19 @@ func newChecksumHasher(algo string) hash.Hash {
 // error so the caller sends a deterministic 400 InvalidRequest.
 func parseChecksum(req *http.Request) (algo, expected string, err error) {
 	matched := ""
-	for _, a := range []string{checksumAlgoCRC32c, checksumAlgoCRC32, checksumAlgoSHA1, checksumAlgoSHA256} {
-		if v := req.Header.Get(http.CanonicalHeaderKey(checksumHeaderFor(a))); v != "" {
-			matched = a
-			expected = v
-			break
-		}
+	// ⚡ Bolt: Eliminate heap allocations from CanonicalMIMEHeaderKey in dynamic loops by using pre-canonicalized header literals.
+	if v := req.Header.Get("X-Amz-Checksum-Crc32c"); v != "" {
+		matched = checksumAlgoCRC32c
+		expected = v
+	} else if v := req.Header.Get("X-Amz-Checksum-Crc32"); v != "" {
+		matched = checksumAlgoCRC32
+		expected = v
+	} else if v := req.Header.Get("X-Amz-Checksum-Sha1"); v != "" {
+		matched = checksumAlgoSHA1
+		expected = v
+	} else if v := req.Header.Get("X-Amz-Checksum-Sha256"); v != "" {
+		matched = checksumAlgoSHA256
+		expected = v
 	}
 	if explicit := req.Header.Get("X-Amz-Checksum-Algorithm"); explicit != "" {
 		e := normalizeChecksumAlgorithm(explicit)
@@ -2788,12 +2795,29 @@ func collectS3Headers(req *http.Request) map[string]string {
 	// an explicit X-Amz-Checksum-Algorithm if present, else inferred from which
 	// x-amz-checksum-<algo> value header was supplied.
 	seenAlgo := ""
-	for _, a := range []string{checksumAlgoCRC32c, checksumAlgoCRC32, checksumAlgoSHA1, checksumAlgoSHA256} {
-		if v := req.Header.Get(http.CanonicalHeaderKey(checksumHeaderFor(a))); v != "" {
-			addHeader(checksumHeaderFor(a), v)
+		// ⚡ Bolt: Eliminate heap allocations from CanonicalMIMEHeaderKey in dynamic loops by using pre-canonicalized header literals.
+		if v := req.Header.Get("X-Amz-Checksum-Crc32c"); v != "" {
+			addHeader(checksumHeaderFor(checksumAlgoCRC32c), v)
 			if seenAlgo == "" {
-				seenAlgo = a
+				seenAlgo = checksumAlgoCRC32c
 			}
+		}
+		if v := req.Header.Get("X-Amz-Checksum-Crc32"); v != "" {
+			addHeader(checksumHeaderFor(checksumAlgoCRC32), v)
+			if seenAlgo == "" {
+				seenAlgo = checksumAlgoCRC32
+			}
+		}
+		if v := req.Header.Get("X-Amz-Checksum-Sha1"); v != "" {
+			addHeader(checksumHeaderFor(checksumAlgoSHA1), v)
+			if seenAlgo == "" {
+				seenAlgo = checksumAlgoSHA1
+			}
+		}
+		if v := req.Header.Get("X-Amz-Checksum-Sha256"); v != "" {
+			addHeader(checksumHeaderFor(checksumAlgoSHA256), v)
+			if seenAlgo == "" {
+				seenAlgo = checksumAlgoSHA256
 		}
 	}
 	if v := req.Header.Get("X-Amz-Checksum-Algorithm"); v != "" {

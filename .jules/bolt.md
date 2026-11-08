@@ -259,3 +259,7 @@
 ## 2026-10-27 - Zero-Allocation map values
 **Learning:** Using `map[K]bool` for simple inclusion checks (sets) consumes 1 byte per entry. When scaling to large structures (like filesystem directories or S3 prefix lists), this causes significant memory overhead. Using `map[K]struct{}` consumes 0 bytes per value, functioning strictly as a zero-overhead set.
 **Action:** When tracking existence (sets) in a map, always use `map[string]struct{}` instead of `map[string]bool`. Convert boolean assignments `m[k] = true` to `m[k] = struct{}{}` and checks `if m[k]` to `if _, ok := m[k]; ok`.
+
+## 2024-11-08 - Zero-Allocation Checksum Header Parsing
+**Learning:** Dynamically constructing header strings and canonicalizing them with `http.CanonicalHeaderKey` inside loops (e.g. `req.Header.Get(http.CanonicalHeaderKey("prefix-" + algo))`) causes string heap allocations for every request.
+**Action:** Unroll loops that lookup HTTP headers using dynamic keys into a series of explicit `req.Header.Get("Pre-Canonicalized-Literal")` checks to enable the zero-allocation fast path for `http.Header.Get`.
