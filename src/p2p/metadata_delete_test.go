@@ -122,3 +122,63 @@ func TestTombstoneReplicaDoesNotRepropagate(t *testing.T) {
 		t.Fatal("local delete must propagate")
 	}
 }
+
+func TestDeleteMetadataEncodingRoundTrip(t *testing.T) {
+	args := &DeleteMetadataArgs{RequestID: 42, ShardKey: "s", Name: "obj"}
+	data, err := EncodeDeleteMetadataArgs(args)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	out, err := DecodeDeleteMetadataArgs(data)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if out.RequestID != 42 || out.ShardKey != "s" || out.Name != "obj" {
+		t.Fatalf("round trip mismatch: %+v", out)
+	}
+	replyData, err := EncodeDeleteMetadataReply(&DeleteMetadataReply{RequestID: 42, Success: true})
+	if err != nil {
+		t.Fatalf("encode reply: %v", err)
+	}
+	reply, err := DecodeDeleteMetadataReply(replyData)
+	if err != nil || !reply.Success || reply.RequestID != 42 {
+		t.Fatalf("reply round trip: %+v err=%v", reply, err)
+	}
+	if _, err := DecodeDeleteMetadataArgs([]byte("not json")); err == nil {
+		t.Fatal("malformed args must fail")
+	}
+	if _, err := DecodeDeleteMetadataReply([]byte("not json")); err == nil {
+		t.Fatal("malformed reply must fail")
+	}
+}
+
+func TestHandleDeleteMetadataRejectsMissingName(t *testing.T) {
+	store, err := storage.NewCASStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	tr := &deleteAckTransport{ackPeer: map[int32]bool{}}
+	p := NewMetadataRPCProvider(0, tr, NewRing([]int32{0}, 1), store)
+	tr.provider = p
+	payload, _ := EncodeDeleteMetadataArgs(&DeleteMetadataArgs{RequestID: 1, Name: ""})
+	p.HandleRPC(&RPC{From: 1, Type: MsgDeleteMetadata, Payload: payload})
+	// Malformed payload must be ignored, not panic.
+	p.HandleRPC(&RPC{From: 1, Type: MsgDeleteMetadata, Payload: []byte("bad")})
+	p.HandleRPC(&RPC{From: 1, Type: MsgDeleteMetadataResponse, Payload: []byte("bad")})
+}
+
+func TestDeleteMetadataFailsWhenLocalIsNotAReplica(t *testing.T) {
+	store, err := storage.NewCASStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	// Ring with a single replica (node 0) while this provider is node 5: the
+	// only replica is remote, and it never acknowledges.
+	p := NewMetadataRPCProvider(5, &deleteAckTransport{}, NewRing([]int32{0}, 1), store)
+	p.RPCTimeout = 100 * time.Millisecond
+	if err := p.DeleteMetadata("obj"); err == nil {
+		t.Fatal("an unacknowledged remote-only delete must fail")
+	}
+}
