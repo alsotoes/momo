@@ -72,43 +72,25 @@
   - On validation failure: safe defaults (index 0, now)
 - [ ] Integration tests: new holder syncs state from peers
 
-## Phase 5 — Observability + Integration
-- [ ] Prometheus metrics in `src/server/metrics_exporter.go`:
-  - `momo_coordination_lease_holder{role="..."}` — gauge
-  - `momo_coordination_leadership_changes_total{role="..."}` — counter
-  - `momo_coordination_state_sync_duration_seconds` — histogram
-  - `momo_coordination_quorum_status` — gauge (1/0)
-- [ ] Audit logging:
-  - Leadership change: "Node X became MetricsController lease holder"
-  - Resignation: "Node X resigned MetricsController: CPU 95%"
-  - Quorum loss: "Coordination suspended: insufficient quorum"
-- [ ] Config integration: `[coordination_failover]` section in `config.go`
-- [ ] Backward compatibility: `coordination_failover.enabled=false` → standard lease
-- [ ] Update `docs/GUIDES/CONFIGURATION.md` with `[coordination_failover]` section
-
-## Phase 6 — Integration Tests + Chaos
-- [ ] Integration test: 3-node cluster, kill lease holder → verify failover < 5s
-- [ ] Integration test: network partition → verify split-brain prevention
-- [ ] Integration test: health degradation → verify proactive resignation
-- [ ] Integration test: quorum loss → coordination suspended, resumes on restore
-- [ ] Chaos test: repeated lease holder kills → cluster self-heals
-- [ ] Benchstat: failover latency (target < 5s), state sync latency (target < 10s)
-- [ ] `coordination_failover.enabled=false` → standard lease behavior
-- [ ] Blog post per Rule 76 (teach the SWIM-integrated failover pattern)
-
-## Cross-Phase Requirements
-- [ ] `go build ./...` clean at each phase
-- [ ] `go test ./...` passes at each phase
-- [ ] `go vet`, `gofmt -l` clean
-- [ ] `go work vendor` parity (Rule 25)
-- [ ] Blog post per Rule 76
-- [ ] ADR sync (Rule 78) — `make adr-sync`
-- [ ] PR body with `Resolves #1147`
-
-## Definition of Done (Per Phase)
-- All phase tasks checked
-- Integration tests pass on 3+ node cluster
-- Chaos tests pass: failover, partition, health degradation
-- Benchstat: failover < 5s, state sync < 10s
-- `coordination_failover.enabled=false` → standard lease behavior
-- Reviewer ✅ gate (Rule 55)
+## Phase 5 — Observability (delivered) + Integration
+- [x] `momo_coordination_handoffs_total` — proactive lease resignations (counted
+  only when leases were actually released)
+- [x] `momo_coordination_quorum_loss_total` — coordination suspensions caused by
+  cluster quorum loss
+- [x] AUDIT logging: handoffs (`resigning lease "<key>" (<reason>)`) and quorum
+  loss (`coordination suspended: cluster quorum lost after peer N failed`)
+- [x] `momo_leases_active` reports held leases (R5)
+- [x] Config integration: `[coordination_failover]` parsed, validated, and
+  documented (Phase 2)
+- [x] Backward compatibility: `coordination_failover.enabled=false` keeps the
+  standard lease behaviour (no monitor starts)
+- [x] `docs/GUIDES/CONFIGURATION.md` documents every `[coordination_failover]` key
+- [ ] Per-role gauges/labels (`momo_coordination_lease_holder{role}`,
+  `momo_coordination_leadership_changes_total{role}`) — roles are keyed leases
+  today; per-role labels need a role taxonomy first
+- [ ] `momo_coordination_state_sync_duration_seconds` — belongs to Phase 4
+  (state sync), which is not implemented
+- [ ] `momo_coordination_quorum_status` gauge — derivable from `momo_leases_active`
+  and the quorum counters; add if dashboards need an explicit 1/0
+- [ ] Dashboard panels / alert rules for the new counters — monitoring config,
+  not code

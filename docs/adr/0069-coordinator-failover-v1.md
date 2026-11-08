@@ -4,7 +4,7 @@
 Proposed
 
 ## Confidence
-Low
+Medium
 
 ## Context
 The `distributed-coordination-v1` spec introduces lease-based election for coordination roles. This spec **completes the failover story** by implementing:
@@ -28,7 +28,7 @@ None documented.
 ## Implementation Status
 - **Code**: Partial
 - **Tests**: Partial
-- **Docs**: Partial
+- **Docs**: Done
 - **Blog post**: docs/blog/posts/064-failing-over-coordination-in-seconds.md
 
 ## References

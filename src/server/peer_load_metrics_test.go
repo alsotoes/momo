@@ -68,3 +68,19 @@ func TestP2PClusterStatsPeerLoadsNilSafe(t *testing.T) {
 		t.Fatalf("nil peer map must yield no samples, got %v", got)
 	}
 }
+
+func TestCoordinationCountersRendered(t *testing.T) {
+	m := NewMetricsCollector()
+	m.SetClusterStats(&fakeClusterStats{handoffs: 3, quorumLoss: 2})
+	var buf bytes.Buffer
+	m.writeMetrics(&buf)
+	out := buf.String()
+	for _, want := range []string{
+		"momo_coordination_handoffs_total 3",
+		"momo_coordination_quorum_loss_total 2",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q", want)
+		}
+	}
+}

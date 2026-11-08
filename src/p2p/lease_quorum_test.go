@@ -81,3 +81,31 @@ func TestSingleNodeClusterAlwaysHasQuorum(t *testing.T) {
 		t.Fatal("a single-node cluster must not block coordination")
 	}
 }
+
+func TestCoordinationCounters(t *testing.T) {
+	tr := newFailoverTransport(1, 2)
+	lm := NewLeaseManager(1, tr)
+	if h, q := lm.CoordinationCounters(); h != 0 || q != 0 {
+		t.Fatalf("fresh counters must be zero, got %d/%d", h, q)
+	}
+
+	lm.held[1] = &Lease{LeaseID: 1, HolderID: 1, Key: "k", QuorumSize: 0}
+	lm.ResignAll("test handoff")
+	if h, _ := lm.CoordinationCounters(); h != 1 {
+		t.Fatalf("handoff counter = %d, want 1", h)
+	}
+	// Resigning with nothing held must not count a handoff.
+	_ = lm.ResignAll("nothing to do")
+	if h, _ := lm.CoordinationCounters(); h != 1 {
+		t.Fatalf("empty resignation must not increment, got %d", h)
+	}
+
+	lm.SetClusterSize(3)
+	tr.setAlive(2, false)
+	if err := lm.OnPeerFailure(2); err != nil {
+		t.Fatalf("OnPeerFailure: %v", err)
+	}
+	if _, q := lm.CoordinationCounters(); q != 1 {
+		t.Fatalf("quorum-loss counter = %d, want 1", q)
+	}
+}

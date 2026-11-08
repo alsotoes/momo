@@ -52,6 +52,7 @@ type clusterStatsProvider interface {
 	ScatterCounters() (queries, timeouts uint64)
 	GetReplicationStatus() (mode string, pending int)
 	PeerLoads() []PeerLoadSample
+	CoordinationCounters() (handoffs, quorumLoss uint64)
 }
 
 // PeerLoadSample is one peer's last published load report.
@@ -485,6 +486,17 @@ func (m *MetricsCollector) writeClusterMetrics(w io.Writer) {
 	fmt.Fprintf(w, "# HELP momo_scatter_timeout_total Total scatter-gather timeout expiries.\n")
 	fmt.Fprintf(w, "# TYPE momo_scatter_timeout_total counter\n")
 	fmt.Fprintf(w, "momo_scatter_timeout_total %d\n", timeouts)
+
+	handoffs, quorumLoss := uint64(0), uint64(0)
+	if cp != nil {
+		handoffs, quorumLoss = cp.CoordinationCounters()
+	}
+	_, _ = fmt.Fprintf(w, "# HELP momo_coordination_handoffs_total Proactive lease resignations due to local unhealthiness.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE momo_coordination_handoffs_total counter\n")
+	_, _ = fmt.Fprintf(w, "momo_coordination_handoffs_total %d\n", handoffs)
+	_, _ = fmt.Fprintf(w, "# HELP momo_coordination_quorum_loss_total Times coordination was suspended because cluster quorum was lost.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE momo_coordination_quorum_loss_total counter\n")
+	_, _ = fmt.Fprintf(w, "momo_coordination_quorum_loss_total %d\n", quorumLoss)
 
 	// R11 (#1261): peer load as published over gossip. Absent until a report
 	// arrives, which is why the samples are emitted per peer rather than as a
