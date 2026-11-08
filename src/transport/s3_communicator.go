@@ -2818,8 +2818,8 @@ func collectS3Headers(req *http.Request) map[string]string {
 			addHeader(checksumHeaderFor(checksumAlgoSHA256), v)
 			if seenAlgo == "" {
 				seenAlgo = checksumAlgoSHA256
+			}
 		}
-	}
 	if v := req.Header.Get("X-Amz-Checksum-Algorithm"); v != "" {
 		if norm := normalizeChecksumAlgorithm(v); norm != "" {
 			seenAlgo = norm
