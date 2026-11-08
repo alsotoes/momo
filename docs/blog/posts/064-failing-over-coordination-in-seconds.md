@@ -125,6 +125,28 @@ Reading `/proc` directly instead of taking a dependency keeps the deployment
 surface unchanged — no extra libraries to vendor, and platforms without `/proc`
 simply fall back to the goroutine dimension.
 
+## The State Nobody Remembers
+
+Failover has a quieter failure mode than a dead process. The new holder starts,
+reads its configuration, and begins at the first entry of the replication order
+— because that is the only state it has. The cluster's carefully chosen mode is
+gone, replaced by a default nobody chose.
+
+The fix is not a new protocol. Every node already receives a broadcast whenever
+the mode changes. What was missing was remembering it: each node now writes the
+mode it observed to a small file in its data directory, atomically, so a crash
+mid-write cannot leave a half-written value.
+
+When a controller starts — after a restart or because it is the new holder — it
+reads that file and resumes from the matching position in the order instead of
+from the beginning. The broadcast was already the synchronization channel; the
+file turns it into durable state.
+
+Two safety rules keep this honest. A value that no longer appears in the
+configured order falls back to the first entry instead of wedging the loop. And a
+failure to write the file is logged, not fatal: a read-only disk should not stop
+the controller from coordinating.
+
 ## What Changes for an Operator
 
 Failover time stops being "the lease TTL" and becomes "the suspicion timeout".

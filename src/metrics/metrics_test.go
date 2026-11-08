@@ -123,5 +123,5 @@ func TestRealSystemMetrics(t *testing.T) {
 func TestGetMetricsNonPrimaryServer(t *testing.T) {
 	// serverId != 0, should return immediately
 	cfg := common.Configuration{}
-	GetMetrics(context.Background(), cfg, 1)
+	GetMetrics(context.Background(), cfg, 1, nil)
 }

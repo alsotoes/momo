@@ -460,7 +460,11 @@ func runRotateSecrets(cfg common.Configuration, serverId int) error {
 // runMetricsLoop runs the metrics loop with panic recovery.
 func runMetricsLoop(ctx context.Context, cfg common.Configuration, serverId int) (err error) {
 	defer common.RecoverErrWith("Metrics Loop", syscall.EINVAL, &err)
-	metrics.GetMetrics(ctx, cfg, serverId)
+	var modeStore metrics.ModeStore
+	if serverId >= 0 && serverId < len(cfg.Daemons) {
+		modeStore = common.NewCoordinationModeStore(cfg.Daemons[serverId].Data)
+	}
+	metrics.GetMetrics(ctx, cfg, serverId, modeStore)
 	return nil
 }
 

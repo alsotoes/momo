@@ -129,12 +129,61 @@ func shouldSwitchMode(minFloor int, replicationOrder []int, newIdx, replicationF
 	return true
 }
 
+// ModeStore persists the last replication mode this node observed. It lets a
+// restarted or newly-elected controller resume the cluster's mode instead of
+// resetting to the first entry of the replication order (Phase 4).
+type ModeStore interface {
+	LoadMode() (int, bool, error)
+	SaveMode(mode int) error
+}
+
+// resumeModeIndex returns the index in order matching mode, or 0 when the mode
+// is unknown, so a stale persisted value can never wedge the controller.
+func resumeModeIndex(order []int, mode int) int {
+	for i, m := range order {
+		if m == mode {
+			return i
+		}
+	}
+	return 0
+}
+
+// resumeMode returns the order index matching the persisted mode, falling back
+// to 0 when nothing is stored or the value is unreadable/stale.
+func resumeMode(order []int, store ModeStore) int {
+	if store == nil {
+		return 0
+	}
+	mode, ok, err := store.LoadMode()
+	if err != nil {
+		log.Printf("AUDIT: could not read persisted replication mode: %v — starting from order[0]", common.SanitizeLog(err.Error()))
+		return 0
+	}
+	if !ok {
+		return 0
+	}
+	idx := resumeModeIndex(order, mode)
+	log.Printf("AUDIT: resuming replication mode %d (order index %d) from persisted state", order[idx], idx)
+	return idx
+}
+
+// persistMode records the selected mode, auditing (not failing) on error: the
+// controller must keep working even if the disk is read-only.
+func persistMode(order []int, idx int, store ModeStore) {
+	if store == nil {
+		return
+	}
+	if err := store.SaveMode(order[idx]); err != nil {
+		log.Printf("AUDIT: failed to persist replication mode %d: %v", order[idx], common.SanitizeLog(err.Error()))
+	}
+}
+
 // GetMetrics is the main loop for the metrics daemon.
 //
 // It periodically checks the system metrics and, if the polymorphic system is enabled,
 // adjusts the replication mode based on the configured thresholds and fallback interval.
 // This function is intended to be run as a goroutine and will run indefinitely.
-func GetMetrics(ctx context.Context, cfg common.Configuration, serverId int) {
+func GetMetrics(ctx context.Context, cfg common.Configuration, serverId int, modeStore ModeStore) {
 	if serverId != 0 {
 		return
 	}
@@ -151,29 +200,33 @@ func GetMetrics(ctx context.Context, cfg common.Configuration, serverId int) {
 		return
 	}
 
-	// ⚡ Bolt: Hoist constant AuthToken padding and conversion out of the loop.
-	paddedAuthToken := []byte(common.PadString(cfg.Global.AuthToken, common.AuthTokenLength))
-
-	// ⚡ Bolt: Pre-calculate thresholds as percentages to avoid multiplication/division in the loop.
-	maxThreshPercent := cfg.Metrics.MaxThreshold * 100
-	minThreshPercent := cfg.Metrics.MinThreshold * 100
-
 	replicationOrder := cfg.Global.ReplicationOrder
-	currentIndex := 0
-	pushNewReplicationMode(cfg, paddedAuthToken, replicationOrder[currentIndex])
+	if len(replicationOrder) == 0 {
+		log.Printf("ERROR: replication_order is empty — metrics loop not started")
+		return
+	}
 
-	// Durability floor (issue #822): the controller must never automatically
-	// select a mode whose achievable replica count is below this value.
-	minFloor := cfg.Global.MinimumDurabilityFactor
-	clusterSize := len(cfg.Daemons)
+	c := &metricsController{
+		cfg: cfg,
+		// ⚡ Bolt: hoist constant AuthToken padding out of the loop.
+		authToken:        []byte(common.PadString(cfg.Global.AuthToken, common.AuthTokenLength)),
+		order:            replicationOrder,
+		store:            modeStore,
+		sm:               &RealSystemMetrics{},
+		minFloor:         cfg.Global.MinimumDurabilityFactor,
+		clusterSize:      len(cfg.Daemons),
+		maxThreshPercent: cfg.Metrics.MaxThreshold * 100,
+		minThreshPercent: cfg.Metrics.MinThreshold * 100,
+		fallback:         time.Duration(cfg.Metrics.FallbackInterval) * time.Millisecond,
+		// Phase 4: resume the mode this node last observed (it receives every
+		// push), so a controller restart or takeover does not downgrade.
+		currentIndex: resumeMode(replicationOrder, modeStore),
+		start:        time.Now(),
+	}
+	persistMode(replicationOrder, c.currentIndex, modeStore)
+	pushNewReplicationMode(cfg, c.authToken, replicationOrder[c.currentIndex])
 
-	sm := &RealSystemMetrics{}
-	start := time.Now()
-
-	fallbackDuration := time.Duration(cfg.Metrics.FallbackInterval) * time.Millisecond
-	intervalDuration := time.Duration(cfg.Metrics.Interval) * time.Millisecond
-
-	ticker := time.NewTicker(intervalDuration)
+	ticker := time.NewTicker(time.Duration(cfg.Metrics.Interval) * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
@@ -181,30 +234,61 @@ func GetMetrics(ctx context.Context, cfg common.Configuration, serverId int) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			newIndex, changed := checkMetricsAndSwap(sm, currentIndex, replicationOrder, maxThreshPercent, minThreshPercent)
-			if changed && shouldSwitchMode(minFloor, replicationOrder, newIndex, cfg.Global.ReplicationFactor, clusterSize) {
-				currentIndex = newIndex
-				pushNewReplicationMode(cfg, paddedAuthToken, replicationOrder[currentIndex])
-				start = time.Now()
-			}
-
-			// Change replication mode by timeout fallback
-			now := time.Now()
-			if now.Sub(start) > fallbackDuration {
-				if currentIndex > 0 {
-					if shouldSwitchMode(minFloor, replicationOrder, currentIndex-1, cfg.Global.ReplicationFactor, clusterSize) {
-						log.Printf("Replication fallback because of timeout")
-						currentIndex--
-						pushNewReplicationMode(cfg, paddedAuthToken, replicationOrder[currentIndex])
-						start = time.Now()
-					} else {
-						log.Printf("Replication fallback held because of durability floor")
-						start = time.Now()
-					}
-				} else {
-					log.Printf("Replication method has no fallback")
-				}
-			}
+			c.step()
 		}
 	}
+}
+
+// metricsController holds the polymorphic loop state so the loop body stays
+// readable and within the complexity budget.
+type metricsController struct {
+	cfg              common.Configuration
+	authToken        []byte
+	order            []int
+	store            ModeStore
+	sm               SystemMetrics
+	minFloor         int
+	clusterSize      int
+	maxThreshPercent float64
+	minThreshPercent float64
+	fallback         time.Duration
+	currentIndex     int
+	start            time.Time
+}
+
+// step evaluates one tick: a metric-driven switch first, then the timeout
+// fallback, both respecting the durability floor.
+func (c *metricsController) step() {
+	if idx, changed := checkMetricsAndSwap(c.sm, c.currentIndex, c.order, c.maxThreshPercent, c.minThreshPercent); changed {
+		if shouldSwitchMode(c.minFloor, c.order, idx, c.cfg.Global.ReplicationFactor, c.clusterSize) {
+			c.switchTo(idx)
+		}
+	}
+	if time.Since(c.start) > c.fallback {
+		c.applyFallback()
+	}
+}
+
+// switchTo adopts an order index, persists it and broadcasts it.
+func (c *metricsController) switchTo(idx int) {
+	c.currentIndex = idx
+	persistMode(c.order, idx, c.store)
+	pushNewReplicationMode(c.cfg, c.authToken, c.order[idx])
+	c.start = time.Now()
+}
+
+// applyFallback steps one mode down after the interval, unless the durability
+// floor forbids it.
+func (c *metricsController) applyFallback() {
+	if c.currentIndex == 0 {
+		log.Printf("Replication method has no fallback")
+		return
+	}
+	if !shouldSwitchMode(c.minFloor, c.order, c.currentIndex-1, c.cfg.Global.ReplicationFactor, c.clusterSize) {
+		log.Printf("Replication fallback held because of durability floor")
+		c.start = time.Now()
+		return
+	}
+	log.Printf("Replication fallback because of timeout")
+	c.switchTo(c.currentIndex - 1)
 }
