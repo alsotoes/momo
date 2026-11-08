@@ -48,6 +48,7 @@ func wireVersionReplication(ctx context.Context, cfg common.Configuration, daemo
 	provider := p2p.NewMetadataRPCProvider(self, transport, p2p.NewRing(ids, mFactor), cs)
 	gossip.SetMetadataRPCProvider(provider)
 	installVersionReplication(ctx, cs, &common.ClusterMap{Nodes: nodes}, provider, self, cfg.Global.ReplicationFactor)
+	installQuorumMetadataPublish(cfg, provider, mFactor)
 }
 
 // versionReplicator fans one version record out to an object's replica set.
