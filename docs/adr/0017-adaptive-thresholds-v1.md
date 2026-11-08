@@ -35,11 +35,11 @@ None documented.
 - **Code**: Partial
 - **Tests**: Partial
 - **Docs**: Planned
-- **Blog post**: 
+- **Blog post**: docs/blog/posts/066-thresholds-that-learn.md
 
 ## References
 - Issue: #1145
 - PR: 
 - Spec: `openspec/changes/adaptive-thresholds-v1/`
-- Blog: 
+- Blog: docs/blog/posts/066-thresholds-that-learn.md
 

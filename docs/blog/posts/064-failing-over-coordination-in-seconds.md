@@ -15,7 +15,7 @@ artifacts:
     path: openspec/changes/coordinator-failover-v1
   - type: adr
     path: docs/adr/0069-coordinator-failover-v1.md
-related: ["063-gossip-load-without-a-coordinator", "062-stigmergic-disk-shedding"]
+related: ["063-gossip-load-without-a-coordinator", "062-stigmergic-disk-shedding", "066-thresholds-that-learn"]
 difficulty: "advanced"
 pattern: "lease-failover"
 teaches:
