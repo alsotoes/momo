@@ -247,6 +247,11 @@ rule and the cluster converges as a side effect (stigmergy, not scheduling).
 - **Preconditions**: validated at config load (P2P enabled, `degraded_read`,
   `replication_factor >= 2`, at least two daemons) so a misconfigured loop fails
   at startup instead of never running.
+- **Metadata quorum writes**: an any-node metadata write fans out to the shard's
+  replica set and is acknowledged only after a strict majority
+  (W = M/2 + 1) of acks, with the writer advancing its vector-clock entry first.
+  Partial success is reported as an error, and replicas fail closed on nameless
+  records.
 - **Mode continuity**: every node records the replication mode it observes in
   `<data>/coordination/replication_mode` (atomic write). A controller restart or
   takeover resumes that value instead of resetting to the first entry of the

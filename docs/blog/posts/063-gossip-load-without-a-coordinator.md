@@ -15,7 +15,7 @@ artifacts:
     path: openspec/changes/r11-gossip-load-signal
   - type: adr
     path: docs/adr/0088-r11-gossip-load-signal.md
-related: ["062-stigmergic-disk-shedding", "061-cross-node-version-records", "064-failing-over-coordination-in-seconds"]
+related: ["062-stigmergic-disk-shedding", "061-cross-node-version-records", "064-failing-over-coordination-in-seconds", "065-metadata-writes-that-need-a-majority"]
 difficulty: "intermediate"
 pattern: "gossip"
 teaches:

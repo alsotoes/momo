@@ -359,15 +359,22 @@ func resolveBlog(specID string) string {
 	if best != "" {
 		return "docs/blog/posts/" + filepath.Base(best)
 	}
+	// Last resort: a post that mentions the spec in prose. Match on token
+	// boundaries — a bare substring match made `r6-metadata-ha` claim a post
+	// written for `r6-metadata-ha-v2` (and vice versa).
+	var mentionRe *regexp.Regexp
+	if len(specID) >= 12 {
+		mentionRe = regexp.MustCompile(`(^|[^a-zA-Z0-9-])` + regexp.QuoteMeta(specID) + `([^a-zA-Z0-9-]|$)`)
+	}
 	for _, m := range matches {
-		if len(specID) < 12 {
-			continue
+		if mentionRe == nil {
+			break
 		}
 		data, err := os.ReadFile(m)
 		if err != nil {
 			continue
 		}
-		if strings.Contains(string(data), specID) {
+		if mentionRe.Match(data) {
 			return "docs/blog/posts/" + filepath.Base(m)
 		}
 	}

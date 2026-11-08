@@ -65,14 +65,17 @@ type ResolveMetadataReply struct {
 
 // ReplicateMetadataArgs is the payload for a ReplicateMetadata RPC request.
 type ReplicateMetadataArgs struct {
-	ShardKey string
-	Meta     map[string]interface{} // ObjectMeta fields as JSON
+	// RequestID correlates the reply with the waiting quorum call.
+	RequestID uint64
+	ShardKey  string
+	Meta      map[string]interface{} // ObjectMeta fields as JSON
 }
 
 // ReplicateMetadataReply is the payload for a ReplicateMetadata RPC response.
 type ReplicateMetadataReply struct {
-	Success bool
-	Error   string
+	RequestID uint64
+	Success   bool
+	Error     string
 }
 
 // ReplicateVersionArgs is the payload for a ReplicateVersion RPC request
@@ -231,6 +234,11 @@ type MetadataRPCProvider struct {
 	versionPendingMu sync.Mutex
 	versionPending   map[uint64]chan *ReplicateVersionReply
 
+	// replicaPending correlates ReplicateMetadata replies by request ID so a
+	// quorum write cannot be woken by an unrelated peer's response.
+	replicaPendingMu sync.Mutex
+	replicaPending   map[uint64]chan *ReplicateMetadataReply
+
 	// RPCTimeout bounds a request/response call; zero means MetadataRPCTimeout.
 	// Per-instance so tests can shorten it without racing a shared global.
 	RPCTimeout time.Duration
@@ -258,6 +266,7 @@ func NewMetadataRPCProvider(localID int32, transport Transport, ring *Ring, stor
 		store:          store,
 		pending:        make(map[uint64]*pendingMetadata),
 		versionPending: make(map[uint64]chan *ReplicateVersionReply),
+		replicaPending: make(map[uint64]chan *ReplicateMetadataReply),
 		RPCTimeout:     MetadataRPCTimeout,
 	}
 }
@@ -425,6 +434,16 @@ func (m *MetadataRPCProvider) handleReplicateMetadata(rpc *RPC) {
 		}
 	}
 
+	if name == "" || hash == "" {
+		// Fail closed: a replica must never store a nameless record, which would
+		// be unreachable and invisible to listing.
+		reply := &ReplicateMetadataReply{RequestID: args.RequestID, Success: false, Error: "replica metadata missing name or hash"}
+		payload, _ := EncodeReplicateMetadataReply(reply)
+		_ = m.transport.Send(rpc.From, &RPC{Type: MsgReplicateMetadataResponse, Payload: payload})
+		log.Printf("MetadataRPC: rejected metadata replica from peer %d: missing name or hash (errno=%d)", rpc.From, syscall.EBADMSG)
+		return
+	}
+
 	err = m.store.PutWithMetadata(
 		name,
 		hash,
@@ -435,7 +454,7 @@ func (m *MetadataRPCProvider) handleReplicateMetadata(rpc *RPC) {
 		shardKey,
 		metadataReplicas,
 	)
-	reply := &ReplicateMetadataReply{Success: err == nil}
+	reply := &ReplicateMetadataReply{RequestID: args.RequestID, Success: err == nil}
 	if err != nil {
 		reply.Error = err.Error()
 	}
@@ -453,7 +472,16 @@ func (m *MetadataRPCProvider) handleReplicateMetadataResponse(rpc *RPC) {
 		log.Printf("MetadataRPC: failed to decode ReplicateMetadataResponse from peer %d: %v (errno=%d)", rpc.From, err, syscall.EBADMSG)
 		return
 	}
-	m.completePending(rpc.From, reply, err)
+	m.replicaPendingMu.Lock()
+	ch, ok := m.replicaPending[reply.RequestID]
+	m.replicaPendingMu.Unlock()
+	if !ok {
+		return
+	}
+	select {
+	case ch <- reply:
+	default:
+	}
 }
 
 // handleListShard processes an incoming ListShard request.
@@ -615,11 +643,205 @@ func (m *MetadataRPCProvider) completePending(from int32, reply interface{}, err
 	}
 }
 
-// PutMetadata calls PutMetadata on the shard owner and waits for quorum.
-// This is the Phase 2 quorum write path.
+// ReplicationFactor returns the ring's configured metadata replication factor.
+func (r *Ring) ReplicationFactor() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.replicaM < 1 {
+		return 1
+	}
+	return r.replicaM
+}
+
+// writeQuorum returns the number of acknowledgements a write needs: a strict
+// majority of the replica set, capped at its size.
+func writeQuorum(replicas int) int {
+	if replicas <= 1 {
+		return 1
+	}
+	return replicas/2 + 1
+}
+
+// replicateToPeer sends one metadata replica and waits for its acknowledgement.
+func (m *MetadataRPCProvider) replicateToPeer(peer int32, args *ReplicateMetadataArgs) (*ReplicateMetadataReply, error) {
+	requestID := m.nextRequestID.Add(1)
+	// Copy per call: the same args pointer is shared by concurrent replica
+	// sends, so mutating it here would race with their encodes.
+	call := *args
+	call.RequestID = requestID
+	ch := make(chan *ReplicateMetadataReply, 1)
+	m.replicaPendingMu.Lock()
+	m.replicaPending[requestID] = ch
+	m.replicaPendingMu.Unlock()
+	defer func() {
+		m.replicaPendingMu.Lock()
+		delete(m.replicaPending, requestID)
+		m.replicaPendingMu.Unlock()
+	}()
+
+	payload, err := EncodeReplicateMetadataArgs(&call)
+	if err != nil {
+		return nil, fmt.Errorf("encode metadata replica: %w", err)
+	}
+	if serr := m.transport.Send(peer, &RPC{Type: MsgReplicateMetadata, Payload: payload}); serr != nil {
+		return nil, fmt.Errorf("send metadata replica to peer %d: %w", peer, serr)
+	}
+	select {
+	case reply := <-ch:
+		if !reply.Success {
+			return reply, fmt.Errorf("peer %d rejected metadata: %s: %w", peer, reply.Error, syscall.EIO)
+		}
+		return reply, nil
+	case <-time.After(m.rpcTimeout()):
+		return nil, fmt.Errorf("timeout replicating metadata to peer %d: %w", peer, syscall.ETIMEDOUT)
+	}
+}
+
+// PutMetadata writes one object's metadata to its replica set and waits for a
+// quorum (Phase 2, #1142). The caller's vector clock is advanced for this node
+// before fan-out so replicas can order concurrent writes.
+//
+// Partial success is reported as an error: the caller decides whether to retry.
+// Acks already received are not rolled back, because a later write carrying a
+// newer vector clock supersedes them.
 func (m *MetadataRPCProvider) PutMetadata(args *PutMetadataArgs) (*PutMetadataReply, error) {
-	// Phase 1: just compile; Phase 2 will implement quorum logic
-	return &PutMetadataReply{Success: true}, nil
+	replicas, err := m.prepareWrite(args)
+	if err != nil {
+		return &PutMetadataReply{Success: false, Error: err.Error()}, err
+	}
+	need := writeQuorum(len(replicas))
+
+	acks := 0
+	if m.isLocalReplica(replicas) {
+		if aerr := m.applyLocally(args); aerr != nil {
+			log.Printf("AUDIT: local metadata apply failed for %q: %v", args.Name, aerr)
+		} else {
+			acks++
+		}
+	}
+	remoteAcks, remoteErr := m.replicateAll(replicas, args)
+	acks += remoteAcks
+
+	if acks < need {
+		if remoteErr != nil {
+			log.Printf("AUDIT: metadata quorum short for %q: %v", args.Name, remoteErr)
+		}
+		return m.quorumFailureReply(args, acks, len(replicas), need), fmt.Errorf(
+			"metadata quorum not reached (%d/%d, need %d): %w", acks, len(replicas), need, syscall.EIO)
+	}
+	return &PutMetadataReply{Success: true, ExistingVClock: args.VectorClock}, nil
+}
+
+// prepareWrite validates the arguments, resolves the shard key and replica set,
+// and advances this node's vector-clock entry.
+func (m *MetadataRPCProvider) prepareWrite(args *PutMetadataArgs) ([]int32, error) {
+	if args == nil {
+		return nil, fmt.Errorf("nil PutMetadataArgs: %w", syscall.EINVAL)
+	}
+	if args.ShardKey == "" {
+		args.ShardKey = ShardKey(args.Name)
+	}
+	replicas := args.MetadataReplicas
+	if len(replicas) == 0 {
+		replicas = m.ring.Replicas(args.ShardKey, m.ring.ReplicationFactor())
+		args.MetadataReplicas = replicas
+	}
+	if len(replicas) == 0 {
+		return nil, fmt.Errorf("no replicas for shard %q: %w", args.ShardKey, syscall.ENOTSUP)
+	}
+	// The write is causally after everything this node has seen.
+	if int(m.localID) >= len(args.VectorClock) {
+		grown := make([]uint64, m.localID+1)
+		copy(grown, args.VectorClock)
+		args.VectorClock = grown
+	}
+	args.VectorClock[m.localID]++
+	return replicas, nil
+}
+
+// isLocalReplica reports whether this node belongs to the replica set.
+func (m *MetadataRPCProvider) isLocalReplica(replicas []int32) bool {
+	for _, id := range replicas {
+		if id == m.localID {
+			return true
+		}
+	}
+	return false
+}
+
+// replicateAll sends the record to every remote replica concurrently and
+// returns the acknowledgements collected, plus the first failure.
+func (m *MetadataRPCProvider) replicateAll(replicas []int32, args *PutMetadataArgs) (int, error) {
+	remote := make([]int32, 0, len(replicas))
+	for _, id := range replicas {
+		if id != m.localID {
+			remote = append(remote, id)
+		}
+	}
+	replicaArgs := &ReplicateMetadataArgs{
+		ShardKey: args.ShardKey,
+		Meta: map[string]interface{}{
+			"Name":             args.Name,
+			"Hash":             args.Hash,
+			"Size":             args.Size,
+			"RemotePath":       args.RemotePath,
+			"VectorClock":      args.VectorClock,
+			"ShardKey":         args.ShardKey,
+			"MetadataReplicas": args.MetadataReplicas,
+		},
+	}
+	acks := 0
+	var firstErr error
+	results := make(chan error, len(remote))
+	for _, peer := range remote {
+		go func(p int32) { results <- m.replicateSafely(p, replicaArgs) }(peer)
+	}
+	for i := 0; i < len(remote); i++ {
+		if err := <-results; err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		acks++
+	}
+	return acks, firstErr
+}
+
+// replicateSafely wraps one replica send with recovery (Rule 37): a panic in a
+// transport implementation becomes an EIO error for this replica instead of
+// crashing the node mid-quorum.
+func (m *MetadataRPCProvider) replicateSafely(peer int32, args *ReplicateMetadataArgs) (err error) {
+	defer common.RecoverErrWith("MetadataRPC.replicateToPeer", syscall.EIO, &err)
+	_, err = m.replicateToPeer(peer, args)
+	return err
+}
+
+// quorumFailureReply builds the failure reply for a write that did not reach W.
+func (m *MetadataRPCProvider) quorumFailureReply(args *PutMetadataArgs, acks, replicas, need int) *PutMetadataReply {
+	return &PutMetadataReply{
+		Success:        false,
+		Error:          fmt.Sprintf("metadata quorum not reached: %d/%d acks, need %d", acks, replicas, need),
+		ExistingVClock: args.VectorClock,
+	}
+}
+
+// applyLocally writes the metadata to this node's store (used when the local
+// node is a member of the replica set).
+func (m *MetadataRPCProvider) applyLocally(args *PutMetadataArgs) error {
+	if err := m.store.PutWithMetadata(
+		args.Name,
+		args.Hash,
+		args.Size,
+		args.RemotePath,
+		nil,
+		args.VectorClock,
+		args.ShardKey,
+		args.MetadataReplicas,
+	); err != nil {
+		return fmt.Errorf("apply metadata locally: %w", err)
+	}
+	return nil
 }
 
 // ResolveMetadata calls ResolveMetadata on the shard owner or a replica.
