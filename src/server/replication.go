@@ -222,6 +222,14 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 
 			// Update the replication state
 			newState := SetReplicationState(replicationJson.New, ts)
+			// Phase 4: record what this node observed, so a controller restart or
+			// takeover resumes the cluster's mode instead of order[0].
+			if serverId >= 0 && serverId < len(cfg.Daemons) {
+				store := common.NewCoordinationModeStore(cfg.Daemons[serverId].Data)
+				if saveErr := store.SaveMode(replicationJson.New); saveErr != nil {
+					log.Printf("AUDIT: failed to persist observed replication mode %d: %v", replicationJson.New, common.SanitizeLog(saveErr.Error()))
+				}
+			}
 			newReplicationJson, marshalErr := json.Marshal(newState)
 			if marshalErr != nil {
 				log.Printf("AUDIT: Failed to marshal new replication state: %v", fmt.Errorf("%v: %w", common.SanitizeLog(marshalErr.Error()), syscall.EIO))

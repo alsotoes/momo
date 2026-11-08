@@ -247,6 +247,10 @@ rule and the cluster converges as a side effect (stigmergy, not scheduling).
 - **Preconditions**: validated at config load (P2P enabled, `degraded_read`,
   `replication_factor >= 2`, at least two daemons) so a misconfigured loop fails
   at startup instead of never running.
+- **Mode continuity**: every node records the replication mode it observes in
+  `<data>/coordination/replication_mode` (atomic write). A controller restart or
+  takeover resumes that value instead of resetting to the first entry of the
+  configuration order, so failover never silently downgrades durability.
 - **Proactive handoff**: when `[coordination_failover]` is enabled, the node
   samples CPU, memory and goroutines; breaching a threshold resigns every held
   lease (broadcast) so a healthy peer takes over, with a cooldown against churn.

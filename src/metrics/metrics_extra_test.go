@@ -30,7 +30,7 @@ func TestGetMetrics_Cancellation(t *testing.T) {
 	defer cancel()
 
 	// Should run and return when context is canceled
-	GetMetrics(ctx, cfg, 0)
+	GetMetrics(ctx, cfg, 0, nil)
 }
 
 func TestCheckMetricsAndSwap_EdgeCases(t *testing.T) {
@@ -65,7 +65,7 @@ func TestGetMetrics_NonPositiveIntervalNoPanic(t *testing.T) {
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-		GetMetrics(ctx, cfg, 0)
+		GetMetrics(ctx, cfg, 0, nil)
 		cancel()
 	}
 }

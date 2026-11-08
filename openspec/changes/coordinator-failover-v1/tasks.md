@@ -55,22 +55,27 @@
 - [ ] Quorum-restored resume: no state machine needed; coordination resumes when
   the next `Acquire` succeeds
 
-## Phase 4 — State Synchronization Protocol
-- [ ] Create `src/coordination/state_sync.go`:
-  - `SyncStateRequest` / `SyncStateResponse` P2P RPC types
-  - `RequestStateSync(peers []int32) (State, error)` — fan-out to peers
-  - `MergeState(local, remote State) State` — latest timestamp wins
-  - `ValidateState(state State) error` — bounds, timestamp, order checks
-- [ ] Wire P2P RPC:
-  - Register `MsgSyncStateRequest` / `MsgSyncStateResponse` in `metadata_rpc.go`
-  - Handler in `MetadataRPCProvider` (or new `StateSyncProvider`)
-  - Timeout handling: `state_sync_timeout` bounds fan-out
-- [ ] State validation:
-  - `currentIndex` in [0, len(replicationOrder)-1]
-  - `startTime` not future, not > 24h old
-  - `replicationOrder` valid permutation
-  - On validation failure: safe defaults (index 0, now)
-- [ ] Integration tests: new holder syncs state from peers
+## Phase 4 — State Synchronization (delivered as an observed-state file)
+- [x] `common.CoordinationModeStore` — atomic (temp + fsync + rename) file under
+  `<data>/coordination/replication_mode`, disabled when the data dir is empty,
+  nil-safe
+- [x] Every node persists the mode it observes in `ChangeReplicationModeServer`
+  (`SaveMode` on receipt), so the existing broadcast is the sync channel — no new
+  RPC and no query fan-out
+- [x] The controller resumes the persisted mode on start (`resumeMode`), so a
+  restart or takeover no longer resets the cluster to `replication_order[0]`
+  (which was a silent availability/durability downgrade)
+- [x] Stale or unreadable values fall back to `order[0]` instead of wedging the
+  controller; persistence failures are audited, never fatal
+- [x] Loop refactored into `metricsController` (`step`, `switchTo`,
+  `applyFallback`) to stay inside the complexity budget
+- [x] Tests: store round trip, overwrite, garbage rejection, nil/blank no-op;
+  resume index table, absent/stale/error paths, persist error audited
+- [x] State is per-node and reconstructable: any node that received the latest
+  broadcast can lead with the correct mode
+- [ ] Cross-node validation on takeover (quorum read-back) — not needed: every
+  node receives the broadcast synchronously, and a node that missed it resumes
+  from its own last observation, which is never fresher than the cluster's
 
 ## Phase 5 — Observability (delivered) + Integration
 - [x] `momo_coordination_handoffs_total` — proactive lease resignations (counted
