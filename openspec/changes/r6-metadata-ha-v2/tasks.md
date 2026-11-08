@@ -47,6 +47,12 @@
 - [x] **Tests**: quorum reached with local + one ack, quorum failure below W,
   single-replica local-only write, derived shard/replica set, nameless record
   rejected, unknown-request reply ignored, race-free concurrent fan-out
+- [x] **Daemon write path**: `getFile` publishes every successful PUT through the
+  quorum writer (`publishMetadataToQuorum`); a quorum failure fails the request
+  with `EIO` so the client retries, while the local copy stays and the retry is
+  idempotent. Enabled only when `[momofs] enabled=true` and the metadata
+  replication factor is > 1; otherwise the publisher is nil and writes are
+  unchanged (single-node deployments unaffected).
 - [ ] **Vector clock conflict detection** on read (compare VClocks from multiple replicas) — Phase 3 read path
 - [ ] **Integration tests**: 3-node cluster, concurrent writes → conflict detection, quorum with 1 replica down — needs the read path to observe conflicts
 

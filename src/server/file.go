@@ -164,6 +164,14 @@ func getFile(comm transport.Communicator, store storage.Store, fileName string, 
 		}
 	}
 
+	// Distributed metadata write (R6 v2, #1142): the record must reach a quorum
+	// of its replica set. Reporting failure lets the client retry; the local
+	// copy stays, and the next write is idempotent.
+	if perr := publishMetadataToQuorum(fileName, hash, fileSize, remotePath); perr != nil {
+		err = fmt.Errorf("metadata replication failed for %s: %w", fileName, syscall.EIO)
+		return err
+	}
+
 	log.Printf("=> Expected Hash: %s", common.SanitizeLog(expectedHash))
 	log.Printf("=> Actual Hash:   %s", common.SanitizeLog(hash))
 	log.Printf("Received file completely!")

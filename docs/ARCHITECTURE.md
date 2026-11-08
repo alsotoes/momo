@@ -251,7 +251,9 @@ rule and the cluster converges as a side effect (stigmergy, not scheduling).
   replica set and is acknowledged only after a strict majority
   (W = M/2 + 1) of acks, with the writer advancing its vector-clock entry first.
   Partial success is reported as an error, and replicas fail closed on nameless
-  records.
+  records. The daemon's PUT path uses it whenever distributed metadata is enabled
+  (`[momofs] enabled=true`, replication factor > 1); a quorum failure fails the
+  request so the client retries, and the retry is idempotent.
 - **Mode continuity**: every node records the replication mode it observes in
   `<data>/coordination/replication_mode` (atomic write). A controller restart or
   takeover resumes that value instead of resetting to the first entry of the
