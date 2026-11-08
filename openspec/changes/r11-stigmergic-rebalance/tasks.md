@@ -45,7 +45,14 @@
 - [ ] Failure domain spread — see the note above (needs replica tracking; new writes already spread by R1). Tracked in #1260.
   - `checkFailureDomainSpread()` — analyze MetadataReplicas domains
   - Migrate one replica if concentrated
-- [ ] Request rate redirection — blocked: needs a gossip load signal and a redirect contract. Tracked in #1261.
+- [x] Load-aware placement (instead of client redirection): gossip now publishes a
+  bounded load summary, and shedding ranks the blob's placement peers by
+  reported pressure — healthy < unknown < saturated (disk ≥ 95% or ≥ 1000
+  in-flight) — breaking ties on disk then in-flight. A hot peer is avoided while
+  any alternative exists, and counted as a last resort so shedding always makes
+  progress. Full request redirection stays out of scope: S3 has no redirect
+  contract for a gateway to emit, and losing a race with a hot peer is cheaper
+  than a redirect round trip. (#1261)
 - [x] Rebalance observability — `momo_rebalance_{blobs_moved,bytes_moved,cycles,failures}_total` counters recorded on the push choke point
   - Extend existing proxy path: if peer has blob + lower load, redirect
 - [x] Integration test: real TCP push through dial, handshake, metadata, streamed payload, ACK (`TestRebalancePushEndToEnd`); caught a stale handshake timestamp on the peer dial path

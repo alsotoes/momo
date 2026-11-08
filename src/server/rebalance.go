@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/p2p"
 	"github.com/alsotoes/momo/src/storage"
 )
 
@@ -183,18 +184,75 @@ func placementOwnership(cmap *common.ClusterMap, hash string, rf, self, peerID i
 	return peerOwns, selfOwns, nil
 }
 
-// pickShedTarget returns a peer in the blob's placement that is not this node.
+var (
+	peerLoadMu     sync.RWMutex
+	peerLoadSource func(int32) (p2p.PeerLoad, bool)
+)
+
+// setPeerLoadSource wires the gossip load reader so shedding can avoid pushing
+// bytes onto a peer that is already saturated (R11 request redirection, #1261).
+// nil disables load awareness.
+func setPeerLoadSource(fn func(int32) (p2p.PeerLoad, bool)) {
+	peerLoadMu.Lock()
+	peerLoadSource = fn
+	peerLoadMu.Unlock()
+}
+
+// currentPeerLoad reads one peer's last reported load, if any.
+func currentPeerLoad(id int32) (p2p.PeerLoad, bool) {
+	peerLoadMu.RLock()
+	fn := peerLoadSource
+	peerLoadMu.RUnlock()
+	if fn == nil {
+		return p2p.PeerLoad{}, false
+	}
+	return fn(id)
+}
+
+// load tiers: a healthy known peer is preferred, an unknown peer is acceptable,
+// and a saturated peer is only used when nothing else is available.
+const (
+	loadTierHealthy = iota
+	loadTierUnknown
+	loadTierSaturated
+)
+
+// peerLoadTier classifies a peer for target selection.
+func peerLoadTier(id int32) (tier int, disk uint8, inflight uint32) {
+	load, ok := currentPeerLoad(id)
+	if !ok {
+		return loadTierUnknown, 255, 0
+	}
+	if load.DiskUsedPercent >= 95 || load.InflightRequests >= 1000 {
+		return loadTierSaturated, load.DiskUsedPercent, load.InflightRequests
+	}
+	return loadTierHealthy, load.DiskUsedPercent, load.InflightRequests
+}
+
+// pickShedTarget returns the least-loaded peer in the blob's placement that is
+// not this node. Load awareness is best-effort: with no reports, the first
+// eligible peer is used as before.
 func pickShedTarget(cmap *common.ClusterMap, hash string, self int, rf int) (int, bool) {
 	placement, err := cmap.Placement(hash, rf)
 	if err != nil {
 		return 0, false
 	}
+	bestID := 0
+	bestTier, bestDisk, bestInflight := loadTierSaturated+1, uint8(255), ^uint32(0)
+	found := false
 	for _, node := range placement {
-		if node.ID != self {
-			return node.ID, true
+		if node.ID == self {
+			continue
+		}
+		tier, disk, inflight := peerLoadTier(int32(node.ID))
+		if !found || tier < bestTier ||
+			(tier == bestTier && disk < bestDisk) ||
+			(tier == bestTier && disk == bestDisk && inflight < bestInflight) {
+			bestID, bestTier, bestDisk, bestInflight = node.ID, tier, disk, inflight
+			found = true
 		}
 	}
-	return 0, false
+	return bestID, found
 }
 
 // diskUsedPercent reports the local filesystem's used percentage.
