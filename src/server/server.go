@@ -1123,6 +1123,8 @@ func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, d
 
 	// R11 step 1 (#1261): publish this node's load on every gossip interval.
 	gossip.SetLoadProvider(loadSampler)
+	// R11 (#1261): shedding prefers peers that are not saturated.
+	setPeerLoadSource(gossip.PeerLoad)
 	gossip.SetScatterGather(scatterGather)
 	leaseManager.SetClusterSize(len(daemons))
 	gossip.SetLeaseManager(leaseManager)

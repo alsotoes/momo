@@ -295,6 +295,22 @@ needs a redirect contract per protocol, which the S3 gateway does not have today
 Shedding is the honest alternative in the meantime: move cold bytes off a full
 node instead of pointing hot requests at a different one.
 
+## Choosing Where to Send It
+
+Moving data off a full node is only half the decision; the other half is where
+it goes. Every node already gossips a small load summary — disk utilisation,
+in-flight requests, replication backlog. Shedding reads that summary for the
+peers that should hold the blob and ranks them: a healthy peer first, a peer with
+no report second, a saturated one (disk almost full, or a thousand requests in
+flight) only when nothing else is available.
+
+The ranking is advisory, not a locking protocol. A peer can become busy between
+the report and the push, and that is fine — the cost of losing that race is a
+slower copy, while the cost of a redirect protocol is an extra round trip on
+every request. Pushing a copy to the least-pressured replica, and refusing to
+skip the work entirely when every replica is busy, keeps progress and pressure
+in the same system.
+
 ## References / Dig deeper
 
 - OpenSpec change: `openspec/changes/r11-stigmergic-rebalance`

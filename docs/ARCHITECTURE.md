@@ -259,6 +259,10 @@ rule and the cluster converges as a side effect (stigmergy, not scheduling).
   order divergent records by vector clock, break true concurrency
   deterministically, and repair stale replicas; tombstoned names are never
   resolved, so a delete cannot resurrect from a replica.
+- **Load-aware shedding**: the gossip load summary ranks a blob's placement
+  peers when choosing a shed target — healthy before unknown before saturated
+  (disk ≥ 95% or ≥ 1000 in-flight), ties broken on disk then in-flight — so
+  bytes are not pushed onto a node that is already struggling.
 - **Mode continuity**: every node records the replication mode it observes in
   `<data>/coordination/replication_mode` (atomic write). A controller restart or
   takeover resumes that value instead of resetting to the first entry of the
