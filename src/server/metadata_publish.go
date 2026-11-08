@@ -68,6 +68,36 @@ func publishMetadataToQuorum(name, hash string, size int64, remotePath string) e
 	return nil
 }
 
+// installMetadataResolver lets this node answer reads it does not hold locally
+// by resolving from the shard's replica set (R6 v2 Phase 3, #1142).
+func installMetadataResolver(cs *storage.CASStore, provider *p2p.MetadataRPCProvider, enabled bool) {
+	if cs == nil {
+		return
+	}
+	if !enabled || provider == nil {
+		cs.SetMetadataResolver(nil)
+		return
+	}
+	cs.SetMetadataResolver(func(name string) (storage.DistributedMeta, error) {
+		reply, err := provider.ResolveMetadata(&p2p.ResolveMetadataArgs{Name: name})
+		if err != nil {
+			return storage.DistributedMeta{}, err
+		}
+		if reply == nil || reply.Hash == "" {
+			return storage.DistributedMeta{}, syscall.ENOENT
+		}
+		return storage.DistributedMeta{
+			Hash:             reply.Hash,
+			Size:             reply.Size,
+			RemotePath:       reply.RemotePath,
+			VectorClock:      reply.VectorClock,
+			ShardKey:         reply.ShardKey,
+			MetadataReplicas: reply.MetadataReplicas,
+			ModTime:          reply.ModTime,
+		}, nil
+	})
+}
+
 // installMetadataDeletePropagation registers the tombstone hook: after a local
 // delete, the tombstone is fanned out to the metadata replica set. The hook runs
 // in a goroutine (the delete already committed) and replica-side deletes use

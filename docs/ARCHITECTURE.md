@@ -255,7 +255,10 @@ rule and the cluster converges as a side effect (stigmergy, not scheduling).
   (`[momofs] enabled=true`, replication factor > 1); a quorum failure fails the
   request so the client retries, and the retry is idempotent. Deletes propagate
   tombstones to the same replica set (replica-applied deletions skip the hook, so
-  propagation cannot loop).
+  propagation cannot loop). Reads fall back to the replica set on a local miss,
+  order divergent records by vector clock, break true concurrency
+  deterministically, and repair stale replicas; tombstoned names are never
+  resolved, so a delete cannot resurrect from a replica.
 - **Mode continuity**: every node records the replication mode it observes in
   `<data>/coordination/replication_mode` (atomic write). A controller restart or
   takeover resumes that value instead of resetting to the first entry of the
