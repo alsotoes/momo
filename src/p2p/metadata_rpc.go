@@ -705,6 +705,36 @@ func (m *MetadataRPCProvider) replicateToPeer(peer int32, args *ReplicateMetadat
 // Acks already received are not rolled back, because a later write carrying a
 // newer vector clock supersedes them.
 func (m *MetadataRPCProvider) PutMetadata(args *PutMetadataArgs) (*PutMetadataReply, error) {
+	replicas, err := m.prepareWrite(args)
+	if err != nil {
+		return &PutMetadataReply{Success: false, Error: err.Error()}, err
+	}
+	need := writeQuorum(len(replicas))
+
+	acks := 0
+	if m.isLocalReplica(replicas) {
+		if aerr := m.applyLocally(args); aerr != nil {
+			log.Printf("AUDIT: local metadata apply failed for %q: %v", args.Name, aerr)
+		} else {
+			acks++
+		}
+	}
+	remoteAcks, remoteErr := m.replicateAll(replicas, args)
+	acks += remoteAcks
+
+	if acks < need {
+		if remoteErr != nil {
+			log.Printf("AUDIT: metadata quorum short for %q: %v", args.Name, remoteErr)
+		}
+		return m.quorumFailureReply(args, acks, len(replicas), need), fmt.Errorf(
+			"metadata quorum not reached (%d/%d, need %d): %w", acks, len(replicas), need, syscall.EIO)
+	}
+	return &PutMetadataReply{Success: true, ExistingVClock: args.VectorClock}, nil
+}
+
+// prepareWrite validates the arguments, resolves the shard key and replica set,
+// and advances this node's vector-clock entry.
+func (m *MetadataRPCProvider) prepareWrite(args *PutMetadataArgs) ([]int32, error) {
 	if args == nil {
 		return nil, fmt.Errorf("nil PutMetadataArgs: %w", syscall.EINVAL)
 	}
@@ -717,46 +747,37 @@ func (m *MetadataRPCProvider) PutMetadata(args *PutMetadataArgs) (*PutMetadataRe
 		args.MetadataReplicas = replicas
 	}
 	if len(replicas) == 0 {
-		return &PutMetadataReply{Success: false, Error: "no replicas for shard"}, fmt.Errorf("no replicas for shard %q: %w", args.ShardKey, syscall.ENOTSUP)
+		return nil, fmt.Errorf("no replicas for shard %q: %w", args.ShardKey, syscall.ENOTSUP)
 	}
-
-	// Advance this node's vector-clock entry: the write is causally after
-	// everything this node has seen.
+	// The write is causally after everything this node has seen.
 	if int(m.localID) >= len(args.VectorClock) {
 		grown := make([]uint64, m.localID+1)
 		copy(grown, args.VectorClock)
 		args.VectorClock = grown
 	}
 	args.VectorClock[m.localID]++
+	return replicas, nil
+}
 
-	need := writeQuorum(len(replicas))
-	acks := 0
-	var firstErr error
-	localMember := false
+// isLocalReplica reports whether this node belongs to the replica set.
+func (m *MetadataRPCProvider) isLocalReplica(replicas []int32) bool {
 	for _, id := range replicas {
 		if id == m.localID {
-			localMember = true
+			return true
 		}
 	}
-	if localMember {
-		if err := m.applyLocally(args); err != nil {
-			firstErr = err
-		} else {
-			acks++
-		}
-	}
+	return false
+}
 
-	type result struct {
-		peer int32
-		err  error
-	}
+// replicateAll sends the record to every remote replica concurrently and
+// returns the acknowledgements collected, plus the first failure.
+func (m *MetadataRPCProvider) replicateAll(replicas []int32, args *PutMetadataArgs) (int, error) {
 	remote := make([]int32, 0, len(replicas))
 	for _, id := range replicas {
 		if id != m.localID {
 			remote = append(remote, id)
 		}
 	}
-	results := make(chan result, len(remote))
 	replicaArgs := &ReplicateMetadataArgs{
 		ShardKey: args.ShardKey,
 		Meta: map[string]interface{}{
@@ -769,31 +790,34 @@ func (m *MetadataRPCProvider) PutMetadata(args *PutMetadataArgs) (*PutMetadataRe
 			"MetadataReplicas": args.MetadataReplicas,
 		},
 	}
+	acks := 0
+	var firstErr error
+	results := make(chan error, len(remote))
 	for _, peer := range remote {
 		go func(p int32) {
 			_, err := m.replicateToPeer(p, replicaArgs)
-			results <- result{peer: p, err: err}
+			results <- err
 		}(peer)
 	}
 	for i := 0; i < len(remote); i++ {
-		r := <-results
-		if r.err != nil {
+		if err := <-results; err != nil {
 			if firstErr == nil {
-				firstErr = fmt.Errorf("replica %d: %w", r.peer, r.err)
+				firstErr = err
 			}
 			continue
 		}
 		acks++
 	}
+	return acks, firstErr
+}
 
-	if acks < need {
-		return &PutMetadataReply{
-			Success:        false,
-			Error:          fmt.Sprintf("metadata quorum not reached: %d/%d acks, need %d", acks, len(replicas), need),
-			ExistingVClock: args.VectorClock,
-		}, fmt.Errorf("metadata quorum not reached (%d/%d, need %d): %w", acks, len(replicas), need, syscall.EIO)
+// quorumFailureReply builds the failure reply for a write that did not reach W.
+func (m *MetadataRPCProvider) quorumFailureReply(args *PutMetadataArgs, acks, replicas, need int) *PutMetadataReply {
+	return &PutMetadataReply{
+		Success:        false,
+		Error:          fmt.Sprintf("metadata quorum not reached: %d/%d acks, need %d", acks, replicas, need),
+		ExistingVClock: args.VectorClock,
 	}
-	return &PutMetadataReply{Success: true, ExistingVClock: args.VectorClock}, nil
 }
 
 // applyLocally writes the metadata to this node's store (used when the local
