@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"net"
@@ -307,5 +308,21 @@ func TestSecurityHeadersMiddleware(t *testing.T) {
 	}
 	if val := resp.Header.Get("Permissions-Policy"); val != "geolocation=(), microphone=(), camera=()" {
 		t.Errorf("expected Permissions-Policy header, got %q", val)
+	}
+}
+
+func TestWriteAdaptiveGauges(t *testing.T) {
+	var buf bytes.Buffer
+	writeAdaptiveGauges(&buf, 82, 35, 120)
+	out := buf.String()
+	for _, want := range []string{
+		"momo_adaptive_max_threshold 82",
+		"momo_adaptive_min_threshold 35",
+		"momo_adaptive_threshold_samples 120",
+		"# TYPE momo_adaptive_max_threshold gauge",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in output:\n%s", want, out)
+		}
 	}
 }

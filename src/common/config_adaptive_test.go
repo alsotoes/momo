@@ -68,10 +68,12 @@ func TestLoadAdaptiveConfigEnabledDefaults(t *testing.T) {
 
 func TestLoadAdaptiveConfigRejectsInvalidValues(t *testing.T) {
 	cases := map[string]string{
-		"alpha too high":     "[adaptive]\nenabled=true\nalpha=1.5\n",
-		"min samples zero":   "[adaptive]\nenabled=true\nmin_samples=0\n",
-		"persist negative":   "[adaptive]\nenabled=true\npersist_interval=-1\n",
-		"alpha not a number": "[adaptive]\nenabled=true\nalpha=nope\n",
+		"alpha too high":           "[adaptive]\nenabled=true\nalpha=1.5\n",
+		"min samples zero":         "[adaptive]\nenabled=true\nmin_samples=0\n",
+		"persist negative":         "[adaptive]\nenabled=true\npersist_interval=-1\n",
+		"alpha not a number":       "[adaptive]\nenabled=true\nalpha=nope\n",
+		"min samples not a number": "[adaptive]\nenabled=true\nmin_samples=nope\n",
+		"persist not a number":     "[adaptive]\nenabled=true\npersist_interval=nope\n",
 	}
 	for name, extra := range cases {
 		t.Run(name, func(t *testing.T) {
