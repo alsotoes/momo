@@ -229,6 +229,8 @@ type CASStore struct {
 	// follow-up, #1233). Guarded by verHookMu; nil disables replication.
 	verHookMu sync.Mutex
 	verHook   func(bucket, key string, rec VersionRecord)
+	// metaDeleteHook propagates tombstones to the metadata replica set.
+	metaDeleteHook func(name string)
 
 	scrubDone    chan struct{}
 	scrubWG      sync.WaitGroup
@@ -822,92 +824,130 @@ func (s *CASStore) GetHashForName(name string) (hash string, err error) {
 
 // Delete removes the object named name from the store. Panics are recovered
 // and surfaced as EIO errors (zero-crash guarantee).
-func (s *CASStore) Delete(name string) (err error) {
+func (s *CASStore) Delete(name string) error {
+	return s.delete(name, true)
+}
+
+// DeleteReplica applies a tombstone received from a peer without re-propagating
+// it (R6 v2, #1142): re-broadcasting inside the replica handler would loop.
+func (s *CASStore) DeleteReplica(name string) error {
+	return s.delete(name, false)
+}
+
+// delete removes one object's metadata, propagating the tombstone when asked.
+func (s *CASStore) delete(name string, propagate bool) (err error) {
 	// 🛡️ Zero-Crash: Recover from any unexpected panics.
 	defer common.RecoverErr("CASStore.Delete", &err)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	var orphanedHash string
 	now := time.Now().UnixNano()
-	err = s.db.Update(func(tx *bbolt.Tx) error {
-		ns := tx.Bucket(bucketNamespace)
-		obj := tx.Bucket(bucketObjects)
-		paths := tx.Bucket(bucketPaths)
-		ts := tx.Bucket(bucketTombstones)
-
-		// Write tombstone (8-byte unix nano timestamp).
-		var tsBuf [8]byte
-		binary.BigEndian.PutUint64(tsBuf[:], uint64(now))
-		if err := ts.Put([]byte(name), tsBuf[:]); err != nil {
-			return fmt.Errorf("metadata error: %w", syscall.EIO)
-		}
-
-		// Look up the hash for this name to decrement refcount.
-		h := ns.Get([]byte(name))
-		if h != nil {
-			hash := string(h)
-			if val := obj.Get([]byte(hash)); val != nil {
-				decoded, err := decodeObjectMeta(val)
-				if err != nil {
-					return fmt.Errorf("failed to decode metadata for hash %s: %w", hash, err)
-				}
-				meta := decoded
-				meta.RefCount--
-				if meta.RefCount <= 0 {
-					meta.RefCount = 0
-					meta.DeletedAt = now
-					orphanedHash = hash
-				}
-				if err := obj.Put([]byte(hash), meta.encode()); err != nil {
-					return fmt.Errorf("metadata error: %w", syscall.EIO)
-				}
-			}
-		}
-
-		// Remove namespace and paths entries.
-		if err := ns.Delete([]byte(name)); err != nil {
-			return fmt.Errorf("namespace delete error: %w", err)
-		}
-		if err := paths.Delete([]byte(name)); err != nil {
-			return fmt.Errorf("paths delete error: %w", err)
-		}
-		if err := tx.Bucket(bucketModTimes).Delete([]byte(name)); err != nil {
-			return fmt.Errorf("modtime delete error: %w", err)
-		}
-		return nil
-	})
-	if err != nil {
+	var orphanedHash string
+	if err = s.db.Update(func(tx *bbolt.Tx) error {
+		h, txErr := s.deleteTx(tx, name, now)
+		orphanedHash = h
+		return txErr
+	}); err != nil {
 		return err
 	}
 
-	// 🛡️ CVE-006: Immediately delete blob content when refcount reaches 0.
-	// Don't wait for GC — the blob is already orphaned. Blob deletion is
-	// performed outside the bbolt transaction (same pattern as GC) to avoid
-	// blocking all db operations during potential network I/O (S3 backends).
 	if orphanedHash != "" {
-		if delErr := s.blobs.DeleteBlob(orphanedHash); delErr != nil {
-			log.Printf("AUDIT: Failed to delete orphaned blob %s: %v", orphanedHash, delErr)
-		} else {
-			// R5 metrics (#933): account for the immediately-evicted blob bytes
-			// (CAS did not wait for the periodic GC sweep).
-			if metaErr := s.db.Update(func(tx *bbolt.Tx) error {
-				val := tx.Bucket(bucketObjects).Get([]byte(orphanedHash))
-				if len(val) > 0 {
-					if m, derr := decodeObjectMeta(val); derr == nil && m.Size > 0 {
-						s.gcEvicted.Add(uint64(m.Size))
-					}
-				}
-				return tx.Bucket(bucketObjects).Delete([]byte(orphanedHash))
-			}); metaErr != nil {
-				log.Printf("AUDIT: Failed to remove metadata for orphaned blob %s: %v", orphanedHash, metaErr)
+		s.evictOrphanedBlob(orphanedHash)
+	}
+	s.invalidateCache(name)
+	// Propagate the tombstone to the metadata replica set (R6 v2, #1142).
+	if propagate {
+		s.notifyMetadataDeleted(name)
+	}
+	return nil
+}
+
+// deleteTx writes the tombstone, decrements the object's refcount and removes
+// the name's index entries. It returns the hash whose last reference is gone.
+func (s *CASStore) deleteTx(tx *bbolt.Tx, name string, now int64) (string, error) {
+	ns := tx.Bucket(bucketNamespace)
+	paths := tx.Bucket(bucketPaths)
+
+	if err := putTombstone(tx.Bucket(bucketTombstones), name, now); err != nil {
+		return "", err
+	}
+
+	orphaned, err := decrementRefCount(tx.Bucket(bucketObjects), ns.Get([]byte(name)), now)
+	if err != nil {
+		return "", err
+	}
+	if err := ns.Delete([]byte(name)); err != nil {
+		return "", fmt.Errorf("namespace delete error: %w", err)
+	}
+	if err := paths.Delete([]byte(name)); err != nil {
+		return "", fmt.Errorf("paths delete error: %w", err)
+	}
+	if err := tx.Bucket(bucketModTimes).Delete([]byte(name)); err != nil {
+		return "", fmt.Errorf("modtime delete error: %w", err)
+	}
+	return orphaned, nil
+}
+
+// putTombstone records the deletion timestamp for a name.
+func putTombstone(bucket *bbolt.Bucket, name string, now int64) error {
+	var tsBuf [8]byte
+	binary.BigEndian.PutUint64(tsBuf[:], uint64(now))
+	if err := bucket.Put([]byte(name), tsBuf[:]); err != nil {
+		return fmt.Errorf("metadata error: %w", syscall.EIO)
+	}
+	return nil
+}
+
+// decrementRefCount lowers the object's reference count and returns its hash
+// when the count reaches zero.
+func decrementRefCount(obj *bbolt.Bucket, hashBytes []byte, now int64) (string, error) {
+	if hashBytes == nil {
+		return "", nil
+	}
+	hash := string(hashBytes)
+	val := obj.Get(hashBytes)
+	if val == nil {
+		return "", nil
+	}
+	meta, err := decodeObjectMeta(val)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode metadata for hash %s: %w", hash, err)
+	}
+	meta.RefCount--
+	if meta.RefCount <= 0 {
+		meta.RefCount = 0
+		meta.DeletedAt = now
+	}
+	if err := obj.Put(hashBytes, meta.encode()); err != nil {
+		return "", fmt.Errorf("metadata error: %w", syscall.EIO)
+	}
+	if meta.DeletedAt == now {
+		return hash, nil
+	}
+	return "", nil
+}
+
+// evictOrphanedBlob deletes blob bytes whose last reference is gone (CVE-006),
+// outside the bbolt transaction to avoid blocking the DB during network I/O.
+func (s *CASStore) evictOrphanedBlob(hash string) {
+	if delErr := s.blobs.DeleteBlob(hash); delErr != nil {
+		log.Printf("AUDIT: Failed to delete orphaned blob %s: %v", hash, delErr)
+		return
+	}
+	// R5 metrics (#933): account for the immediately-evicted bytes.
+	metaErr := s.db.Update(func(tx *bbolt.Tx) error {
+		val := tx.Bucket(bucketObjects).Get([]byte(hash))
+		if len(val) > 0 {
+			if m, derr := decodeObjectMeta(val); derr == nil && m.Size > 0 {
+				s.gcEvicted.Add(uint64(m.Size))
 			}
 		}
+		return tx.Bucket(bucketObjects).Delete([]byte(hash))
+	})
+	if metaErr != nil {
+		log.Printf("AUDIT: Failed to remove metadata for orphaned blob %s: %v", hash, metaErr)
 	}
-	// Invalidate cache for this name since it was deleted
-	s.invalidateCache(name)
-	return nil
 }
 
 // List retrieves all file metadata entries in the store.

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"sort"
 	"strings"
 	"syscall"
@@ -250,6 +251,33 @@ func (s *CASStore) SetVersionReplicationHook(fn func(bucket, key string, rec Ver
 	s.verHookMu.Lock()
 	s.verHook = fn
 	s.verHookMu.Unlock()
+}
+
+// SetMetadataDeleteHook registers a callback fired after a successful local
+// delete so the server can propagate the tombstone to the metadata replica set
+// (R6 v2, #1142). The hook must not block: callers hand work to a goroutine.
+func (s *CASStore) SetMetadataDeleteHook(fn func(name string)) {
+	s.verHookMu.Lock()
+	s.metaDeleteHook = fn
+	s.verHookMu.Unlock()
+}
+
+// notifyMetadataDeleted fires the tombstone replication hook, if any.
+func (s *CASStore) notifyMetadataDeleted(name string) {
+	s.verHookMu.Lock()
+	fn := s.metaDeleteHook
+	s.verHookMu.Unlock()
+	if fn == nil {
+		return
+	}
+	// Defensive: a panicking propagation hook must never break a delete that
+	// already committed locally.
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: panic in metadata delete hook: %v (errno=%d)", r, syscall.EIO)
+		}
+	}()
+	fn(name)
 }
 
 // notifyVersionRecorded fires the replication hook, if any.

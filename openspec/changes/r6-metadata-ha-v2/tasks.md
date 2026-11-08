@@ -53,6 +53,11 @@
   idempotent. Enabled only when `[momofs] enabled=true` and the metadata
   replication factor is > 1; otherwise the publisher is nil and writes are
   unchanged (single-node deployments unaffected).
+- [x] **Tombstone propagation**: `CASStore.Delete` fires a hook that fans the
+  tombstone out to the shard's replica set (`MsgDeleteMetadata`, quorum
+  acknowledged). Replica-side deletes use `DeleteReplica` (no hook), so
+  propagation cannot loop. Without this, a deleted object stayed resolvable on
+  the other replicas and could be served again.
 - [ ] **Vector clock conflict detection** on read (compare VClocks from multiple replicas) — Phase 3 read path
 - [ ] **Integration tests**: 3-node cluster, concurrent writes → conflict detection, quorum with 1 replica down — needs the read path to observe conflicts
 
