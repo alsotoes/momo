@@ -81,6 +81,20 @@ type ReplicateMetadataReply struct {
 // ReplicateVersionArgs is the payload for a ReplicateVersion RPC request
 // (R10 follow-up, #1233): one version record plus the bucket's versioning
 // status, so a replica can answer version queries without extra round trips.
+// DeleteMetadataArgs is the payload for a metadata tombstone RPC.
+type DeleteMetadataArgs struct {
+	RequestID uint64
+	ShardKey  string
+	Name      string
+}
+
+// DeleteMetadataReply is the payload for a metadata tombstone response.
+type DeleteMetadataReply struct {
+	RequestID uint64
+	Success   bool
+	Error     string
+}
+
 type ReplicateVersionArgs struct {
 	RequestID        uint64
 	Bucket           string
@@ -167,6 +181,34 @@ func DecodeReplicateMetadataArgs(data []byte) (*ReplicateMetadataArgs, error) {
 	return &args, err
 }
 
+// EncodeDeleteMetadataArgs encodes a tombstone request.
+func EncodeDeleteMetadataArgs(args *DeleteMetadataArgs) ([]byte, error) {
+	return json.Marshal(args)
+}
+
+// DecodeDeleteMetadataArgs decodes a tombstone request.
+func DecodeDeleteMetadataArgs(data []byte) (*DeleteMetadataArgs, error) {
+	var args DeleteMetadataArgs
+	if err := json.Unmarshal(data, &args); err != nil {
+		return nil, err
+	}
+	return &args, nil
+}
+
+// EncodeDeleteMetadataReply encodes a tombstone response.
+func EncodeDeleteMetadataReply(reply *DeleteMetadataReply) ([]byte, error) {
+	return json.Marshal(reply)
+}
+
+// DecodeDeleteMetadataReply decodes a tombstone response.
+func DecodeDeleteMetadataReply(data []byte) (*DeleteMetadataReply, error) {
+	var reply DeleteMetadataReply
+	if err := json.Unmarshal(data, &reply); err != nil {
+		return nil, err
+	}
+	return &reply, nil
+}
+
 func EncodeReplicateMetadataReply(reply *ReplicateMetadataReply) ([]byte, error) {
 	return json.Marshal(reply)
 }
@@ -239,6 +281,10 @@ type MetadataRPCProvider struct {
 	replicaPendingMu sync.Mutex
 	replicaPending   map[uint64]chan *ReplicateMetadataReply
 
+	// deletePending correlates metadata tombstone replies by request ID.
+	deletePendingMu sync.Mutex
+	deletePending   map[uint64]chan *DeleteMetadataReply
+
 	// RPCTimeout bounds a request/response call; zero means MetadataRPCTimeout.
 	// Per-instance so tests can shorten it without racing a shared global.
 	RPCTimeout time.Duration
@@ -267,6 +313,7 @@ func NewMetadataRPCProvider(localID int32, transport Transport, ring *Ring, stor
 		pending:        make(map[uint64]*pendingMetadata),
 		versionPending: make(map[uint64]chan *ReplicateVersionReply),
 		replicaPending: make(map[uint64]chan *ReplicateMetadataReply),
+		deletePending:  make(map[uint64]chan *DeleteMetadataReply),
 		RPCTimeout:     MetadataRPCTimeout,
 	}
 }
@@ -295,6 +342,10 @@ func (m *MetadataRPCProvider) HandleRPC(rpc *RPC) {
 		m.handleListShard(rpc)
 	case MsgListShardResponse:
 		m.handleListShardResponse(rpc)
+	case MsgDeleteMetadata:
+		m.handleDeleteMetadata(rpc)
+	case MsgDeleteMetadataResponse:
+		m.handleDeleteMetadataResponse(rpc)
 	case MsgReplicateVersion:
 		m.handleReplicateVersion(rpc)
 	case MsgReplicateVersionResponse:
@@ -543,6 +594,129 @@ func (m *MetadataRPCProvider) handleListShardResponse(rpc *RPC) {
 		return
 	}
 	m.completePending(rpc.From, reply, err)
+}
+
+// handleDeleteMetadata applies a tombstone received from a peer.
+func (m *MetadataRPCProvider) handleDeleteMetadata(rpc *RPC) {
+	args, err := DecodeDeleteMetadataArgs(rpc.Payload)
+	if err != nil {
+		log.Printf("MetadataRPC: failed to decode DeleteMetadata from peer %d: %v (errno=%d)", rpc.From, err, syscall.EBADMSG)
+		return
+	}
+	reply := &DeleteMetadataReply{RequestID: args.RequestID, Success: true}
+	if args.Name == "" {
+		reply.Success = false
+		reply.Error = "tombstone missing name"
+		log.Printf("MetadataRPC: rejected tombstone from peer %d: missing name (errno=%d)", rpc.From, syscall.EBADMSG)
+	} else if derr := m.store.DeleteReplica(args.Name); derr != nil {
+		reply.Success = false
+		reply.Error = derr.Error()
+	}
+	payload, _ := EncodeDeleteMetadataReply(reply)
+	_ = m.transport.Send(rpc.From, &RPC{Type: MsgDeleteMetadataResponse, Payload: payload})
+}
+
+// handleDeleteMetadataResponse wakes the caller waiting on this request.
+func (m *MetadataRPCProvider) handleDeleteMetadataResponse(rpc *RPC) {
+	reply, err := DecodeDeleteMetadataReply(rpc.Payload)
+	if err != nil {
+		log.Printf("MetadataRPC: failed to decode DeleteMetadataResponse from peer %d: %v (errno=%d)", rpc.From, err, syscall.EBADMSG)
+		return
+	}
+	m.deletePendingMu.Lock()
+	ch, ok := m.deletePending[reply.RequestID]
+	m.deletePendingMu.Unlock()
+	if !ok {
+		return
+	}
+	select {
+	case ch <- reply:
+	default:
+	}
+}
+
+// deleteToPeer sends one tombstone and waits for its acknowledgement.
+func (m *MetadataRPCProvider) deleteToPeer(peer int32, args *DeleteMetadataArgs) error {
+	requestID := m.nextRequestID.Add(1)
+	call := *args
+	call.RequestID = requestID
+	ch := make(chan *DeleteMetadataReply, 1)
+	m.deletePendingMu.Lock()
+	m.deletePending[requestID] = ch
+	m.deletePendingMu.Unlock()
+	defer func() {
+		m.deletePendingMu.Lock()
+		delete(m.deletePending, requestID)
+		m.deletePendingMu.Unlock()
+	}()
+
+	payload, err := EncodeDeleteMetadataArgs(&call)
+	if err != nil {
+		return fmt.Errorf("encode tombstone: %w", err)
+	}
+	if serr := m.transport.Send(peer, &RPC{Type: MsgDeleteMetadata, Payload: payload}); serr != nil {
+		return fmt.Errorf("send tombstone to peer %d: %w", peer, serr)
+	}
+	select {
+	case reply := <-ch:
+		if !reply.Success {
+			return fmt.Errorf("peer %d rejected tombstone: %s: %w", peer, reply.Error, syscall.EIO)
+		}
+		return nil
+	case <-time.After(m.rpcTimeout()):
+		return fmt.Errorf("timeout deleting metadata on peer %d: %w", peer, syscall.ETIMEDOUT)
+	}
+}
+
+// DeleteMetadata fans a tombstone out to the shard's replica set and waits for
+// a quorum (R6 v2, #1142). Without this, a deleted object keeps its metadata on
+// the other replicas and can be served again from those nodes.
+func (m *MetadataRPCProvider) DeleteMetadata(name string) error {
+	if name == "" {
+		return fmt.Errorf("empty metadata name: %w", syscall.EINVAL)
+	}
+	shardKey := ShardKey(name)
+	replicas := m.ring.Replicas(shardKey, m.ring.ReplicationFactor())
+	if len(replicas) == 0 {
+		return fmt.Errorf("no replicas for shard %q: %w", shardKey, syscall.ENOTSUP)
+	}
+	need := writeQuorum(len(replicas))
+	acks := 0
+	if m.isLocalReplica(replicas) {
+		if err := m.store.DeleteReplica(name); err != nil {
+			log.Printf("AUDIT: local tombstone failed for %q: %v", name, err)
+		} else {
+			acks++
+		}
+	}
+	args := &DeleteMetadataArgs{ShardKey: shardKey, Name: name}
+	remote := make([]int32, 0, len(replicas))
+	for _, id := range replicas {
+		if id != m.localID {
+			remote = append(remote, id)
+		}
+	}
+	results := make(chan error, len(remote))
+	for _, peer := range remote {
+		go func(p int32) { results <- m.deleteSafely(p, args) }(peer)
+	}
+	for i := 0; i < len(remote); i++ {
+		if err := <-results; err != nil {
+			log.Printf("AUDIT: tombstone to peer failed: %v", err)
+			continue
+		}
+		acks++
+	}
+	if acks < need {
+		return fmt.Errorf("metadata delete quorum not reached (%d/%d, need %d): %w", acks, len(replicas), need, syscall.EIO)
+	}
+	return nil
+}
+
+// deleteSafely wraps one tombstone send with recovery (Rule 37).
+func (m *MetadataRPCProvider) deleteSafely(peer int32, args *DeleteMetadataArgs) (err error) {
+	defer common.RecoverErrWith("MetadataRPC.deleteToPeer", syscall.EIO, &err)
+	return m.deleteToPeer(peer, args)
 }
 
 // rpcTimeout returns the per-call timeout.

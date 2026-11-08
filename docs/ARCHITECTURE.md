@@ -253,7 +253,9 @@ rule and the cluster converges as a side effect (stigmergy, not scheduling).
   Partial success is reported as an error, and replicas fail closed on nameless
   records. The daemon's PUT path uses it whenever distributed metadata is enabled
   (`[momofs] enabled=true`, replication factor > 1); a quorum failure fails the
-  request so the client retries, and the retry is idempotent.
+  request so the client retries, and the retry is idempotent. Deletes propagate
+  tombstones to the same replica set (replica-applied deletions skip the hook, so
+  propagation cannot loop).
 - **Mode continuity**: every node records the replication mode it observes in
   `<data>/coordination/replication_mode` (atomic write). A controller restart or
   takeover resumes that value instead of resetting to the first entry of the

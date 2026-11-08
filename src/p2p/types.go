@@ -126,6 +126,9 @@ const (
 	MsgReplicateVersionResponse MessageType = 23
 	// R11 step 1 (#1261): publish this node's load to its gossip peers.
 	MsgLoad MessageType = 24
+	// R6 v2 (#1142): propagate a metadata tombstone to the replica set.
+	MsgDeleteMetadata         MessageType = 25
+	MsgDeleteMetadataResponse MessageType = 26
 )
 
 // RPC is a remote procedure call exchanged between peers.

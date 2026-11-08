@@ -8,6 +8,7 @@ import (
 
 	"github.com/alsotoes/momo/src/common"
 	"github.com/alsotoes/momo/src/p2p"
+	"github.com/alsotoes/momo/src/storage"
 )
 
 // metadataPublisher writes an object's metadata to its distributed replica set
@@ -65,6 +66,23 @@ func publishMetadataToQuorum(name, hash string, size int64, remotePath string) e
 		return err
 	}
 	return nil
+}
+
+// installMetadataDeletePropagation registers the tombstone hook: after a local
+// delete, the tombstone is fanned out to the metadata replica set. The hook runs
+// in a goroutine (the delete already committed) and replica-side deletes use
+// DeleteReplica, so propagation cannot loop.
+func installMetadataDeletePropagation(cs *storage.CASStore, provider *p2p.MetadataRPCProvider, enabled bool) {
+	if cs == nil || provider == nil || !enabled {
+		return
+	}
+	cs.SetMetadataDeleteHook(func(name string) {
+		go func() {
+			if err := provider.DeleteMetadata(name); err != nil {
+				log.Printf("AUDIT: tombstone propagation failed for %q: %v", name, common.SanitizeLog(err.Error()))
+			}
+		}()
+	})
 }
 
 // installQuorumMetadataPublish enables quorum metadata writes when the
