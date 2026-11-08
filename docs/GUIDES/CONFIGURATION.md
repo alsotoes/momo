@@ -231,6 +231,25 @@ This section controls the behavior of the decentralized polymorphic system and t
     # Returns: OK
     ```
 
+### [adaptive] (optional, #1145)
+
+Self-tuning control-loop thresholds, disabled by default. When enabled, the
+polymorphic metrics controller learns the node's utilisation baseline and raises
+`[metrics] max_threshold` accordingly; the configured value is a floor, both
+values are clamped (max 60–95%, min 20–60%), a 10-point gap is always kept, and
+changes smaller than 5 points are ignored to prevent twitching.
+
+-   **`enabled`** — Boolean, default `false`.
+-   **`alpha`** — EWMA smoothing factor in (0,1]. Default `0.2`.
+-   **`min_samples`** — Observations before learned values replace the configured
+    pair. Default `30`.
+-   **`persist_interval`** — Seconds between persistence writes of the learned
+    values under `<data_dir>/adaptive.db`. Default `300`; `0` keeps them in
+    memory only.
+
+Exported as `momo_adaptive_max_threshold`, `momo_adaptive_min_threshold` and
+`momo_adaptive_threshold_samples`.
+
 ### [daemon.N]
 
 The configuration must contain a section for each daemon in the cluster, numbered sequentially starting from `0` (e.g., `[daemon.0]`, `[daemon.1]`). 

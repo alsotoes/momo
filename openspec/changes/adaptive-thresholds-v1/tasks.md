@@ -1,37 +1,33 @@
 # Tasks — Adaptive Thresholds (Self-Tuning Metrics + Pheromone Constants)
 
 ## Phase 1 — Core Infrastructure: Adaptive Config Framework
-- [ ] Create `src/adaptive/config.go` — adaptive configuration types
-  - `ConfigurationAdaptive` struct with all feature flags
-  - Default values matching spec
-  - Validation: percentiles in [0,1], durations > 0
-- [ ] Create `src/adaptive/store.go` — BoltDB persistence for learned values
-  - `AdaptiveStore` interface: `Save(key string, value any)`, `Load(key string, dest any) error`
-  - `adaptive_config` bucket with sub-keys per category
-  - JSON encoding for complex structs
-- [ ] Create `src/adaptive/learner.go` — generic EWMA learner
-  - `EWMALearner` struct with alpha, window, minSamples
-  - `AddSample(value float64)`, `GetPercentile(p float64) float64`, `GetMean() float64`
-  - Thread-safe with mutex
-- [ ] Add `[adaptive]` section parsing in `config.go`
-  - Wire `ConfigurationAdaptive` into global config
-  - Default: `enabled=false` for backward compat
-- [ ] Unit tests: `adaptive_learner_test.go` (EWMA accuracy, percentile estimation)
+- [x] `ConfigurationAdaptive` in `src/common/struct.go` (Enabled, Alpha,
+  MinSamples, PersistInterval) with the `[adaptive]` section parsed and validated;
+  disabled by default so existing deployments are unchanged
+- [x] Persistence: learned thresholds live in `<data_dir>/adaptive.db`
+  (`adaptive_thresholds` bucket, separate file from the CAS store to avoid the
+  bbolt single-writer trap) and are restored on start; `persist_interval=0`
+  keeps them in memory only
+- [x] `EWMALearner` in `src/metrics/adaptive.go` — alpha smoothing, protected
+  variance, ignores NaN/Inf samples, thread-safe
+- [x] Unit tests: learner mean/invalid samples, threshold derivation, hysteresis,
+  persistence round trip, gauge snapshot, config parsing
 
 ## Phase 2 — Adaptive Metrics Thresholds
-- [ ] Modify `src/metrics/metrics.go`:
-  - Add `AdaptiveThresholds` struct: `maxThresh`, `minThresh`, `learner *EWMALearner`
-  - `UpdateThresholds(cpuUsed, memUsed float64)` — feed samples to learner
-  - `GetThresholds() (max, min float64)` — return learned or config values
-  - Replace static `maxThreshPercent`/`minThreshPercent` with dynamic calls
-- [ ] Threshold persistence:
-  - Background goroutine in `GetMetrics` loop persists every `persistence_interval`
-  - Save to `AdaptiveStore` under "metrics_thresholds"
-  - On `GetMetrics` start: load thresholds from store
-- [ ] Metrics export:
-  - Add `momo_adaptive_max_threshold` and `momo_adaptive_min_threshold` gauges
-  - Update in `MetricsCollector` scrape path
-- [ ] Integration tests: 3-node cluster, vary load → verify thresholds adapt
+- [x] `AdaptiveThresholds` couples the learner to the controller; the loop feeds
+  the memory-utilisation signal it acts on and uses the learned pair
+- [x] Safety rails: the learned maximum never drops below the configured value,
+  both values are clamped (max 60–95%, min 20–60%), the pair keeps a ≥10-point
+  gap, and changes smaller than 5 points are ignored (no twitching)
+- [x] Persistence is driven from the loop (`MaybePersist`) at the configured
+  interval, and restored with the same clamps applied on load
+- [x] Gauges: `momo_adaptive_max_threshold`, `momo_adaptive_min_threshold`,
+  `momo_adaptive_threshold_samples`
+- [x] Tests: pre-`min_samples` passthrough, quiet cluster keeps config, busy
+  baseline raises max, clamps and gap, persistence/reload
+- [ ] Integration test with real load variation — deferred: the unit suite covers
+  the derivation and the loop wiring; a load-generation harness is a separate
+  project
 
 ## Phase 3 — Adaptive Pheromone Constants
 - [ ] Modify `src/client/pheromone.go`:

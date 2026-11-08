@@ -449,6 +449,8 @@ type Configuration struct {
 	Audit AuditConfig
 	// Momofs is the optional [momofs] FUSE configuration.
 	Momofs ConfigurationMomofs
+	// Adaptive is the optional [adaptive] self-tuning configuration (#1145).
+	Adaptive ConfigurationAdaptive
 	// Secrets is the secrets management configuration (R9, #937).
 	Secrets SecretsConfig
 	// S3 is the optional [s3] gateway tuning configuration (R10, #938).
@@ -553,4 +555,20 @@ type AuditLogEntry struct {
 	RequestID string `json:"request_id"` // Correlation ID
 	PrevHash  string `json:"prev_hash"`  // SHA-256 of previous entry (hex)
 	EntryHash string `json:"entry_hash"` // SHA-256 of this entry (hex)
+}
+
+// ConfigurationAdaptive holds the self-tuning control-loop configuration
+// (#1145). Disabled by default: with adaptive off, the configured
+// [metrics] max_threshold/min_threshold are used verbatim.
+type ConfigurationAdaptive struct {
+	// Enabled turns adaptive thresholds on.
+	Enabled bool
+	// Alpha is the EWMA smoothing factor in (0, 1].
+	Alpha float64
+	// MinSamples is how many observations must be collected before a learned
+	// threshold replaces the configured one.
+	MinSamples int
+	// PersistInterval is how often learned thresholds are written to disk, in
+	// seconds. Zero disables persistence.
+	PersistInterval int
 }

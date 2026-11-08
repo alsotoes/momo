@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/metrics"
 )
 
 // securityHeadersMiddleware adds standard security headers to HTTP responses.
@@ -465,6 +466,9 @@ func (m *MetricsCollector) writeClusterMetrics(w io.Writer) {
 	fmt.Fprintf(w, "# HELP momo_cluster_peers Number of known peers.\n")
 	fmt.Fprintf(w, "# TYPE momo_cluster_peers gauge\n")
 	fmt.Fprintf(w, "momo_cluster_peers %d\n", peers)
+	if aMax, aMin, aSamples, aOK := metrics.AdaptiveGauges(); aOK {
+		writeAdaptiveGauges(w, aMax, aMin, aSamples)
+	}
 	fmt.Fprintf(w, "# HELP momo_swim_alive_count Number of ALIVE peers.\n")
 	fmt.Fprintf(w, "# TYPE momo_swim_alive_count gauge\n")
 	fmt.Fprintf(w, "momo_swim_alive_count %d\n", alive)
@@ -746,4 +750,19 @@ func StartMetricsServer(ctx context.Context, host string, port int, collector *M
 		defer cancel()
 		_ = srv.Shutdown(shutdownCtx)
 	}()
+}
+
+// writeAdaptiveGauges emits the learned threshold gauges. Write errors are
+// ignored deliberately: the scrape response is already streaming, and the
+// handler cannot retry a partially written body.
+func writeAdaptiveGauges(w io.Writer, upper, lower float64, samples int) {
+	fmt.Fprintf(w, "# HELP momo_adaptive_max_threshold Learned upper utilisation threshold (percent).\n")       //nolint:errcheck
+	fmt.Fprintf(w, "# TYPE momo_adaptive_max_threshold gauge\n")                                                //nolint:errcheck
+	fmt.Fprintf(w, "momo_adaptive_max_threshold %.0f\n", upper)                                                 //nolint:errcheck
+	fmt.Fprintf(w, "# HELP momo_adaptive_min_threshold Learned lower utilisation threshold (percent).\n")       //nolint:errcheck
+	fmt.Fprintf(w, "# TYPE momo_adaptive_min_threshold gauge\n")                                                //nolint:errcheck
+	fmt.Fprintf(w, "momo_adaptive_min_threshold %.0f\n", lower)                                                 //nolint:errcheck
+	fmt.Fprintf(w, "# HELP momo_adaptive_threshold_samples Observations collected by the threshold learner.\n") //nolint:errcheck
+	fmt.Fprintf(w, "# TYPE momo_adaptive_threshold_samples gauge\n")                                            //nolint:errcheck
+	fmt.Fprintf(w, "momo_adaptive_threshold_samples %d\n", samples)                                             //nolint:errcheck
 }
