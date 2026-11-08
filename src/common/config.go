@@ -26,6 +26,8 @@ const (
 	sectionStorage = "storage"
 	// sectionMomofs is the name of the optional [momofs] section in the configuration file.
 	sectionMomofs = "momofs"
+	// sectionAdaptive is the name of the optional [adaptive] section (#1145).
+	sectionAdaptive = "adaptive"
 	// sectionS3 is the name of the optional [s3] section in the configuration file.
 	sectionS3 = "s3"
 	// sectionRebalance is the name of the optional [rebalance] section (R11, #1143).
@@ -264,6 +266,14 @@ func GetConfig(path string) (Configuration, error) {
 			if !config.P2P.Enabled {
 				return Configuration{}, fmt.Errorf("[momofs] enabled=true requires [p2p] enabled=true: %w", syscall.EINVAL)
 			}
+		}
+	}
+
+	// Load [adaptive] section (optional, #1145). Disabled by default.
+	if adaptiveSec, aErr := cfg.GetSection(sectionAdaptive); aErr == nil {
+		config.Adaptive, err = loadAdaptiveConfig(adaptiveSec)
+		if err != nil {
+			return Configuration{}, fmt.Errorf("failed to load [%s] section: %w", sectionAdaptive, err)
 		}
 	}
 
@@ -865,6 +875,66 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 }
 
 // loadMetricsConfig loads the [metrics] section from the configuration.
+// loadAdaptiveConfig parses the optional [adaptive] section (#1145).
+func loadAdaptiveConfig(section *ini.Section) (ConfigurationAdaptive, error) {
+	cfg := ConfigurationAdaptive{Alpha: 0.2, MinSamples: 30}
+	cfg.Enabled, _ = section.Key("enabled").Bool()
+	if !cfg.Enabled {
+		return cfg, nil
+	}
+	alpha, err := optionalFloat(section, "alpha", cfg.Alpha)
+	if err != nil {
+		return ConfigurationAdaptive{}, err
+	}
+	if alpha <= 0 || alpha > 1 {
+		return ConfigurationAdaptive{}, fmt.Errorf("'alpha' must be in (0,1], got %v: %w", alpha, syscall.EINVAL)
+	}
+	cfg.Alpha = alpha
+
+	minSamples, err := optionalInt(section, "min_samples", cfg.MinSamples)
+	if err != nil {
+		return ConfigurationAdaptive{}, err
+	}
+	if minSamples < 1 {
+		return ConfigurationAdaptive{}, fmt.Errorf("'min_samples' must be >= 1, got %d: %w", minSamples, syscall.EINVAL)
+	}
+	cfg.MinSamples = minSamples
+
+	persist, err := optionalInt(section, "persist_interval", 300)
+	if err != nil {
+		return ConfigurationAdaptive{}, err
+	}
+	if persist < 0 {
+		return ConfigurationAdaptive{}, fmt.Errorf("'persist_interval' must be >= 0, got %d: %w", persist, syscall.EINVAL)
+	}
+	cfg.PersistInterval = persist
+	return cfg, nil
+}
+
+// optionalFloat reads a float key, returning fallback when absent.
+func optionalFloat(section *ini.Section, key string, fallback float64) (float64, error) {
+	if section.Key(key).String() == "" {
+		return fallback, nil
+	}
+	v, err := section.Key(key).Float64()
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse '%s': %w", key, err)
+	}
+	return v, nil
+}
+
+// optionalInt reads an int key, returning fallback when absent.
+func optionalInt(section *ini.Section, key string, fallback int) (int, error) {
+	if section.Key(key).String() == "" {
+		return fallback, nil
+	}
+	v, err := section.Key(key).Int()
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse '%s': %w", key, err)
+	}
+	return v, nil
+}
+
 func loadMetricsConfig(section *ini.Section) (ConfigurationMetrics, error) {
 	var metricsCfg ConfigurationMetrics
 	var err error

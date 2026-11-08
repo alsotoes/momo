@@ -259,6 +259,12 @@ rule and the cluster converges as a side effect (stigmergy, not scheduling).
   order divergent records by vector clock, break true concurrency
   deterministically, and repair stale replicas; tombstoned names are never
   resolved, so a delete cannot resurrect from a replica.
+- **Adaptive thresholds** (opt-in, `[adaptive]`): the polymorphic controller's
+  memory-pressure thresholds are learned from an EWMA of observed utilisation,
+  with the configured value as a floor and clamps (max 60–95%, min 20–60%, ≥10
+  point gap, 5-point step) so the control loop cannot twitch. Learned values
+  persist in `<data_dir>/adaptive.db` and are exported as
+  `momo_adaptive_*` gauges.
 - **Load-aware shedding**: the gossip load summary ranks a blob's placement
   peers when choosing a shed target — healthy before unknown before saturated
   (disk ≥ 95% or ≥ 1000 in-flight), ties broken on disk then in-flight — so

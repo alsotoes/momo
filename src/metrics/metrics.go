@@ -206,8 +206,28 @@ func GetMetrics(ctx context.Context, cfg common.Configuration, serverId int, mod
 		return
 	}
 
+	var adaptive *AdaptiveThresholds
+	if cfg.Adaptive.Enabled {
+		a, aErr := NewAdaptiveThresholds(cfg.Adaptive.Alpha, cfg.Adaptive.MinSamples,
+			cfg.Metrics.MaxThreshold*100, cfg.Metrics.MinThreshold*100,
+			time.Duration(cfg.Adaptive.PersistInterval)*time.Second,
+			dataDirFor(cfg.Daemons, serverId))
+		if aErr != nil {
+			log.Printf("ADAPTIVE: thresholds disabled: %v", common.SanitizeLog(aErr.Error()))
+		} else {
+			adaptive = a
+			setAdaptiveSnapshot(a)
+			defer func() {
+				setAdaptiveSnapshot(nil)
+				_ = a.Close()
+			}()
+			log.Printf("ADAPTIVE: self-tuning thresholds enabled (alpha=%.2f, min_samples=%d)", cfg.Adaptive.Alpha, cfg.Adaptive.MinSamples)
+		}
+	}
+
 	c := &metricsController{
-		cfg: cfg,
+		cfg:      cfg,
+		adaptive: adaptive,
 		// ⚡ Bolt: hoist constant AuthToken padding out of the loop.
 		authToken:        []byte(common.PadString(cfg.Global.AuthToken, common.AuthTokenLength)),
 		order:            replicationOrder,
@@ -254,12 +274,14 @@ type metricsController struct {
 	fallback         time.Duration
 	currentIndex     int
 	start            time.Time
+	adaptive         *AdaptiveThresholds
 }
 
 // step evaluates one tick: a metric-driven switch first, then the timeout
 // fallback, both respecting the durability floor.
 func (c *metricsController) step() {
-	if idx, changed := checkMetricsAndSwap(c.sm, c.currentIndex, c.order, c.maxThreshPercent, c.minThreshPercent); changed {
+	maxPct, minPct := c.thresholds()
+	if idx, changed := checkMetricsAndSwap(c.sm, c.currentIndex, c.order, maxPct, minPct); changed {
 		if shouldSwitchMode(c.minFloor, c.order, idx, c.cfg.Global.ReplicationFactor, c.clusterSize) {
 			c.switchTo(idx)
 		}
@@ -267,6 +289,22 @@ func (c *metricsController) step() {
 	if time.Since(c.start) > c.fallback {
 		c.applyFallback()
 	}
+}
+
+// thresholds returns the pair in force, feeding the learner when adaptive
+// thresholds are enabled.
+func (c *metricsController) thresholds() (maxPct, minPct float64) {
+	if c.adaptive == nil {
+		return c.maxThreshPercent, c.minThreshPercent
+	}
+	// The loop acts on memory pressure, so that is the signal it learns from.
+	if v, err := c.sm.VirtualMemory(); err == nil {
+		t := c.adaptive.Observe(float64(v.UsedPercent))
+		c.adaptive.MaybePersist(time.Now())
+		return t.Max, t.Min
+	}
+	t := c.adaptive.Thresholds()
+	return t.Max, t.Min
 }
 
 // switchTo adopts an order index, persists it and broadcasts it.

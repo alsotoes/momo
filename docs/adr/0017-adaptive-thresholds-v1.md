@@ -32,8 +32,8 @@ These are **epigenetic markers** — the same binary should behave differently b
 None documented.
 
 ## Implementation Status
-- **Code**: Planned
-- **Tests**: Planned
+- **Code**: Partial
+- **Tests**: Partial
 - **Docs**: Planned
 - **Blog post**: 
 
