@@ -33,34 +33,8 @@ type payloadPoolc interface {
 	Put(interface{})
 }
 
-// payloadPool provides reusable byte slices for replication broadcasts to reduce allocations.
-// Access is mediated by payloadPoolMu so a test (or a future per-node pool) can
-// swap it without racing in-flight propagation goroutines.
-var payloadPool payloadPoolc = &sync.Pool{
-	New: func() interface{} {
-		return make([]byte, payloadPoolTargetCapacity())
-	},
-}
-
-var (
-	payloadPoolMu sync.RWMutex
-	// replicationStateMutex guards the current replication mode and its state.
-	replicationStateMutex sync.RWMutex
-)
-
-// getPayloadPool returns the active buffer pool.
-func getPayloadPool() payloadPoolc {
-	payloadPoolMu.RLock()
-	defer payloadPoolMu.RUnlock()
-	return payloadPool
-}
-
-// setPayloadPool replaces the active buffer pool (tests and future per-node pools).
-func setPayloadPool(p payloadPoolc) {
-	payloadPoolMu.Lock()
-	payloadPool = p
-	payloadPoolMu.Unlock()
-}
+// replicationStateMutex guards the current replication mode and its state.
+var replicationStateMutex sync.RWMutex
 
 // currentReplicationMode is the current replication mode of the server.
 var currentReplicationMode int = common.ReplicationNone
@@ -195,6 +169,8 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 
 	// 🛡️ Sentinel: Enforce a limit on concurrent connections to prevent resource exhaustion (DoS).
 	sem := make(chan struct{}, maxConcurrentConnections(cfg))
+	// One adaptive payload pool for this listener's propagation goroutines.
+	pool := newReplicationPool()
 
 	for {
 		connection, err := server.Accept()
@@ -326,7 +302,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 								log.Printf("CRITICAL: %v", err)
 							}
 						}()
-						ChangeReplicationModeClient(factory, newReplicationJson, id)
+						changeReplicationModeClientWithPool(factory, newReplicationJson, id, pool)
 					}(i)
 				}
 				// Timeout-bounded wait: each peer has a 10s deadline in ChangeReplicationModeClient.
@@ -349,6 +325,12 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 // ChangeReplicationModeClient connects to another server in the cluster and sends the new replication mode.
 // It is used by the primary server to propagate replication mode changes to the other servers.
 func ChangeReplicationModeClient(factory *transport.ProtocolFactory, replicationJson []byte, serverId int) {
+	changeReplicationModeClientWithPool(factory, replicationJson, serverId, newReplicationPool())
+}
+
+// changeReplicationModeClientWithPool is the server-path variant: the listener
+// owns one pool for all of its propagation goroutines (#1149 Phase 2).
+func changeReplicationModeClientWithPool(factory *transport.ProtocolFactory, replicationJson []byte, serverId int, pool *replicationPool) {
 	daemons := factory.GetDaemons()
 	comm, err := factory.Dial(daemons[serverId].ChangeReplication)
 	if err != nil {
@@ -372,19 +354,19 @@ func ChangeReplicationModeClient(factory *transport.ProtocolFactory, replication
 		return
 	}
 
-	// ⚡ Bolt: Use sync.Pool to minimize allocations during cluster-wide broadcasts.
-	payload := getPayloadPool().Get().([]byte)
+	// ⚡ Bolt: Use the caller's pool to minimize allocations during broadcasts.
+	payload := pool.get()
 	payload = payload[:0]
 	payload = append(payload, replicationJson...)
 	payload = append(payload, '\n')
 	// #1145: feed the real size so the pool can right-size itself.
-	recordReplicationPayloadSize(len(payload))
+	pool.recordSize(len(payload))
 	// 🛡️ Sentinel: Only return the buffer to the pool if append did not
 	// reallocate it. When the payload exceeds payloadPoolCapacity, a new,
 	// larger slice is allocated and the fixed-capacity pool buffer is lost.
 	// Returning the grown slice thrashes the pool and defeats its purpose,
 	// so it is released instead (fix #667).
-	defer releasePayload(payload)
+	defer pool.release(payload)
 
 	if _, err := comm.Write(payload); err != nil {
 		log.Printf("Failed to send ReplicationData to %d: %v", serverId, common.SanitizeLog(err.Error()))
@@ -403,15 +385,4 @@ func ChangeReplicationModeClient(factory *transport.ProtocolFactory, replication
 	}
 
 	log.Printf("ReplicationData sent to serverId: %d", serverId)
-}
-
-// releasePayload returns a replication payload buffer to the pool, but only if
-// it still has the fixed pool capacity. A payload that outgrew its original
-// buffer (append reallocated) never came from the pool as the grown slice, so
-// the pooled fixed-capacity buffer has already been lost; returning the grown
-// slice would poison the pool with oversized buffers (fix #667).
-func releasePayload(payload []byte) {
-	if target := payloadPoolTargetCapacity(); cap(payload) == target {
-		getPayloadPool().Put(payload[:target])
-	}
 }

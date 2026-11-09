@@ -32,7 +32,7 @@ None documented.
 
 ## Implementation Status
 - **Code**: Partial
-- **Tests**: Planned
+- **Tests**: Partial
 - **Docs**: Planned
 - **Blog post**: 
 

@@ -446,6 +446,12 @@ The system is backed by a multi-stage automated testing pipeline:
 - **Security Pentest**: DotDotPwn fuzzing (5526 traversal patterns) + Python exploit toolkit against S3 and native TCP protocols. 10 CVEs found (1 critical, 5 high, 3 medium, 1 low). See [pentest/README.md](../pentest/README.md).
 
 ### 7. Observability (Prometheus Metrics Exporter)
+Replication-mode broadcasts reuse one adaptive payload buffer pool **per server
+instance** (`replicationPool`): its capacity starts at 1 KiB, learns the observed
+payload size, and is bounded at 1 MiB. Only buffers still at the current target
+capacity return to the pool, so an oversized append cannot poison it (#1145,
+#1149).
+
 Momo includes a built-in Prometheus metrics exporter (`src/server/metrics_exporter.go`) that runs as a separate goroutine on a configurable port. No external dependencies — all counters use `sync/atomic` on integer types.
 
 **Architecture:**
