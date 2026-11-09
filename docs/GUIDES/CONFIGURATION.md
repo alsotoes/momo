@@ -231,6 +231,12 @@ This section controls the behavior of the decentralized polymorphic system and t
     # Returns: OK
     ```
 
+> **Persistence:** `momo.conf` is operator-owned input — the daemon never rewrites
+> it. Whatever the node learns (replication mode, adaptive thresholds) is stored
+> per node under the data directory and restored on restart; see
+> [ARCHITECTURE §7b](../../ARCHITECTURE.md#7b-state-persistence-and-what-survives-a-restart).
+> `/health/detailed` exposes the learned state per node (#1287).
+
 ### [coordination] — Metrics-Controller Election (optional, #1144)
 
 Controls whether the polymorphic replication-mode controller is elected by lease

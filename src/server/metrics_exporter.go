@@ -104,6 +104,15 @@ type MetricsCollector struct {
 	histogramsEnabled atomic.Bool
 	requestLatency    atomicLatencyHist
 	replicationLat    atomicLatencyHist
+
+	// learnedState optionally supplies the runtime-learned inventory rendered
+	// by /health/detailed (#1287). Nil omits the block (backward compatible).
+	learnedState func() *LearnedState
+}
+
+// SetLearnedState installs the learned-state provider for /health/detailed.
+func (m *MetricsCollector) SetLearnedState(fn func() *LearnedState) {
+	m.learnedState = fn
 }
 
 // histogramBucketsSeconds are the fixed <= bucket upper bounds for the
@@ -593,6 +602,8 @@ func (m *MetricsCollector) detailedHealthHandler(w http.ResponseWriter, r *http.
 		ScrubStatus             ScrubHealth `json:"scrub_status"`
 		LeasesActive            int         `json:"leases_active"`
 		ScatterQueriesPending   uint64      `json:"scatter_queries_pending"`
+		// LearnedState is omitted when no provider is installed (#1287).
+		LearnedState *LearnedState `json:"learned_state,omitempty"`
 	}
 
 	uptime := time.Since(m.startTime).Seconds()
@@ -669,6 +680,7 @@ func (m *MetricsCollector) detailedHealthHandler(w http.ResponseWriter, r *http.
 		PeersSuspect:            peersSuspect,
 		PeersOffline:            peersOffline,
 		ReplicationMode:         repMode,
+		LearnedState:            m.learnedStateNow(),
 		PendingReplicationCount: pendingRep,
 		ScrubStatus: struct {
 			Running    bool   `json:"running"`
@@ -694,6 +706,21 @@ func (m *MetricsCollector) detailedHealthHandler(w http.ResponseWriter, r *http.
 // StartMetricsServer starts an HTTP server exposing Prometheus metrics on the given
 // host and port (empty host binds all interfaces). It runs in a background goroutine
 // and returns immediately. The server is shut down when the provided context is canceled.
+// learnedStateNow renders the learned-state block, tolerating a panicking
+// provider (Rule 37): health reporting must never take the daemon down.
+func (m *MetricsCollector) learnedStateNow() (ls *LearnedState) {
+	if m.learnedState == nil {
+		return nil
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in learned-state provider: %v (errno=%d)", r, syscall.EIO)
+			ls = nil
+		}
+	}()
+	return m.learnedState()
+}
+
 func StartMetricsServer(ctx context.Context, host string, port int, collector *MetricsCollector, reloadFn func()) {
 	if port <= 0 {
 		return

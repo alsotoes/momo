@@ -267,6 +267,19 @@ func setAdaptiveSnapshot(a *AdaptiveThresholds) {
 	adaptiveMu.Unlock()
 }
 
+// AdaptivePersistence reports whether learned thresholds are persisted and the
+// store's name relative to the data directory (never an absolute path, so the
+// health endpoint cannot leak the node's filesystem layout).
+func AdaptivePersistence() (store string, ok bool) {
+	adaptiveMu.RLock()
+	a := adaptiveSnapshot
+	adaptiveMu.RUnlock()
+	if a == nil || a.db == nil {
+		return "", false
+	}
+	return "adaptive.db", true
+}
+
 // AdaptiveGauges returns the learned thresholds and sample count for export.
 func AdaptiveGauges() (upper, lower float64, samples int, ok bool) {
 	adaptiveMu.RLock()

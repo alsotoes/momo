@@ -110,3 +110,41 @@ func TestSetControllerElectorNilRestoresLegacy(t *testing.T) {
 	}
 	SetControllerElector(nil)
 }
+
+func TestAdaptivePersistenceOffByDefault(t *testing.T) {
+	setAdaptiveSnapshot(nil)
+	if _, ok := AdaptivePersistence(); ok {
+		t.Fatal("no snapshot means not persisted")
+	}
+}
+
+func TestAdaptivePersistenceWithStore(t *testing.T) {
+	a, err := NewAdaptiveThresholds(0.2, 3, 90, 50, 0, t.TempDir())
+	if err != nil {
+		t.Fatalf("NewAdaptiveThresholds: %v", err)
+	}
+	setAdaptiveSnapshot(a)
+	t.Cleanup(func() {
+		setAdaptiveSnapshot(nil)
+		_ = a.Close()
+	})
+	store, ok := AdaptivePersistence()
+	if !ok || store != "adaptive.db" {
+		t.Fatalf("persistence = %q,%v, want adaptive.db,true", store, ok)
+	}
+}
+
+func TestAdaptivePersistenceInMemoryOnly(t *testing.T) {
+	a, err := NewAdaptiveThresholds(0.2, 3, 90, 50, 0, "")
+	if err != nil {
+		t.Fatalf("NewAdaptiveThresholds: %v", err)
+	}
+	setAdaptiveSnapshot(a)
+	t.Cleanup(func() {
+		setAdaptiveSnapshot(nil)
+		_ = a.Close()
+	})
+	if _, ok := AdaptivePersistence(); ok {
+		t.Fatal("in-memory controller must report not persisted")
+	}
+}
