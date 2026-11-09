@@ -265,6 +265,14 @@ rule and the cluster converges as a side effect (stigmergy, not scheduling).
   point gap, 5-point step) so the control loop cannot twitch. Learned values
   persist in `<data_dir>/adaptive.db` and are exported as
   `momo_adaptive_*` gauges.
+- **Homeostatic connection admission**: the accept loop takes slots from a
+  controller sized from the host's FD limit and cgroup/RAM ceiling (clamped
+  32–10000); every 10 seconds CPU and memory pressure are sampled, shedding to
+  50% above 80% and 25% above 90% so a loaded node stops accepting rather than
+  thrashing.
+- **Adaptive metadata RPC timeout**: 10× the cluster's measured mean RTT, clamped
+  to 500 ms–10 s, so a fast cluster fails over quickly and a slow one is not
+  declared dead prematurely.
 - **Adaptive replication pool**: broadcasts feed their real payload size to an
   EWMA learner; the pooled buffer target follows `mean × 1.5` within
   `[1 KiB, 1 MiB]`, so the pool stops reallocating on every send without holding

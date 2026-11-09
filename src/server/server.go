@@ -25,6 +25,7 @@ import (
 	"github.com/alsotoes/momo/src/client"
 	"github.com/alsotoes/momo/src/common"
 	momocrypto "github.com/alsotoes/momo/src/crypto"
+	"github.com/alsotoes/momo/src/metrics"
 	"github.com/alsotoes/momo/src/p2p"
 	"github.com/alsotoes/momo/src/storage"
 	"github.com/alsotoes/momo/src/transport"
@@ -260,6 +261,12 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 	// Probe host constraints on boot and dynamically control connection admission.
 	concurrencyCtrl := NewAdaptiveConcurrencyController()
 	log.Printf("Epigenetic Concurrency Initialized: capacity=%d slots", concurrencyCtrl.Capacity())
+	// Homeostatic admission (#1145): feed CPU/memory pressure so the limit
+	// tracks load instead of staying at the boot-time capacity.
+	hostMetrics := &metrics.RealSystemMetrics{}
+	startConcurrencyHomeostasis(ctx, concurrencyCtrl, func() (float64, float64) {
+		return metrics.HostPressure(hostMetrics)
+	}, 10*time.Second)
 
 	// Accept loop: server.Accept() returns errors, not panics. Per-connection
 	// goroutines below each have their own recover() block (Rule 37) for panic safety.

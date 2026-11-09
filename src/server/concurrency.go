@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"syscall"
+	"time"
 )
 
 const (
@@ -221,4 +222,27 @@ func probeAvailableRAM() int64 {
 
 	// Safe fallback (4 GiB assumed)
 	return 4 * 1024 * 1024 * 1024
+}
+
+// startConcurrencyHomeostasis samples host pressure and feeds the admission
+// controller, so the connection limit actually follows load (Phase 4 of
+// adaptive-thresholds-v1, #1145). Before this, UpdateMetrics was never called
+// and the controller stayed at its boot-time capacity.
+func startConcurrencyHomeostasis(ctx context.Context, ctrl AdaptiveConcurrencyController, pressure func() (cpu, memUsed float64), interval time.Duration) {
+	if ctrl == nil || pressure == nil || interval <= 0 {
+		return
+	}
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				cpu, memUsed := pressure()
+				ctrl.UpdateMetrics(cpu, memUsed)
+			}
+		}
+	}()
 }

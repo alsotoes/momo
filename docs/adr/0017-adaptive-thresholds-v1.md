@@ -4,7 +4,7 @@
 Proposed
 
 ## Confidence
-Low
+Medium
 
 ## Context
 Current Momo has **15+ hardcoded constants** that violate "Adapt, don't configure" (ADAPTIVE_SYSTEMS.md: Epigenetics) and Stigmergy:
@@ -34,7 +34,7 @@ None documented.
 ## Implementation Status
 - **Code**: Partial
 - **Tests**: Partial
-- **Docs**: Planned
+- **Docs**: Done
 - **Blog post**: docs/blog/posts/066-thresholds-that-learn.md
 
 ## References
