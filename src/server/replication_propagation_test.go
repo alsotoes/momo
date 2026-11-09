@@ -88,8 +88,12 @@ func TestNonPrimaryNodePropagatesModeChange(t *testing.T) {
 	defer func() { _ = conn.Close() }()
 
 	comm := transport.NewMomoTCPCommunicator(conn)
-	ts := time.Now().UnixNano()
-	if _, err := comm.HandshakeClient(cfg.Global.AuthToken, ts, 0); err != nil {
+	// Deliberately different from the payload timestamp: the handler must use the
+	// payload's logical clock, never the per-hop handshake time, or every hop would
+	// look newer and re-propagate forever.
+	handshakeTS := time.Now().UnixNano()
+	ts := handshakeTS - 1_000_000
+	if _, err := comm.HandshakeClient(cfg.Global.AuthToken, handshakeTS, 0); err != nil {
 		t.Fatalf("handshake: %v", err)
 	}
 	payload, err := json.Marshal(common.ReplicationData{New: common.ReplicationSplay, TimeStamp: ts})

@@ -104,11 +104,11 @@ fi
 
 # 3. Verify CVE-005 fix: same content under a NEW name must NOT dedup (requires payload)
 echo "Testing CVE-005 fix: new name with same content should not dedup..."
-DEDUP_BEFORE=$(grep -c "Deduplication hit" $E2E_DIR/s*.log 2>/dev/null || echo 0)
+DEDUP_BEFORE=$(grep -h -c "Deduplication hit" $E2E_DIR/s*.log 2>/dev/null | awk '{s+=$1} END{print s+0}')
 echo "content1" > $E2E_DIR/duplicate.txt
 ./bin/momo -imp client -file $E2E_DIR/duplicate.txt -config $E2E_DIR/e2e.conf >> $E2E_DIR/client.log 2>&1
 sleep 2
-DEDUP_AFTER=$(grep -c "Deduplication hit" $E2E_DIR/s*.log 2>/dev/null || echo 0)
+DEDUP_AFTER=$(grep -h -c "Deduplication hit" $E2E_DIR/s*.log 2>/dev/null | awk '{s+=$1} END{print s+0}')
 if [ "$DEDUP_AFTER" -ne "$DEDUP_BEFORE" ]; then
     echo "FAILED: New name should not trigger dedup (CVE-005 regression)"
     exit 1

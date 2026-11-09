@@ -245,7 +245,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 
 			// HandshakeServer performs the server-side handshake: receives AuthToken + Timestamp,
 			// validates the token, and returns the timestamp.
-			_, ts, err := comm.HandshakeServer(expectedAuthToken)
+			_, _, err := comm.HandshakeServer(expectedAuthToken)
 			if err != nil {
 				log.Printf("AUDIT: Handshake failed from %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
 				if authLimiter.Enabled() {
@@ -276,7 +276,11 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 			}
 
 			// Update the replication state, rejecting a stale or duplicate
-			// timestamp so re-broadcasts cannot loop (#1144 Phase 3).
+			// timestamp so re-broadcasts cannot loop (#1144 Phase 3). The logical
+			// clock is the timestamp carried in the mode payload, NOT the handshake
+			// timestamp: every hop re-dials with a fresh handshake time, so using
+			// it here would make each hop look newer and propagate forever.
+			ts := replicationJson.TimeStamp
 			newState, applied := applyReplicationState(replicationJson.New, ts)
 			if !applied {
 				log.Printf("AUDIT: Ignored stale replication update mode=%d ts=%d from %s (current ts=%d)",
