@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"bytes"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -85,40 +86,104 @@ type ListVersionsResult struct {
 
 // FormatListVersionsXML renders the GET ?versions response page.
 func FormatListVersionsXML(bucket, prefix, keyMarker, versionIDMarker string, maxKeys int, page storage.VersionPage) []byte {
-	result := ListVersionsResult{
-		XMLNS:           s3XMLNS,
-		Name:            bucket,
-		Prefix:          prefix,
-		KeyMarker:       keyMarker,
-		VersionIDMarker: versionIDMarker,
-		MaxKeys:         maxKeys,
-		IsTruncated:     page.IsTruncated,
-		NextKeyMarker:   page.NextKeyMarker,
-		NextVersionID:   page.NextVersionID,
+	var buf bytes.Buffer
+	buf.WriteString(xml.Header)
+	buf.WriteString("<ListVersionsResult xmlns=\"")
+	buf.WriteString(s3XMLNS)
+	buf.WriteString("\">")
+
+	buf.WriteString("<Name>")
+	xmlEscape(&buf, bucket)
+	buf.WriteString("</Name>")
+
+	buf.WriteString("<Prefix>")
+	xmlEscape(&buf, prefix)
+	buf.WriteString("</Prefix>")
+
+	buf.WriteString("<KeyMarker>")
+	xmlEscape(&buf, keyMarker)
+	buf.WriteString("</KeyMarker>")
+
+	buf.WriteString("<VersionIdMarker>")
+	xmlEscape(&buf, versionIDMarker)
+	buf.WriteString("</VersionIdMarker>")
+
+	if page.NextKeyMarker != "" {
+		buf.WriteString("<NextKeyMarker>")
+		xmlEscape(&buf, page.NextKeyMarker)
+		buf.WriteString("</NextKeyMarker>")
 	}
+
+	if page.NextVersionID != "" {
+		buf.WriteString("<NextVersionIdMarker>")
+		xmlEscape(&buf, page.NextVersionID)
+		buf.WriteString("</NextVersionIdMarker>")
+	}
+
+	buf.WriteString("<MaxKeys>")
+	var intBuf [32]byte
+	buf.Write(strconv.AppendInt(intBuf[:0], int64(maxKeys), 10))
+	buf.WriteString("</MaxKeys>")
+
+	buf.WriteString("<IsTruncated>")
+	if page.IsTruncated {
+		buf.WriteString("true")
+	} else {
+		buf.WriteString("false")
+	}
+	buf.WriteString("</IsTruncated>")
+
+	// ⚡ Bolt: Eliminate dynamic string allocations and repeated formatting overhead
+	// by replacing xml.MarshalIndent with a bytes.Buffer and using AppendFormat.
+	var timeBuf [32]byte
 	for _, rec := range page.Records {
-		v := s3Version{
-			XMLName:      xml.Name{Local: "Version"},
-			Key:          rec.Key,
-			VersionID:    rec.VersionID,
-			IsLatest:     rec.IsLatest,
-			LastModified: time.Unix(0, rec.Timestamp).UTC().Format(time.RFC3339Nano),
-			Size:         uint64(rec.Size),
-			StorageClass: "STANDARD",
-		}
 		if rec.IsDeleteMarker {
-			v.XMLName = xml.Name{Local: "DeleteMarker"}
-			v.Size = 0
+			buf.WriteString("<DeleteMarker>")
 		} else {
-			v.ETag = `"` + rec.Hash + `"`
+			buf.WriteString("<Version>")
 		}
-		result.Entries = append(result.Entries, v)
+
+		buf.WriteString("<Key>")
+		xmlEscape(&buf, rec.Key)
+		buf.WriteString("</Key>")
+
+		buf.WriteString("<VersionId>")
+		xmlEscape(&buf, rec.VersionID)
+		buf.WriteString("</VersionId>")
+
+		buf.WriteString("<IsLatest>")
+		if rec.IsLatest {
+			buf.WriteString("true")
+		} else {
+			buf.WriteString("false")
+		}
+		buf.WriteString("</IsLatest>")
+
+		buf.WriteString("<LastModified>")
+		t := time.Unix(0, rec.Timestamp).UTC()
+		buf.Write(t.AppendFormat(timeBuf[:0], time.RFC3339Nano))
+		buf.WriteString("</LastModified>")
+
+		if !rec.IsDeleteMarker {
+			buf.WriteString("<ETag>\"")
+			xmlEscape(&buf, rec.Hash)
+			buf.WriteString("\"</ETag>")
+
+			buf.WriteString("<Size>")
+			buf.Write(strconv.AppendInt(intBuf[:0], int64(rec.Size), 10))
+			buf.WriteString("</Size>")
+
+			buf.WriteString("<StorageClass>STANDARD</StorageClass>")
+		}
+
+		if rec.IsDeleteMarker {
+			buf.WriteString("</DeleteMarker>")
+		} else {
+			buf.WriteString("</Version>")
+		}
 	}
-	out, err := xml.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return []byte(xml.Header + "<Error><Code>InternalError</Code></Error>")
-	}
-	return append([]byte(xml.Header), append(out, '\n')...)
+	buf.WriteString("</ListVersionsResult>\n")
+	return buf.Bytes()
 }
 
 // writeRawResponse writes a complete HTTP response with headers + body.
