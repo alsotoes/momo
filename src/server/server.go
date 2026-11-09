@@ -403,7 +403,10 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 			}
 
 			// 🛡️ Sentinel: Apply a strict absolute deadline for the handshake phase to prevent Slowloris trickle attacks.
-			comm.SetAbsoluteDeadline(time.Now().Add(10 * time.Second))
+			if !beginPhase(comm, remoteAddr, "handshake", handshakeTimeout(cfg)) {
+				metricsCollector.IncErrors()
+				return
+			}
 
 			defer func() {
 				if success {
@@ -499,7 +502,10 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 
 			// 🛡️ Sentinel: Extend the absolute deadline to allow the client time to establish
 			// splay connections and pre-compute file hashes before sending metadata.
-			comm.SetAbsoluteDeadline(time.Now().Add(60 * time.Second))
+			if !beginPhase(comm, remoteAddr, "metadata", metadataDeadline(cfg)) {
+				metricsCollector.IncErrors()
+				return
+			}
 
 			metadata, err := comm.ReceiveMetadata()
 			if err != nil {

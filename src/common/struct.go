@@ -470,6 +470,23 @@ type Configuration struct {
 	CoordinationFailover ConfigurationCoordinationFailover
 	// Coordination holds the distributed-coordination election settings.
 	Coordination ConfigurationCoordination
+	// Server holds the optional [server] network-deadline tuning.
+	Server ConfigurationServer
+}
+
+// ConfigurationServer externalises network deadlines and the replication
+// acceptance cap that were previously hardcoded (#1149 Phase 4). Zero values
+// fall back to the historical defaults, so an absent section changes nothing.
+type ConfigurationServer struct {
+	// HandshakeTimeout is the deadline for the protocol handshake, in seconds.
+	// Default 10.
+	HandshakeTimeout int
+	// MetadataDeadline is the deadline for receiving an object's metadata after
+	// a handshake, in seconds. Default 60.
+	MetadataDeadline int
+	// MaxConcurrentConnections bounds simultaneous replication connections
+	// accepted by the propagation server. Default 1000.
+	MaxConcurrentConnections int
 }
 
 // ConfigurationCoordination controls lease-based election of coordination roles
@@ -482,6 +499,9 @@ type ConfigurationCoordination struct {
 	// MetricsControllerLeaseTTL is the lease duration in seconds. A node renews
 	// at a third of it and takes over after a holder stops renewing. Default 30.
 	MetricsControllerLeaseTTL int
+	// PropagationTimeout is how long a replication-mode broadcast waits for a
+	// peer acknowledgement, in seconds. Default 11.
+	PropagationTimeout int
 }
 
 // ConfigurationCoordinationFailover controls proactive coordination handoff:

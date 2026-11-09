@@ -36,18 +36,22 @@
 - [ ] Unit tests: verify state isolation, concurrent access safety
 
 ## Phase 4 — Externalize Hardcoded Constants
-- [ ] Config parsing additions in `src/common/config.go`:
-  - `[replication] payload_pool_capacity` (default 1024)
-  - `[server] max_concurrent_connections` (default 1000)
-  - `[server] handshake_timeout` (default 10s)
-  - `[server] metadata_deadline` (default 60s)
-  - `[coordination] propagation_timeout` (default 11s)
-- [ ] Replace hardcoded values with config lookups:
-  - `src/server/replication.go:21` → `cfg.Replication.PayloadPoolCapacity`
-  - `src/server/replication.go:143` → `cfg.Server.MaxConcurrentConnections`
-  - `src/client/pheromone.go:27` → adaptive or config
-  - `src/server/server.go:335` → `cfg.Server.HandshakeTimeout`
-  - `src/server/server.go:431` → `cfg.Server.MetadataDeadline`
+- [x] `[server]` section: `handshake_timeout` (default 10 s),
+  `metadata_deadline` (default 60 s), `max_concurrent_connections`
+  (default 1000); all must be positive.
+- [x] `[coordination] propagation_timeout` (default 11 s, must be positive).
+- [x] Wire the deadlines through `src/server/deadlines.go`, which also supplies the
+  historical default when the value is absent or zero (older configs and tests
+  that build `common.Configuration` directly keep working).
+- [x] `replication.go` acceptance semaphore uses
+  `cfg.Server.MaxConcurrentConnections`; the client ACK wait keeps its own
+  `clientAckTimeout` constant because it is a client-side guard, not a server
+  propagation budget.
+- [ ] `[replication] payload_pool_capacity` — the pool is already adaptive
+  (`payloadPoolMinCapacity` .. 1 MiB, learned from observed sizes, #1145), so a
+  fixed knob would be a downgrade. Deferred to the per-node pool work (Phase 2).
+- [ ] `src/client/pheromone.go` evaporation interval — belongs with the Phase 1
+  router injection (the package-level `DefaultRouter` owns that constant).
   - `src/server/replication.go:271` → `cfg.Coordination.PropagationTimeout`
 - [ ] Update `src/common/struct.go` with new config structs
 - [ ] Integration tests: verify config values used

@@ -31,7 +31,7 @@ Current Momo has **singletons and package-level globals** that violate:
 None documented.
 
 ## Implementation Status
-- **Code**: Planned
+- **Code**: Partial
 - **Tests**: Planned
 - **Docs**: Planned
 - **Blog post**: 

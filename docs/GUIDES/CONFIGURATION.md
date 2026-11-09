@@ -237,6 +237,17 @@ This section controls the behavior of the decentralized polymorphic system and t
 > [ARCHITECTURE §7b](../../ARCHITECTURE.md#7b-state-persistence-and-what-survives-a-restart).
 > `/health/detailed` exposes the learned state per node (#1287).
 
+### [server] — Network Deadlines (optional, #1149)
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `handshake_timeout` | `10` (s) | Deadline for the protocol handshake. Raise for very slow links or heavily loaded nodes. |
+| `metadata_deadline` | `60` (s) | Deadline for receiving object metadata after the handshake. Raise for very large metadata batches. |
+| `max_concurrent_connections` | `1000` | Simultaneous replication connections accepted by the propagation server. |
+
+Zero or absent values keep the historical defaults, so an existing config is
+unchanged.
+
 ### [coordination] — Metrics-Controller Election (optional, #1144)
 
 Controls whether the polymorphic replication-mode controller is elected by lease
@@ -246,6 +257,7 @@ instead of pinned to node 0.
 |-----|----------|-------------|
 | `enabled` | no | `true` makes every node campaign for the `coordination/metrics-controller` lease. The holder runs the controller and announces the mode it resumed from its persisted state; on loss it stands by without stopping the metrics loop. `false` (default) keeps the legacy node-0 behaviour. Requires `[p2p] enabled=true`. |
 | `metrics_controller_lease_ttl` | no | Lease duration in seconds. Each node renews at one third of it; a holder that stops renewing is replaced after at most two missed renewals. Default `30`; must be positive. |
+| `propagation_timeout` | no | How long a replication-mode broadcast waits for a peer acknowledgement, in seconds. Default `11`; must be positive. |
 
 ### [adaptive] (optional, #1145)
 
