@@ -161,3 +161,28 @@ func TestElectionGateControlsAnyNode(t *testing.T) {
 		t.Fatal("legacy rule must be node 0 only")
 	}
 }
+
+func TestInstallMetricsControllerElectionStartsCampaign(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	metrics.SetControllerElector(nil)
+	t.Cleanup(func() { metrics.SetControllerElector(nil) })
+
+	lm := p2p.NewLeaseManager(0, &recordingP2PTransport{})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		installMetricsControllerElection(ctx, 1, lm)
+		close(done)
+	}()
+	<-done // installer returns immediately; the campaign runs in its own goroutine
+
+	deadline := time.Now().Add(2 * time.Second)
+	for !metrics.IsControllerNode(4) && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !metrics.IsControllerNode(4) {
+		t.Fatal("installer did not start a campaign that acquires the lease")
+	}
+	cancel()
+	lm.Stop()
+}
