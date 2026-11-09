@@ -1,40 +1,32 @@
 # Tasks — Distributed Coordination (Metrics Controller + Replication Propagation)
 
 ## Phase 1 — Core Infrastructure: Lease Election for Coordination Roles
-- [ ] Create `src/coordination/roles.go` — coordination role definitions
-  - `RoleType` enum: `MetricsController`, `ReplicationPropagator`
-  - `RoleConfig` struct with lease TTL, election retry interval
-  - `RoleState` struct for persisted state (currentIndex, start time, etc.)
-- [ ] Create `src/coordination/election.go` — lease-based role election
-  - `Coordinator` struct wrapping `LeaseManager` + `Gossiper`
-  - `Campaign(role RoleType)` — acquire lease, register with gossip
-  - `Resign(role RoleType)` — release lease, persist state
-  - `GetLeaseHolder(role RoleType) (nodeID int32, ok bool)` — query via gossip
-- [ ] Create `src/coordination/state.go` — state persistence to BoltDB
-  - `PersistState(role RoleType, state RoleState)` — write to `replication_state` bucket
-  - `LoadState(role RoleType) (RoleState, error)` — read from bucket
-  - `StateKey(role RoleType) string` — bucket key per role
-- [ ] Add `[coordination]` section parsing in `config.go`
-  - `ConfigurationCoordination` struct with all configurable fields
-  - Default values matching spec
-  - Validation: TTL > 0, intervals > 0
-- [ ] Wire coordination config in `GetConfig` (config.go)
-- [ ] Unit tests: `coordination_election_test.go` (mock LeaseManager, verify campaign/resign)
+- [x] Election implemented in `src/server/coordination_elector.go` (kept in the
+  server package where the `LeaseManager` and gossip live; a separate
+  `src/coordination` package would only re-export them).
+- [x] Campaign/renew/resign via the lease manager; peer-side renewal accepts the
+  current holder's lease ID and denies a different holder, so renew never opens a
+  mutual-exclusion gap.
+- [x] State persistence reuses the per-node `CoordinationModeStore` (the mode is
+  already persisted on every node and reloaded by `resumeMode`), so no separate
+  `replication_state` bucket is needed for the metrics-controller role.
+- [x] `[coordination]` config section: `enabled`, `metrics_controller_lease_ttl`
+  (default 30 s, positive), requires `[p2p] enabled=true`.
+- [x] Unit tests: acquire/renew/step-down/re-acquire, graceful release on stop,
+  lease renewal semantics, and the metrics gate for any node ID.
 
 ## Phase 2 — Distributed Metrics Controller
-- [ ] Modify `src/metrics/metrics.go`:
-  - Add `Coordinator` dependency to `GetMetrics`
-  - Replace `if serverId != 0 { return }` with lease holder check
-  - `GetMetrics` now runs on ALL nodes but only lease holder executes logic
-  - Non-lease-holders: return early, log "not metrics controller lease holder"
-- [ ] Add state persistence in metrics loop:
-  - On `currentIndex` change: persist via `Coordinator.PersistState`
-  - On loop start: load state via `Coordinator.LoadState`
-- [ ] Add lease holder monitoring:
-  - If lease lost while running: stop loop, persist state, return
-  - If lease acquired while running: load state, resume loop
-- [ ] Update `GetMetrics` signature to accept `Coordinator` (or use global accessor)
-- [ ] Integration tests: 3-node cluster, kill metrics controller → verify failover
+- [x] `GetMetrics` no longer exits on `serverId != 0`: every node keeps the loop
+  alive and consults `metrics.IsControllerNode`, which is lease-backed when the
+  elector is installed and node-0-only otherwise.
+- [x] Non-holders stand by on each tick; they persist and announce the resumed
+  mode on takeover, so failover converges immediately.
+- [x] Leadership loss steps the node back to standby without stopping the loop;
+  it can re-acquire later.
+- [x] Mode state: persisted with the existing per-node mode store and restored by
+  `resumeMode` at loop start and on takeover.
+- [ ] Integration test on a 3-node cluster (kill the holder) — needs the
+  multi-node harness; covered at unit level here.
 
 ## Phase 3 — Distributed Replication Propagation
 - [ ] Modify `src/server/replication.go`:

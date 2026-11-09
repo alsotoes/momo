@@ -11,7 +11,7 @@ categories:
   - storage
 summary: "A distributed metadata catalog is only as good as its write path, and the write path was a stub that always said yes. This change makes an object's metadata reach a majority of its replica set before the write is acknowledged, and it uncovered an encoding bug that made every shard key unreadable."
 artifacts: [{type: spec, path: openspec/changes/r6-metadata-ha-v2}, {type: adr, path: docs/adr/0073-r6-metadata-ha-v2.md}]
-related: ["061-cross-node-version-records", "063-gossip-load-without-a-coordinator"]
+related: ["067-the-controller-that-left-node-zero", "061-cross-node-version-records", "063-gossip-load-without-a-coordinator"]
 difficulty: "advanced"
 pattern: "quorum"
 teaches:

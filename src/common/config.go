@@ -41,6 +41,8 @@ const (
 	// sectionCoordinationFailover is the optional [coordination_failover] section
 	// (coordinator failover Phase 2, #1148).
 	sectionCoordinationFailover = "coordination_failover"
+	// sectionCoordination is the optional [coordination] election section (#1144).
+	sectionCoordination = "coordination"
 	// prefixDaemon is the prefix for daemon sections in the configuration file (e.g., [daemon.0]).
 	prefixDaemon = "daemon."
 	// prefixTenant is the prefix for tenant sections in the configuration file (e.g., [tenant.xxx]).
@@ -222,6 +224,18 @@ func GetConfig(path string) (Configuration, error) {
 		}
 	}
 
+	if coordSec, okErr := cfg.GetSection(sectionCoordination); okErr == nil {
+		config.Coordination, err = loadCoordinationConfig(coordSec)
+		if err != nil {
+			return Configuration{}, fmt.Errorf("failed to load [%s] section: %w", sectionCoordination, err)
+		}
+		if config.Coordination.Enabled && !config.P2P.Enabled {
+			return Configuration{}, fmt.Errorf("[coordination] enabled=true requires [p2p] enabled=true: %w", syscall.EINVAL)
+		}
+	} else {
+		config.Coordination = ConfigurationCoordination{MetricsControllerLeaseTTL: 30}
+	}
+
 	rebalanceSec, err := cfg.GetSection(sectionRebalance)
 	if err == nil {
 		config.Rebalance, err = loadRebalanceConfig(rebalanceSec)
@@ -372,6 +386,19 @@ func loadRebalanceConfig(section *ini.Section) (ConfigurationRebalance, error) {
 		return ConfigurationRebalance{}, fmt.Errorf("'max_bandwidth_mbps' must be >= 0: %w", syscall.EINVAL)
 	}
 	return rc, nil
+}
+
+// loadCoordinationConfig parses the [coordination] election section (#1144).
+func loadCoordinationConfig(section *ini.Section) (ConfigurationCoordination, error) {
+	cfg := ConfigurationCoordination{
+		Enabled:                   section.Key("enabled").MustBool(false),
+		MetricsControllerLeaseTTL: section.Key("metrics_controller_lease_ttl").MustInt(30),
+	}
+	if cfg.MetricsControllerLeaseTTL <= 0 {
+		return ConfigurationCoordination{}, fmt.Errorf("metrics_controller_lease_ttl must be positive, got %d: %w",
+			cfg.MetricsControllerLeaseTTL, syscall.EINVAL)
+	}
+	return cfg, nil
 }
 
 func loadCoordinationFailoverConfig(section *ini.Section) (ConfigurationCoordinationFailover, error) {

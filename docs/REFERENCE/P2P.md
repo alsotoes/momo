@@ -352,9 +352,14 @@ The `LeaseManager` provides time-bound, self-expiring leases for destructive ope
    the controller has no configured cluster size it falls back to the legacy
    alive-peer heuristic. Cluster size is set from the daemon list during P2P
    bootstrap.
-4. **Release**: After operation completes, broadcasts `MsgLeaseRelease`
-5. **Expiry**: Background loop cleans up expired leases every 500ms
-6. **Failover**: when SWIM marks a peer `SUSPECT` or `OFFLINE`, the lease manager
+4. **Renew**: the holder re-sends the same lease ID with a later expiry. Peers
+   accept it because the ID matches the current holder and deny any other holder,
+   so a renew extends exclusivity instead of opening a gap (releasing and
+   re-acquiring would let a competing node in between). This is what makes
+   lease-based role election safe: the metrics-controller role renews at TTL/3.
+5. **Release**: After operation completes, broadcasts `MsgLeaseRelease`
+6. **Expiry**: Background loop cleans up expired leases every 500ms
+7. **Failover**: when SWIM marks a peer `SUSPECT` or `OFFLINE`, the lease manager
    releases every lease whose quorum is no longer satisfied and broadcasts the
    release. Failover therefore follows the suspicion timeout (seconds) instead of
    the lease TTL (default 30s). Losing quorum releases all held leases and writes
