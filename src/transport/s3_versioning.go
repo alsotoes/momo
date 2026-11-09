@@ -5,7 +5,6 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -87,12 +86,8 @@ type ListVersionsResult struct {
 
 // FormatListVersionsXML renders the GET ?versions response page.
 func FormatListVersionsXML(bucket, prefix, keyMarker, versionIDMarker string, maxKeys int, page storage.VersionPage) (xmlBytes []byte, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in FormatListVersionsXML: %v", r)
-			err = syscall.EIO
-		}
-	}()
+	defer common.RecoverErrWith("FormatListVersionsXML", syscall.EIO, &err)
+
 
 	var buf bytes.Buffer
 	buf.WriteString(xml.Header)
