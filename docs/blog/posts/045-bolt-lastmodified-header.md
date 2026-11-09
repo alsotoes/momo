@@ -24,6 +24,7 @@ artifacts:
 - type: doc
   path: docs/CORE/STANDARDS.md
 related:
+- 068-stack-buffer-xml-serialization
 - 024-bolt-performance-engineering
 - 036-s3-listxml-appendformat-optimization
 - 012-s3-integrity-checksums

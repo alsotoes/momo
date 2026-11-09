@@ -1,0 +1,4 @@
+- [x] Implement zero allocation listing in `s3_versioning.go`
+- [x] Extract `formatVersionRecord` loop to reduce cognitive complexity.
+- [x] Extract helper methods in `handleVersionedDelete` to reduce cognitive complexity.
+- [x] Add panic recovery block returning `syscall.EIO` in `FormatListVersionsXML`.

@@ -263,3 +263,7 @@
 ## 2026-11-08 - Pre-canonicalized header lookups
 **Learning:** Building an HTTP header name per request (`"x-amz-checksum-" + algo`) and passing it to `http.Header.Get` allocates a string and re-runs canonicalization for every candidate header. On the S3 checksum path that was four allocations per request just to discover that no checksum was sent.
 **Action:** Keep a package-level table of `{algorithm, canonical header literal}` pairs and look up the literals directly. Verified with `BenchmarkParseChecksum`: 0 B/op and 0 allocs/op versus 96 B/op and 4 allocs/op for the dynamic form.
+
+## 2026-11-09 - Eliminate time formatting and XML allocations in S3 ListVersions
+**Learning:** Formatting timestamps with `time.Format` inside large array serialization loops (like S3 ListVersions `FormatListVersionsXML`) combined with `xml.MarshalIndent` creates significant garbage collection pressure due to heavy heap allocation overhead per element.
+**Action:** When manually formatting XML with iterative structs, drop `xml.MarshalIndent` and strings generated via `time.Format`. Switch to appending directly to `bytes.Buffer`, and format timestamps locally per loop using `t.AppendFormat(timeBuf[:0], ...)` to achieve zero-allocation string writing.
