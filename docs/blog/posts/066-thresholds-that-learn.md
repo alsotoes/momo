@@ -79,6 +79,24 @@ between the old 1 KiB floor and 1 MiB. Buffers whose capacity no longer matches 
 current target are simply released instead of being returned, so a resize can never
 mix sizes inside the pool.
 
+## The Same Idea on Admission and Timeouts
+
+Two more loops in the daemon had fixed numbers that only fit one machine. The
+connection admission controller already probed the host at boot — file-descriptor
+limit, cgroup or RAM ceiling — but nothing ever fed it pressure afterwards, so the
+limit sat at its boot value. It now samples CPU and memory every ten seconds and
+sheds to half above 80% and a quarter above 90%: a loaded node stops accepting new
+connections instead of accepting them and thrashing.
+
+Metadata RPCs had a flat five-second timeout. On a cluster with millisecond round
+trips that is five seconds of waiting to fail over; on a slow link it is a
+premature death sentence. The timeout now follows the cluster's measured mean RTT
+at ten times that value, clamped between half a second and ten seconds, with the
+configured value still winning if an operator sets one.
+
+The pattern is the same every time: measure what the system actually experiences,
+derive the number from it, clamp it, and keep a manual override.
+
 ## Watching It Work
 
 Three gauges expose the loop's decision — the learned maximum, the learned

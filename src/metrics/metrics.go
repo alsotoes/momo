@@ -21,6 +21,23 @@ type SystemMetrics interface {
 	CPUPercent() ([]float64, error)
 }
 
+// HostPressure reports the busiest CPU percentage and memory utilisation, both
+// 0-100. Failed samples report zero, so callers leave their limits unchanged
+// rather than reacting to missing data (#1145).
+func HostPressure(sm SystemMetrics) (cpu, memUsed float64) {
+	if v, err := sm.VirtualMemory(); err == nil {
+		memUsed = float64(v.UsedPercent)
+	}
+	if cpus, err := sm.CPUPercent(); err == nil {
+		for _, c := range cpus {
+			if c > cpu {
+				cpu = c
+			}
+		}
+	}
+	return cpu, memUsed
+}
+
 // RealSystemMetrics is the implementation of SystemMetrics that uses gopsutil.
 type RealSystemMetrics struct{}
 

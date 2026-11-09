@@ -741,10 +741,53 @@ func (m *MetadataRPCProvider) deleteSafely(peer int32, args *DeleteMetadataArgs)
 	return m.deleteToPeer(peer, args)
 }
 
-// rpcTimeout returns the per-call timeout.
+// Adaptive RPC timeout bounds (Phase 4 of adaptive-thresholds-v1, #1145).
+// Metadata RPCs are round trips to a replica: a fast cluster deserves a short
+// timeout (fail over quickly), a slow one must not be declared dead at 5s.
+const (
+	// MetadataRPCTimeoutFloor is the shortest timeout any cluster gets.
+	MetadataRPCTimeoutFloor = 500 * time.Millisecond
+	// MetadataRPCTimeoutCeiling is the longest, regardless of measured RTT.
+	MetadataRPCTimeoutCeiling = 10 * time.Second
+	// MetadataRPCTimeoutFactor multiplies the observed mean RTT.
+	MetadataRPCTimeoutFactor = 10
+)
+
+// adaptiveRPCTimeout derives a timeout from the cluster's measured mean RTT.
+// It returns 0 when no RTT is known, so callers keep the configured default.
+func adaptiveRPCTimeout(peers *PeerMap) time.Duration {
+	if peers == nil {
+		return 0
+	}
+	avgSeconds := peers.AvgPingLatencySeconds()
+	if avgSeconds <= 0 {
+		return 0
+	}
+	learned := time.Duration(avgSeconds * float64(time.Second) * MetadataRPCTimeoutFactor)
+	return clampRPCTimeout(learned)
+}
+
+// clampRPCTimeout bounds a learned timeout to [floor, ceiling].
+func clampRPCTimeout(d time.Duration) time.Duration {
+	if d < MetadataRPCTimeoutFloor {
+		return MetadataRPCTimeoutFloor
+	}
+	if d > MetadataRPCTimeoutCeiling {
+		return MetadataRPCTimeoutCeiling
+	}
+	return d
+}
+
+// rpcTimeout returns the per-call timeout: an explicit override wins, then the
+// RTT-derived value, then the published default.
 func (m *MetadataRPCProvider) rpcTimeout() time.Duration {
 	if m.RPCTimeout > 0 {
 		return m.RPCTimeout
+	}
+	if m.transport != nil {
+		if learned := adaptiveRPCTimeout(m.transport.Peers()); learned > 0 {
+			return learned
+		}
 	}
 	return MetadataRPCTimeout
 }
