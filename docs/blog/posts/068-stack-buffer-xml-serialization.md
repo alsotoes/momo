@@ -2,6 +2,18 @@
 title: "Zero-Allocation Stack-Buffer XML Serialization"
 date: 2026-11-09
 author: "Jules"
+draft: false
+tags:
+  - "performance"
+  - "golang"
+  - "allocations"
+categories:
+  - "performance"
+summary: "We eliminated significant GC pressure during S3 ListVersions operations by refactoring XML generation to use bytes.Buffer and stack-allocated fixed-size buffers, avoiding heavy reflection-based heap allocations."
+artifacts:
+  - "0090-zero-alloc-s3-listing.md"
+related:
+  - "045-bolt-lastmodified-header"
 ---
 
 # Zero-Allocation Stack-Buffer XML Serialization
@@ -40,3 +52,8 @@ buf.Write(t.AppendFormat(timeBuf[:0], time.RFC3339Nano))
 
 ## Verification
 By switching from `xml.MarshalIndent` + `time.Format` to our stack-buffer strategy, we completely eliminated string allocations per version metadata row loop during ListVersions. Microbenchmarks showed allocations dropped from 1700+ to ~10 per 1000 items, drastically reducing latency and GC cycles on the daemon.
+
+
+## References
+- [Go `bytes.Buffer` Documentation](https://pkg.go.dev/bytes#Buffer)
+- [Go `time.AppendFormat` Documentation](https://pkg.go.dev/time#Time.AppendFormat)

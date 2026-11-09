@@ -145,53 +145,59 @@ func FormatListVersionsXML(bucket, prefix, keyMarker, versionIDMarker string, ma
 	// by replacing xml.MarshalIndent with a bytes.Buffer and using AppendFormat.
 	var timeBuf [32]byte
 	for _, rec := range page.Records {
-		if rec.IsDeleteMarker {
-			buf.WriteString("<DeleteMarker>")
-		} else {
-			buf.WriteString("<Version>")
-		}
-
-		buf.WriteString("<Key>")
-		xmlEscape(&buf, rec.Key)
-		buf.WriteString("</Key>")
-
-		buf.WriteString("<VersionId>")
-		xmlEscape(&buf, rec.VersionID)
-		buf.WriteString("</VersionId>")
-
-		buf.WriteString("<IsLatest>")
-		if rec.IsLatest {
-			buf.WriteString("true")
-		} else {
-			buf.WriteString("false")
-		}
-		buf.WriteString("</IsLatest>")
-
-		buf.WriteString("<LastModified>")
-		t := time.Unix(0, rec.Timestamp).UTC()
-		buf.Write(t.AppendFormat(timeBuf[:0], time.RFC3339Nano))
-		buf.WriteString("</LastModified>")
-
-		if !rec.IsDeleteMarker {
-			buf.WriteString("<ETag>\"")
-			xmlEscape(&buf, rec.Hash)
-			buf.WriteString("\"</ETag>")
-
-			buf.WriteString("<Size>")
-			buf.Write(strconv.AppendInt(intBuf[:0], int64(rec.Size), 10))
-			buf.WriteString("</Size>")
-
-			buf.WriteString("<StorageClass>STANDARD</StorageClass>")
-		}
-
-		if rec.IsDeleteMarker {
-			buf.WriteString("</DeleteMarker>")
-		} else {
-			buf.WriteString("</Version>")
-		}
+		formatVersionRecord(&buf, rec, &timeBuf, &intBuf)
 	}
 	buf.WriteString("</ListVersionsResult>\n")
 	return buf.Bytes(), nil
+}
+
+// formatVersionRecord writes a single version or delete marker entry directly to the buffer.
+// Extracted to lower cognitive complexity.
+func formatVersionRecord(buf *bytes.Buffer, rec storage.VersionRecord, timeBuf *[32]byte, intBuf *[32]byte) {
+	if rec.IsDeleteMarker {
+		buf.WriteString("<DeleteMarker>")
+	} else {
+		buf.WriteString("<Version>")
+	}
+
+	buf.WriteString("<Key>")
+	xmlEscape(buf, rec.Key)
+	buf.WriteString("</Key>")
+
+	buf.WriteString("<VersionId>")
+	xmlEscape(buf, rec.VersionID)
+	buf.WriteString("</VersionId>")
+
+	buf.WriteString("<IsLatest>")
+	if rec.IsLatest {
+		buf.WriteString("true")
+	} else {
+		buf.WriteString("false")
+	}
+	buf.WriteString("</IsLatest>")
+
+	buf.WriteString("<LastModified>")
+	t := time.Unix(0, rec.Timestamp).UTC()
+	buf.Write(t.AppendFormat(timeBuf[:0], time.RFC3339Nano))
+	buf.WriteString("</LastModified>")
+
+	if !rec.IsDeleteMarker {
+		buf.WriteString("<ETag>\"")
+		xmlEscape(buf, rec.Hash)
+		buf.WriteString("\"</ETag>")
+
+		buf.WriteString("<Size>")
+		buf.Write(strconv.AppendInt(intBuf[:0], int64(rec.Size), 10))
+		buf.WriteString("</Size>")
+
+		buf.WriteString("<StorageClass>STANDARD</StorageClass>")
+	}
+
+	if rec.IsDeleteMarker {
+		buf.WriteString("</DeleteMarker>")
+	} else {
+		buf.WriteString("</Version>")
+	}
 }
 
 // writeRawResponse writes a complete HTTP response with headers + body.
