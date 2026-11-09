@@ -11,7 +11,7 @@ categories:
   - p2p
 summary: "The component that decides when to change replication mode ran only on node 0 — a single point of failure in a system whose first principle is zero single points of failure. Election by lease fixes it without adding a coordinator: any node can hold the role, and the role can move."
 artifacts: [{type: spec, path: openspec/changes/distributed-coordination-v1}, {type: adr, path: docs/adr/0065-distributed-coordination-v1.md}]
-related: ["064-failing-over-coordination-in-seconds", "065-metadata-writes-that-need-a-majority"]
+related: ["068-mode-changes-from-any-node", "064-failing-over-coordination-in-seconds", "065-metadata-writes-that-need-a-majority"]
 difficulty: "intermediate"
 pattern: "leader-election"
 teaches:
