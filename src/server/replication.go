@@ -15,9 +15,10 @@ import (
 	"github.com/alsotoes/momo/src/transport"
 )
 
-// payloadPoolCapacity is the fixed capacity of the reusable byte slices
-// handed out by payloadPool. Only buffers with this exact capacity are ever
-// returned to the pool; growth beyond it is discarded (fix #667).
+// payloadPoolCapacity is the default (and minimum) capacity of the reusable
+// byte slices handed out by payloadPool. The pool resizes itself from observed
+// payload sizes within [payloadPoolCapacity, 1 MiB] (#1145), and only buffers
+// with the current target capacity are returned (fix #667).
 const payloadPoolCapacity = 1024
 
 // payloadPoolc is the minimal contract payloadPool needs: fetch a buffer and
@@ -31,7 +32,7 @@ type payloadPoolc interface {
 // payloadPool provides reusable byte slices for replication broadcasts to reduce allocations.
 var payloadPool payloadPoolc = &sync.Pool{
 	New: func() interface{} {
-		return make([]byte, payloadPoolCapacity)
+		return make([]byte, payloadPoolTargetCapacity())
 	},
 }
 
@@ -312,6 +313,8 @@ func ChangeReplicationModeClient(factory *transport.ProtocolFactory, replication
 	payload = payload[:0]
 	payload = append(payload, replicationJson...)
 	payload = append(payload, '\n')
+	// #1145: feed the real size so the pool can right-size itself.
+	recordReplicationPayloadSize(len(payload))
 	// 🛡️ Sentinel: Only return the buffer to the pool if append did not
 	// reallocate it. When the payload exceeds payloadPoolCapacity, a new,
 	// larger slice is allocated and the fixed-capacity pool buffer is lost.
@@ -342,7 +345,7 @@ func ChangeReplicationModeClient(factory *transport.ProtocolFactory, replication
 // the pooled fixed-capacity buffer has already been lost; returning the grown
 // slice would poison the pool with oversized buffers (fix #667).
 func releasePayload(payload []byte) {
-	if cap(payload) == payloadPoolCapacity {
-		payloadPool.Put(payload[:payloadPoolCapacity])
+	if target := payloadPoolTargetCapacity(); cap(payload) == target {
+		payloadPool.Put(payload[:target])
 	}
 }

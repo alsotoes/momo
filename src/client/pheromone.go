@@ -3,6 +3,7 @@ package client
 import (
 	"fmt"
 	"log"
+	"math"
 	"math/rand/v2"
 	"sync"
 	"syscall"
@@ -25,6 +26,24 @@ const (
 	FailurePenaltyFactor = 0.2
 	// EvaporationInterval controls how frequently lazy evaporation triggers.
 	EvaporationInterval = 1 * time.Second
+)
+
+// Adaptive pheromone tuning bounds (Phase 3 of adaptive-thresholds-v1, #1145).
+// A volatile network should forget stale trails quickly; a stable one should
+// keep them. Values are clamped so learning cannot disable evaporation or turn
+// a single failure into a permanent ban.
+const (
+	// EvaporationFloor is the fastest decay a volatile network may learn.
+	EvaporationFloor = 0.90
+	// EvaporationCeiling is the slowest decay a stable network may learn.
+	EvaporationCeiling = 0.99
+	// PenaltyFloor is the harshest failure penalty (a harder reset).
+	PenaltyFloor = 0.10
+	// PenaltyCeiling is the mildest failure penalty.
+	PenaltyCeiling = 0.50
+	// tuningMinSamples is how many RTT observations are needed before learned
+	// evaporation replaces the constant.
+	tuningMinSamples = 20
 )
 
 // PheromoneRouter defines the compile-time Go interface seam (Rule 74) for
@@ -56,6 +75,17 @@ type antColonyRouter struct {
 	mu            sync.RWMutex
 	pheromones    map[int]float64
 	lastEvaporate time.Time
+
+	// Adaptive tuning state (Phase 3, #1145). Defaults are the package
+	// constants; learning moves them within the clamp bounds.
+	evaporation float64
+	penalty     float64
+	// RTT statistics: EWMA mean and variance over successful transfers.
+	rttMean     float64
+	rttVariance float64
+	rttSamples  int
+	failures    uint64
+	attempts    uint64
 }
 
 // NewPheromoneRouter creates a new Ant Colony PheromoneRouter.
@@ -63,6 +93,8 @@ func NewPheromoneRouter() PheromoneRouter {
 	return &antColonyRouter{
 		pheromones:    make(map[int]float64),
 		lastEvaporate: time.Now(),
+		evaporation:   EvaporationFactor,
+		penalty:       FailurePenaltyFactor,
 	}
 }
 
@@ -91,6 +123,7 @@ func (r *antColonyRouter) RecordSuccess(nodeID int, rtt time.Duration) {
 		}
 	}
 
+	r.observeRTTLocked(rtt)
 	cur += reward
 	if cur > MaxPheromone {
 		cur = MaxPheromone
@@ -108,7 +141,10 @@ func (r *antColonyRouter) RecordFailure(nodeID int) {
 		cur = InitialPheromone
 	}
 
-	cur *= FailurePenaltyFactor
+	r.failures++
+	r.attempts++
+	r.observePenaltyLocked()
+	cur *= r.penalty
 	if cur < MinPheromone {
 		cur = MinPheromone
 	}
@@ -124,13 +160,72 @@ func (r *antColonyRouter) Evaporate() {
 
 func (r *antColonyRouter) evaporateLocked() {
 	for id, p := range r.pheromones {
-		decayed := p * EvaporationFactor
+		decayed := p * r.evaporation
 		if decayed < MinPheromone {
 			decayed = MinPheromone
 		}
 		r.pheromones[id] = decayed
 	}
 	r.lastEvaporate = time.Now()
+}
+
+// observeRTTLocked folds one successful RTT into the running statistics and
+// re-derives the evaporation factor. Caller holds the write lock.
+func (r *antColonyRouter) observeRTTLocked(rtt time.Duration) {
+	if rtt <= 0 {
+		return
+	}
+	ms := float64(rtt.Microseconds()) / 1000
+	const alpha = 0.2
+	if r.rttSamples == 0 {
+		r.rttMean = ms
+		r.rttVariance = 0
+	} else {
+		delta := ms - r.rttMean
+		r.rttMean += alpha * delta
+		r.rttVariance = (1 - alpha) * (r.rttVariance + alpha*delta*delta)
+	}
+	if r.rttSamples < int(^uint(0)>>1) {
+		r.rttSamples++
+	}
+	if r.rttSamples < tuningMinSamples || r.rttMean <= 0 {
+		return
+	}
+	// Coefficient of variation: 0 = perfectly stable, ≥1 = highly volatile.
+	cv := math.Sqrt(r.rttVariance) / r.rttMean
+	// Stable trails persist (ceiling), volatile ones evaporate faster (floor).
+	learned := EvaporationCeiling - (EvaporationCeiling-EvaporationFloor)*math.Min(cv, 1)
+	r.evaporation = clampFloat(learned, EvaporationFloor, EvaporationCeiling)
+}
+
+// observePenaltyLocked re-derives the failure penalty from the observed failure
+// ratio. A high failure rate earns a harsher penalty. Caller holds the lock.
+func (r *antColonyRouter) observePenaltyLocked() {
+	if r.attempts == 0 {
+		return
+	}
+	failureRate := float64(r.failures) / float64(r.attempts)
+	// 0 failures → ceiling (mild), 100% failures → floor (harsh).
+	learned := PenaltyCeiling - (PenaltyCeiling-PenaltyFloor)*math.Min(failureRate*2, 1)
+	r.penalty = clampFloat(learned, PenaltyFloor, PenaltyCeiling)
+}
+
+// clampFloat bounds v to [lo, hi].
+func clampFloat(v, lo, hi float64) float64 {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}
+
+// Tuning exposes the pheromone constants in force, for observability and tests.
+func (r *antColonyRouter) Tuning() (evaporation, penalty float64, rttSamples int) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.evaporation, r.penalty, r.rttSamples
 }
 
 // GetPheromone returns the current reputation score for a node.

@@ -205,7 +205,7 @@ type recordingPool struct {
 	putCaps []int
 }
 
-func (p *recordingPool) Get() interface{} { return make([]byte, payloadPoolCapacity) }
+func (p *recordingPool) Get() interface{} { return make([]byte, payloadPoolTargetCapacity()) }
 
 func (p *recordingPool) Put(b interface{}) { p.putCaps = append(p.putCaps, cap(b.([]byte))) }
 
@@ -215,9 +215,14 @@ func (p *recordingPool) Put(b interface{}) { p.putCaps = append(p.putCaps, cap(b
 // slice back into the pool.
 func TestReleasePayloadOnlyReturnsFixedCapacity(t *testing.T) {
 	orig := payloadPool
+	origTarget := payloadPoolTarget.Load()
+	payloadPoolTarget.Store(payloadPoolMinCapacity)
 	rp := &recordingPool{}
 	payloadPool = rp
-	defer func() { payloadPool = orig }()
+	defer func() {
+		payloadPool = orig
+		payloadPoolTarget.Store(origTarget)
+	}()
 
 	// A grown buffer (append reallocated past the fixed capacity) must not be
 	// returned to the pool.

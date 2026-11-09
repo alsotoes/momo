@@ -47,13 +47,16 @@
 - [ ] Unit tests: `pheromone_adaptive_test.go` (constant adaptation from mock RTT)
 
 ## Phase 4 — Adaptive Pool Sizes + Timeouts
-- [ ] Adaptive payload pool:
-  - Track blob size samples in `server.go` / `replication.go`
-  - `payloadPoolCapacity` = P95 of observed sizes (clamped [4KB, 1MB])
-  - Persist to `AdaptiveStore` under "pool_sizes"
-- [ ] Adaptive connection limit:
-  - `maxConcurrentConnections` = `min(ulimit_n/4, RAM_MB*10)` clamped [100, 10000]
-  - Read `ulimit -n` at startup via `syscall.Getrlimit`
+- [x] Adaptive replication payload pool: each broadcast feeds its real size to an
+  EWMA learner; every 64 samples the pool target becomes `mean × 1.5`, clamped to
+  `[1 KiB, 1 MiB]`. Only buffers with the current target capacity are returned to
+  the pool, so a resize cannot poison it. (1 KiB floor, not the spec's 4 KiB:
+  keeping the historical default avoids quadrupling the per-P footprint.)
+  In-memory only — the learner reconverges in a few seconds, so persisting it
+  would add a write path for no operational gain.
+- [ ] Adaptive connection limit — deferred: sizing accepts from `ulimit_n`/RAM
+  changes the admission path (and needs a per-OS fallback), so it belongs in its
+  own change with load testing rather than riding along with the pool sizing.
 - [ ] Adaptive timeouts:
   - Track handshake RTT, metadata RTT, propagation RTT
   - Compute timeouts as P99 × safety_factor (clamped to safe ranges)
