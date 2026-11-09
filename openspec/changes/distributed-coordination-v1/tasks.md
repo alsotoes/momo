@@ -43,6 +43,9 @@
   timestamp keeps the legacy behaviour for CLI overrides.
 - [x] Tests: a non-primary node propagates to its peer over a real socket; older
   and duplicate timestamps are ignored; a zero-timestamp override still applies.
+- [x] Clock-skew guard: timestamps more than `maxReplicationClockSkew` (10 min)
+  ahead of the receiving node are rejected and logged, so a peer with a badly
+  skewed or hostile clock cannot stamp a timestamp no honest update can beat.
 
 ## Phase 4 — State Persistence + Handoff
 - [ ] Implement BoltDB `replication_state` bucket in `storage.go`

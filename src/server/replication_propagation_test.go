@@ -150,3 +150,27 @@ func TestZeroTimestampKeepsLegacyBehaviour(t *testing.T) {
 		t.Fatalf("manual (zero-ts) override must apply: %+v applied=%v", state, applied)
 	}
 }
+
+func TestFutureTimestampBeyondSkewIsRejected(t *testing.T) {
+	t.Cleanup(func() { SetReplicationState(common.ReplicationNone, 0) })
+	SetReplicationState(common.ReplicationNone, 0)
+	now := time.Now()
+	future := now.Add(maxReplicationClockSkew + time.Minute).UnixNano()
+	if _, applied := applyReplicationStateAt(common.ReplicationChain, future, now); applied {
+		t.Fatal("a timestamp beyond the allowed skew must not be applied")
+	}
+	if got := GetCurrentReplicationMode(); got != common.ReplicationNone {
+		t.Fatalf("mode changed to %d despite a rejected timestamp", got)
+	}
+}
+
+func TestTimestampWithinSkewIsAccepted(t *testing.T) {
+	t.Cleanup(func() { SetReplicationState(common.ReplicationNone, 0) })
+	SetReplicationState(common.ReplicationNone, 0)
+	now := time.Now()
+	// Slight clock drift between nodes is normal and must not block updates.
+	skewed := now.Add(maxReplicationClockSkew - time.Second).UnixNano()
+	if _, applied := applyReplicationStateAt(common.ReplicationChain, skewed, now); !applied {
+		t.Fatal("a timestamp within the allowed skew must apply")
+	}
+}

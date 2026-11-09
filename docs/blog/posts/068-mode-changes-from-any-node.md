@@ -78,6 +78,14 @@ Local administrative overrides still apply unconditionally, and a zero timestamp
 keeps the historical behaviour — an operator typing a command does not have to win
 a race against the cluster's clock.
 
+One more guard is needed once propagation is peer-to-peer: the clock is now
+supplied by other machines. A node whose clock runs hours ahead would stamp a
+timestamp that no honest update can beat, freezing the cluster's mode until real
+time caught up. Updates dated more than ten minutes in the future are therefore
+rejected and logged; ordinary skew between nodes is well inside that window, so a
+little drift costs nothing while a broken clock — or a hostile one — cannot take
+the control plane hostage.
+
 ## References / Dig deeper
 
 - OpenSpec change: `openspec/changes/distributed-coordination-v1/`
