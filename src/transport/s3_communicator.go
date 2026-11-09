@@ -2700,6 +2700,21 @@ func isSupportedChecksum(algo string) bool {
 	}
 }
 
+// checksumRequestHeaders pairs each normalized checksum algorithm with its
+// canonical request header. The literals are pre-canonicalized on purpose:
+// http.Header.Get canonicalizes its argument, and building the name per request
+// ("x-amz-checksum-"+algo) allocated a string for every checksum header probed
+// (⚡ Bolt, issue #1274).
+var checksumRequestHeaders = []struct {
+	algo   string
+	header string
+}{
+	{checksumAlgoCRC32c, "X-Amz-Checksum-Crc32c"},
+	{checksumAlgoCRC32, "X-Amz-Checksum-Crc32"},
+	{checksumAlgoSHA1, "X-Amz-Checksum-Sha1"},
+	{checksumAlgoSHA256, "X-Amz-Checksum-Sha256"},
+}
+
 // checksumHeaderFor returns the lowercase S3 response header for algo, e.g.
 // "x-amz-checksum-sha256".
 func checksumHeaderFor(algo string) string {
@@ -2731,9 +2746,9 @@ func newChecksumHasher(algo string) hash.Hash {
 // error so the caller sends a deterministic 400 InvalidRequest.
 func parseChecksum(req *http.Request) (algo, expected string, err error) {
 	matched := ""
-	for _, a := range []string{checksumAlgoCRC32c, checksumAlgoCRC32, checksumAlgoSHA1, checksumAlgoSHA256} {
-		if v := req.Header.Get(http.CanonicalHeaderKey(checksumHeaderFor(a))); v != "" {
-			matched = a
+	for _, h := range checksumRequestHeaders {
+		if v := req.Header.Get(h.header); v != "" {
+			matched = h.algo
 			expected = v
 			break
 		}
@@ -2788,11 +2803,11 @@ func collectS3Headers(req *http.Request) map[string]string {
 	// an explicit X-Amz-Checksum-Algorithm if present, else inferred from which
 	// x-amz-checksum-<algo> value header was supplied.
 	seenAlgo := ""
-	for _, a := range []string{checksumAlgoCRC32c, checksumAlgoCRC32, checksumAlgoSHA1, checksumAlgoSHA256} {
-		if v := req.Header.Get(http.CanonicalHeaderKey(checksumHeaderFor(a))); v != "" {
-			addHeader(checksumHeaderFor(a), v)
+	for _, h := range checksumRequestHeaders {
+		if v := req.Header.Get(h.header); v != "" {
+			addHeader(checksumHeaderFor(h.algo), v)
 			if seenAlgo == "" {
-				seenAlgo = a
+				seenAlgo = h.algo
 			}
 		}
 	}

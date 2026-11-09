@@ -259,3 +259,7 @@
 ## 2026-10-27 - Zero-Allocation map values
 **Learning:** Using `map[K]bool` for simple inclusion checks (sets) consumes 1 byte per entry. When scaling to large structures (like filesystem directories or S3 prefix lists), this causes significant memory overhead. Using `map[K]struct{}` consumes 0 bytes per value, functioning strictly as a zero-overhead set.
 **Action:** When tracking existence (sets) in a map, always use `map[string]struct{}` instead of `map[string]bool`. Convert boolean assignments `m[k] = true` to `m[k] = struct{}{}` and checks `if m[k]` to `if _, ok := m[k]; ok`.
+
+## 2026-11-08 - Pre-canonicalized header lookups
+**Learning:** Building an HTTP header name per request (`"x-amz-checksum-" + algo`) and passing it to `http.Header.Get` allocates a string and re-runs canonicalization for every candidate header. On the S3 checksum path that was four allocations per request just to discover that no checksum was sent.
+**Action:** Keep a package-level table of `{algorithm, canonical header literal}` pairs and look up the literals directly. Verified with `BenchmarkParseChecksum`: 0 B/op and 0 allocs/op versus 96 B/op and 4 allocs/op for the dynamic form.
