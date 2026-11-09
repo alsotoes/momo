@@ -615,14 +615,11 @@ func decryptAndStreamPayload(cfg common.Configuration, r io.Reader, size int64, 
 	return nil
 }
 
-// DownloadWithFallback retrieves a file using CRUSH placement and Ant Colony
-// Pheromone routing to select the healthiest replica, falling back to sibling
-// replicas if any node fails or returns an error.
-func DownloadWithFallback(cfg common.Configuration, encryptedName string, contentHash string, serverId int, dst io.Writer) error {
-	return DownloadWithFallbackRouter(cfg, encryptedName, contentHash, serverId, dst, DefaultRouter)
-}
-
-// DownloadWithFallbackRouter retrieves a file using the specified PheromoneRouter.
+// DownloadWithFallbackRouter retrieves a file using CRUSH placement and the
+// supplied Ant Colony Pheromone router to select the healthiest replica,
+// falling back to sibling replicas if any node fails. The router is injected
+// (#1149): there is no package-level default, so a caller decides the lifetime
+// of the learned trails and tests can supply a deterministic router.
 func DownloadWithFallbackRouter(cfg common.Configuration, encryptedName string, contentHash string, serverId int, dst io.Writer, router PheromoneRouter) (err error) {
 	// 🛡️ Zero-Crash: Unified panic recovery for all network-facing methods (Rule 37/43).
 	defer common.RecoverErr("client.DownloadWithFallback", &err)
@@ -633,7 +630,7 @@ func DownloadWithFallbackRouter(cfg common.Configuration, encryptedName string, 
 	}
 
 	if router == nil {
-		router = DefaultRouter
+		return fmt.Errorf("download requires a pheromone router: %w", syscall.EINVAL)
 	}
 
 	ordered, pErr := router.PrioritizeReplicas(candidates)

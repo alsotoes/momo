@@ -98,9 +98,6 @@ func NewPheromoneRouter() PheromoneRouter {
 	}
 }
 
-// DefaultRouter is a shared, package-level PheromoneRouter singleton for client downloads.
-var DefaultRouter = NewPheromoneRouter()
-
 // RecordSuccess strengthens the trail: fast completions yield higher rewards.
 func (r *antColonyRouter) RecordSuccess(nodeID int, rtt time.Duration) {
 	r.mu.Lock()

@@ -1,16 +1,15 @@
 # Tasks — Eliminate Singletons + Hardcoded Constants
 
 ## Phase 1 — Eliminate Pheromone Router Singleton
-- [ ] Modify `src/client/client.go`:
-  - Add `PheromoneRouter` parameter to `Connect`, `DownloadWithFallback`, `DownloadWithFallbackRouter`
-  - Remove `DefaultRouter` reference; callers pass router
-  - Update all call sites in `momo.go` and tests
-- [ ] Delete `DefaultRouter` from `src/client/pheromone.go:70`
-- [ ] Update `src/client/pheromone.go`:
-  - `NewPheromoneRouter()` remains public for construction
-  - Remove package-level `var DefaultRouter`
-- [ ] Update tests: inject mock `PheromoneRouter` where needed
-- [ ] Unit tests: verify mock router works in client tests
+- [x] `DefaultRouter` deleted; `NewPheromoneRouter()` is the only constructor.
+- [x] The unused `DownloadWithFallback` wrapper is gone: production code already
+  called `DownloadWithFallbackRouter`, so the singleton existed only to give the
+  wrapper a default. The router is now a required argument.
+- [x] A nil router returns `EINVAL` instead of silently falling back to shared
+  state — a missing dependency is a programming error, not a behaviour switch.
+- [x] Tests construct their own router; a dedicated test covers the nil case.
+- [x] Caller lifetime is explicit: whoever downloads decides how long learned
+  trails live, so two clients in one process no longer interfere.
 
 ## Phase 2 — Eliminate Global Payload Pool
 - [x] The replication payload pool is now a `replicationPool` instance owned by

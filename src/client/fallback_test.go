@@ -250,8 +250,8 @@ func TestDownloadWithFallback_DirectAPIAndSeeker(t *testing.T) {
 	seeker := &mockSeekWriter{}
 	hash := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
-	// Tests DownloadWithFallback (wrapper around DefaultRouter) with Seekable destination
-	err := DownloadWithFallback(cfg, "testfile.txt", hash, 0, seeker)
+	// Tests DownloadWithFallbackRouter with a Seekable destination
+	err := DownloadWithFallbackRouter(cfg, "testfile.txt", hash, 0, seeker, NewPheromoneRouter())
 	if err != nil {
 		t.Fatalf("DownloadWithFallback failed: %v", err)
 	}
@@ -268,7 +268,7 @@ func TestDownloadWithFallback_InvalidConfigs(t *testing.T) {
 
 	// Empty daemons
 	cfgEmpty := common.Configuration{}
-	err := DownloadWithFallback(cfgEmpty, "test.txt", "hash", 0, &dst)
+	err := DownloadWithFallbackRouter(cfgEmpty, "test.txt", "hash", 0, &dst, NewPheromoneRouter())
 	if !errors.Is(err, syscall.EINVAL) {
 		t.Fatalf("expected EINVAL for empty daemons, got: %v", err)
 	}
@@ -277,9 +277,22 @@ func TestDownloadWithFallback_InvalidConfigs(t *testing.T) {
 	cfg := common.Configuration{
 		Daemons: []*common.Daemon{{Host: "127.0.0.1:9999"}},
 	}
-	err = DownloadWithFallback(cfg, "test.txt", "", 5, &dst)
+	err = DownloadWithFallbackRouter(cfg, "test.txt", "", 5, &dst, NewPheromoneRouter())
 	if !errors.Is(err, syscall.EINVAL) {
 		t.Fatalf("expected EINVAL for invalid serverId, got: %v", err)
 	}
 }
 
+// TestDownloadWithFallbackRouterRequiresRouter proves the singleton is gone: a
+// nil router is a programming error, not a silent use of shared global state.
+func TestDownloadWithFallbackRouterRequiresRouter(t *testing.T) {
+	cfg := common.Configuration{
+		Global:  common.ConfigurationGlobal{ReplicationFactor: 1},
+		Daemons: []*common.Daemon{{Host: "127.0.0.1:1"}},
+	}
+	var dst bytes.Buffer
+	err := DownloadWithFallbackRouter(cfg, "obj", "hash", 0, &dst, nil)
+	if !errors.Is(err, syscall.EINVAL) {
+		t.Fatalf("expected EINVAL for a nil router, got %v", err)
+	}
+}
