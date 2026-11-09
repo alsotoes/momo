@@ -43,14 +43,21 @@ This document outlines the high-level roadmap for the Momo project, tracking maj
 
 ## 🟡 In Progress / Upcoming
 
-| Feature | Issue | Spec | Priority | Description |
-| :--- | :--- | :--- | :--- | :--- |
-| **Metadata Catalog HA + Backup/Recovery** | [#934](https://github.com/alsotoes/momo/issues/934) | — | High | R6: distributed metadata; snapshot/restore. |
+Nothing from the production-readiness roadmap is open. Follow-ups deliberately
+deferred (each documented in its OpenSpec change):
+
+| Item | Tracking | Why deferred |
+| :--- | :--- | :--- |
+| Hinted handoff for metadata replicas | `openspec/changes/r6-metadata-ha-v2/tasks.md` | Read repair plus the next write converge the record; hints need durable replay/expiry design of their own. |
+| Multi-node integration harness (metadata, rebalance, adaptive) | OpenSpec task lists | The unit suites drive the same code paths with in-process transports; a real multi-node harness is a project of its own. |
+| Failure-domain migration during rebalance | [#1260](https://github.com/alsotoes/momo/issues/1260) | Needs per-blob replica-location records; R1 spreads new writes and R2 repair prefers another domain meanwhile. |
+| Handshake/propagation adaptive timeouts | `openspec/changes/adaptive-thresholds-v1/tasks.md` | Fixed protocol deadlines both peers rely on; adapting them needs a cross-version compatibility plan. |
+| Dynamic replication order / distributed coordination / DI cleanup | [#1146](https://github.com/alsotoes/momo/issues/1146), [#1144](https://github.com/alsotoes/momo/issues/1144), [#1149](https://github.com/alsotoes/momo/issues/1149) | Research-grade adaptive proposals; no production blocker. |
 
 ## 🔴 Future Explorations
 
 - **Web UI Dashboard**: A real-time observability dashboard for the replication ring.
-- **Auto-Balancing**: Dynamic data re-balancing when new nodes join the P2P network.
+- ~~**Auto-Balancing**~~: shipped as R11 (stigmergic disk shedding + on-join migration).
 - **Client SDKs**: Native SDKs for Python and Rust.
 
 ---
@@ -63,27 +70,34 @@ Ratified in [prod-ready-roadmap](../openspec/changes/prod-ready-roadmap/specs/pr
 
 | ID | Item | Deliverable |
 |----|------|-------------|
-| R1 | Failure-domain-aware CRUSH placement | Rack/zone/DC groups constrain replica placement |
-| R2 | Degraded-read + self-heal rebuild | Re-replicate after corruption/quarantine/underrreplication |
-| R3 | Write durability + ack quorum + consistency | fsync-before-ack, survivor quorum, read-your-writes |
-| R4 | momofs FUSE/POSIX layer | ✅ Mountable POSIX filesystem with correct metadata semantics (implemented #963) |
+| R1 | Failure-domain-aware CRUSH placement | ✅ Rack/zone/DC groups constrain replica placement (#929) |
+| R2 | Degraded-read + self-heal rebuild | ✅ Re-replicate after corruption/quarantine/underreplication (#930) |
+| R3 | Write durability + ack quorum + consistency | ✅ `fsync` / `group-commit` / `none` barriers plus write quorum config (#931) |
+| R4 | momofs FUSE/POSIX layer | ✅ Mountable POSIX filesystem with correct metadata semantics (#963) |
 
 ### P1 — Operability, Multi-Tenancy, Security
 
 | ID | Item | Deliverable |
 |----|------|-------------|
 | R5 | Metrics phases 2–4 + dashboards/alerts | ✅ Storage/CAS + P2P/cluster gauges, latency histograms, dashboards/alerts (implemented #933) |
-| R6 | Metadata catalog HA + backup/recovery | Distributed metadata; snapshot/restore |
-| R7 | Error model & ops | ENOSPC surfacing, distinct exit codes, cluster health |
-| R8 | Multi-tenancy + authorization + audit | Identity/ACL/policy, audit logging |
-| R9 | Secrets management + key rotation | Env/KMS secrets, rotation for master/tenant/OPRF/auth keys |
+| R6 | Metadata catalog HA + backup/recovery | ✅ Sharded quorum writes, tombstone propagation, any-node reads with vector-clock conflict resolution and read repair, backup/restore CLI (#934, #1142/#1233) |
+| R7 | Error model & ops | ✅ ENOSPC preserved end-to-end (507 on S3), cause-specific exit codes 2–6, `/health/detailed` (#935) |
+| R8 | Multi-tenancy + authorization + audit | ✅ Per-tenant keys, default-deny ACLs in the S3 gateway, hash-chained audit log (#936) |
+| R9 | Secrets management + key rotation | ✅ `env`/`file` providers behind a `SecretProvider` seam, versioned key registry, rotation with grace period + audit, SIGHUP/HTTP reload (#937) |
 
 ### P2 — S3 Breadth & Scale
 
 | ID | Item | Deliverable |
 |----|------|-------------|
-| R10 | S3 lifecycle/versioning/notification/lock breadth | Extends #820; real-tooling compatibility |
-| R11 | Auto-rebalance on membership change | Dynamic data movement on node join/leave |
+| R10 | S3 lifecycle/versioning/notification/lock breadth | ✅ Lifecycle rules + worker, versioning with version records replicated across nodes, webhook notifications with retry, Object Lock (WORM, retention, legal hold) (#938) |
+| R11 | Auto-rebalance on membership change | ✅ Stigmergic local rules: disk-pressure shedding, on-join migration, streaming throttled pushes, load-aware target ranking (#1143) |
+| R-VS | Adaptive volume layout | ✅ Append-only volume superblocks for small blobs, per-blob files for large ones, hole-punch deletion (#1128) |
+
+Beyond the R-series, the adaptive control plane landed: gossip load summaries,
+load-aware shed targets, self-tuning metrics thresholds, pheromone constants that
+follow RTT variance, replication-pool sizing, homeostatic connection admission,
+RTT-derived metadata RPC timeouts, and SWIM-driven lease failover with
+split-brain-safe quorums. See `docs/ARCHITECTURE.md` for the mechanics.
 
 ---
-*Last Updated: 2026-08-24*
+*Last Updated: 2026-11-08*

@@ -137,15 +137,21 @@ returns a clean S3-compliant `501 NotImplemented` (bounded write,
 store-independent). Two sets are tracked separately, following the honest
 reject-and-document posture (same philosophy as §4c):
 
-- **Bucket-config (`key == ""`), issue #820 P3 / #912 (+ #920 P5)**: `?versioning`,
-  `?versions`, `?acl`, `?policy`, `?cors`, `?website`, `?lifecycle`,
+- **Bucket-config (`key == ""`), issue #820 P3 / #912 (+ #920 P5, #938
+  implemented surface removed)**: `?acl`, `?policy`, `?cors`, `?website`,
   `?tagging`, `?encryption`, `?publicAccessBlock`, `?accelerate`,
-  `?replication`, `?requestPayment`, `?logging`, `?object-lock`,
-  `?notification`, `?analytics`, `?inventory`, `?metrics`,
-  `?intelligent-tiering`.
+  `?replication`, `?requestPayment`, `?logging`, `?analytics`, `?inventory`,
+  `?metrics`, `?intelligent-tiering`.
 - **Object-level (`key != ""`), issue #820 P4 / #914 (+ #920 P5)**:
-  `?tagging`, `?acl`, `?versionId`, `?retention`, `?legal-hold`, `?select`
-  (SelectObjectContent).
+  `?tagging`, `?acl`, `?select` (SelectObjectContent).
+
+Implemented subresources route **before** the detector and must never be added
+back to these sets: bucket `?versioning`/`?versions`, `?lifecycle`,
+`?notification`, `?object-lock`, object `?retention`/`?legal-hold`, and
+`?versionId`. A store lacking the capability answers its own explanatory `501`
+instead. A dispatch-level regression test covers each (a supported param in the
+unsupported set is a silent feature outage — the `?notification` case, fixed in
+#1281).
 
 Supported subresources are untouched: bucket `?location`, list
 (`list-type` + pagination), multipart (`uploads`, `uploadId`, `partNumber`),
@@ -364,10 +370,64 @@ consistency model, both enforced in the storage core and documented here.
   appear in the mount under synthetic directories, and mount-created files are
   visible store objects. Zero TTL means manifests are re-read fresh on every
   op (read-your-writes; remounts see committed state, R4-C4).
-- The **FUSE/syscall transport** (`bazil.org/fuse` binding, CLI flags `-imp fs`
+- The **FUSE/syscall transport** (`hanwen/go-fuse/v2` binding, CLI flags `-imp fs`
   and `-fs-mount`, CI mount-e2e) is implemented (`src/momofs/fuse.go`, R4 #963).
   The mmap/posix-locks advisory surface remains a documented follow-up,
   matching the R2 `RebuildSource` / R3 barrier transport pattern.
+
+### 4j. Distributed Metadata Catalog (R6 v2, issues #934/#1142/#1233)
+
+Node-local BoltDB remains the fast path; the catalog adds optional quorum
+durability for deployments that cannot lose a name when a node dies.
+
+- **Placement**: 256 shards over a 150-vnode-per-node consistent hash ring
+  (`src/p2p/metadata_ring.go`). Every node computes placement from the cluster
+  map, so no coordinator or lookup service is involved.
+- **Writes**: `MsgPutMetadata` fans out to the shard's replica set and is
+  acknowledged at `W = M/2 + 1` (`metadata_replication` = M,
+  `metadata_quorum` = W, majority by default). Partial success fails the request
+  with `EIO` so the client retries; the retry is idempotent and advances the
+  writer's vector clock.
+- **Deletes**: tombstones propagate over `MsgDeleteMetadata` at the same quorum.
+  Replica-applied deletions skip the local delete hook, so propagation cannot
+  loop.
+- **Reads**: any replica may answer. The reader picks the dominating vector
+  clock, breaks genuinely concurrent clocks deterministically (newest modtime,
+  then greater hash) with an `AUDIT` line, repairs stale replicas, and caches the
+  winner locally. A tombstoned name is never resolved from a replica — the
+  fallback would otherwise resurrect a deleted object.
+- **Version records** (`MsgReplicateVersion`) follow the object's data replica
+  set so version listing/get/delete and lock checks agree on every holder
+  (#1233); delivery is best-effort and audited.
+- **Backup/restore**: `momo backup/restore` (`--output`, `--compress`, `--force`)
+  wraps BoltDB snapshot I/O for point-in-time recovery.
+- **Scope**: behind `[momofs] enabled=true` + `metadata_replication > 1`. With it
+  disabled every node keeps its metadata local (single-node behaviour unchanged).
+
+### 4k. S3 Breadth (R10, issue #938)
+
+The gateway covers the backup-tooling surface beyond basic PUT/GET:
+
+- **Versioning** (`?versioning`, `?versions`, `?versionId`): set/suspend, list
+  versions, version-addressed GET/HEAD/DELETE with delete markers. CAS dedup
+  keeps N identical versions on one stored blob. Plain PUT cannot echo
+  `x-amz-version-id` because the response precedes body streaming — multipart
+  does.
+- **Lifecycle** (`?lifecycle`): rule CRUD plus a background worker
+  (`[s3] lifecycle_worker_interval`) applying prefix-scoped expiration (delete, or
+  delete marker on versioned buckets) and storage-class transitions. A
+  "transition" only rewrites `x-amz-storage-class`; momo has no physical tiers.
+- **Notifications** (`?notification`): webhook rules delivered with exponential
+  backoff, bounded by `[s3] notification_retry_max` (5xx/network retried, 4xx
+  not).
+- **Object Lock** (`?object-lock`, `?retention`, `?legal-hold`): creation-only
+  enablement (never disableable), per-version GOVERNANCE/COMPLIANCE retention and
+  legal hold, delete enforcement in the version store, governance bypass via
+  `x-amz-bypass-governance-retention`; COMPLIANCE is extend-only. Ceilings:
+  default-retention rules are unsupported, a single-part PUT cannot capture lock
+  headers (use multipart), and lock state is S3-gateway-scoped.
+- Unsupported subresources are rejected at the dispatch root with a clean
+  `501 NotImplemented` rather than falling through (see §4e).
 
 ### 5. Automated Governance & AI Reviewer
 To maintain high integrity in a single-contributor environment, Momo employs an automated governance layer:

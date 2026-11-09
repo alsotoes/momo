@@ -2212,7 +2212,6 @@ var unsupportedBucketConfigSubresources = map[string]string{
 	"replication":         "replication configuration",
 	"requestPayment":      "request-payer configuration",
 	"logging":             "logging configuration",
-	"notification":        "notification configuration",
 	"analytics":           "bucket analytics configuration",
 	"inventory":           "bucket inventory configuration",
 	"metrics":             "bucket metrics configuration",

@@ -78,9 +78,13 @@ Momo is engineered around two foundational philosophies that govern all subsyste
 - **CRUSH-lite Placement**: deterministic, failure-domain-aware replica placement (Weighted Rendezvous Hashing) computed client-side — no central metadata service.
 - **Replication Strategies**: runtime-switchable `None`, `Chain`, `Splay`, and `Primary-Splay` modes, reconfigurable by a metrics-driven "polymorphic" controller.
 - **Write Durability & Quorum**: configurable durability barrier (`fsync` / `group-commit` / `none`) and `write_quorum` semantics.
-- **P2P Cluster Coordination**: gossip membership with SWIM-style failure detection, scatter-gather queries, and lease-based consensus for deletes.
-- **Distributed Metadata (R6)**: consistent-hash ring with quorum reads/writes, vector clocks, and shard-aware listing — optional and backward compatible.
-- **S3 Gateway**: SigV4 auth (dedicated gateway credentials), multipart upload, checksums, honest `501` for unsupported subresources.
+- **P2P Cluster Coordination**: gossip membership with SWIM-style failure detection, scatter-gather queries, and lease-based consensus for deletes, with SWIM-driven lease failover and majority-of-configured-cluster quorums (no split brain).
+- **Distributed Metadata (R6)**: consistent-hash ring with quorum writes and deletes (W of M), tombstone propagation, any-node reads with vector-clock conflict resolution and read repair, version records replicated to data replicas, and backup/restore — optional and backward compatible.
+- **S3 Gateway**: SigV4 auth (dedicated gateway credentials), multipart upload, integrity checksums, bucket versioning with version-addressed access, lifecycle rules + worker, webhook notifications with retry, Object Lock (WORM retention, legal hold), and honest `501` for unsupported subresources.
+- **Stigmergic Rebalancing (R11)**: each node sheds its coldest blobs to a replica peer above a disk high-water mark, migrates on join, streams pushes with an optional bandwidth cap, and ranks targets by gossip-reported peer load — no coordinator.
+- **Multi-Tenancy & Audit (R8)**: per-tenant key hierarchies (HKDF + AES-GCM wrapped KEKs), default-deny ACLs enforced in the S3 gateway, and a SHA-256 hash-chained audit log.
+- **Secrets & Rotation (R9)**: pluggable `env`/`file` providers behind a `SecretProvider` seam, a versioned local key registry, and rotation with a grace period, AUDIT entries, SIGHUP and `POST /reload-secrets`.
+- **Adaptive Control Plane**: self-tuning metrics thresholds, RTT-derived pheromone constants and metadata RPC timeouts, a self-sizing replication buffer pool, homeostatic connection admission, and gossip load summaries.
 - **FUSE Filesystem (momofs)**: POSIX access to the CAS store via `momo -imp fs` (go-fuse/v2).
 - **Security**: mandatory 64-byte auth-token validation, CRLF injection protection, path-traversal validation, envelope E2EE for clients, honest panic recovery (Rule 37).
 - **Prometheus Metrics**: `/metrics` + `/health` per node with `sync/atomic` counters — zero overhead on hot paths.
@@ -91,7 +95,7 @@ Momo is engineered around two foundational philosophies that govern all subsyste
 |---|---|
 | `src/` | Go source: `transport/` (TCP, QUIC, S3), `storage/` (CAS + blob stores), `server/` (daemon + metrics exporter), `client/`, `p2p/` (gossip, scatter-gather, leases), `crypto/` (E2EE, OPRF), `momofs/` (FUSE), `common/`, `metrics/` |
 | `src/momo.go` | Entry point — client/server runner and metrics bootstrap |
-| `.github/` | CI/CD (19 workflows: build, test, benchmark, smoke, pentest, reviewer) + governance scripts (`ai_reviewer.py`, E2E runners) |
+| `.github/` | CI/CD (22 workflows: build, test, lint, benchmark, smoke, pentest, reviewer, ADR/blog/harness gates) + governance scripts (`ai_reviewer.py`, E2E runners) |
 | `docs/` | This documentation set (architecture, protocol, config, testing, ADRs, engineering blog) |
 | `openspec/` | OpenSpec changes (`changes/`), ratified specs, `github.yaml` lifecycle binding |
 | `conf/` | Example configurations (`momo.conf`, `smoke.conf`, `pentest.conf`) |

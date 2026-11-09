@@ -557,3 +557,18 @@ func TestSetNotificationRetryMax(t *testing.T) {
 		t.Fatalf("expected 0 to be ignored, got %d", m.notificationRetryMax)
 	}
 }
+
+// TestNotificationSubresourceReachesHandler is a dispatch-level regression test
+// (#1281): a supported subresource must not be swallowed by the honest-501
+// bucket-config detector. Before the fix, ?notification matched the unsupported
+// set at the dispatch root, so the R10 notification API was unreachable.
+func TestNotificationSubresourceReachesHandler(t *testing.T) {
+	store, _ := newVersionedS3Stack(t)
+	resp, _ := runS3RequestCaptureBucket(t, s3Req("GET", "/bucket?notification", ""), store, "bucket")
+	if strings.Contains(resp, "501") && strings.Contains(resp, "NotImplemented") {
+		t.Fatalf("?notification must not be rejected as unsupported:\n%s", resp)
+	}
+	if !strings.Contains(resp, "404") || !strings.Contains(resp, "NoSuchNotificationConfiguration") {
+		t.Fatalf("expected 404 NoSuchNotificationConfiguration for an unset config:\n%s", resp)
+	}
+}

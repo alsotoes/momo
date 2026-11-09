@@ -21,6 +21,20 @@ hook; the crypto/OPRF section below is manually maintained.
 - **Allocation Trend plot**: Same axes, but Y-axis = avg heap allocations per op.
   **Lower lines = fewer allocations.** Fewer allocs = less GC pressure.
 
+## Feature Hot-Path Benchmarks
+
+Measured with `go test -bench` on the packages that own the code; each number is
+a snapshot, not a CI gate. Run the listed command to reproduce on your hardware.
+
+| Benchmark | Command | Result | Notes |
+|---|---|---|---|
+| `BenchmarkParseChecksum` | `go test ./src/transport -bench BenchmarkParseChecksum` | ~450 ns/op, **0 B/op, 0 allocs/op** | S3 checksum-header probe after the pre-canonicalized table (#1275). The dynamic baseline (`BenchmarkParseChecksumDynamicBaseline`) is ~930 ns/op, 96 B/op, 4 allocs/op. |
+| `BenchmarkEtagMatches` | `go test ./src/transport -bench BenchmarkEtagMatches` | ~127 ns/op, **0 allocs/op** | Conditional request tag scan; `strings.Split` baseline is ~257 ns/op, 80 B/op, 1 alloc. |
+| `BenchmarkParseAWSChunkHeader` | `go test ./src/transport -bench BenchmarkParseAWSChunkHeader` | ~60 ns/op, **0 allocs/op** | aws-chunked framing on S3 ingest; `strings.Split` baseline allocates 32 B/op per chunk. |
+| `BenchmarkRebalanceCycle` | `go test ./src/server -bench BenchmarkRebalanceCycle` | **~25 ms per pass @ 1000 blobs** | Statfs + blob walk + coldness sort + placement. Linear in blob count; a tick every 300 s is comfortable, a million-blob node pays ~25 s per pass and only above the high-water mark. |
+| `BenchmarkWriteThrottled` | `go test ./src/server -bench BenchmarkWriteThrottled` | **~1.2 µs per MiB @ 10 Gbps** | The bandwidth limiter is not the bottleneck above the cap. |
+| `BenchmarkTrustedRead` | `go test ./src/storage -bench BenchmarkTrustedRead` | constant **11 allocs/op** | Read-verifier seam: re-verifying a trusted blob is disk-bound, not allocation-bound. |
+
 <!-- BENCHMARK_RESULTS_START -->
 ## Performance
 

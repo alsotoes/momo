@@ -21,6 +21,11 @@ This document describes every test suite and validation step that runs in the Mo
 | External Client Replication | `external_client_test.yml` | push to master, PRs (path-filtered) | External S3 client replication mode downgrade |
 | Encryption Smoke | `encryption_smoke_test.yml` | push to master, PRs | E2E encryption across TCP/QUIC/S3 transports (`make smoke-encryption-*`) |
 | MomoFS FUSE E2E | `momofs_fuse_test.yml` | push to master, PRs (path-filtered) | FUSE mount round-trip (`TestFuseE2E_MountRoundTrip`) |
+| Lint | `lint.yml` | PRs | golangci-lint with gocognit/gocyclo at 15, new-code-only (`make lint`) |
+| ADR Sync | `adr-sync.yml` | PRs | Fails when a spec's generated ADR is out of sync (Rule 78) |
+| Harness Manifest | `ai_workflow_check.yml` | PRs touching `.github/`, `opencode.json`, `openspec/` | Validates `openspec/ai-workflow.yaml` (declared plugins, pinning, policy, secrets) and reviewer unit tests |
+| ECC Bundle Triage | `ecc_bundle_triage.yml` | PRs from `ecc-tools[bot]` | Auto-closes unsolicited ECC bundle PRs (defense-in-depth for `autoPR: false`) |
+| Blog Deploy | `cloudflare-pages-deploy.yml` | push touching `docs/blog/**` | Builds the Hugo site and publishes to Cloudflare Pages |
 | Blog Check | `blog_check.yml` | PRs, push to master | Validates docs/blog posts (Rule 76) and SVG diagrams (`make diagram-check`) |
 | Pentest | `pentest.yml` | push to master, PRs, manual dispatch | DotDotPwn fuzzing + Python exploit toolkit (10 CVEs found) |
 | Static Analysis | SonarCloud | CI / scanner integration | Static code analysis and coverage tracking (`sonar-project.properties`) |
@@ -206,6 +211,24 @@ Run as part of `make test` in the Go workflow.
 
 ---
 
+## R6–R11 and Adaptive Suites
+
+These suites cover the features added after the original test map. All run under
+`make test` with `-race`; the chaos and E2E cases use real listeners.
+
+| Area | Files | What they pin |
+|---|---|---|
+| Metadata quorum + tombstones | `src/p2p/metadata_delete_test.go` | Write/delete quorum (W of M), below-quorum failure, empty-name rejection, replica deletes do not re-propagate, malformed payloads ignored |
+| Metadata reads | `src/p2p/metadata_resolve_test.go`, `src/storage/metadata_resolver_test.go` | Dominating vector clock wins, concurrent clocks resolved deterministically (modtime, then hash), stale replica repaired, not-found, local cache applied, **tombstoned names never resolved** |
+| Metadata timeouts | `src/p2p/metadata_timeout_test.go` | RTT-derived timeout, floor/ceiling clamps, unknown RTT fallback, explicit override precedence |
+| Rebalance | `src/server/rebalance_test.go`, `rebalance_load_test.go`, `rebalance_chaos_test.go`, `rebalance_integration_test.go` | Shedding cold-first, config preconditions, load-aware target ranking (saturated avoided, last resort), pass serialization, join migration over a real socket, chaos invariant: **the last copy is never lost** |
+| Adaptive thresholds | `src/metrics/adaptive_test.go` | EWMA mean, quiet cluster keeps config, busy baseline raises max, clamps + 10-point gap, 5-point dead zone, persistence/reload, corrupt state fallback, nil safety, gauges |
+| Pheromone tuning | `src/client/pheromone_adaptive_test.go` | Defaults before samples, stable vs volatile evaporation, failure-rate penalty bounds, learned factor actually applied |
+| Buffer pool sizing | `src/server/payload_pool_test.go` | Floor, growth, 1 MiB ceiling, 64-sample threshold, invalid samples ignored |
+| Connection admission | `src/server/concurrency_test.go`, `concurrency_homeostasis_test.go` | Boot probe bounds, slot acquire/release, context cancellation, pressure sampling, homeostasis loop shedding, no-op guards |
+| S3 breadth | `src/transport/s3_versioning_test.go`, `s3_lifecycle_test.go`, `s3_notification_test.go`, `s3_objectlock_test.go` | Versioning/list/delete markers, lifecycle rule CRUD + worker, notification retry semantics, object-lock XML, retention/legal-hold APIs, delete enforcement (403), 507 on ENOSPC |
+| Checksum hot path | `src/transport/s3_checksum_hotpath_test.go` | Canonical header literals match `http.CanonicalHeaderKey`, every algorithm discovered and captured; benchmarks prove 0 allocs/op |
+
 ## Running Tests Locally
 
 ```bash
@@ -277,7 +300,7 @@ Runs DotDotPwn fuzzing and Python exploit scripts against Momo's S3 REST gateway
 
 | Phase | What it does |
 |---|---|
-| 1. Build | Set up Go 1.25 / Perl / Python 3, clone DotDotPwn, build Momo binary |
+| 1. Build | Set up Go 1.26 / Perl / Python 3, clone DotDotPwn, build Momo binary |
 | 2. S3 fuzzing | Start S3 server, run DotDotPwn 4x (5526 patterns each), stop |
 | 3. Native fuzzing | Start TCP server, pipe DotDotPwn patterns into Momo wire protocol via Python bridge |
 | 4. Exploitation | Run Python exploit toolkit (8 CVEs), stop native server |

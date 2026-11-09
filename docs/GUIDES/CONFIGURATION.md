@@ -624,6 +624,26 @@ FUSE transport itself is selected at launch with `-imp fs`.
     -   **Type:** String
     -   **Default:** (none)
 
+-   **`enabled`**
+    -   **Description:** Enables the distributed metadata catalog (R6 v2, #1142). When `true`, PUTs quorum-acknowledge across `metadata_replication` nodes, deletes propagate tombstones to the replica set, and a local miss is resolved from the replicas (vector-clock ordered, with read repair). Requires `[p2p] enabled=true`. When `false` (default) every node keeps its metadata local — single-node behaviour is unchanged.
+    -   **Type:** Boolean
+    -   **Default:** `false`
+
+-   **`metadata_replication`**
+    -   **Description:** Number of nodes that hold each metadata shard (M). Must be ≥ 1 and ≤ the daemon count.
+    -   **Type:** Integer
+    -   **Default:** `3`
+
+-   **`metadata_quorum`**
+    -   **Description:** Acknowledgements required for a metadata write (W). Must be in `[1, metadata_replication]`; `0` means majority (`M/2 + 1`).
+    -   **Type:** Integer
+    -   **Default:** `0` (majority)
+
+-   **`metadata_ttl`**
+    -   **Description:** Lifetime in seconds of the local metadata cache. `0` disables caching.
+    -   **Type:** Integer
+    -   **Default:** `60`
+
 ### [s3] (optional)
 
 Gateway tuning for the S3-compatible surface (R10, #938). The section and every
