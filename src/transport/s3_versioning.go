@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -85,7 +86,14 @@ type ListVersionsResult struct {
 }
 
 // FormatListVersionsXML renders the GET ?versions response page.
-func FormatListVersionsXML(bucket, prefix, keyMarker, versionIDMarker string, maxKeys int, page storage.VersionPage) []byte {
+func FormatListVersionsXML(bucket, prefix, keyMarker, versionIDMarker string, maxKeys int, page storage.VersionPage) (xmlBytes []byte, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL: Panic recovered in FormatListVersionsXML: %v", r)
+			err = syscall.EIO
+		}
+	}()
+
 	var buf bytes.Buffer
 	buf.WriteString(xml.Header)
 	buf.WriteString("<ListVersionsResult xmlns=\"")
@@ -183,7 +191,7 @@ func FormatListVersionsXML(bucket, prefix, keyMarker, versionIDMarker string, ma
 		}
 	}
 	buf.WriteString("</ListVersionsResult>\n")
-	return buf.Bytes()
+	return buf.Bytes(), nil
 }
 
 // writeRawResponse writes a complete HTTP response with headers + body.
@@ -258,7 +266,11 @@ func (m *S3Communicator) handleGetVersions(bucket string, q url.Values) (int, in
 		writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to list object versions.", bucket)
 		return 0, 0, fmt.Errorf("failed to list versions: %w", err)
 	}
-	body := FormatListVersionsXML(bucket, prefix, keyMarker, versionIDMarker, maxKeys, page)
+	body, formatErr := FormatListVersionsXML(bucket, prefix, keyMarker, versionIDMarker, maxKeys, page)
+	if formatErr != nil {
+		writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to format versions response.", bucket)
+		return 0, 0, fmt.Errorf("FormatListVersionsXML failed: %w", formatErr)
+	}
 	return 0, 0, m.writeRawResponse(xmlResponseHeaders(len(body)), body, nil)
 }
 
