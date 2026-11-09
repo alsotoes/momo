@@ -265,6 +265,10 @@ rule and the cluster converges as a side effect (stigmergy, not scheduling).
   point gap, 5-point step) so the control loop cannot twitch. Learned values
   persist in `<data_dir>/adaptive.db` and are exported as
   `momo_adaptive_*` gauges.
+- **Adaptive replication pool**: broadcasts feed their real payload size to an
+  EWMA learner; the pooled buffer target follows `mean × 1.5` within
+  `[1 KiB, 1 MiB]`, so the pool stops reallocating on every send without holding
+  a megabyte per P for a rare case.
 - **Load-aware shedding**: the gossip load summary ranks a blob's placement
   peers when choosing a shed target — healthy before unknown before saturated
   (disk ≥ 95% or ≥ 1000 in-flight), ties broken on disk then in-flight — so

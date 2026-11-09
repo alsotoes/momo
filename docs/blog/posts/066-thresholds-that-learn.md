@@ -69,6 +69,16 @@ that prefer a clean slate per boot.
 Persistence is deliberately not trusted blindly: values are clamped again on load,
 so a hand-edited or corrupted file cannot disable the safety rails.
 
+## The Same Trick on Buffers
+
+Cluster-wide replication broadcasts share one reusable buffer, sized once at 1 KiB.
+With more nodes or more metadata per object, nearly every send outgrew it and paid
+a reallocation. The pool now feeds each observed payload length into the same kind
+of learner and resizes itself to one and a half times the smoothed mean, clamped
+between the old 1 KiB floor and 1 MiB. Buffers whose capacity no longer matches the
+current target are simply released instead of being returned, so a resize can never
+mix sizes inside the pool.
+
 ## Watching It Work
 
 Three gauges expose the loop's decision — the learned maximum, the learned
