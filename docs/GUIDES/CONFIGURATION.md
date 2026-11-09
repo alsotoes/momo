@@ -231,6 +231,16 @@ This section controls the behavior of the decentralized polymorphic system and t
     # Returns: OK
     ```
 
+### [coordination] — Metrics-Controller Election (optional, #1144)
+
+Controls whether the polymorphic replication-mode controller is elected by lease
+instead of pinned to node 0.
+
+| Key | Required | Description |
+|-----|----------|-------------|
+| `enabled` | no | `true` makes every node campaign for the `coordination/metrics-controller` lease. The holder runs the controller and announces the mode it resumed from its persisted state; on loss it stands by without stopping the metrics loop. `false` (default) keeps the legacy node-0 behaviour. Requires `[p2p] enabled=true`. |
+| `metrics_controller_lease_ttl` | no | Lease duration in seconds. Each node renews at one third of it; a holder that stops renewing is replaced after at most two missed renewals. Default `30`; must be positive. |
+
 ### [adaptive] (optional, #1145)
 
 Self-tuning control-loop thresholds, disabled by default. When enabled, the

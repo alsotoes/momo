@@ -1135,6 +1135,10 @@ func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, d
 	gossip.SetScatterGather(scatterGather)
 	leaseManager.SetClusterSize(len(daemons))
 	gossip.SetLeaseManager(leaseManager)
+	// #1144: elect the metrics-controller role instead of pinning it to node 0.
+	if cfg.Coordination.Enabled {
+		installMetricsControllerElection(ctx, cfg.Coordination.MetricsControllerLeaseTTL, leaseManager)
+	}
 	// Coordinator failover Phase 2: step down proactively when this node is
 	// running out of CPU, memory, or goroutines.
 	if monitor := newCoordinationHealthMonitor(cfg.CoordinationFailover, leaseManager); monitor != nil {

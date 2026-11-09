@@ -459,6 +459,20 @@ type Configuration struct {
 	Rebalance ConfigurationRebalance
 	// CoordinationFailover holds the proactive coordination handoff settings.
 	CoordinationFailover ConfigurationCoordinationFailover
+	// Coordination holds the distributed-coordination election settings.
+	Coordination ConfigurationCoordination
+}
+
+// ConfigurationCoordination controls lease-based election of coordination roles
+// (#1144). Disabled keeps the legacy behaviour: only node 0 runs the
+// polymorphic replication-mode controller.
+type ConfigurationCoordination struct {
+	// Enabled elects a metrics-controller lease holder on every node instead of
+	// pinning the role to node 0. Default false.
+	Enabled bool
+	// MetricsControllerLeaseTTL is the lease duration in seconds. A node renews
+	// at a third of it and takes over after a holder stops renewing. Default 30.
+	MetricsControllerLeaseTTL int
 }
 
 // ConfigurationCoordinationFailover controls proactive coordination handoff:

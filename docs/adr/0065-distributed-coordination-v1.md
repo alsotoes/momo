@@ -32,14 +32,14 @@ This violates core principles:
 None documented.
 
 ## Implementation Status
-- **Code**: Planned
-- **Tests**: Planned
+- **Code**: Partial
+- **Tests**: Partial
 - **Docs**: Planned
-- **Blog post**: 
+- **Blog post**: docs/blog/posts/067-the-controller-that-left-node-zero.md
 
 ## References
 - Issue: #1144
 - PR: 
 - Spec: `openspec/changes/distributed-coordination-v1/`
-- Blog: 
+- Blog: docs/blog/posts/067-the-controller-that-left-node-zero.md
 

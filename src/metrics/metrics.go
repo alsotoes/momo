@@ -4,6 +4,7 @@ package metrics
 import (
 	"context"
 	"log"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -11,6 +12,35 @@ import (
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/mem"
 )
+
+// ControllerElector reports whether this node currently holds the coordination
+// lease for the polymorphic replication-mode controller (#1144). When no
+// elector is installed the legacy rule applies: only node 0 controls the mode.
+type ControllerElector interface {
+	IsController() bool
+}
+
+var controllerElector atomic.Pointer[controllerElectorBox]
+
+type controllerElectorBox struct{ e ControllerElector }
+
+// SetControllerElector installs the process-wide leadership gate. Safe to call
+// before the metrics loop starts; nil restores the legacy node-0 behaviour.
+func SetControllerElector(e ControllerElector) {
+	if e == nil {
+		controllerElector.Store(nil)
+		return
+	}
+	controllerElector.Store(&controllerElectorBox{e: e})
+}
+
+// IsControllerNode decides whether this node should act as the controller.
+func IsControllerNode(serverId int) bool {
+	if box := controllerElector.Load(); box != nil && box.e != nil {
+		return box.e.IsController()
+	}
+	return serverId == 0
+}
 
 // SystemMetrics defines an interface for getting system metrics.
 // This allows for mocking in tests.
@@ -201,10 +231,6 @@ func persistMode(order []int, idx int, store ModeStore) {
 // adjusts the replication mode based on the configured thresholds and fallback interval.
 // This function is intended to be run as a goroutine and will run indefinitely.
 func GetMetrics(ctx context.Context, cfg common.Configuration, serverId int, modeStore ModeStore) {
-	if serverId != 0 {
-		return
-	}
-
 	if !cfg.Global.PolymorphicSystem {
 		log.Printf("Replication will not change because polymorphic_system is set to false")
 		return
@@ -260,8 +286,13 @@ func GetMetrics(ctx context.Context, cfg common.Configuration, serverId int, mod
 		currentIndex: resumeMode(replicationOrder, modeStore),
 		start:        time.Now(),
 	}
-	persistMode(replicationOrder, c.currentIndex, modeStore)
-	pushNewReplicationMode(cfg, c.authToken, replicationOrder[c.currentIndex])
+	leader := IsControllerNode(serverId)
+	if leader {
+		persistMode(replicationOrder, c.currentIndex, modeStore)
+		pushNewReplicationMode(cfg, c.authToken, replicationOrder[c.currentIndex])
+	} else {
+		log.Printf("Coordination: node %d is not the metrics-controller lease holder; standing by", serverId)
+	}
 
 	ticker := time.NewTicker(time.Duration(cfg.Metrics.Interval) * time.Millisecond)
 	defer ticker.Stop()
@@ -271,6 +302,19 @@ func GetMetrics(ctx context.Context, cfg common.Configuration, serverId int, mod
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			nowLeader := IsControllerNode(serverId)
+			if nowLeader && !leader {
+				// Takeover (#1144): announce the mode this node resumed from its
+				// persisted state so the cluster converges immediately instead of
+				// waiting for the next threshold crossing.
+				log.Printf("Coordination: node %d acquired the metrics-controller role", serverId)
+				persistMode(replicationOrder, c.currentIndex, modeStore)
+				pushNewReplicationMode(cfg, c.authToken, replicationOrder[c.currentIndex])
+			}
+			leader = nowLeader
+			if !leader {
+				continue
+			}
 			c.step()
 		}
 	}

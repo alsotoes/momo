@@ -30,6 +30,9 @@ type LeaseManager struct {
 
 	grantedMu sync.Mutex
 	granted   map[string]int64
+	// grantedID records which holder owns each granted key so the holder can
+	// renew without releasing (which would open a mutual-exclusion gap).
+	grantedID map[string]uint64
 
 	heldMu sync.Mutex
 	held   map[uint64]*Lease
@@ -102,6 +105,7 @@ func NewLeaseManager(localID int32, transport Transport) *LeaseManager {
 		localID:   localID,
 		transport: transport,
 		granted:   make(map[string]int64),
+		grantedID: make(map[string]uint64),
 		held:      make(map[uint64]*Lease),
 		pending:   make(map[uint64]chan bool),
 		done:      make(chan struct{}),
@@ -200,7 +204,9 @@ func (lm *LeaseManager) handleLeaseRequest(rpc *RPC) {
 
 	lm.grantedMu.Lock()
 	existing, ok := lm.granted[payload.Key]
-	if ok && existing > now {
+	// A renewal from the current holder keeps the same lease ID; only a different
+	// holder is denied. Releasing to re-acquire would open a mutual-exclusion gap.
+	if ok && existing > now && lm.grantedID[payload.Key] != payload.LeaseID {
 		lm.grantedMu.Unlock()
 		grant := &LeasePayload{LeaseID: payload.LeaseID, Key: payload.Key, Expiry: 0}
 		resp := &RPC{From: lm.localID, Type: MsgLeaseGrant, Payload: grant.Encode()}
@@ -210,6 +216,7 @@ func (lm *LeaseManager) handleLeaseRequest(rpc *RPC) {
 		return
 	}
 	lm.granted[payload.Key] = payload.Expiry
+	lm.grantedID[payload.Key] = payload.LeaseID
 	lm.grantedMu.Unlock()
 
 	grant := &LeasePayload{LeaseID: payload.LeaseID, Key: payload.Key, Expiry: payload.Expiry}
@@ -258,6 +265,21 @@ func (lm *LeaseManager) handleLeaseRelease(rpc *RPC) {
 // Acquire requests a lease for the given resource key from a majority of alive peers.
 // Returns the lease if the quorum is reached, or an error otherwise.
 func (lm *LeaseManager) Acquire(key string, duration time.Duration) (*Lease, error) {
+	return lm.request(key, lm.nextLeaseID.Add(1), duration)
+}
+
+// Renew extends a lease this node already holds without releasing it. Peers
+// accept the request because the lease ID matches the current holder, so there
+// is no window in which a competing node could acquire the key.
+func (lm *LeaseManager) Renew(lease *Lease, duration time.Duration) (*Lease, error) {
+	if lease == nil || lease.Key == "" || lease.LeaseID == 0 {
+		return nil, fmt.Errorf("invalid lease to renew: %w", syscall.EINVAL)
+	}
+	return lm.request(lease.Key, lease.LeaseID, duration)
+}
+
+// request is the shared acquire/renew implementation.
+func (lm *LeaseManager) request(key string, leaseID uint64, duration time.Duration) (*Lease, error) {
 	// Quality-aware: prefer low-RTT alive peers for quorum (issue #823).
 	peers := lm.transport.Peers().AliveByQuality()
 	peerCount := 0
@@ -267,31 +289,12 @@ func (lm *LeaseManager) Acquire(key string, duration time.Duration) (*Lease, err
 		}
 	}
 
-	// Split-brain prevention (coordinator failover Phase 3): with a known
-	// cluster size, a minority partition must not grant leases at all, even if
-	// every reachable peer would agree.
-	if !lm.HasQuorum() {
-		return nil, fmt.Errorf("coordination suspended: cluster quorum lost: %w", syscall.EHOSTUNREACH)
-	}
-	if need := lm.ClusterQuorum(); need > 0 {
-		if reachable := 1 + peerCount; reachable < need {
-			return nil, fmt.Errorf("coordination suspended: %d/%d nodes reachable, need %d (errno=%d)", reachable, lm.clusterSize, need, syscall.EHOSTUNREACH)
-		}
-	}
-
-	// Split-brain guard (issue #630): if the cluster is configured with peers
-	// (the peer map is non-empty) but none of them are currently reachable, this
-	// is a network partition, not a single-node cluster. Granting a zero-quorum
-	// lease here would let every partition independently grant the same key.
-	// Distinguish "no peers configured" (single node, lenient self-grant) from
-	// "peers configured but unreachable" (partition, must fail).
-	if lm.transport.Peers().Count() > 0 && peerCount == 0 {
-		return nil, fmt.Errorf("no reachable peers for quorum: cluster partitioned (errno=%d)", syscall.EHOSTUNREACH)
+	if err := lm.checkCoordinationAllowed(peerCount); err != nil {
+		return nil, err
 	}
 
 	quorum := majorityQuorum(peerCount)
 
-	leaseID := lm.nextLeaseID.Add(1)
 	expiry := time.Now().Add(duration)
 
 	payload := &LeasePayload{
@@ -353,6 +356,25 @@ func (lm *LeaseManager) Acquire(key string, duration time.Duration) (*Lease, err
 	lm.heldMu.Unlock()
 
 	return lease, nil
+}
+
+// checkCoordinationAllowed enforces the split-brain guards before a lease
+// request is broadcast: a known cluster size requires a majority of the whole
+// cluster to be reachable, and configured-but-unreachable peers mean a
+// partition rather than a single-node cluster (issues #629, #630).
+func (lm *LeaseManager) checkCoordinationAllowed(peerCount int) error {
+	if !lm.HasQuorum() {
+		return fmt.Errorf("coordination suspended: cluster quorum lost: %w", syscall.EHOSTUNREACH)
+	}
+	if need := lm.ClusterQuorum(); need > 0 {
+		if reachable := 1 + peerCount; reachable < need {
+			return fmt.Errorf("coordination suspended: %d/%d nodes reachable, need %d (errno=%d)", reachable, lm.clusterSize, need, syscall.EHOSTUNREACH)
+		}
+	}
+	if lm.transport.Peers().Count() > 0 && peerCount == 0 {
+		return fmt.Errorf("no reachable peers for quorum: cluster partitioned (errno=%d)", syscall.EHOSTUNREACH)
+	}
+	return nil
 }
 
 // majorityQuorum returns the smallest integer quorum that requires a strict

@@ -71,3 +71,43 @@ func TestLoadCoordinationFailoverConfigRejectsBadValues(t *testing.T) {
 		}
 	}
 }
+
+func loadCoordinationElection(t *testing.T, body string) (ConfigurationCoordination, error) {
+	t.Helper()
+	f := iniFile(t, "[coordination]\n"+body)
+	sec, err := f.GetSection("coordination")
+	if err != nil {
+		t.Fatalf("GetSection: %v", err)
+	}
+	return loadCoordinationConfig(sec)
+}
+
+func TestLoadCoordinationElectionDefaults(t *testing.T) {
+	cfg, err := loadCoordinationElection(t, "")
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.Enabled {
+		t.Fatal("election must be opt-in")
+	}
+	if cfg.MetricsControllerLeaseTTL != 30 {
+		t.Fatalf("ttl = %d, want 30", cfg.MetricsControllerLeaseTTL)
+	}
+}
+
+func TestLoadCoordinationElectionValues(t *testing.T) {
+	cfg, err := loadCoordinationElection(t, "enabled=true\nmetrics_controller_lease_ttl=45\n")
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if !cfg.Enabled || cfg.MetricsControllerLeaseTTL != 45 {
+		t.Fatalf("unexpected config: %+v", cfg)
+	}
+}
+
+func TestLoadCoordinationElectionRejectsNonPositiveTTL(t *testing.T) {
+	_, err := loadCoordinationElection(t, "enabled=true\nmetrics_controller_lease_ttl=0\n")
+	if !errors.Is(err, syscall.EINVAL) {
+		t.Fatalf("expected EINVAL, got %v", err)
+	}
+}
