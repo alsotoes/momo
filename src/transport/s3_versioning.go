@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"bytes"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -84,41 +85,114 @@ type ListVersionsResult struct {
 }
 
 // FormatListVersionsXML renders the GET ?versions response page.
-func FormatListVersionsXML(bucket, prefix, keyMarker, versionIDMarker string, maxKeys int, page storage.VersionPage) []byte {
-	result := ListVersionsResult{
-		XMLNS:           s3XMLNS,
-		Name:            bucket,
-		Prefix:          prefix,
-		KeyMarker:       keyMarker,
-		VersionIDMarker: versionIDMarker,
-		MaxKeys:         maxKeys,
-		IsTruncated:     page.IsTruncated,
-		NextKeyMarker:   page.NextKeyMarker,
-		NextVersionID:   page.NextVersionID,
+func FormatListVersionsXML(bucket, prefix, keyMarker, versionIDMarker string, maxKeys int, page storage.VersionPage) (xmlBytes []byte, err error) {
+	defer common.RecoverErrWith("FormatListVersionsXML", syscall.EIO, &err)
+
+
+	var buf bytes.Buffer
+	buf.WriteString(xml.Header)
+	buf.WriteString("<ListVersionsResult xmlns=\"")
+	buf.WriteString(s3XMLNS)
+	buf.WriteString("\">")
+
+	buf.WriteString("<Name>")
+	xmlEscape(&buf, bucket)
+	buf.WriteString("</Name>")
+
+	buf.WriteString("<Prefix>")
+	xmlEscape(&buf, prefix)
+	buf.WriteString("</Prefix>")
+
+	buf.WriteString("<KeyMarker>")
+	xmlEscape(&buf, keyMarker)
+	buf.WriteString("</KeyMarker>")
+
+	buf.WriteString("<VersionIdMarker>")
+	xmlEscape(&buf, versionIDMarker)
+	buf.WriteString("</VersionIdMarker>")
+
+	if page.NextKeyMarker != "" {
+		buf.WriteString("<NextKeyMarker>")
+		xmlEscape(&buf, page.NextKeyMarker)
+		buf.WriteString("</NextKeyMarker>")
 	}
+
+	if page.NextVersionID != "" {
+		buf.WriteString("<NextVersionIdMarker>")
+		xmlEscape(&buf, page.NextVersionID)
+		buf.WriteString("</NextVersionIdMarker>")
+	}
+
+	buf.WriteString("<MaxKeys>")
+	var intBuf [32]byte
+	buf.Write(strconv.AppendInt(intBuf[:0], int64(maxKeys), 10))
+	buf.WriteString("</MaxKeys>")
+
+	buf.WriteString("<IsTruncated>")
+	if page.IsTruncated {
+		buf.WriteString("true")
+	} else {
+		buf.WriteString("false")
+	}
+	buf.WriteString("</IsTruncated>")
+
+	// ⚡ Bolt: Eliminate dynamic string allocations and repeated formatting overhead
+	// by replacing xml.MarshalIndent with a bytes.Buffer and using AppendFormat.
+	var timeBuf [32]byte
 	for _, rec := range page.Records {
-		v := s3Version{
-			XMLName:      xml.Name{Local: "Version"},
-			Key:          rec.Key,
-			VersionID:    rec.VersionID,
-			IsLatest:     rec.IsLatest,
-			LastModified: time.Unix(0, rec.Timestamp).UTC().Format(time.RFC3339Nano),
-			Size:         uint64(rec.Size),
-			StorageClass: "STANDARD",
-		}
-		if rec.IsDeleteMarker {
-			v.XMLName = xml.Name{Local: "DeleteMarker"}
-			v.Size = 0
-		} else {
-			v.ETag = `"` + rec.Hash + `"`
-		}
-		result.Entries = append(result.Entries, v)
+		formatVersionRecord(&buf, rec, &timeBuf, &intBuf)
 	}
-	out, err := xml.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return []byte(xml.Header + "<Error><Code>InternalError</Code></Error>")
+	buf.WriteString("</ListVersionsResult>\n")
+	return buf.Bytes(), nil
+}
+
+// formatVersionRecord writes a single version or delete marker entry directly to the buffer.
+// Extracted to lower cognitive complexity.
+func formatVersionRecord(buf *bytes.Buffer, rec storage.VersionRecord, timeBuf *[32]byte, intBuf *[32]byte) {
+	if rec.IsDeleteMarker {
+		buf.WriteString("<DeleteMarker>")
+	} else {
+		buf.WriteString("<Version>")
 	}
-	return append([]byte(xml.Header), append(out, '\n')...)
+
+	buf.WriteString("<Key>")
+	xmlEscape(buf, rec.Key)
+	buf.WriteString("</Key>")
+
+	buf.WriteString("<VersionId>")
+	xmlEscape(buf, rec.VersionID)
+	buf.WriteString("</VersionId>")
+
+	buf.WriteString("<IsLatest>")
+	if rec.IsLatest {
+		buf.WriteString("true")
+	} else {
+		buf.WriteString("false")
+	}
+	buf.WriteString("</IsLatest>")
+
+	buf.WriteString("<LastModified>")
+	t := time.Unix(0, rec.Timestamp).UTC()
+	buf.Write(t.AppendFormat(timeBuf[:0], time.RFC3339Nano))
+	buf.WriteString("</LastModified>")
+
+	if !rec.IsDeleteMarker {
+		buf.WriteString("<ETag>\"")
+		xmlEscape(buf, rec.Hash)
+		buf.WriteString("\"</ETag>")
+
+		buf.WriteString("<Size>")
+		buf.Write(strconv.AppendInt(intBuf[:0], int64(rec.Size), 10))
+		buf.WriteString("</Size>")
+
+		buf.WriteString("<StorageClass>STANDARD</StorageClass>")
+	}
+
+	if rec.IsDeleteMarker {
+		buf.WriteString("</DeleteMarker>")
+	} else {
+		buf.WriteString("</Version>")
+	}
 }
 
 // writeRawResponse writes a complete HTTP response with headers + body.
@@ -193,7 +267,11 @@ func (m *S3Communicator) handleGetVersions(bucket string, q url.Values) (int, in
 		writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to list object versions.", bucket)
 		return 0, 0, fmt.Errorf("failed to list versions: %w", err)
 	}
-	body := FormatListVersionsXML(bucket, prefix, keyMarker, versionIDMarker, maxKeys, page)
+	body, formatErr := FormatListVersionsXML(bucket, prefix, keyMarker, versionIDMarker, maxKeys, page)
+	if formatErr != nil {
+		writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to format versions response.", bucket)
+		return 0, 0, fmt.Errorf("FormatListVersionsXML failed: %w", formatErr)
+	}
 	return 0, 0, m.writeRawResponse(xmlResponseHeaders(len(body)), body, nil)
 }
 
@@ -253,22 +331,29 @@ func isGovernanceBypass(req *http.Request) bool {
 
 func (m *S3Communicator) handleVersionedDelete(bucket, key, versionID string, now int64, bypass bool) (int, int64, error) {
 	if versionID == "" {
-		// Delete marker: shadow the object by removing the flat mapping so
-		// plain GETs 404, then record the marker version.
-		if err := m.versioning.RepointNamespace(key, ""); err != nil {
-			writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to delete object.", key)
-			return 0, 0, fmt.Errorf("failed to remove mapping for delete marker: %w", err)
-		}
-		marker, err := m.versioning.RecordDeleteMarker(bucket, key)
-		if err != nil {
-			writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to create delete marker.", key)
-			return 0, 0, fmt.Errorf("failed to record delete marker: %w", err)
-		}
-		hdr := "HTTP/1.1 204 No Content\r\nx-amz-delete-marker: true\r\nx-amz-version-id: " + marker + s3ConnClose
-		m.writeAuditLog("DeleteObject", bucket+"/"+key, "success")
-		return 0, 0, m.writeRawResponse(hdr, nil, nil)
+		return m.handleDeleteMarkerCreation(bucket, key)
 	}
+	return m.handlePermanentVersionDelete(bucket, key, versionID, now, bypass)
+}
 
+func (m *S3Communicator) handleDeleteMarkerCreation(bucket, key string) (int, int64, error) {
+	// Delete marker: shadow the object by removing the flat mapping so
+	// plain GETs 404, then record the marker version.
+	if err := m.versioning.RepointNamespace(key, ""); err != nil {
+		writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to delete object.", key)
+		return 0, 0, fmt.Errorf("failed to remove mapping for delete marker: %w", err)
+	}
+	marker, err := m.versioning.RecordDeleteMarker(bucket, key)
+	if err != nil {
+		writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to create delete marker.", key)
+		return 0, 0, fmt.Errorf("failed to record delete marker: %w", err)
+	}
+	hdr := "HTTP/1.1 204 No Content\r\nx-amz-delete-marker: true\r\nx-amz-version-id: " + marker + s3ConnClose
+	m.writeAuditLog("DeleteObject", bucket+"/"+key, "success")
+	return 0, 0, m.writeRawResponse(hdr, nil, nil)
+}
+
+func (m *S3Communicator) handlePermanentVersionDelete(bucket, key, versionID string, now int64, bypass bool) (int, int64, error) {
 	// Permanent delete of one specific version.
 	deleted, err := m.versioning.DeleteVersion(bucket, key, versionID, now, bypass)
 	if err != nil {

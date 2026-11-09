@@ -86,7 +86,10 @@ func TestFormatListVersionsXML(t *testing.T) {
 			{Key: "logs/app.log", VersionID: "v-m", Timestamp: now - 50, IsLatest: false, IsDeleteMarker: true},
 		},
 	}
-	raw := FormatListVersionsXML("bucket", "logs/", "", "", 1000, page)
+	raw, err := FormatListVersionsXML("bucket", "logs/", "", "", 1000, page)
+	if err != nil {
+		t.Fatalf("FormatListVersionsXML failed: %v", err)
+	}
 	var result ListVersionsResult
 	if err := xml.Unmarshal(raw, &result); err != nil {
 		t.Fatalf("unmarshal: %v\n%s", err, raw)
@@ -120,7 +123,10 @@ func TestFormatListVersionsXML(t *testing.T) {
 }
 
 func TestFormatListVersionsXMLEmpty(t *testing.T) {
-	raw := FormatListVersionsXML("bucket", "", "", "", 1000, storage.VersionPage{})
+	raw, err := FormatListVersionsXML("bucket", "", "", "", 1000, storage.VersionPage{})
+	if err != nil {
+		t.Fatalf("FormatListVersionsXML failed: %v", err)
+	}
 	if !bytes.Contains(raw, []byte("<IsTruncated>false</IsTruncated>")) {
 		t.Fatalf("expected empty truncated=false page: %s", raw)
 	}
