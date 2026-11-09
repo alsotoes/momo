@@ -198,6 +198,11 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 	}
 	// R5 phase 4: opt-in latency histograms (zero overhead when disabled).
 	metricsCollector.SetLatencyHistogramsEnabled(cfg.Metrics.EnableLatencyHistograms)
+	// #1287: expose what this node learned (mode, thresholds, election status)
+	// and where it is persisted, so operators do not need to open BoltDB files.
+	metricsCollector.SetLearnedState(func() *LearnedState {
+		return buildLearnedState(cfg, serverId)
+	})
 	// Pass reload function for /reload-secrets endpoint (nil when R9 is disabled).
 	var reloadFn func()
 	if rotationMgr != nil {

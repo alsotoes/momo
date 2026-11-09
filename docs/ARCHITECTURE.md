@@ -495,6 +495,43 @@ bucket increments on the hot path).
 
 **Overhead guarantees:** All counters use `sync/atomic` (~5ns per op). Heavy operations (`runtime.ReadMemStats`, disk stats) run only at scrape time (every 15-60s). No `prometheus/client_golang` dependency. Target: <1% throughput regression.
 
+### 7b. State, Persistence, and What Survives a Restart
+
+Momo adapts at runtime: it switches replication mode, learns CPU/memory baselines,
+and can elect its controller by lease. Two rules decide where that state lives.
+
+**`momo.conf` is operator-owned input.** The daemon only reads it (`ini.Load` in
+`src/common/config.go`); nothing writes it back. Learning relaxes thresholds
+*within* the configured bounds but never below the operator's floor, so a restart
+cannot lose or rewrite configuration.
+
+**Learned state is durable, per node.** Each daemon persists its own copy; none of
+it is cluster-wide:
+
+| Learned state | Store (relative to the node data dir) | Restored by |
+|---|---|---|
+| Replication mode index | `coordination/replication_mode` | `resumeMode` at loop start and on controller takeover |
+| Adaptive CPU/memory thresholds | `adaptive.db` | `NewAdaptiveThresholds` (EWMA baseline + clamps) |
+| Object metadata, versions, locks, ACLs, tenants, audit chain, metadata hints | `momo.db` | `CASStore` open |
+| Secret/key versions | `keys.db` | key registry open |
+
+**Observations are ephemeral and relearned**, deliberately without a write path:
+gossip peer map and SWIM states, RTT EWMA, peer load reports, leases, the
+replication buffer-pool target, client pheromone tuning, and Prometheus counters.
+A restart costs convergence time (seconds), not decisions.
+
+**Inspecting it:** `GET /health/detailed` on each node returns a `learned_state`
+object with the election status, the resumed replication mode (plus whether it is
+persisted), and the learned adaptive thresholds. It reports persistence as a
+boolean plus a **relative** store name — never an absolute path, because the
+metrics listener is unauthenticated. The block is omitted when no provider is
+installed (embedded/test collectors).
+
+> Residual risk: `/health/detailed` and `/metrics` have no authentication. Bind
+> them to an admin interface (`[metrics] prometheus_bind_host`, per-daemon
+> `metrics_host`) or front them with an authenticating proxy before exposing them
+> outside a trusted network.
+
 ## High-Level Architecture
 
 The system uses Sage Weil's **CRUSH algorithm** (simplified Go implementation) to distribute load across all available nodes. There is no single "entry point" or central coordinator; instead, the client deterministically selects the optimal primary node for each object based on its content hash.
