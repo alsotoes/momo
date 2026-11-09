@@ -215,7 +215,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 			_ = rotationMgr.Reload(ctx)
 		}
 	}
-	StartMetricsServer(ctx, metricsHost, metricsPort, metricsCollector, reloadFn)
+	StartMetricsServer(ctx, metricsHost, metricsPort, metricsCollector, reloadFn, cfg.Metrics.AdminToken)
 
 	// R10 Phase 2 (#938): lifecycle background worker. Applies expiration and
 	// transition rules to the configured bucket on a fixed interval.

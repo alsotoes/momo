@@ -182,6 +182,11 @@ type ConfigurationS3 struct {
 }
 
 // ConfigurationMetrics holds the metrics configuration for the application.
+// MinAdminTokenLength is the shortest accepted [metrics] admin_token. Shorter
+// values are rejected at load time: a weak bearer token on an administrative
+// listener is closer to no token than to protection.
+const MinAdminTokenLength = 16
+
 type ConfigurationMetrics struct {
 	// Interval is the interval at which to collect metrics.
 	Interval int
@@ -200,6 +205,10 @@ type ConfigurationMetrics struct {
 	// momo_replication_latency_seconds histograms (R5 phase 4, #933). When
 	// false (default) there is zero overhead on the request path.
 	EnableLatencyHistograms bool
+	// AdminToken protects the admin listener (#1289). When set, every endpoint
+	// except /health requires "Authorization: Bearer <token>". When empty, the
+	// mutating /reload-secrets endpoint is only served on a loopback bind.
+	AdminToken string
 }
 
 // TenantConfig holds per-tenant configuration (R8, #936).
