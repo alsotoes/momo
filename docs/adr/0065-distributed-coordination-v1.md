@@ -35,11 +35,11 @@ None documented.
 - **Code**: Partial
 - **Tests**: Partial
 - **Docs**: Planned
-- **Blog post**: docs/blog/posts/067-the-controller-that-left-node-zero.md
+- **Blog post**: docs/blog/posts/068-mode-changes-from-any-node.md
 
 ## References
 - Issue: #1144
 - PR: 
 - Spec: `openspec/changes/distributed-coordination-v1/`
-- Blog: docs/blog/posts/067-the-controller-that-left-node-zero.md
+- Blog: docs/blog/posts/068-mode-changes-from-any-node.md
 

@@ -55,7 +55,9 @@ The `ProtocolFactory` (`transport/factory.go`) is the **sole protocol-aware comp
 ---
 
 ### 3. State Management (Polymorphic System)
-The metrics controller (`metrics.GetMetrics`, `src/metrics/metrics.go`) runs on the **primary (controller) node — daemon 0**; it short-circuits on any node with `serverId != 0`. It is responsible for monitoring system metrics (CPU and memory usage). When a threshold is reached, the controller broadcasts the new replication strategy to the entire cluster via the `ChangeReplication` endpoint, ensuring all potential "Primary" nodes remain in sync. (Per-node Prometheus `/metrics`/`/health` export is independent and runs on every node; see Observability §7.)
+The metrics controller (`metrics.GetMetrics`, `src/metrics/metrics.go`) runs on the **controller node**, which is whichever node holds the `coordination/metrics-controller` lease when `[coordination] enabled=true` (#1144); with election disabled it falls back to daemon 0. It monitors system metrics (CPU and memory), and when a threshold is reached it broadcasts the new replication strategy through the `ChangeReplication` endpoint.
+
+**Any node that applies a change propagates it** (#1144 Phase 3): node 0 is not the only origin. Loop-freedom comes from timestamp ordering — a node ignores a mode update whose timestamp is not newer than the one it already applied, so it never re-broadcasts a duplicate. A zero timestamp keeps the legacy unconditional behaviour for manual/administrative overrides. (Per-node Prometheus `/metrics`/`/health` export is independent and runs on every node; see Observability §7.)
 
 ### 4. Distributed Object Engine (CAS 2.0)
 Momo utilizes a **Shared-Nothing Partitioned Architecture** for its object storage layer, encapsulated in the `src/storage` package:
