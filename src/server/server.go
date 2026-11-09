@@ -1146,8 +1146,12 @@ func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, d
 
 	// Coordinator failover Phase 1: degrade leases as soon as SWIM suspects a
 	// peer, instead of waiting for the lease TTL.
-	gossip.OnPeerStateChange(func(peerID int32, _ p2p.PeerState) {
-		leaseManager.OnPeerFailure(peerID)
+	gossip.OnPeerStateChange(func(peerID int32, state p2p.PeerState) {
+		if state == p2p.PeerStateSuspect || state == p2p.PeerStateOffline {
+			if ferr := leaseManager.OnPeerFailure(peerID); ferr != nil {
+				log.Printf("P2P: lease failover for peer %d failed: %v", peerID, ferr)
+			}
+		}
 	})
 	if oprfProvider != nil {
 		gossip.SetOPRFProvider(oprfProvider)

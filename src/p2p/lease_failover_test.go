@@ -143,16 +143,19 @@ func TestGossiperNotifiesStateObservers(t *testing.T) {
 
 	peer := tr.pm.Get(2)
 	g.setPeerState(peer, PeerStateSuspect)
-	g.setPeerState(peer, PeerStateAlive) // recovery is not reported
+	g.setPeerState(peer, PeerStateAlive) // recovery is reported for hint replay
 	g.setPeerState(peer, PeerStateOffline)
 
 	mu.Lock()
 	defer mu.Unlock()
-	if len(seen) != 2 {
-		t.Fatalf("expected suspicious+offline notifications, got %v", seen)
+	want := []PeerState{PeerStateSuspect, PeerStateAlive, PeerStateOffline}
+	if len(seen) != len(want) {
+		t.Fatalf("expected %v, got %v", want, seen)
 	}
-	if seen[0] != PeerStateSuspect || seen[1] != PeerStateOffline {
-		t.Fatalf("unexpected sequence: %v", seen)
+	for i := range want {
+		if seen[i] != want[i] {
+			t.Fatalf("unexpected sequence: %v", seen)
+		}
 	}
 }
 

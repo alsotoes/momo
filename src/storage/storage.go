@@ -41,6 +41,7 @@ var (
 	bucketNotification   = []byte("notification")      // Maps bucket -> JSON NotificationConfig (R10, #938)
 	bucketObjectLockCfg  = []byte("object_lock")       // Maps bucket -> lock-enabled flag (R10-LK1, #938)
 	bucketLockState      = []byte("object_lock_state") // Maps bucket\x00key\x00versionID -> ObjectLockState JSON (R10-LK1, #938)
+	bucketMetadataHints  = []byte("metadata_hints")    // Maps peer+name -> pending metadata record (R6 v2 hinted handoff)
 )
 
 // ObjectMeta is the binary metadata stored in the objects bucket.
@@ -301,6 +302,7 @@ var metaBuckets = [][]byte{
 	bucketNotification,
 	bucketObjectLockCfg,
 	bucketLockState,
+	bucketMetadataHints,
 }
 
 // initBuckets creates every metadata bucket if it does not already exist.

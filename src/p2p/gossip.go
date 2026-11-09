@@ -181,16 +181,16 @@ func (g *Gossiper) OnPeerStateChange(fn func(peerID int32, state PeerState)) {
 	g.cbMu.Unlock()
 }
 
-// setPeerState transitions a peer and notifies observers on degradation.
+// setPeerState transitions a peer and notifies observers on every actual change,
+// including recovery back to ALIVE: lease failover consumes the degradation
+// edge, hinted-handoff replay consumes the recovery edge. Observers receive the
+// new state and must filter for what they care about.
 // Returns true when the state actually changed.
 func (g *Gossiper) setPeerState(peer *Peer, state PeerState) bool {
 	if peer.State() == state {
 		return false
 	}
 	peer.SetState(state)
-	if state != PeerStateSuspect && state != PeerStateOffline {
-		return true
-	}
 	g.cbMu.RLock()
 	observers := make([]func(int32, PeerState), len(g.stateObservers))
 	copy(observers, g.stateObservers)

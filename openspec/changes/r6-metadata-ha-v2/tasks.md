@@ -67,8 +67,13 @@
   deterministically (newest modtime, then greater hash) with an AUDIT log.
 - [x] **Read repair**: replicas holding a stale or missing record receive the
   winner (`MsgReplicateMetadata`), best-effort.
-- [ ] **Hinted handoff**: owner stores hints for downed replicas — deferred;
-  read repair + the next write converge the record instead.
+- [x] **Hinted handoff**: a write or delete that fails on a replica stores the
+  encoded record in `metadata_hints` (keyed by peer + name, one hour TTL, capped
+  at 4096 per peer with oldest-first pruning). When SWIM reports the peer ALIVE,
+  `ReplayMetadataHints` re-sends each one and deletes the hint only after the
+  acknowledgement; a replayed record with an older vector clock is ignored by the
+  replica, so replay is idempotent. Failures are audited and never fail the
+  already-acknowledged quorum write.
 - [ ] **Integration tests**: 3-node cluster, concurrent writes → conflict detection, quorum with 1 replica down — needs the read path to observe conflicts
 
 ## Phase 3 — Any-Node Read Path + Repair
@@ -88,7 +93,8 @@
   - `Delete` calls `invalidateCache(name)`
 - [ ] **Any-node read**: on cache miss, parallel ResolveMetadata RPC to ALL M replicas
 - [ ] **Read repair**: on version mismatch, compare VectorClocks → propagate winner to stale replicas
-- [ ] **Hinted handoff**: owner stores hints for downed replicas; on recovery, replay hints
+- [x] **Hinted handoff**: see the write-path section above — hints are stored on
+  both the replicate and tombstone paths and replayed on the ALIVE transition.
 - [ ] **SWIM integration**: on SUSPECT/OFFLINE for replica, invalidate cache entries, failover to other replicas
 - [x] Unit coverage for the read path: dominant clock wins, concurrent conflict is
   deterministic, tie-break on hash, not-found, empty name, stale replica
