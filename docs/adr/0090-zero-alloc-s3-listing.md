@@ -22,10 +22,11 @@ None documented.
 - **Code**: Planned
 - **Tests**: Planned
 - **Docs**: Planned
-- **Blog post**:
+- **Blog post**: 
 
 ## References
 - Issue: #1285
-- PR:
+- PR: 
 - Spec: `openspec/changes/zero-alloc-s3-listing/`
-- Blog:
+- Blog: 
+
