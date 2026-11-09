@@ -2,36 +2,25 @@ package server
 
 import "testing"
 
-// resetPoolSizing restores global pool-sizing state around a test.
-func resetPoolSizing(t *testing.T) {
-	t.Helper()
-	origTarget := payloadPoolTarget.Load()
-	origLearner := poolSizing
-	poolSizing = &payloadSizeLearner{alpha: 0.1}
-	t.Cleanup(func() {
-		payloadPoolTarget.Store(origTarget)
-		poolSizing = origLearner
-	})
-}
+// newTestPool returns an isolated pool so tests never touch a shared one.
+func newTestPool() *replicationPool { return newReplicationPool() }
 
 func TestPayloadPoolKeepsFloorForSmallPayloads(t *testing.T) {
-	resetPoolSizing(t)
-	payloadPoolTarget.Store(payloadPoolMinCapacity)
+	pool := newTestPool()
 	for i := 0; i < payloadPoolSamplesPerResize*2; i++ {
-		recordReplicationPayloadSize(16)
+		pool.recordSize(16)
 	}
-	if got := payloadPoolTargetCapacity(); got != payloadPoolMinCapacity {
+	if got := pool.targetCapacity(); got != payloadPoolMinCapacity {
 		t.Fatalf("small payloads must keep the floor, got %d", got)
 	}
 }
 
 func TestPayloadPoolGrowsForLargePayloads(t *testing.T) {
-	resetPoolSizing(t)
-	payloadPoolTarget.Store(payloadPoolMinCapacity)
+	pool := newTestPool()
 	for i := 0; i < payloadPoolSamplesPerResize*4; i++ {
-		recordReplicationPayloadSize(64 * 1024)
+		pool.recordSize(64 * 1024)
 	}
-	got := payloadPoolTargetCapacity()
+	got := pool.targetCapacity()
 	if got <= payloadPoolMinCapacity {
 		t.Fatalf("large payloads must grow the pool, got %d", got)
 	}
@@ -41,37 +30,35 @@ func TestPayloadPoolGrowsForLargePayloads(t *testing.T) {
 }
 
 func TestPayloadPoolClampsOversizedPayloads(t *testing.T) {
-	resetPoolSizing(t)
-	payloadPoolTarget.Store(payloadPoolMinCapacity)
+	pool := newTestPool()
 	for i := 0; i < payloadPoolSamplesPerResize*4; i++ {
-		recordReplicationPayloadSize(8 << 20) // 8 MiB: above the 1 MiB ceiling
+		pool.recordSize(8 << 20) // 8 MiB: above the 1 MiB ceiling
 	}
-	if got := payloadPoolTargetCapacity(); got != payloadPoolMaxCapacity {
+	if got := pool.targetCapacity(); got != payloadPoolMaxCapacity {
 		t.Fatalf("target = %d, want ceiling %d", got, payloadPoolMaxCapacity)
 	}
 }
 
 func TestPayloadPoolResizesOnlyAfterSampleThreshold(t *testing.T) {
-	resetPoolSizing(t)
-	payloadPoolTarget.Store(payloadPoolMinCapacity)
+	pool := newTestPool()
 	// One short of the threshold: no resize yet.
 	for i := 0; i < payloadPoolSamplesPerResize-1; i++ {
-		recordReplicationPayloadSize(64 * 1024)
+		pool.recordSize(64 * 1024)
 	}
-	if got := payloadPoolTargetCapacity(); got != payloadPoolMinCapacity {
+	if got := pool.targetCapacity(); got != payloadPoolMinCapacity {
 		t.Fatalf("resized before enough samples: %d", got)
 	}
-	recordReplicationPayloadSize(64 * 1024)
-	if got := payloadPoolTargetCapacity(); got <= payloadPoolMinCapacity {
+	pool.recordSize(64 * 1024)
+	if got := pool.targetCapacity(); got <= payloadPoolMinCapacity {
 		t.Fatalf("did not resize at the threshold: %d", got)
 	}
 }
 
 func TestRecordPayloadSizeIgnoresNonPositive(t *testing.T) {
-	resetPoolSizing(t)
-	recordReplicationPayloadSize(0)
-	recordReplicationPayloadSize(-5)
-	if mean, samples := poolSizing.meanAndSamples(); samples != 0 || mean != 0 {
+	pool := newTestPool()
+	pool.recordSize(0)
+	pool.recordSize(-5)
+	if mean, samples := pool.learner.meanAndSamples(); samples != 0 || mean != 0 {
 		t.Fatalf("invalid sizes must be ignored: mean=%v samples=%d", mean, samples)
 	}
 }
@@ -85,5 +72,21 @@ func TestClampCapacity(t *testing.T) {
 	}
 	if clampCapacity(4096) != 4096 {
 		t.Fatal("in-range value changed")
+	}
+}
+
+// TestReplicationPoolsAreIndependent proves the pool is per instance: resizing
+// one server's pool must not change another's target (the process-global pool
+// this replaced shared one adaptive target across every daemon).
+func TestReplicationPoolsAreIndependent(t *testing.T) {
+	a, b := newTestPool(), newTestPool()
+	for i := 0; i < payloadPoolSamplesPerResize*4; i++ {
+		a.recordSize(64 * 1024)
+	}
+	if a.targetCapacity() <= payloadPoolMinCapacity {
+		t.Fatal("pool A did not grow")
+	}
+	if b.targetCapacity() != payloadPoolMinCapacity {
+		t.Fatalf("pool B changed to %d; pools must not share state", b.targetCapacity())
 	}
 }

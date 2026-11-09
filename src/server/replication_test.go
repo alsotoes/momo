@@ -205,95 +205,76 @@ type recordingPool struct {
 	putCaps []int
 }
 
-func (p *recordingPool) Get() interface{} { return make([]byte, payloadPoolTargetCapacity()) }
+func (p *recordingPool) Get() interface{} { return make([]byte, payloadPoolMinCapacity) }
 
 func (p *recordingPool) Put(b interface{}) { p.putCaps = append(p.putCaps, cap(b.([]byte))) }
 
 // TestReleasePayloadOnlyReturnsFixedCapacity verifies that buffers are only
-// returned to payloadPool when their capacity is still the pool's fixed size
-// (fix #667). A payload that grew past 1024 bytes must not put an oversized
-// slice back into the pool.
+// returned to the pool when their capacity is still the pool's target (fix #667).
+// A payload that grew past the target must not put an oversized slice back.
 func TestReleasePayloadOnlyReturnsFixedCapacity(t *testing.T) {
-	orig := getPayloadPool()
-	origTarget := payloadPoolTarget.Load()
-	payloadPoolTarget.Store(payloadPoolMinCapacity)
+	pool := newReplicationPool()
 	rp := &recordingPool{}
-	setPayloadPool(rp)
-	defer func() {
-		setPayloadPool(orig)
-		payloadPoolTarget.Store(origTarget)
-	}()
+	pool.setBackingPool(rp)
 
-	// A grown buffer (append reallocated past the fixed capacity) must not be
-	// returned to the pool.
-	buf := getPayloadPool().Get().([]byte)
+	buf := pool.get()
 	grown := append(buf, []byte(strings.Repeat("x", payloadPoolCapacity*2))...)
 	if cap(grown) <= payloadPoolCapacity {
 		t.Fatalf("test setup: expected grown buffer to exceed capacity, got cap=%d", cap(grown))
 	}
-	releasePayload(grown)
-
-	// A fixed-capacity buffer must be returned normally.
-	releasePayload(buf[:0])
+	pool.release(grown)
+	pool.release(buf[:0])
 
 	if len(rp.putCaps) != 1 {
-		t.Fatalf("expected exactly 1 Put of a fixed-capacity buffer, got %d puts (caps=%v)", len(rp.putCaps), rp.putCaps)
+		t.Fatalf("expected exactly 1 Put of a target-capacity buffer, got %d puts (caps=%v)", len(rp.putCaps), rp.putCaps)
 	}
 	if rp.putCaps[0] != payloadPoolCapacity {
-		t.Errorf("expected Put cap=%d (fixed), got cap=%d", payloadPoolCapacity, rp.putCaps[0])
+		t.Errorf("expected Put cap=%d, got cap=%d", payloadPoolCapacity, rp.putCaps[0])
 	}
 
-	// ChangeReplicationModeClient must use the guarded release path: exercising
-	// it with both a small and an oversized payload must never put an oversized
-	// buffer (the fixed allocation can still be returned).
+	// The propagation client must use the guarded release path for both a small
+	// and an oversized payload.
 	rp.putCaps = nil
-
 	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Failed to listen: %v", err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	serverAddr := listener.Addr().String()
 
 	acceptOnce := func() {
-		conn, err := listener.Accept()
-		if err != nil {
+		conn, aerr := listener.Accept()
+		if aerr != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		var handshakeBuf [common.AuthTokenLength + common.TimestampLength + 1]byte
-		io.ReadFull(conn, handshakeBuf[:])
-		conn.Write([]byte("0"))
-		// Read the payload, then ACK so the client returns promptly.
+		_, _ = io.ReadFull(conn, handshakeBuf[:])
+		_, _ = conn.Write([]byte("0"))
 		var payloadBuf [payloadPoolCapacity * 3]byte
-		conn.Read(payloadBuf[:])
-		conn.Write([]byte("OK"))
+		_, _ = conn.Read(payloadBuf[:])
+		_, _ = conn.Write([]byte("OK"))
 	}
 
 	cfg := common.Configuration{
-		Global: common.ConfigurationGlobal{
-			AuthToken: authToken,
-			Protocol:  "momo-tcp",
-		},
+		Global: common.ConfigurationGlobal{AuthToken: authToken, Protocol: "momo-tcp"},
 		Daemons: []*common.Daemon{
 			{ChangeReplication: serverAddr},
 		},
 	}
 	factory := transport.NewProtocolFactory(cfg)
 
-	// Small payload: fits in the fixed buffer, must be returned to the pool.
 	go acceptOnce()
-	ChangeReplicationModeClient(factory, []byte(`{"New":1,"TimeStamp":1}`), 0)
+	changeReplicationModeClientWithPool(factory, []byte(`{"New":1,"TimeStamp":1}`), 0, pool)
 
-	// Oversized payload: exceeds the fixed buffer, must NOT be pooled.
 	bigJSON := `{"New":2,"TimeStamp":1,"payload":"` + strings.Repeat("x", payloadPoolCapacity*2) + `"}`
 	go acceptOnce()
-	ChangeReplicationModeClient(factory, []byte(bigJSON), 0)
+	changeReplicationModeClientWithPool(factory, []byte(bigJSON), 0, pool)
 
 	for i, c := range rp.putCaps {
 		if c != payloadPoolCapacity {
-			t.Errorf("client put cap=%d (idx %d), want fixed %d", c, i, payloadPoolCapacity)
+			t.Errorf("client put cap=%d (idx %d), want %d", c, i, payloadPoolCapacity)
 		}
 	}
 }

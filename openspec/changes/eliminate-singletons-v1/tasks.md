@@ -13,6 +13,14 @@
 - [ ] Unit tests: verify mock router works in client tests
 
 ## Phase 2 — Eliminate Global Payload Pool
+- [x] The replication payload pool is now a `replicationPool` instance owned by
+  the `ChangeReplicationModeServer` listener: its backing `sync.Pool`, adaptive
+  target and size learner are per server, so two daemons in one process cannot
+  resize or drain each other. The exported CLI helper keeps its own instance.
+- [x] No package-level `payloadPool`/`payloadPoolTarget`/learner remain; the
+  test-only swap is a method on the instance (`setBackingPool`).
+- [x] Unit tests: adaptive growth/clamp/threshold, guarded release, and an
+  isolation test proving one pool's resize leaves another at the floor.
 - [ ] Modify `src/server/replication.go`:
   - Remove package-level `payloadPool` variable
   - Add `payloadPool` field to `Daemon` struct (or new `ReplicationContext` struct)
