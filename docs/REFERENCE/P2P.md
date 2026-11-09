@@ -52,11 +52,29 @@ All RPCs use a binary, length-prefixed frame format for zero-allocation encoding
 | `MsgHeartbeat` | 1 | Periodic heartbeat with sender's peer list |
 | `MsgMembership` | 2 | Node join/leave announcement |
 | `MsgSuspect` | 3 | Suspicion announcement about a peer |
+| `MsgQuery` | 4 | Scatter-gather query request |
+| `MsgQueryResponse` | 5 | Scatter-gather query response |
+| `MsgLeaseRequest` | 6 | Lease acquisition request |
+| `MsgLeaseGrant` | 7 | Lease grant acknowledgement |
+| `MsgLeaseRelease` | 8 | Lease release broadcast |
 | `MsgPing` | 9 | Direct ping for failure detection |
 | `MsgAck` | 10 | Ack response to a ping |
 | `MsgIndirectPing` | 11 | Indirect ping request via intermediary |
 | `MsgOPRFEvalRequest` | 12 | Threshold-OPRF share evaluation request (RPC) |
 | `MsgOPRFEvalResponse` | 13 | Threshold-OPRF share evaluation response (RPC) |
+| `MsgPutMetadata` | 14 | Quorum metadata write request (R6) |
+| `MsgPutMetadataResponse` | 15 | Quorum metadata write acknowledgement |
+| `MsgResolveMetadata` | 16 | Metadata read request (correlated by request ID) |
+| `MsgResolveMetadataResponse` | 17 | Metadata read reply with vector clock |
+| `MsgReplicateMetadata` | 18 | Metadata replication / read-repair write |
+| `MsgReplicateMetadataResponse` | 19 | Replication acknowledgement |
+| `MsgListShard` | 20 | Shard-scoped listing request (R6 phase 4) |
+| `MsgListShardResponse` | 21 | Shard-scoped listing reply |
+| `MsgReplicateVersion` | 22 | Version-record replication (R10 follow-up) |
+| `MsgReplicateVersionResponse` | 23 | Version-record acknowledgement |
+| `MsgLoad` | 24 | Bounded load summary published with heartbeats (R11) |
+| `MsgDeleteMetadata` | 25 | Metadata tombstone propagation (R6 v2) |
+| `MsgDeleteMetadataResponse` | 26 | Tombstone acknowledgement |
 
 ### Heartbeat Payload
 
@@ -220,6 +238,40 @@ ping_timeout = 500          # milliseconds
 indirect_ping_count = 3     # peers to ask for indirect ping
 ```
 
+## Metadata Catalog RPC (R6)
+
+The metadata catalog is sharded over a consistent hash ring (256 shards, 150
+vnodes per node). Writes, deletes and reads travel over the same peer transport
+as the rest of the RPCs above; placement is computed locally from the cluster
+map, so no coordinator is involved.
+
+| Operation | Messages | Quorum / semantics |
+|---|---|---|
+| Put | `MsgPutMetadata` → `MsgPutMetadataResponse` | Fan-out to the shard's replica set; acknowledged at `W = M/2 + 1`. A partial write fails closed so the client retries (idempotent). The writer's vector clock advances on success. |
+| Delete | `MsgDeleteMetadata` → `MsgDeleteMetadataResponse` | Tombstone fan-out at the same quorum. Replica-applied deletes skip the local delete hook, so propagation cannot loop. |
+| Read | `MsgResolveMetadata` → `MsgResolveMetadataResponse` | Any replica may answer. The reader picks the dominating vector clock; genuinely concurrent clocks are broken deterministically (newest modtime, then greater hash) and logged. Stale replicas are repaired with the winner (`MsgReplicateMetadata`). A locally tombstoned name is never resolved from a replica. |
+| List | `MsgListShard` → `MsgListShardResponse` | Prefix/delimiter/pagination scoped to one shard. |
+| Version records | `MsgReplicateVersion` → `MsgReplicateVersionResponse` | Per-object version records replicate to the object's data replica set so version listing/get/delete and lock checks agree on every holder. Best-effort, audit-logged. |
+
+Routing is enabled only when `[momofs] enabled=true` **and** `metadata_replication > 1`;
+otherwise every node keeps its metadata local (single-node behaviour unchanged).
+Requests carry a correlation ID and are bounded by an adaptive timeout (see
+[Lease-Based Consensus](#lease-based-consensus) and the timeout note below).
+
+## Load Summary (R11)
+
+`MsgLoad` piggybacks on gossip with a fixed 20-byte payload:
+
+```
+[1B disk used %] [3B reserved] [4B in-flight requests] [4B replication queue] [8B sample timestamp]
+```
+
+Each node stores the latest report per peer and exposes it to the rebalance
+decision (`PeerLoad`), the `/metrics` exporter (`momo_peer_disk_used_percent`,
+`momo_peer_inflight_requests`) and the gossip-driven shed-target ranking. Reports
+older than the sender's heartbeat are simply replaced; there is no reconciliation
+because the signal is advisory.
+
 ## Future Work
 
 - Compression for large heartbeat payloads
@@ -286,9 +338,26 @@ The `LeaseManager` provides time-bound, self-expiring leases for destructive ope
 
 1. **Acquire**: Node broadcasts `MsgLeaseRequest` to all alive peers
 2. **Grant**: Each peer checks if the key is available (no active lease) and responds with `MsgLeaseGrant` (expiry > 0 = granted, expiry = 0 = denied)
-3. **Quorum**: Acquirer needs `peerCount/2 + 1` grants from peers within timeout/2, where `peerCount` excludes self. For small clusters this effectively requires unanimous peer agreement.
+3. **Quorum**: a majority of the **configured** cluster (`N/2 + 1`, where `N` is
+   the daemon count), not of whichever peers happen to be reachable. A minority
+   partition therefore cannot elect itself (split-brain prevention, #1148); when
+   the controller has no configured cluster size it falls back to the legacy
+   alive-peer heuristic. Cluster size is set from the daemon list during P2P
+   bootstrap.
 4. **Release**: After operation completes, broadcasts `MsgLeaseRelease`
 5. **Expiry**: Background loop cleans up expired leases every 500ms
+6. **Failover**: when SWIM marks a peer `SUSPECT` or `OFFLINE`, the lease manager
+   releases every lease whose quorum is no longer satisfied and broadcasts the
+   release. Failover therefore follows the suspicion timeout (seconds) instead of
+   the lease TTL (default 30s). Losing quorum releases all held leases and writes
+   an AUDIT line; `momo_coordination_handoffs_total` and
+   `momo_coordination_quorum_loss_total` count the events.
+
+### Adaptive timeouts
+
+Metadata RPC deadlines are `10×` the cluster's measured mean RTT, clamped to
+`[500 ms, 10 s]`; an explicit `RPCTimeout` overrides, and an unknown RTT falls
+back to the published 5 s default. Lease requests keep their own `lease_timeout`.
 
 ### Server Integration
 

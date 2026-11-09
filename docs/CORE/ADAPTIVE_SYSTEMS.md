@@ -49,7 +49,7 @@ The adaptive immune system learns "normal" and detects "non-self." Memory cells 
 Innate immunity (fast, generic — always active):
   - Disk error rate > threshold → mark disk degraded, stop writing to it
   - Node latency > 3× normal → reduce routing weight (SWIM already does this)
-  - Checksum mismatch on read → mark replica corrupt, failover (planned: CRC32C)
+  - Checksum mismatch on read → quarantine + re-replicate from a verified survivor (implemented: R2 self-heal, SHA-256 + optional CRC32C/SHA1/SHA256 S3 checksums)
   - Unexpected goroutine panic → log, recover (existing: Zero-Crash)
 
 Adaptive immunity (slow, specific — learns over time):

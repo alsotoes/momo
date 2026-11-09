@@ -20,6 +20,22 @@ Momo utilizes a decentralized polymorphic engine. The **metrics/polymorphic cont
     *   **`max_threshold`**: If either CPU or memory usage rises above this threshold, it indicates a high system load.
 
 3.  **Triggering Strategy Changes:** When a threshold is breached, the node initiates a change in the cluster's replication strategy.
+
+> **Adaptive thresholds (opt-in, #1145).** With `[adaptive] enabled=true` the
+> controller does not use the configured `max_threshold` verbatim. It learns the
+> node's utilisation baseline with an EWMA and raises the upper threshold to
+> `max(configured, mean + 2σ + 5)`, clamped to 60–95%; the lower threshold tracks
+> the quiet level within 20–60%, the pair always keeps a ≥10-point gap, and changes
+> under 5 points are ignored so the loop cannot oscillate. The configured value is
+> a floor — learning can relax the loop for a genuinely busy baseline, never make
+> it more permissive than the operator asked. Learned values persist in
+> `<data_dir>/adaptive.db` and are exported as `momo_adaptive_*` gauges. With
+> adaptive disabled (default) the static behaviour described above is unchanged.
+
+> **Dynamic replication order** (reordering the mode sequence by observed mode
+> performance) is tracked in #1146 and not implemented: the order remains the
+> operator-configured sequence, with only the threshold crossing moving the
+> index.
     *   **Under high load:** Switch to a *less* robust strategy (e.g., Splay -> Chain).
     *   **Under low load:** After a `fallback_interval`, switch to a *more* robust strategy (e.g., Chain -> Splay).
 
