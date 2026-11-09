@@ -81,10 +81,24 @@ func SetReplicationState(newMode int, timestamp int64) common.ReplicationData {
 // invocations and older callers do not stamp a value, and rejecting them would
 // silently break an operator override.
 func applyReplicationState(newMode int, timestamp int64) (common.ReplicationData, bool) {
+	return applyReplicationStateAt(newMode, timestamp, time.Now())
+}
+
+// maxReplicationClockSkew bounds how far in the future a mode timestamp may be.
+// Without it one peer with a badly skewed clock (or a hostile one) could stamp a
+// timestamp no honest update can ever beat, freezing the cluster's mode for as
+// long as the skew lasts.
+const maxReplicationClockSkew = 10 * time.Minute
+
+// applyReplicationStateAt is applyReplicationState with an explicit clock.
+func applyReplicationStateAt(newMode int, timestamp int64, now time.Time) (common.ReplicationData, bool) {
 	replicationStateMutex.Lock()
 	defer replicationStateMutex.Unlock()
 
 	if timestamp > 0 && replicationState.TimeStamp > 0 && timestamp <= replicationState.TimeStamp {
+		return replicationState, false
+	}
+	if timestamp > 0 && timestamp > now.Add(maxReplicationClockSkew).UnixNano() {
 		return replicationState, false
 	}
 
@@ -259,8 +273,8 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 			ts := replicationJson.TimeStamp
 			newState, applied := applyReplicationState(replicationJson.New, ts)
 			if !applied {
-				log.Printf("AUDIT: Ignored stale replication update mode=%d ts=%d from %s (current ts=%d)",
-					replicationJson.New, ts, remoteAddr, newState.TimeStamp)
+				log.Printf("AUDIT: Ignored replication update mode=%d ts=%d from %s (current ts=%d; stale, duplicate, or beyond the %s clock skew)",
+					replicationJson.New, ts, remoteAddr, newState.TimeStamp, maxReplicationClockSkew)
 			} else if serverId >= 0 && serverId < len(cfg.Daemons) {
 				// Phase 4: record what this node observed, so a controller restart
 				// or takeover resumes the cluster's mode instead of order[0].
