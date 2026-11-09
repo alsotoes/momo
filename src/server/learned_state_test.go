@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -164,5 +166,51 @@ func TestDetailedHealthIncludesLearnedState(t *testing.T) {
 	controller, _ := learned["controller"].(map[string]any)
 	if controller["is_holder"] != true {
 		t.Fatalf("controller block = %+v", controller)
+	}
+}
+
+func TestModeIndexUnknownModeFallsBackToZero(t *testing.T) {
+	if got := modeIndex([]int{1, 2}, 9); got != 0 {
+		t.Fatalf("modeIndex = %d, want 0", got)
+	}
+}
+
+func TestPersistedModeRejectsCorruptStore(t *testing.T) {
+	cfg := learnedTestCfg(t, false)
+	path := common.NewCoordinationModeStore(cfg.Daemons[0].Data).Path()
+	if path == "" {
+		t.Fatal("expected a store path")
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("not-a-mode\n"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if _, _, ok := persistedMode(cfg, 0); ok {
+		t.Fatal("a corrupt mode store must not report persistence")
+	}
+}
+
+func TestBuildLearnedStateWithAdaptiveLearning(t *testing.T) {
+	origGauges, origPersist := adaptiveGauges, adaptivePersistence
+	t.Cleanup(func() { adaptiveGauges, adaptivePersistence = origGauges, origPersist })
+	adaptiveGauges = func() (float64, float64, int, bool) { return 83.5, 61.2, 412, true }
+	adaptivePersistence = func() (string, bool) { return "adaptive.db", true }
+
+	cfg := learnedTestCfg(t, false)
+	st := buildLearnedState(cfg, 0)
+	if !st.Adaptive.Enabled || st.Adaptive.UpperPercent != 83.5 || st.Adaptive.LowerPercent != 61.2 {
+		t.Fatalf("adaptive = %+v", st.Adaptive)
+	}
+	if st.Adaptive.Samples != 412 || !st.Adaptive.Persisted || st.Adaptive.Store != "adaptive.db" {
+		t.Fatalf("adaptive persistence = %+v", st.Adaptive)
+	}
+}
+
+func TestPersistedModeWithoutDataDir(t *testing.T) {
+	cfg := common.Configuration{Daemons: []*common.Daemon{{Data: ""}}}
+	if _, _, ok := persistedMode(cfg, 0); ok {
+		t.Fatal("no data dir means no persisted mode")
 	}
 }

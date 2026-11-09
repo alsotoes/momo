@@ -42,6 +42,13 @@ type LearnedAdaptive struct {
 	Store        string  `json:"store,omitempty"`
 }
 
+// Seams (package vars) so tests can exercise the adaptive branch without a live
+// controller. Production always uses the metrics package accessors.
+var (
+	adaptiveGauges      = metrics.AdaptiveGauges
+	adaptivePersistence = metrics.AdaptivePersistence
+)
+
 // buildLearnedState assembles the block from configuration and the persisted
 // mode store. It performs one small file read per call (the detailed-health
 // request), never on the metrics scrape path.
@@ -69,13 +76,13 @@ func buildLearnedState(cfg common.Configuration, serverId int) *LearnedState {
 		st.ReplicationMode.Store = store
 	}
 
-	if upper, lower, samples, ok := metrics.AdaptiveGauges(); ok {
+	if upper, lower, samples, ok := adaptiveGauges(); ok {
 		st.Adaptive.Enabled = true
 		st.Adaptive.UpperPercent = upper
 		st.Adaptive.LowerPercent = lower
 		st.Adaptive.Samples = samples
 	}
-	if store, ok := metrics.AdaptivePersistence(); ok {
+	if store, ok := adaptivePersistence(); ok {
 		st.Adaptive.Persisted = true
 		st.Adaptive.Store = store
 	}
