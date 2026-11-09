@@ -111,3 +111,40 @@ func TestLoadCoordinationElectionRejectsNonPositiveTTL(t *testing.T) {
 		t.Fatalf("expected EINVAL, got %v", err)
 	}
 }
+
+func metricsSectionForTest(t *testing.T, body string) *ini.Section {
+	t.Helper()
+	f := iniFile(t, "[metrics]\ninterval=1000\nmin_threshold=0.2\nmax_threshold=0.8\nfallback_interval=60000\n"+body)
+	sec, err := f.GetSection("metrics")
+	if err != nil {
+		t.Fatalf("GetSection: %v", err)
+	}
+	return sec
+}
+
+func TestLoadMetricsConfigAdminTokenDefaultEmpty(t *testing.T) {
+	cfg, err := loadMetricsConfig(metricsSectionForTest(t, ""))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.AdminToken != "" {
+		t.Fatalf("admin_token = %q, want empty", cfg.AdminToken)
+	}
+}
+
+func TestLoadMetricsConfigAdminTokenAccepted(t *testing.T) {
+	cfg, err := loadMetricsConfig(metricsSectionForTest(t, "admin_token=0123456789abcdef\n"))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.AdminToken != "0123456789abcdef" {
+		t.Fatalf("admin_token = %q", cfg.AdminToken)
+	}
+}
+
+func TestLoadMetricsConfigAdminTokenTooShort(t *testing.T) {
+	_, err := loadMetricsConfig(metricsSectionForTest(t, "admin_token=short\n"))
+	if !errors.Is(err, syscall.EINVAL) {
+		t.Fatalf("expected EINVAL for a short token, got %v", err)
+	}
+}

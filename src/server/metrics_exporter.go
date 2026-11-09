@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -706,6 +708,66 @@ func (m *MetricsCollector) detailedHealthHandler(w http.ResponseWriter, r *http.
 // StartMetricsServer starts an HTTP server exposing Prometheus metrics on the given
 // host and port (empty host binds all interfaces). It runs in a background goroutine
 // and returns immediately. The server is shut down when the provided context is canceled.
+// requireAdmin gates a read-only admin endpoint: open when no token is
+// configured (backward compatible), bearer-protected otherwise.
+func requireAdmin(h http.HandlerFunc, adminToken string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if adminToken != "" && !bearerAuthorized(r, adminToken) {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		h(w, r)
+	}
+}
+
+// requireMutationAuth gates a mutating endpoint: a configured token is
+// mandatory, and without one the request is refused unless the listener is
+// bound to loopback. Never leaves an off-loopback mutation path open.
+func requireMutationAuth(h http.HandlerFunc, adminToken, host string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if adminToken != "" {
+			if !bearerAuthorized(r, adminToken) {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+			h(w, r)
+			return
+		}
+		if !isLoopbackHost(host) {
+			http.Error(w, "Forbidden: configure [metrics] admin_token to enable this endpoint on a non-loopback bind", http.StatusForbidden)
+			return
+		}
+		h(w, r)
+	}
+}
+
+// bearerAuthorized compares the request's bearer token in constant time. The
+// presented value is never logged.
+func bearerAuthorized(r *http.Request, token string) bool {
+	const prefix = "Bearer "
+	auth := r.Header.Get("Authorization")
+	if len(auth) <= len(prefix) || !strings.EqualFold(auth[:len(prefix)], prefix) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(auth[len(prefix):]), []byte(token)) == 1
+}
+
+// isLoopbackHost reports whether a bind host only accepts local connections.
+// An empty host means "all interfaces" and is therefore not loopback.
+func isLoopbackHost(host string) bool {
+	h := strings.TrimSpace(host)
+	if h == "" || h == "0.0.0.0" || h == "::" || h == "[::]" {
+		return false
+	}
+	if strings.EqualFold(h, "localhost") {
+		return true
+	}
+	if ip := net.ParseIP(strings.Trim(h, "[]")); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
+}
+
 // learnedStateNow renders the learned-state block, tolerating a panicking
 // provider (Rule 37): health reporting must never take the daemon down.
 func (m *MetricsCollector) learnedStateNow() (ls *LearnedState) {
@@ -721,20 +783,21 @@ func (m *MetricsCollector) learnedStateNow() (ls *LearnedState) {
 	return m.learnedState()
 }
 
-func StartMetricsServer(ctx context.Context, host string, port int, collector *MetricsCollector, reloadFn func()) {
+func StartMetricsServer(ctx context.Context, host string, port int, collector *MetricsCollector, reloadFn func(), adminToken string) {
 	if port <= 0 {
 		return
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/metrics", collector.handler)
+	// /health is always open: orchestrators must be able to probe liveness.
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
-	mux.HandleFunc("/health/detailed", collector.detailedHealthHandler)
+	mux.HandleFunc("/metrics", requireAdmin(collector.handler, adminToken))
+	mux.HandleFunc("/health/detailed", requireAdmin(collector.detailedHealthHandler, adminToken))
 	if reloadFn != nil {
-		mux.HandleFunc("/reload-secrets", func(w http.ResponseWriter, r *http.Request) {
+		reload := func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodPost {
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 				return
@@ -742,7 +805,10 @@ func StartMetricsServer(ctx context.Context, host string, port int, collector *M
 			reloadFn()
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("Secrets reloaded\n"))
-		})
+		}
+		// Mutating endpoint: with no token configured it is only served on a
+		// loopback bind, so an exposed listener can never mutate key material.
+		mux.HandleFunc("/reload-secrets", requireMutationAuth(reload, adminToken, host))
 	}
 
 	addr := net.JoinHostPort(host, strconv.Itoa(port))

@@ -1001,6 +1001,11 @@ func loadMetricsConfig(section *ini.Section) (ConfigurationMetrics, error) {
 		metricsCfg.EnableLatencyHistograms = false
 	}
 
+	metricsCfg.AdminToken = strings.TrimSpace(section.Key("admin_token").String())
+	if metricsCfg.AdminToken != "" && len(metricsCfg.AdminToken) < MinAdminTokenLength {
+		return ConfigurationMetrics{}, fmt.Errorf("'admin_token' must be at least %d characters: %w", MinAdminTokenLength, syscall.EINVAL)
+	}
+
 	return metricsCfg, nil
 }
 

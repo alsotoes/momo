@@ -527,10 +527,13 @@ boolean plus a **relative** store name — never an absolute path, because the
 metrics listener is unauthenticated. The block is omitted when no provider is
 installed (embedded/test collectors).
 
-> Residual risk: `/health/detailed` and `/metrics` have no authentication. Bind
-> them to an admin interface (`[metrics] prometheus_bind_host`, per-daemon
-> `metrics_host`) or front them with an authenticating proxy before exposing them
-> outside a trusted network.
+> **Admin listener authentication (#1289).** Set `[metrics] admin_token` and every
+> endpoint except `/health` requires `Authorization: Bearer <token>` (constant-time
+> comparison). Without a token the mutating `POST /reload-secrets` is refused on a
+> non-loopback bind (`403`), so an exposed listener can never rotate keys; the
+> read-only endpoints keep their historical open behaviour for compatibility. Bind
+> the listener to an admin interface anyway (`[metrics] prometheus_bind_host`,
+> per-daemon `metrics_host`).
 
 ## High-Level Architecture
 
