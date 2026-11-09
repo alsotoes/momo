@@ -214,19 +214,19 @@ func (p *recordingPool) Put(b interface{}) { p.putCaps = append(p.putCaps, cap(b
 // (fix #667). A payload that grew past 1024 bytes must not put an oversized
 // slice back into the pool.
 func TestReleasePayloadOnlyReturnsFixedCapacity(t *testing.T) {
-	orig := payloadPool
+	orig := getPayloadPool()
 	origTarget := payloadPoolTarget.Load()
 	payloadPoolTarget.Store(payloadPoolMinCapacity)
 	rp := &recordingPool{}
-	payloadPool = rp
+	setPayloadPool(rp)
 	defer func() {
-		payloadPool = orig
+		setPayloadPool(orig)
 		payloadPoolTarget.Store(origTarget)
 	}()
 
 	// A grown buffer (append reallocated past the fixed capacity) must not be
 	// returned to the pool.
-	buf := payloadPool.Get().([]byte)
+	buf := getPayloadPool().Get().([]byte)
 	grown := append(buf, []byte(strings.Repeat("x", payloadPoolCapacity*2))...)
 	if cap(grown) <= payloadPoolCapacity {
 		t.Fatalf("test setup: expected grown buffer to exceed capacity, got cap=%d", cap(grown))

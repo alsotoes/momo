@@ -34,13 +34,33 @@ type payloadPoolc interface {
 }
 
 // payloadPool provides reusable byte slices for replication broadcasts to reduce allocations.
+// Access is mediated by payloadPoolMu so a test (or a future per-node pool) can
+// swap it without racing in-flight propagation goroutines.
 var payloadPool payloadPoolc = &sync.Pool{
 	New: func() interface{} {
 		return make([]byte, payloadPoolTargetCapacity())
 	},
 }
 
-var replicationStateMutex sync.RWMutex
+var (
+	payloadPoolMu sync.RWMutex
+	// replicationStateMutex guards the current replication mode and its state.
+	replicationStateMutex sync.RWMutex
+)
+
+// getPayloadPool returns the active buffer pool.
+func getPayloadPool() payloadPoolc {
+	payloadPoolMu.RLock()
+	defer payloadPoolMu.RUnlock()
+	return payloadPool
+}
+
+// setPayloadPool replaces the active buffer pool (tests and future per-node pools).
+func setPayloadPool(p payloadPoolc) {
+	payloadPoolMu.Lock()
+	payloadPool = p
+	payloadPoolMu.Unlock()
+}
 
 // currentReplicationMode is the current replication mode of the server.
 var currentReplicationMode int = common.ReplicationNone
@@ -63,6 +83,8 @@ func GetCurrentReplicationMode() int {
 }
 
 // SetReplicationState safely updates currentReplicationMode and replicationState
+// without ordering checks (local/administrative path). The network receive path
+// uses applyReplicationState so stale re-broadcasts cannot loop.
 func SetReplicationState(newMode int, timestamp int64) common.ReplicationData {
 	replicationStateMutex.Lock()
 	defer replicationStateMutex.Unlock()
@@ -73,6 +95,31 @@ func SetReplicationState(newMode int, timestamp int64) common.ReplicationData {
 	currentReplicationMode = newMode
 
 	return replicationState
+}
+
+// applyReplicationState applies a mode change if it is not stale, reporting
+// whether it was applied (#1144 Phase 3). Any node may receive a change and
+// re-propagate it; the timestamp ordering is what stops that from looping:
+// a peer that already applied T ignores every copy of T, so it never
+// re-broadcasts it.
+//
+// A zero timestamp keeps the legacy unconditional behaviour: manual CLI
+// invocations and older callers do not stamp a value, and rejecting them would
+// silently break an operator override.
+func applyReplicationState(newMode int, timestamp int64) (common.ReplicationData, bool) {
+	replicationStateMutex.Lock()
+	defer replicationStateMutex.Unlock()
+
+	if timestamp > 0 && replicationState.TimeStamp > 0 && timestamp <= replicationState.TimeStamp {
+		return replicationState, false
+	}
+
+	replicationState.Old = currentReplicationMode
+	replicationState.New = newMode
+	replicationState.TimeStamp = timestamp
+	currentReplicationMode = newMode
+
+	return replicationState, true
 }
 
 // acquireConnectionSlot reserves a slot in the bounded concurrency semaphore.
@@ -131,7 +178,9 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 	log.Printf("default ReplicationMode value: %d", GetCurrentReplicationMode())
 
 	// Initialize the replication state
-	initialState := SetReplicationState(GetCurrentReplicationMode(), timestamp)
+	// The handshake reports the current mode; stamping it with the startup clock
+	// would make every real update look stale by comparison.
+	initialState := SetReplicationState(GetCurrentReplicationMode(), 0)
 	replicationJson, err := json.Marshal(initialState)
 	if err != nil {
 		log.Printf("AUDIT: Failed to marshal initial replication state: %v", fmt.Errorf("%v: %w", common.SanitizeLog(err.Error()), syscall.EIO))
@@ -226,11 +275,15 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 				return
 			}
 
-			// Update the replication state
-			newState := SetReplicationState(replicationJson.New, ts)
-			// Phase 4: record what this node observed, so a controller restart or
-			// takeover resumes the cluster's mode instead of order[0].
-			if serverId >= 0 && serverId < len(cfg.Daemons) {
+			// Update the replication state, rejecting a stale or duplicate
+			// timestamp so re-broadcasts cannot loop (#1144 Phase 3).
+			newState, applied := applyReplicationState(replicationJson.New, ts)
+			if !applied {
+				log.Printf("AUDIT: Ignored stale replication update mode=%d ts=%d from %s (current ts=%d)",
+					replicationJson.New, ts, remoteAddr, newState.TimeStamp)
+			} else if serverId >= 0 && serverId < len(cfg.Daemons) {
+				// Phase 4: record what this node observed, so a controller restart
+				// or takeover resumes the cluster's mode instead of order[0].
 				store := common.NewCoordinationModeStore(cfg.Daemons[serverId].Data)
 				if saveErr := store.SaveMode(replicationJson.New); saveErr != nil {
 					log.Printf("AUDIT: failed to persist observed replication mode %d: %v", replicationJson.New, common.SanitizeLog(saveErr.Error()))
@@ -240,18 +293,20 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 			if marshalErr != nil {
 				log.Printf("AUDIT: Failed to marshal new replication state: %v", fmt.Errorf("%v: %w", common.SanitizeLog(marshalErr.Error()), syscall.EIO))
 			}
-			// 🛡️ Sentinel: Audit log the sensitive operation
-			log.Printf("AUDIT: Replication mode changed to %d by %s", replicationJson.New, remoteAddr)
-			log.Printf("ReplicationData new struct: %s", string(newReplicationJson))
+			if applied {
+				// 🛡️ Sentinel: Audit log the sensitive operation
+				log.Printf("AUDIT: Replication mode changed to %d by %s (ts=%d)", replicationJson.New, remoteAddr, ts)
+			}
 
 			// Send ACK back to client to confirm receipt and prevent premature connection termination
 			if _, err := comm.Write([]byte("OK")); err != nil {
 				log.Printf("AUDIT: Failed to send ACK to %s: %v", remoteAddr, common.SanitizeLog(err.Error()))
 			}
 
-			// If this is the primary server, propagate the change to the other servers.
-			// Skip propagation if json.Marshal failed to avoid sending empty data to peers.
-			if 0 == serverId && marshalErr == nil {
+			// Phase 3 (#1144): any node that applied a change propagates it; node 0
+			// is no longer the only origin. The timestamp guard above stops loops.
+			// Skip propagation if json.Marshal failed to avoid sending empty data.
+			if applied && marshalErr == nil {
 				daemons := factory.GetDaemons()
 				var propWg sync.WaitGroup
 				for i := range daemons {
@@ -314,7 +369,7 @@ func ChangeReplicationModeClient(factory *transport.ProtocolFactory, replication
 	}
 
 	// ⚡ Bolt: Use sync.Pool to minimize allocations during cluster-wide broadcasts.
-	payload := payloadPool.Get().([]byte)
+	payload := getPayloadPool().Get().([]byte)
 	payload = payload[:0]
 	payload = append(payload, replicationJson...)
 	payload = append(payload, '\n')
@@ -353,6 +408,6 @@ func ChangeReplicationModeClient(factory *transport.ProtocolFactory, replication
 // slice would poison the pool with oversized buffers (fix #667).
 func releasePayload(payload []byte) {
 	if target := payloadPoolTargetCapacity(); cap(payload) == target {
-		payloadPool.Put(payload[:target])
+		getPayloadPool().Put(payload[:target])
 	}
 }

@@ -29,19 +29,20 @@
   multi-node harness; covered at unit level here.
 
 ## Phase 3 — Distributed Replication Propagation
-- [ ] Modify `src/server/replication.go`:
-  - Remove `if 0 == serverId` check in `ChangeReplicationModeServer`
-  - All nodes that receive `ChangeReplicationMode` RPC propagate via gossip
-  - Add `propagateViaGossip(replicationJson []byte)` function
-- [ ] Create `src/coordination/propagation.go`:
-  - `BroadcastReplicationMode(json []byte, originNodeID int32)` — gossip broadcast
-  - Deduplication: track processed `mode:timestamp:origin` in LRU cache
-  - Acknowledgment tracking with timeout
-- [ ] Wire gossip broadcast in `bootstrapP2P` (server.go):
-  - Register gossip handler for replication mode messages
-  - On receive: apply mode change locally, ack to originator
-- [ ] Update `ChangeReplicationModeClient` to use new propagation
-- [ ] Integration tests: 3-node cluster, any node receives mode change → all nodes update
+- [x] Removed the `0 == serverId` guard: any node that applies a change propagates
+  it over the existing `ChangeReplication` peer transport (no new gossip message
+  type was needed — the transport already fans out and waits for ACKs, bounded by
+  `[coordination] propagation_timeout`).
+- [x] Loop-freedom without an LRU cache: `applyReplicationState` rejects an update
+  whose timestamp is not newer than the applied one, so a duplicate copy is never
+  re-broadcast. The timestamp is carried in the existing payload.
+- [x] Only an *applied* change is persisted locally, forwarded, and audit-logged;
+  a stale copy is logged as ignored and still acknowledged so the sender is not
+  left waiting.
+- [x] Local/administrative `SetReplicationState` stays unconditional, and a zero
+  timestamp keeps the legacy behaviour for CLI overrides.
+- [x] Tests: a non-primary node propagates to its peer over a real socket; older
+  and duplicate timestamps are ignored; a zero-timestamp override still applies.
 
 ## Phase 4 — State Persistence + Handoff
 - [ ] Implement BoltDB `replication_state` bucket in `storage.go`
