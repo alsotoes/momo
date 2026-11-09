@@ -21,6 +21,9 @@ import (
 // with the current target capacity are returned (fix #667).
 const payloadPoolCapacity = 1024
 
+// clientAckTimeout bounds how long a propagation client waits for the peer ACK.
+const clientAckTimeout = 10 * time.Second
+
 // payloadPoolc is the minimal contract payloadPool needs: fetch a buffer and
 // hand one back. sync.Pool satisfies it; tests substitute an instrumented
 // implementation to assert returned capacities.
@@ -141,8 +144,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 	authLimiter := common.NewAuthLimiter(time.Duration(cfg.Global.AuthBackoffDelay) * time.Millisecond)
 
 	// 🛡️ Sentinel: Enforce a limit on concurrent connections to prevent resource exhaustion (DoS).
-	const maxConcurrentConnections = 1000
-	sem := make(chan struct{}, maxConcurrentConnections)
+	sem := make(chan struct{}, maxConcurrentConnections(cfg))
 
 	for {
 		connection, err := server.Accept()
@@ -179,7 +181,10 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 			log.Printf("Client connected to changeReplicationMode")
 
 			// 🛡️ Sentinel: Enforce a read/write timeout to prevent slowloris DoS attacks
-			comm.SetAbsoluteDeadline(time.Now().Add(10 * time.Second))
+			if derr := comm.SetAbsoluteDeadline(time.Now().Add(handshakeTimeout(cfg))); derr != nil {
+				log.Printf("Failed to set handshake deadline for %s: %v", common.SanitizeLog(connection.RemoteAddr().String()), derr)
+				return
+			}
 
 			remoteAddr := common.SanitizeLog(connection.RemoteAddr().String())
 
@@ -274,7 +279,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 				}()
 				select {
 				case <-propDone:
-				case <-time.After(11 * time.Second):
+				case <-time.After(propagationTimeout(cfg)):
 					log.Printf("AUDIT: Propagation timed out after 11s, some peers may not have received replication update from %s", remoteAddr)
 				}
 			}
@@ -328,8 +333,11 @@ func ChangeReplicationModeClient(factory *transport.ProtocolFactory, replication
 	}
 
 	// Wait for ACK to prevent premature connection termination, especially over QUIC.
-	// Enforce a strict 10s timeout to prevent goroutine leaks from unresponsive peers.
-	comm.SetAbsoluteDeadline(time.Now().Add(10 * time.Second))
+	// A strict timeout prevents goroutine leaks from unresponsive peers.
+	if derr := comm.SetAbsoluteDeadline(time.Now().Add(clientAckTimeout)); derr != nil {
+		log.Printf("Failed to set ACK deadline for %d: %v", serverId, derr)
+		return
+	}
 	var ackBuf [2]byte // We expect "OK"
 	if _, err := io.ReadFull(comm, ackBuf[:]); err != nil {
 		log.Printf("Failed to read ACK from %d: %v", serverId, common.SanitizeLog(err.Error()))

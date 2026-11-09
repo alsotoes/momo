@@ -43,6 +43,8 @@ const (
 	sectionCoordinationFailover = "coordination_failover"
 	// sectionCoordination is the optional [coordination] election section (#1144).
 	sectionCoordination = "coordination"
+	// sectionServer is the optional [server] deadline tuning section (#1149).
+	sectionServer = "server"
 	// prefixDaemon is the prefix for daemon sections in the configuration file (e.g., [daemon.0]).
 	prefixDaemon = "daemon."
 	// prefixTenant is the prefix for tenant sections in the configuration file (e.g., [tenant.xxx]).
@@ -236,6 +238,15 @@ func GetConfig(path string) (Configuration, error) {
 		config.Coordination = ConfigurationCoordination{MetricsControllerLeaseTTL: 30}
 	}
 
+	if serverSec, sErr := cfg.GetSection(sectionServer); sErr == nil {
+		config.Server, err = loadServerConfig(serverSec)
+		if err != nil {
+			return Configuration{}, fmt.Errorf("failed to load [%s] section: %w", sectionServer, err)
+		}
+	} else {
+		config.Server = defaultServerConfig()
+	}
+
 	rebalanceSec, err := cfg.GetSection(sectionRebalance)
 	if err == nil {
 		config.Rebalance, err = loadRebalanceConfig(rebalanceSec)
@@ -393,10 +404,42 @@ func loadCoordinationConfig(section *ini.Section) (ConfigurationCoordination, er
 	cfg := ConfigurationCoordination{
 		Enabled:                   section.Key("enabled").MustBool(false),
 		MetricsControllerLeaseTTL: section.Key("metrics_controller_lease_ttl").MustInt(30),
+		PropagationTimeout:        section.Key("propagation_timeout").MustInt(11),
 	}
 	if cfg.MetricsControllerLeaseTTL <= 0 {
 		return ConfigurationCoordination{}, fmt.Errorf("metrics_controller_lease_ttl must be positive, got %d: %w",
 			cfg.MetricsControllerLeaseTTL, syscall.EINVAL)
+	}
+	if cfg.PropagationTimeout <= 0 {
+		return ConfigurationCoordination{}, fmt.Errorf("propagation_timeout must be positive, got %d: %w",
+			cfg.PropagationTimeout, syscall.EINVAL)
+	}
+	return cfg, nil
+}
+
+// defaultServerConfig returns the historical hardcoded values (#1149).
+func defaultServerConfig() ConfigurationServer {
+	return ConfigurationServer{
+		HandshakeTimeout:         10,
+		MetadataDeadline:         60,
+		MaxConcurrentConnections: 1000,
+	}
+}
+
+// loadServerConfig parses the [server] deadline section (#1149 Phase 4).
+func loadServerConfig(section *ini.Section) (ConfigurationServer, error) {
+	cfg := defaultServerConfig()
+	if v, err := section.Key("handshake_timeout").Int(); err == nil {
+		cfg.HandshakeTimeout = v
+	}
+	if v, err := section.Key("metadata_deadline").Int(); err == nil {
+		cfg.MetadataDeadline = v
+	}
+	if v, err := section.Key("max_concurrent_connections").Int(); err == nil {
+		cfg.MaxConcurrentConnections = v
+	}
+	if cfg.HandshakeTimeout <= 0 || cfg.MetadataDeadline <= 0 || cfg.MaxConcurrentConnections <= 0 {
+		return ConfigurationServer{}, fmt.Errorf("handshake_timeout, metadata_deadline and max_concurrent_connections must be positive: %w", syscall.EINVAL)
 	}
 	return cfg, nil
 }

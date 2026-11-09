@@ -148,3 +148,54 @@ func TestLoadMetricsConfigAdminTokenTooShort(t *testing.T) {
 		t.Fatalf("expected EINVAL for a short token, got %v", err)
 	}
 }
+
+func serverSectionForTest(t *testing.T, body string) *ini.Section {
+	t.Helper()
+	f := iniFile(t, "[server]\n"+body)
+	sec, err := f.GetSection("server")
+	if err != nil {
+		t.Fatalf("GetSection: %v", err)
+	}
+	return sec
+}
+
+func TestLoadServerConfigDefaults(t *testing.T) {
+	cfg, err := loadServerConfig(serverSectionForTest(t, ""))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.HandshakeTimeout != 10 || cfg.MetadataDeadline != 60 || cfg.MaxConcurrentConnections != 1000 {
+		t.Fatalf("unexpected defaults: %+v", cfg)
+	}
+}
+
+func TestLoadServerConfigOverrides(t *testing.T) {
+	cfg, err := loadServerConfig(serverSectionForTest(t, "handshake_timeout=3\nmetadata_deadline=120\nmax_concurrent_connections=250\n"))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.HandshakeTimeout != 3 || cfg.MetadataDeadline != 120 || cfg.MaxConcurrentConnections != 250 {
+		t.Fatalf("unexpected config: %+v", cfg)
+	}
+}
+
+func TestLoadServerConfigRejectsNonPositive(t *testing.T) {
+	_, err := loadServerConfig(serverSectionForTest(t, "handshake_timeout=0\n"))
+	if !errors.Is(err, syscall.EINVAL) {
+		t.Fatalf("expected EINVAL, got %v", err)
+	}
+}
+
+func TestLoadCoordinationPropagationTimeout(t *testing.T) {
+	cfg, err := loadCoordinationElection(t, "propagation_timeout=4\n")
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if cfg.PropagationTimeout != 4 {
+		t.Fatalf("propagation_timeout = %d, want 4", cfg.PropagationTimeout)
+	}
+	_, err = loadCoordinationElection(t, "propagation_timeout=0\n")
+	if !errors.Is(err, syscall.EINVAL) {
+		t.Fatalf("expected EINVAL for a zero timeout, got %v", err)
+	}
+}
