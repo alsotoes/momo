@@ -51,6 +51,14 @@ func wireVersionReplication(ctx context.Context, cfg common.Configuration, daemo
 	installQuorumMetadataPublish(cfg, provider, mFactor)
 	installMetadataDeletePropagation(cs, provider, cfg.Momofs.Enabled && mFactor > 1)
 	installMetadataResolver(cs, provider, cfg.Momofs.Enabled && mFactor > 1)
+	// Hinted handoff (#1142): replay records owed to a peer the moment SWIM
+	// reports it alive again, so a replica that missed a quorum write or delete
+	// converges without waiting for the next read (read repair) or rewrite.
+	gossip.OnPeerStateChange(func(peer int32, state p2p.PeerState) {
+		if state == p2p.PeerStateAlive {
+			provider.ReplayMetadataHints(peer)
+		}
+	})
 }
 
 // versionReplicator fans one version record out to an object's replica set.

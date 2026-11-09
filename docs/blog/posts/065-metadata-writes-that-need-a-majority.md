@@ -79,6 +79,26 @@ handoff, and any-node reads all assume that a metadata write either happened
 everywhere that matters or was reported as a failure — not that it quietly
 half-happened.
 
+## What Happens to the Replica That Was Down
+
+A quorum write can succeed while one replica is unreachable. That replica then
+holds nothing — not a stale record, no record at all. Read repair fixes it the
+first time somebody reads that name, and the next write of the same name fixes it
+too, but a delete could stay mistaken on that replica until either happens.
+
+Hinted handoff closes the gap. The coordinator keeps the record it could not
+deliver, keyed by the peer it owes it to, and waits. When the cluster's failure
+detector reports that peer healthy again, the coordinator replays what it owes and
+deletes each hint only after an acknowledgement. Replaying is safe because the
+record carries its vector clock: a replica that already has something newer
+ignores it. Hints expire after an hour and are capped per peer, so a node that has
+been down for a week does not accumulate an unbounded queue — past that point the
+record has to be recovered from a live replica anyway.
+
+The important property is that storing a hint never fails the write. The quorum
+already acknowledged it; refusing to store the note would trade a convergence
+delay for a false failure.
+
 ## References / Dig deeper
 
 - OpenSpec change: `openspec/changes/r6-metadata-ha-v2/`

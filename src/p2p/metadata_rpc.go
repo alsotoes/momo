@@ -712,19 +712,29 @@ func (m *MetadataRPCProvider) DeleteMetadata(name string) error {
 		}
 	}
 	args := &DeleteMetadataArgs{ShardKey: shardKey, Name: name}
+	encodedArgs, encErr := EncodeDeleteMetadataArgs(args)
+	if encErr != nil {
+		return fmt.Errorf("encode tombstone args: %w", encErr)
+	}
 	remote := make([]int32, 0, len(replicas))
 	for _, id := range replicas {
 		if id != m.localID {
 			remote = append(remote, id)
 		}
 	}
-	results := make(chan error, len(remote))
+	type sendResult struct {
+		peer int32
+		err  error
+	}
+	results := make(chan sendResult, len(remote))
 	for _, peer := range remote {
-		go func(p int32) { results <- m.deleteSafely(p, args) }(peer)
+		go func(p int32) { results <- sendResult{peer: p, err: m.deleteSafely(p, args)} }(peer)
 	}
 	for i := 0; i < len(remote); i++ {
-		if err := <-results; err != nil {
-			log.Printf("AUDIT: tombstone to peer failed: %v", err)
+		res := <-results
+		if res.err != nil {
+			log.Printf("AUDIT: tombstone to peer %d failed: %v", res.peer, res.err)
+			m.storeMetadataHint(res.peer, name, metadataHintKindDelete, encodedArgs)
 			continue
 		}
 		acks++
@@ -1029,17 +1039,28 @@ func (m *MetadataRPCProvider) replicateAll(replicas []int32, args *PutMetadataAr
 			"MetadataReplicas": args.MetadataReplicas,
 		},
 	}
+	encodedArgs, encErr := EncodeReplicateMetadataArgs(replicaArgs)
+	if encErr != nil {
+		return 0, fmt.Errorf("encode replicate args: %w", encErr)
+	}
+
+	type sendResult struct {
+		peer int32
+		err  error
+	}
 	acks := 0
 	var firstErr error
-	results := make(chan error, len(remote))
+	results := make(chan sendResult, len(remote))
 	for _, peer := range remote {
-		go func(p int32) { results <- m.replicateSafely(p, replicaArgs) }(peer)
+		go func(p int32) { results <- sendResult{peer: p, err: m.replicateSafely(p, replicaArgs)} }(peer)
 	}
 	for i := 0; i < len(remote); i++ {
-		if err := <-results; err != nil {
+		res := <-results
+		if res.err != nil {
 			if firstErr == nil {
-				firstErr = err
+				firstErr = res.err
 			}
+			m.storeMetadataHint(res.peer, args.Name, metadataHintKindReplicate, encodedArgs)
 			continue
 		}
 		acks++
