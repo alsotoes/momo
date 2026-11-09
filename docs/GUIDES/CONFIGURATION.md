@@ -61,7 +61,7 @@ This section contains cluster-wide settings that affect all daemons.
     -   **Example:** `client_side_replication_modes=3`
 
 -   **`polymorphic_system`**
-    -   **Description:** When set to `true`, enables the polymorphic engine on the primary server (daemon 0), allowing the cluster to change replication strategies dynamically based on system load.
+    -   **Description:** When set to `true`, enables the polymorphic engine on the controller node — the `coordination/metrics-controller` lease holder when `[coordination] enabled=true`, otherwise daemon 0 — allowing the cluster to change replication strategies dynamically based on system load.
     -   **Type:** Boolean (`true` or `false`)
     -   **Default:** `false`
 
@@ -171,6 +171,12 @@ This section controls the behavior of the decentralized polymorphic system and t
     -   **Type:** String (host/IP)
     -   **Default:** (empty — all interfaces)
     -   **Example:** `127.0.0.1`
+
+-   **`admin_token`**
+    -   **Description:** Bearer token protecting the admin listener. When set, every request to `/metrics`, `/health/detailed` and `POST /reload-secrets` must send `Authorization: Bearer <admin_token>`; `/health` stays open for liveness probes. When empty (default) read-only endpoints remain open, and the mutating endpoints are refused with `403` unless the listener is bound to loopback — so an unauthenticated reload path is never exposed off-box.
+    -   **Type:** String
+    -   **Default:** (empty)
+    -   **Example:** `admin_token=<long-random-secret>`
 
 -   **`enable_latency_histograms`**
     -   **Description:** When `true`, arms the R5 phase 4 opt-in latency histograms — `momo_request_latency_seconds{operation="upload|download|delete|list"}` and `momo_replication_latency_seconds` — using atomic fixed-bucket counters. When `false` (default) there is **zero overhead** on the request path: no `time.Now()` captures and no bucket increments. The histograms are read at `/metrics` scrape time.

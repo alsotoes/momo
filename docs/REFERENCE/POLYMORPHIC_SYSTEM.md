@@ -11,9 +11,9 @@ Momo operates with dual dimensions of polymorphism:
 
 ## How It Works (Dimension 1: Dynamic Replication)
 
-Momo utilizes a decentralized polymorphic engine. The **metrics/polymorphic controller** runs on the **primary (controller) node — daemon 0** (see `metrics.GetMetrics`, which returns immediately on any node with `serverId != 0`). A single controller goroutine is launched once at process start. This component is responsible for the following:
+Momo utilizes a decentralized polymorphic engine. The **metrics/polymorphic controller** runs on the **controller node** — the holder of the `coordination/metrics-controller` lease when `[coordination] enabled=true`, otherwise daemon 0 for backward compatibility (see `metrics.GetMetrics` and `metrics.IsControllerNode`). A controller goroutine is launched at process start on every node; only the holder acts, and a non-holder stands by without stopping its loop. This component is responsible for the following:
 
-1.  **Monitoring System Metrics:** The controller periodically samples the local CPU and memory usage of daemon 0. The sampling interval is configurable in `momo.conf`.
+1.  **Monitoring System Metrics:** The controller periodically samples the local CPU and memory usage of the controller node. The sampling interval is configurable in `momo.conf`.
 
 2.  **Evaluating Thresholds:** The collected metrics are compared against predefined thresholds:
     *   **`min_threshold`**: If both CPU and memory usage are below this threshold, it indicates a low system load.

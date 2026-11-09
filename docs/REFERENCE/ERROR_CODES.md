@@ -74,3 +74,12 @@ an S3 `Code`, and a message.
 | `412` | `PreconditionFailed` | Conditional request (`If-Match`/`If-None-Match`) did not match. |
 | `501` | `NotImplemented` | Known-unsupported subresource or operation (bucket configuration, object tagging/ACL, `SelectObjectContent`, `UploadPartCopy`, SSE-KMS). |
 | `507` | `InsufficientStorage` | Local disk is full (`ENOSPC`). |
+
+## Admin Endpoint Errors
+
+`/metrics`, `/health/detailed` and `POST /reload-secrets` share the admin listener.
+
+| HTTP | Cause |
+| :--- | :--- |
+| `401` | `[metrics] admin_token` is configured and the request lacks a matching `Authorization: Bearer <token>`. `/health` stays open so liveness probes need no credentials. |
+| `403` | A mutating endpoint was called without an `admin_token` while the listener is bound off-loopback. Configure the token or bind to loopback; this is never allowed silently. |

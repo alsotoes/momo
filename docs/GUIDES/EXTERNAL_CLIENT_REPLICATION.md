@@ -102,7 +102,7 @@ No code changes required — just update the config.
 
 ## Interaction with the Polymorphic System
 
-The polymorphic system (`src/metrics/metrics.go`) runs on node 0 and cycles through `replication_order` based on CPU/memory load, broadcasting changes cluster-wide. This sets the global replication state (`repState.New`).
+The polymorphic system (`src/metrics/metrics.go`) runs on the controller node (the `coordination/metrics-controller` lease holder, or daemon 0 when election is disabled) and cycles through `replication_order` based on CPU/memory load, broadcasting changes cluster-wide. This sets the global replication state (`repState.New`).
 
 | Event | Global State | momo CLI client | aws-cli client |
 |---|---|---|---|

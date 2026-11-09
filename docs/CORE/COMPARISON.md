@@ -37,12 +37,12 @@ This document maps every major feature of Ceph, Lustre, ScyllaDB, and IPFS to Mo
 | N-way replication | Yes | Via RAID/FLR | Yes | No (popularity) | Yes (Chain/Splay) | **Have** |
 | Erasure coding | Yes (in-band, K+M) | Via ZFS only | No | No | Planned (Phase 7) | **Planned** |
 | Tunable consistency | Yes (min_size) | Yes (POSIX locks) | Yes (CL per-request) | No | Yes (quorum configurable) | **Have** |
-| Read repair | Yes | No | Yes | No | Planned (Phase 2) | **Planned** |
-| Hinted handoff | No | No | Yes | No | No | **Gap** — could add for write durability |
-| Anti-entropy repair | Yes (scrub) | Yes (LFSCK) | Yes (Merkle repair) | No | Planned (Phase 2 scrub) | **Planned** |
-| Checksums / bitrot detection | Yes (BlueStore CRC) | Yes (T10-PI/ZFS) | Yes (SSTable) | Yes (CID hash) | Planned (Phase 2 deep scrub) | **Planned** |
+| Read repair | Yes | No | Yes | No | Yes (any-node read repairs stale replicas) | **Have** |
+| Hinted handoff | No | No | Yes | No | Yes (bounded, expiring metadata hints replayed on ALIVE) | **Have** |
+| Anti-entropy repair | Yes (scrub) | Yes (LFSCK) | Yes (Merkle repair) | No | Yes (at-rest scrub + self-heal rebuild) | **Have** |
+| Checksums / bitrot detection | Yes (BlueStore CRC) | Yes (T10-PI/ZFS) | Yes (SSTable) | Yes (CID hash) | Yes (SHA-256 verify-on-read + scrub) | **Have** |
 | Separate metadata/data RF | No (same pool) | N/A | No | N/A | Yes (independent factors) | **Have** — advantage over Ceph |
-| Vector clocks | No | No | No (LWT/Paxos) | No | Planned (Phase 1) | **Planned** |
+| Vector clocks | No | No | No (LWT/Paxos) | No | Yes (metadata conflict resolution + read repair) | **Have** |
 | LWT (Paxos linearizable) | No | No | Yes | No | No (quorum + LWW) | **Gap** — quorum is sufficient for our use case |
 
 ### Performance
@@ -133,8 +133,8 @@ This document maps every major feature of Ceph, Lustre, ScyllaDB, and IPFS to Mo
 | Garbage collection | No (immutable) | No | Yes (tombstone GC) | Yes (repo gc) | Yes (refcount GC) | **Have** |
 | Compaction | Yes (BlueStore RocksDB) | No | Yes (LSM) | No | No | **Have** (BoltDB B+tree, no compaction needed) |
 | TTL / expiration | No | No | Yes (per-row) | No | Yes (tombstone retention) | **Have** |
-| Versioning | Yes (RGW) | No | No | Yes (CIDs) | No | **Gap** — could add |
-| Object lock / WORM | Yes (RGW) | No | No | No | No | **Gap** — could add for compliance |
+| Versioning | Yes (RGW) | No | No | Yes (CIDs) | Yes (per-bucket, records replicated) | **Have** |
+| Object lock / WORM | Yes (RGW) | No | No | No | Yes (GOVERNANCE/COMPLIANCE + legal hold) | **Have** |
 | HSM (archive to tape/S3) | No | Yes | No | No | No | **Gap** — tiering covers this |
 | CDC (change data capture) | No | No | Yes | No | No | **Gap** — could add via WAL |
 
@@ -181,19 +181,20 @@ This document maps every major feature of Ceph, Lustre, ScyllaDB, and IPFS to Mo
 - **9 intentional gaps** — not target use cases (9%)
 - **68 features will be have or planned** (71%)
 
+> These counts predate the R6–R11 work; several rows marked **Planned**/**Gap**
+> above are now delivered (read repair, hinted handoff, anti-entropy/scrub,
+> checksums, vector clocks, versioning, Object Lock, notifications). The matrix
+> rows are authoritative; the summary numbers are kept for historical comparison.
+
 ### Gaps Worth Closing
 
 | Gap | Priority | Phase | Effort |
 |-----|----------|-------|--------|
 | Snapshots (per-bucket) | Medium | 8 | Medium — copy-on-write + metadata |
-| Versioning | Medium | 8 | Medium — keep old CIDs in metadata |
-| Object lock / WORM | Low | 4 | Low( Low — metadata flag + enforcement |
 | Per-blob compression | High | 1-2 | Medium — compress before PutBlob |
 | RDMA / InfiniBand | Low | — | High — would need Go RDMA bindings |
 | Kernel POSIX client | Low | — | High — would need kernel module |
-| Hinted handoff | Medium | 2 | Low — store hints for down replicas |
 | Auto-sharding (dynamic shard count) | Low | 8 | Medium — grow shards on threshold |
-| Watch/notify on objects | Low | 6 | Medium — P2P subscription |
 | CDC via WAL | Low | 6 | Medium — expose WAL as event stream |
 
 ### Gaps Not Worth Closing (Intentional)

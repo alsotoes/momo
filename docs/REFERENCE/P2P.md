@@ -253,13 +253,14 @@ map, so no coordinator is involved.
 | List | `MsgListShard` → `MsgListShardResponse` | Prefix/delimiter/pagination scoped to one shard. |
 | Version records | `MsgReplicateVersion` → `MsgReplicateVersionResponse` | Per-object version records replicate to the object's data replica set so version listing/get/delete and lock checks agree on every holder. Best-effort, audit-logged. |
 
-**Hinted handoff.** A replica that is down when a write or delete reaches quorum
-misses the record. The coordinator stores the encoded RPC in `metadata_hints`
+**Hinted handoff.** A replica that is down (or errors) while a write or delete
+fans out misses the record. The coordinator stores the encoded RPC in `metadata_hints`
 (keyed by peer + name), and replays it when SWIM reports that peer `ALIVE` again
 (`ReplayMetadataHints`), deleting the hint only after the acknowledgement. Hints
 expire after one hour and are capped at 4096 per peer (oldest pruned first); a
 replayed record with an older vector clock is ignored, so replay is idempotent.
-Hint storage failures are audited and never fail the already-acknowledged write.
+Hint storage failures are audited and never fail the caller: they weaken eventual
+convergence only, not the durability of an already-acknowledged write.
 
 Routing is enabled only when `[momofs] enabled=true` **and** `metadata_replication > 1`;
 otherwise every node keeps its metadata local (single-node behaviour unchanged).

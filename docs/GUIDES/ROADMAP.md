@@ -48,11 +48,12 @@ deferred (each documented in its OpenSpec change):
 
 | Item | Tracking | Why deferred |
 | :--- | :--- | :--- |
-| Hinted handoff for metadata replicas | `openspec/changes/r6-metadata-ha-v2/tasks.md` | Read repair plus the next write converge the record; hints need durable replay/expiry design of their own. |
 | Multi-node integration harness (metadata, rebalance, adaptive) | OpenSpec task lists | The unit suites drive the same code paths with in-process transports; a real multi-node harness is a project of its own. |
 | Failure-domain migration during rebalance | [#1260](https://github.com/alsotoes/momo/issues/1260) | Needs per-blob replica-location records; R1 spreads new writes and R2 repair prefers another domain meanwhile. |
 | Handshake/propagation adaptive timeouts | `openspec/changes/adaptive-thresholds-v1/tasks.md` | Fixed protocol deadlines both peers rely on; adapting them needs a cross-version compatibility plan. |
-| Dynamic replication order / distributed coordination / DI cleanup | [#1146](https://github.com/alsotoes/momo/issues/1146), [#1144](https://github.com/alsotoes/momo/issues/1144), [#1149](https://github.com/alsotoes/momo/issues/1149) | Research-grade adaptive proposals; no production blocker. |
+| Dynamic replication order | [#1146](https://github.com/alsotoes/momo/issues/1146) | Scoring needs a per-mode latency/outcome source threaded through the data path; shipping a tracker without it would be dead code. |
+| Remaining singleton phases | [#1149](https://github.com/alsotoes/momo/issues/1149) | Phase 3 (the last replication-state globals) only buys test isolation and embedded/multi-daemon safety; the router and payload-pool singletons are gone. |
+| Multi-node integration harness | [#1144](https://github.com/alsotoes/momo/issues/1144) | The control-plane unit suites drive the same code with real sockets; a reusable multi-node harness is a project of its own. |
 
 ## 🔴 Future Explorations
 
@@ -97,7 +98,19 @@ Beyond the R-series, the adaptive control plane landed: gossip load summaries,
 load-aware shed targets, self-tuning metrics thresholds, pheromone constants that
 follow RTT variance, replication-pool sizing, homeostatic connection admission,
 RTT-derived metadata RPC timeouts, and SWIM-driven lease failover with
-split-brain-safe quorums. See `docs/ARCHITECTURE.md` for the mechanics.
+split-brain-safe quorums.
+
+The distributed-coordination work (#1144) is complete for production use: the
+metrics controller is elected by lease instead of assumed on node 0, any node that
+applies a replication-mode change propagates it, ordering is by the payload's
+logical clock with a 10-minute skew bound, and the observed mode is persisted per
+node so a restart or takeover resumes it. Metadata hinted handoff (#1142) is also
+shipped: a write or delete that misses a downed replica is retained as a bounded,
+expiring hint and replayed after recovery.
+
+The admin surface is authenticated (`[metrics] admin_token`), network deadlines are
+configurable (`[server]`, `[coordination]`), and `/health/detailed` reports what the
+node learned at runtime. See `docs/ARCHITECTURE.md` for the mechanics.
 
 ---
-*Last Updated: 2026-11-08*
+*Last Updated: 2026-11-09*

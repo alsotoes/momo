@@ -221,6 +221,27 @@ The namespace bucket is keyed by the **full virtual path** (e.g., `dirA/file.txt
 
 The following diagrams illustrate the message flow for each replication mode.
 
+### Propagating a Mode Change
+
+A mode change is not confined to the node that receives it. The change is sent to
+the control port (`change_replication`) as a normal handshake followed by a JSON
+payload `{"Old":n,"New":n,"TimeStamp":<unix-nanos>}`; the receiver replies `OK`.
+
+- **Any node may originate or forward.** A node that *applies* a change forwards
+  it to the other daemons over the same connection shape. Node 0 has no special
+  role.
+- **Ordering is by the payload timestamp**, not the handshake timestamp: a peer
+  ignores a change whose timestamp is not newer than the one it already applied,
+  and acknowledges it anyway. This is what stops a re-broadcast loop, because the
+  per-hop handshake time advances while the payload clock does not.
+- **Clock bound:** a timestamp more than ten minutes ahead of the receiver is
+  rejected and logged, so a skewed or hostile peer cannot freeze the mode.
+- **A zero timestamp means "administrative override"** and is applied
+  unconditionally (manual CLI use).
+
+The mode is persisted per node, so a restart or a controller takeover resumes the
+cluster's current mode instead of the first entry in `replication_order`.
+
 ### No Replication
 
 The client sends the file to the primary server, and no further replication occurs. This typically happens when the `replication_factor` is 1 or when a node is acting as the terminal destination.

@@ -259,7 +259,8 @@ rule and the cluster converges as a side effect (stigmergy, not scheduling).
   replica set and is acknowledged only after a strict majority
   (W = M/2 + 1) of acks, with the writer advancing its vector-clock entry first.
   Partial success is reported as an error, and replicas fail closed on nameless
-  records. The daemon's PUT path uses it whenever distributed metadata is enabled
+  records. A send that fails is also recorded as a hint, so the replica converges
+  once it returns even though the request itself still fails below quorum. The daemon's PUT path uses it whenever distributed metadata is enabled
   (`[momofs] enabled=true`, replication factor > 1); a quorum failure fails the
   request so the client retries, and the retry is idempotent. Deletes propagate
   tombstones to the same replica set (replica-applied deletions skip the hook, so
@@ -401,6 +402,12 @@ durability for deployments that cannot lose a name when a node dies.
 - **Version records** (`MsgReplicateVersion`) follow the object's data replica
   set so version listing/get/delete and lock checks agree on every holder
   (#1233); delivery is best-effort and audited.
+- **Hinted handoff** (#1142): whenever a write or delete could not be delivered
+  to a replica, the coordinator keeps the encoded record in the local
+  `metadata_hints` bucket keyed by peer + name (one-hour TTL, 4096 hints per
+  peer, oldest pruned first). `ReplayMetadataHints` re-sends each hint when the
+  peer is alive and deletes it only after the acknowledgement, so a brief outage
+  does not depend on read repair or on the next write to converge.
 - **Backup/restore**: `momo backup/restore` (`--output`, `--compress`, `--force`)
   wraps BoltDB snapshot I/O for point-in-time recovery.
 - **Scope**: behind `[momofs] enabled=true` + `metadata_replication > 1`. With it
@@ -668,10 +675,10 @@ Replication forwarding (Chain/Splay) uses `store.Get()` → `connectToPeerStream
 The defining feature of Momo is its **Dual-Dimensional Polymorphic Architecture**, which enables the system to adapt dynamically to load conditions and traffic origins with **zero manual configuration changes and zero runtime impact**:
 
 ### 📈 Dimension 1: Dynamic Replication Polymorphism (Runtime Adaptation)
-The polymorphic controller (`metrics.GetMetrics`, `src/metrics/metrics.go`) runs on the primary (controller) node — **daemon 0** — and continuously samples that node's local CPU and Memory metrics. (This is distinct from the per-node Prometheus `/metrics` exporter, which runs on every server node; see Observability §7.)
+The polymorphic controller (`metrics.GetMetrics`, `src/metrics/metrics.go`) runs on the **controller node**: whichever node holds the `coordination/metrics-controller` lease when `[coordination] enabled=true` (#1144), otherwise daemon 0 (legacy). It samples that node's local CPU and Memory metrics. (This is distinct from the per-node Prometheus `/metrics` exporter, which runs on every server node; see Observability §7.)
 - **Under Surge Load:** If system metrics exceed specified thresholds (e.g., 80% usage), the controller shifts the cluster replication mode to a lower-overhead strategy (such as **No Replication** or **Primary-Splay**) to prevent bottleneck queues and protect cluster stability, then broadcasts the change cluster-wide via `ChangeReplication`. An optional `minimum_durability_factor` (issue #822) caps this degradation: the controller refuses to auto-select a mode whose achievable replica count (≈ `min(replication_factor, daemons)`, `1` for `ReplicationNone`) is below the floor, holding the current higher-durability mode and logging the refusal rather than silently losing durability.
 - **Under Low Load:** When resource usage settles below thresholds (e.g., 20% usage), the system automatically promotes the mode to highly consistent, durable strategies (like **Chain** or **Splay**), optimizing data safety.
-- **Decentralized Execution:** This state change is broadcast dynamically to all potential "Primary" nodes via the `ChangeReplication` endpoint, keeping the cluster seamlessly in sync without a single point of failure.
+- **Decentralized Execution:** Any node that applies a mode change forwards it to the other daemons via the `ChangeReplication` endpoint; the receiver accepts it only if the payload's timestamp is newer, so re-broadcasts cannot loop. Node 0 is not a required origin, and each node persists the mode it observed so a restart or controller takeover resumes it.
 
 ### 🔌 Dimension 2: Wire Protocol Polymorphism (Chameleon Routing)
 Momo servers listen on the exact same port (e.g., `4440`) and accept standard TCP connections or secure QUIC streams, adapting the wire framing dynamically depending on the incoming client structure:
