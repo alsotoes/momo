@@ -149,3 +149,71 @@ func TestReplayMetadataHintsNoStoreIsSafe(t *testing.T) {
 	p := NewMetadataRPCProvider(0, nil, NewRing([]int32{0}, 1), nil)
 	p.ReplayMetadataHints(1) // must not panic
 }
+
+func TestDropOldestHintsKeepsNewest(t *testing.T) {
+	p, _, store := newHintProvider(t, map[int32]bool{})
+	now := time.Now()
+	for _, name := range []string{"a", "b", "c"} {
+		if err := store.PutMetadataHint(2, name, []byte{metadataHintKindReplicate}, now); err != nil {
+			t.Fatalf("seed %s: %v", name, err)
+		}
+	}
+	hints, _ := store.ListMetadataHints(2)
+	dropOldestHints(p, 2, hints, 2)
+	remaining, _ := store.ListMetadataHints(2)
+	if len(remaining) != 1 || remaining[0].Name != "c" {
+		t.Fatalf("remaining = %+v, want only c", remaining)
+	}
+	// Out-of-range counts must be safe.
+	dropOldestHints(p, 2, remaining, 0)
+	dropOldestHints(p, 2, remaining, 99)
+	if left, _ := store.ListMetadataHints(2); len(left) != 0 {
+		t.Fatalf("over-size drop must clear the rest, got %+v", left)
+	}
+}
+
+func TestReplayOneHintRejectsUnknownKind(t *testing.T) {
+	p, _, _ := newHintProvider(t, map[int32]bool{})
+	if err := p.replayOneHint(2, "x", []byte{99, 1, 2}); err == nil {
+		t.Fatal("expected an error for an unknown hint kind")
+	}
+}
+
+func TestReplayMetadataHintsSurvivesClosedStore(t *testing.T) {
+	p, _, store := newHintProvider(t, map[int32]bool{})
+	if err := store.PutMetadataHint(2, "a", []byte{metadataHintKindReplicate}, time.Now()); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	p.ReplayMetadataHints(2) // list error path must be logged, not panic
+}
+
+func TestStoreMetadataHintCapPrunesOldest(t *testing.T) {
+	p, _, store := newHintProvider(t, map[int32]bool{})
+	now := time.Now()
+	for i := 0; i < maxMetadataHintsPerPeer; i++ {
+		name := "n" + time.Duration(i).String()
+		if err := store.PutMetadataHint(2, name, []byte{metadataHintKindReplicate, 1}, now.Add(time.Duration(i))); err != nil {
+			t.Fatalf("seed %d: %v", i, err)
+		}
+	}
+	p.storeMetadataHint(2, "overflow", metadataHintKindReplicate, []byte{1})
+	hints, err := store.ListMetadataHints(2)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(hints) > maxMetadataHintsPerPeer {
+		t.Fatalf("hint cap exceeded: %d > %d", len(hints), maxMetadataHintsPerPeer)
+	}
+	found := false
+	for _, h := range hints {
+		if h.Name == "overflow" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("the new hint must survive pruning")
+	}
+}
