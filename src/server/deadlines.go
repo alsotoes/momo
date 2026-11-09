@@ -1,6 +1,7 @@
 package server
 
 import (
+	"log"
 	"time"
 
 	"github.com/alsotoes/momo/src/common"
@@ -47,4 +48,25 @@ func maxConcurrentConnections(cfg common.Configuration) int {
 		return cfg.Server.MaxConcurrentConnections
 	}
 	return defaultMaxConcurrentConnections
+}
+
+// deadlineSetter is the narrow communicator surface beginPhase needs.
+type deadlineSetter interface {
+	SetAbsoluteDeadline(t interface{}) error
+	Close() error
+}
+
+// beginPhase applies an absolute deadline for one protocol phase. When the
+// deadline cannot be applied the connection is closed and the function reports
+// false: continuing would leave an unbounded read, which is exactly the
+// slowloris condition these deadlines exist to prevent.
+func beginPhase(comm deadlineSetter, remoteAddr, phase string, d time.Duration) bool {
+	if err := comm.SetAbsoluteDeadline(time.Now().Add(d)); err != nil {
+		log.Printf("AUDIT: Failed to set %s deadline for %s: %v", phase, common.SanitizeLog(remoteAddr), err)
+		if cerr := comm.Close(); cerr != nil {
+			log.Printf("AUDIT: Failed to close connection for %s: %v", common.SanitizeLog(remoteAddr), cerr)
+		}
+		return false
+	}
+	return true
 }

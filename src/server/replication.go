@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -181,8 +182,7 @@ func ChangeReplicationModeServer(ctx context.Context, cfg common.Configuration, 
 			log.Printf("Client connected to changeReplicationMode")
 
 			// 🛡️ Sentinel: Enforce a read/write timeout to prevent slowloris DoS attacks
-			if derr := comm.SetAbsoluteDeadline(time.Now().Add(handshakeTimeout(cfg))); derr != nil {
-				log.Printf("Failed to set handshake deadline for %s: %v", common.SanitizeLog(connection.RemoteAddr().String()), derr)
+			if !beginPhase(comm, connection.RemoteAddr().String(), "handshake", handshakeTimeout(cfg)) {
 				return
 			}
 
@@ -334,8 +334,7 @@ func ChangeReplicationModeClient(factory *transport.ProtocolFactory, replication
 
 	// Wait for ACK to prevent premature connection termination, especially over QUIC.
 	// A strict timeout prevents goroutine leaks from unresponsive peers.
-	if derr := comm.SetAbsoluteDeadline(time.Now().Add(clientAckTimeout)); derr != nil {
-		log.Printf("Failed to set ACK deadline for %d: %v", serverId, derr)
+	if !beginPhase(comm, strconv.Itoa(int(serverId)), "ack", clientAckTimeout) {
 		return
 	}
 	var ackBuf [2]byte // We expect "OK"

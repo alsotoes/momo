@@ -45,3 +45,49 @@ func TestDeadlineHelpersUseConfiguredValues(t *testing.T) {
 		t.Fatalf("maxConcurrentConnections = %d", got)
 	}
 }
+
+// failingDeadlineComm simulates a transport that cannot apply a deadline.
+type failingDeadlineComm struct {
+	closed   int
+	setCalls int
+	fail     bool
+}
+
+func (f *failingDeadlineComm) SetAbsoluteDeadline(interface{}) error {
+	f.setCalls++
+	if f.fail {
+		return errDeadline
+	}
+	return nil
+}
+
+func (f *failingDeadlineComm) Close() error {
+	f.closed++
+	return nil
+}
+
+var errDeadline = deadlineErr{}
+
+type deadlineErr struct{}
+
+func (deadlineErr) Error() string { return "deadline unsupported" }
+
+func TestBeginPhaseAppliesDeadline(t *testing.T) {
+	comm := &failingDeadlineComm{}
+	if !beginPhase(comm, "127.0.0.1:1", "handshake", time.Second) {
+		t.Fatal("expected the phase to start")
+	}
+	if comm.setCalls != 1 || comm.closed != 0 {
+		t.Fatalf("setCalls=%d closed=%d", comm.setCalls, comm.closed)
+	}
+}
+
+func TestBeginPhaseClosesOnDeadlineFailure(t *testing.T) {
+	comm := &failingDeadlineComm{fail: true}
+	if beginPhase(comm, "127.0.0.1:1", "metadata", time.Second) {
+		t.Fatal("a failed deadline must not start the phase")
+	}
+	if comm.closed != 1 {
+		t.Fatalf("closed=%d, want 1 (no unbounded read)", comm.closed)
+	}
+}
