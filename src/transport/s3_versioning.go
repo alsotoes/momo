@@ -330,22 +330,29 @@ func isGovernanceBypass(req *http.Request) bool {
 
 func (m *S3Communicator) handleVersionedDelete(bucket, key, versionID string, now int64, bypass bool) (int, int64, error) {
 	if versionID == "" {
-		// Delete marker: shadow the object by removing the flat mapping so
-		// plain GETs 404, then record the marker version.
-		if err := m.versioning.RepointNamespace(key, ""); err != nil {
-			writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to delete object.", key)
-			return 0, 0, fmt.Errorf("failed to remove mapping for delete marker: %w", err)
-		}
-		marker, err := m.versioning.RecordDeleteMarker(bucket, key)
-		if err != nil {
-			writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to create delete marker.", key)
-			return 0, 0, fmt.Errorf("failed to record delete marker: %w", err)
-		}
-		hdr := "HTTP/1.1 204 No Content\r\nx-amz-delete-marker: true\r\nx-amz-version-id: " + marker + s3ConnClose
-		m.writeAuditLog("DeleteObject", bucket+"/"+key, "success")
-		return 0, 0, m.writeRawResponse(hdr, nil, nil)
+		return m.handleDeleteMarkerCreation(bucket, key)
 	}
+	return m.handlePermanentVersionDelete(bucket, key, versionID, now, bypass)
+}
 
+func (m *S3Communicator) handleDeleteMarkerCreation(bucket, key string) (int, int64, error) {
+	// Delete marker: shadow the object by removing the flat mapping so
+	// plain GETs 404, then record the marker version.
+	if err := m.versioning.RepointNamespace(key, ""); err != nil {
+		writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to delete object.", key)
+		return 0, 0, fmt.Errorf("failed to remove mapping for delete marker: %w", err)
+	}
+	marker, err := m.versioning.RecordDeleteMarker(bucket, key)
+	if err != nil {
+		writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to create delete marker.", key)
+		return 0, 0, fmt.Errorf("failed to record delete marker: %w", err)
+	}
+	hdr := "HTTP/1.1 204 No Content\r\nx-amz-delete-marker: true\r\nx-amz-version-id: " + marker + s3ConnClose
+	m.writeAuditLog("DeleteObject", bucket+"/"+key, "success")
+	return 0, 0, m.writeRawResponse(hdr, nil, nil)
+}
+
+func (m *S3Communicator) handlePermanentVersionDelete(bucket, key, versionID string, now int64, bypass bool) (int, int64, error) {
 	// Permanent delete of one specific version.
 	deleted, err := m.versioning.DeleteVersion(bucket, key, versionID, now, bypass)
 	if err != nil {
