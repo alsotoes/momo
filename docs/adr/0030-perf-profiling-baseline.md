@@ -20,7 +20,7 @@ This change adds the **measurement harness only**. It ships no optimization.
 ## Decision
 - benchmark segments: The following benchmarks MUST exist, be `-benchmem`-compatible, report `b.SetBytes`, and run at 1 MiB / 64 MiB / 256 MiB as sub-benchmarks:
 - file-based profiling contract: A profile capture MUST be runnable with no network listener:
-- baseline recording: Segment results MUST be recorded through the standard benchmark pipeline: `make benchmark` / pre-commit hook regenerating `.github/data/benchmark_history.csv` and `docs/PERFORMANCE.md`; no bespoke recording harness. ## Success Criteria - All four segments present under `src/common/hash_bench_test.go` and `src/storage/bench_test.go`, benchstat-compatible, three sizes each. - Profile capture proven via built-in flags with no network listener. - Rule 75 present in `openspec/config.yaml`. - `make te...
+- baseline recording: Segment results MUST be recorded through the standard benchmark pipeline: `make benchmark` / pre-commit hook regenerating `.github/data/benchmark_history.csv` and `docs/PERFORMANCE.md`; no bespoke recording harness.
 
 ## Consequences
 

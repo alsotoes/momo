@@ -19,7 +19,7 @@ slice of issue #820.
 ## Decision
 - Upload checksum acceptance & verification: The system SHALL accept `x-amz-checksum-<algo>` (CRC32, CRC32C, SHA1, SHA256) or `x-amz-checksum-algorithm` on PUT, compute the checksum over the bytes actually stored, and reject a mismatch with HTTP 400 `BadDigest` without persisting the object. This MUST hold for single-part plain PUT, aws-chunked, and multipart.
 - GET checksum mode: The system SHALL, for GET with `x-amz-checksum-mode: ENABLED` on an object that carries no persisted checksum, compute a checksum over the stored bytes and return it in the `x-amz-checksum-<algo>` response header.
-- deterministic rejection: The system SHALL return HTTP 400 `InvalidRequest` for any unsupported checksum algorithm and MUST NOT fall through to another handler. ## UNCHANGED Behavior - ETag remains the SHA-256 content hash (S3-compatible gateways need not use `MD5(partETags)`). - No change to the momo-native wire protocol; checksum is an S3-surface feature. - aws-chunked trailer-delivered checksums remain unsupported (documented).
+- deterministic rejection: The system SHALL return HTTP 400 `InvalidRequest` for any unsupported checksum algorithm and MUST NOT fall through to another handler.
 
 ## Consequences
 
