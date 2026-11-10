@@ -199,6 +199,11 @@ func verifyIngestChecksums(set *common.ChecksumSet, hook transport.ChecksumProvi
 	return fmt.Errorf("%w: %s", common.ErrIntegrityMismatch, fileName)
 }
 
+// noQuotaReserved is the release handed back when no charge was made.
+var noQuotaReserved = func() {
+	// Nothing was reserved, so undoing the reservation is intentionally a no-op.
+}
+
 // reserveTenantQuota charges a tenant before the payload is read and returns the
 // compensating release for a write that never becomes an object. It is a no-op
 // (returning a harmless release) for tenant-less surfaces and stores that do not
@@ -208,7 +213,7 @@ func reserveTenantQuota(comm transport.Communicator, store storage.Store, fileNa
 	tenantID := tenantOf(comm)
 	quota, hasQuota := store.(tenantQuotaAdjuster)
 	if !hasQuota || tenantID == "" {
-		return func() {}, nil
+		return noQuotaReserved, nil
 	}
 	var deltaBytes, deltaObjects int64
 	if meta, merr := store.GetMeta(fileName); merr == nil {
@@ -218,7 +223,7 @@ func reserveTenantQuota(comm transport.Communicator, store storage.Store, fileNa
 	}
 	if qerr := quota.AdjustTenantQuota(tenantID, deltaBytes, deltaObjects); qerr != nil {
 		reportStorageError(comm, fileName, qerr)
-		return func() {}, fmt.Errorf("tenant quota for %s: %w", fileName, qerr)
+		return noQuotaReserved, fmt.Errorf("tenant quota for %s: %w", fileName, qerr)
 	}
 	return func() { releaseTenantQuota(tenantID, quota, fileName, deltaBytes, deltaObjects) }, nil
 }
