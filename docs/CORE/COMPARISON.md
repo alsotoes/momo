@@ -36,7 +36,7 @@ This document maps every major feature of Ceph, Lustre, ScyllaDB, and IPFS to Mo
 |---------|------|--------|----------|------|--------|--------|
 | N-way replication | Yes | Via RAID/FLR | Yes | No (popularity) | Yes (Chain/Splay) | **Have** |
 | Erasure coding | Yes (in-band, K+M) | Via ZFS only | No | No | Planned (Phase 7) | **Planned** |
-| Tunable consistency | Yes (min_size) | Yes (POSIX locks) | Yes (CL per-request) | No | Yes (quorum configurable) | **Have** |
+| Tunable consistency | Yes (min_size) | Yes (POSIX locks) | Yes (CL per-request) | No | Partial (metadata quorum configurable; blob write quorum fixed at 1, see #1323) | **Partial** |
 | Read repair | Yes | No | Yes | No | Yes (any-node read repairs stale replicas) | **Have** |
 | Hinted handoff | No | No | Yes | No | Yes (bounded, expiring metadata hints replayed on ALIVE) | **Have** |
 | Anti-entropy repair | Yes (scrub) | Yes (LFSCK) | Yes (Merkle repair) | No | Yes (at-rest scrub + self-heal rebuild) | **Have** |
@@ -167,7 +167,7 @@ marked **Different** (e.g. goroutines instead of thread-per-core) count as Have.
 |----------|------|---------|---------|-----|----------------|-------|
 | Architecture | 7 | 0 | 0 | 1 | 0 | 8 |
 | Storage Model | 4 | 0 | 1 | 1 | 2 | 8 |
-| Replication & Durability | 8 | 0 | 1 | 1 | 0 | 10 |
+| Replication & Durability | 7 | 1 | 1 | 1 | 0 | 10 |
 | Performance | 6 | 0 | 2 | 4 | 0 | 12 |
 | Scalability | 4 | 0 | 1 | 1 | 0 | 6 |
 | Fault Tolerance | 3 | 0 | 2 | 1 | 0 | 6 |
@@ -176,18 +176,19 @@ marked **Different** (e.g. goroutines instead of thread-per-core) count as Have.
 | API & Access | 4 | 0 | 1 | 2 | 3 | 10 |
 | Data Lifecycle | 5 | 1 | 1 | 2 | 0 | 9 |
 | Special Features | 3 | 0 | 4 | 1 | 3 | 11 |
-| **Total** | **52** | **2** | **15** | **17** | **8** | **94** |
+| **Total** | **51** | **3** | **15** | **17** | **8** | **94** |
 
-- **52 features delivered** (55%)
-- **2 partial** — primitives exist but are not wired into the data path (per-tenant encryption, per-bucket snapshots)
+- **51 features delivered** (54%)
+- **3 partial** — primitives exist but are not wired into the data path (per-tenant encryption, per-bucket snapshots, blob write quorum)
 - **15 planned** in the roadmap (16%)
 - **17 gaps** to consider (18%)
 - **8 intentional gaps** — not target use cases (8%)
 
-> The two **Partial** rows name the honest state: the tenant key hierarchy and the
-> metadata backup exist, but tenant keys are not yet selected per write and there
-> is no per-bucket point-in-time snapshot. See `openspec/changes/r8-multitenancy-authz/tasks.md`
-> for the remaining tenant-key wiring.
+> The **Partial** rows name the honest state: the tenant key hierarchy and the
+> metadata backup exist, but tenant keys are not yet selected per write, there is
+> no per-bucket point-in-time snapshot, and the blob write quorum cannot exceed one
+> because replica acknowledgements are not collected (the knob is refused above
+> one — see issue #1323).
 
 ### Gaps Worth Closing
 

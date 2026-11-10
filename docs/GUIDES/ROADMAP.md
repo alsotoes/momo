@@ -73,7 +73,7 @@ Ratified in [prod-ready-roadmap](../../openspec/changes/prod-ready-roadmap/specs
 |----|------|-------------|
 | R1 | Failure-domain-aware CRUSH placement | ✅ Rack/zone/DC groups constrain replica placement (#929) |
 | R2 | Degraded-read + self-heal rebuild | ✅ Re-replicate after corruption/quarantine/underreplication (#930) |
-| R3 | Write durability + ack quorum + consistency | ✅ `fsync` / `group-commit` / `none` barriers plus write quorum config (#931) |
+| R3 | Write durability + ack quorum + consistency | 🟡 `fsync` / `group-commit` / `none` barriers shipped; the write-quorum knob accepts only `1` because replica acknowledgements are not collected yet — a larger value is refused at load, enforcement tracked in #1323 (#931) |
 | R4 | momofs FUSE/POSIX layer | ✅ Mountable POSIX filesystem with correct metadata semantics (#963) |
 
 ### P1 — Operability, Multi-Tenancy, Security
