@@ -13,6 +13,7 @@ on:
       - ".github/scripts/test_ai_reviewer_approval.py"
       - ".github/scripts/test_ai_reviewer_ecc.py"
       - ".github/scripts/test_ai_reviewer_sonar.py"
+      - ".github/scripts/test_ai_reviewer_gates.py"
       - ".github/workflows/ai_workflow_check.yml"
       - ".github/ecc-tools.yml"
       - "mempalace.yaml"
@@ -28,6 +29,7 @@ on:
       - ".github/scripts/test_ai_reviewer_approval.py"
       - ".github/scripts/test_ai_reviewer_ecc.py"
       - ".github/scripts/test_ai_reviewer_sonar.py"
+      - ".github/scripts/test_ai_reviewer_gates.py"
       - ".github/workflows/ai_workflow_check.yml"
       - ".github/ecc-tools.yml"
       - "mempalace.yaml"
@@ -63,4 +65,5 @@ jobs:
             .github/scripts/test_ai_workflow_check.py \
             .github/scripts/test_ai_reviewer_approval.py \
             .github/scripts/test_ai_reviewer_ecc.py \
-            .github/scripts/test_ai_reviewer_sonar.py -v
+            .github/scripts/test_ai_reviewer_sonar.py \
+            .github/scripts/test_ai_reviewer_gates.py -v

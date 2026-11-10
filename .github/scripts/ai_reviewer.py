@@ -381,6 +381,35 @@ def has_blog_post():
         return False
 
 
+def build_gate_facts(spec_present, blog_present, no_blog_exempt, has_issue_link, is_enhancement):
+    """Render the deterministic artifact-presence block sent to the model.
+
+    The model has repeatedly asserted that an ADR or a no-blog file was missing
+    when the diff contained it. These facts are computed from the repository, so
+    the prompt can state them as authoritative and forbid contradicting them."""
+    return (
+        f"OpenSpec change present: {spec_present}\n"
+        f"Blog post present: {blog_present}\n"
+        f"No-blog justification present: {no_blog_exempt}\n"
+        f"GitHub issue link present: {has_issue_link}\n"
+        f"Enhancement label: {is_enhancement}"
+    )
+
+
+def has_no_blog_justification(pr_body):
+    """Rule 76 exemption: the PR body says no-blog, or the branch ships a
+    docs/adr/*.no-blog.md justification. The file form is deterministic, so a
+    reviewer that misreads the diff cannot loop on an artifact that exists."""
+    if "no-blog" in (pr_body or "").lower():
+        return True
+    try:
+        cmd = ["git", "diff", "origin/master...HEAD", "--name-only", "--", "docs/adr"]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        return any(line.strip().endswith(".no-blog.md") for line in result.stdout.splitlines())
+    except Exception:
+        return False
+
+
 def create_missing_issue(pr_number, pr_title, pr_body):
     # Rule 90: Deduplicate — never create a second auto-trace issue for a PR
     # that already has one. Reuse the canonical issue and ensure the PR body
@@ -582,8 +611,13 @@ def main():
     # carry an OpenSpec change in the same PR (openspec/changes/<id>/{proposal.md,
     # specs/<id>/spec.md linked to the GitHub issue, tasks.md}). Only enforced for
     # enhancement PRs; bug fixes are exempt but still need a tracking issue.
+    is_enhancement = bool(pr_number) and pr_has_label(pr_number, "enhancement")
+    spec_present = has_openspec_change()
+    blog_present = has_blog_post()
+    no_blog_exempt = has_no_blog_justification(pr_body)
+
     spec_instruction = ""
-    if pr_number and pr_has_label(pr_number, "enhancement") and not has_openspec_change():
+    if is_enhancement and not spec_present:
         spec_instruction = "\n- 🚨 VIOLATION (Rule 73): This enhancement PR ships without an OpenSpec change under `openspec/changes/`. ALL features MUST include `proposal.md`, `specs/<id>/spec.md` (linked to the GitHub issue at the top), and `tasks.md` in the same PR, per Rule 73. Do not approve/merge until the change is added."
 
     # Rule 76: Blog Post Per Ratified Change — feature/enhancement PRs that ship a
@@ -592,13 +626,7 @@ def main():
     # enhancement PRs with an OpenSpec change; internal-only changes with a
     # no-blog justification in the PR body are exempt.
     blog_instruction = ""
-    if (
-        pr_number
-        and pr_has_label(pr_number, "enhancement")
-        and has_openspec_change()
-        and not has_blog_post()
-        and "no-blog" not in (pr_body or "").lower()
-    ):
+    if is_enhancement and spec_present and not blog_present and not no_blog_exempt:
         blog_instruction = "\n- 🚨 VIOLATION (Rule 76): This enhancement PR ships an OpenSpec change without a matching blog post under `docs/blog/posts/`. Every ratified feature change MUST carry a Hugo-format post (same PR or immediately-following) with date=anchor issue/PR createdAt, implemented-state grounding, Bolt/Sentinel tags where relevant, plus artifacts/related front matter, per Rule 76. If the change is internal-only with no narrative value, add an explicit `no-blog` justification to the PR description to be exempt. Do not approve/merge until a post (or justification) is added."
 
     # ⚡ Bolt: Automated PR Management
@@ -637,8 +665,15 @@ def main():
         else:
             jules_instruction = "\n- IMPORTANT: This PR was created by @google-labs-jules. Address your findings to him by tagging @google-labs-jules so he can fix them automatically."
 
+    gate_facts = build_gate_facts(spec_present, blog_present, no_blog_exempt, has_issue_link, is_enhancement)
+
     prompt = f"""You are an expert Go developer and security auditor.
 Review the following Pull Request diff against the provided Project Steering Rules.
+
+DETERMINISTIC GATE FACTS (computed from the repository, authoritative):
+{gate_facts}
+Do not claim an artifact is missing when its fact above is true. Judge only the
+diff content; the gates above already decided artifact presence.
 
 STEERING RULES:
 {rules}
