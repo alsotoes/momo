@@ -450,8 +450,9 @@ the data layout:
   scoped to, an auth token, and optional `quota_bytes` / `quota_objects`. Each
   tenant record is stored in the `tenant_meta` bucket and managed through
   `PutTenantConfig` / `GetTenantConfig` / `ListTenantConfigs` / `DeleteTenantConfig`.
-  The quota fields are **parsed and stored but not enforced** — see
-  `openspec/changes/r8-multitenancy-authz/tasks.md`.
+  Quotas are **enforced** (#1315): usage is accounted in the `tenant_usage`
+  bucket and checked in the same transaction that applies the change, before the
+  payload is read. See the quota paragraph below.
 - **Identity**: the S3 gateway resolves a request's tenant from its Bearer token
   or its SigV4 access key. Native TCP/QUIC clients authenticate with the cluster
   token but carry no tenant identity, so tenancy is an S3-gateway boundary; native
@@ -473,6 +474,12 @@ the data layout:
   anchor, see §7b). **Tamper evidence is only as strong as the node's own
   database**: an attacker with write access can delete the log wholesale; the
   chain detects edits and the anchor makes the window boundary explicit.
+  Refusals are audited too (`outcome=denied`, tenant-attributed) and counted by
+  `momo_authorization_denials_total` / `momo_tenant_quota_refusals_total`, but
+  denial records are rate-limited — one per `(tenant, operation, resource)` per
+  minute, at most 50/s overall — because the client induces them (#1319, #1321).
+  The counters stay exact; the audit log is an attributed sample. Successful
+  operations are never rate-limited.
 - **Tenant credentials**: a tenant's `auth_token` is a credential in its own
   right (#1316). The handshake resolves it against the tenant table and binds the
   connection to that tenant before any routing happens; the cluster token stays
@@ -543,7 +550,7 @@ Momo includes a built-in Prometheus metrics exporter (`src/server/metrics_export
 - `MetricsCollector` is also used directly in `server.go` for connection, upload, replication, and error counters on the main request path.
 - Runtime gauges (goroutines, memory, GC runs) are computed only at scrape time via `runtime.ReadMemStats` — zero per-request overhead.
 
-**Currently exported metrics (47 families):**
+**Currently exported metrics (49 families):**
 
 | Metric | Type | Description |
 |---|---|---|

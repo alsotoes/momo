@@ -239,6 +239,9 @@ These suites cover the features added after the original test map. All run under
 | S3 breadth | `src/transport/s3_versioning_test.go`, `s3_lifecycle_test.go`, `s3_notification_test.go`, `s3_objectlock_test.go` | Versioning/list/delete markers, lifecycle rule CRUD + worker, notification retry semantics, object-lock XML, retention/legal-hold APIs, delete enforcement (403), 507 on ENOSPC |
 | Checksum hot path | `src/transport/s3_checksum_hotpath_test.go` | Canonical header literals match `http.CanonicalHeaderKey`, every algorithm discovered and captured; benchmarks prove 0 allocs/op |
 | Health sampling | `src/p2p/health_linux_test.go` | Allocation-free `/proc/stat` + `/proc/meminfo` parsing: aggregate CPU line only, idle+iowait non-busy, overflow rejected as `EBADMSG`, missing `cpu ` line as `ENOENT`, meminfo without `MemAvailable` = 100%; real `/proc` smoke tests retained |
+| Tenant quotas | `src/storage/quota_test.go`, `src/server/quota_ingest_test.go` | Refusal before the payload is written leaves no object and no usage; overwrite pays the delta only; failed/rejected writes release the reservation; concurrent writers at the boundary never overshoot; unlimited/unknown/tenant-less are no-ops |
+| Tenant credentials | `src/transport/s3_tenant_auth_test.go` | A tenant token authenticates and binds the tenant at handshake; ACLs are then enforced; unknown tokens still 403; oversized credentials are refused instead of panicking |
+| Denial observability | `src/transport/s3_denial_audit_test.go`, `src/transport/denial_audit_limiter_test.go`, `src/server/metrics_denials_test.go` | ACL/quota refusals write tenant-attributed `denied` entries and increment their counters; 20 identical denials produce 1 entry; 20 successes produce 20; the limiter caps distinct keys, refills, stays bounded, and is nil-safe |
 | Audit retention | `src/storage/audit_prune_test.go`, `src/server/audit_retention_test.go` | Entries past the cutoff are deleted in one transaction, chain anchor keeps the retained window verifiable, tampering inside it still detected, post-prune appends chain correctly, loop prunes at startup and stops on cancel |
 
 ## Running Tests Locally
@@ -844,4 +847,4 @@ SonarCloud is configured (via both `sonar-project.properties` and `.sonarcloud.p
 ### Automated CI Analysis vs Local Troubleshooting
 
 - **Automated CI Analysis**: Executed automatically on every push to `master` and pull request in `.github/workflows/go.yml` via `SonarSource/sonarqube-scan-action`. Tests run through `make coverage`, generating `coverage.out` which is uploaded directly to SonarCloud.
-- **Local Troubleshooting**: Developer script [`tools/run_sonarq_scan.sh`](file:///home/alvaro/code/momo/tools/run_sonarq_scan.sh) is reserved for local, on-demand debugging.
+- **Local Troubleshooting**: Developer script [`tools/run_sonarq_scan.sh`](../../tools/run_sonarq_scan.sh) is reserved for local, on-demand debugging.

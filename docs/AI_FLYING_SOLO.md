@@ -8,7 +8,7 @@ This document is governed by the steering rules in [`openspec/config.yaml`](../o
 
 ### Harness & Plugin Manifest
 The authoritative surface for how agents, plugins and automation operate in this repo is:
-[`openspec/ai-workflow.yaml`](openspec/ai-workflow.yaml) — it declares every agent, plugin, their roles, scopes, pinned versions, and allowed/forbidden behaviors keyed by steering-rule IDs. The following rules are specifically relevant:
+[`openspec/ai-workflow.yaml`](../openspec/ai-workflow.yaml) — it declares every agent, plugin, their roles, scopes, pinned versions, and allowed/forbidden behaviors keyed by steering-rule IDs. The following rules are specifically relevant:
 
 - **Rules 14, 18**: 3-push circuit breaker — automated agent loop halts after 3 failed iterations; manual intervention required
 - **Rule 20**: Autonomous traceability — reuse existing tracking issues, never create duplicates

@@ -25,7 +25,7 @@ This document maps every major feature of Ceph, Lustre, ScyllaDB, and IPFS to Mo
 | Block device (RBD) | Yes | No | No | No | No | **Intentional gap** — not a target use case |
 | POSIX filesystem | Yes (CephFS) | Yes (kernel) | No | Partial (FUSE read) | Yes (FUSE mount) | **Have** (FUSE, not kernel) |
 | Wide-column KV | No | No | Yes (CQL) | No | No | **Intentional gap** — BoltDB KV is sufficient |
-| Content-addressed blocks | No | No | No | Yes | Yes (CAS) | **Have$** |
+| Content-addressed blocks | No | No | No | Yes | Yes (CAS) | **Have** |
 | File striping | Yes (client-side) | Yes (up to 2000 OSTs) | No | No (DAG chunking) | Planned (Phase 1) | **Planned** |
 | Small file inline | No | Yes (Data-on-MDT) | N/A | No | No | **Gap** — could add inline metadata for tiny files |
 | Multipart upload | Yes (RGW) | No | N/A | No | Yes (S3 API) | **Have** |
@@ -89,7 +89,7 @@ This document maps every major feature of Ceph, Lustre, ScyllaDB, and IPFS to Mo
 | Feature | Ceph | Lustre | ScyllaDB | IPFS | MomoFS | Status |
 |---------|------|--------|----------|------|--------|--------|
 | Per-tenant auth | Yes (cephx/RGW) | Yes (Kerberos) | Yes (CQL roles) | No | Yes (Bearer/SigV4 tenant, default-deny ACLs) | **Have** (S3 gateway) |
-| Per-tenant quotas | Yes | Yes (user/group) | Partial | No | Planned (Phase 3) | **Planned** |
+| Per-tenant quotas | Yes | Yes (user/group) | Partial | No | Yes (bytes + logical objects, refused before the write lands) | **Have** |
 | Per-tenant encryption | Yes (dmcrypt) | Yes (fscrypt) | Enterprise (TDE) | App-level | Partial (HKDF tenant keys + AES-GCM KEK wrapping; not yet wired per tenant in the write path) | **Partial** |
 | Encryption in transit | Yes (msgr2) | Yes (GSS) | Yes (TLS) | Yes (Noise) | Yes (QUIC TLS) | **Have** |
 | Encryption at rest | Yes (BlueStore) | Yes (ZFS/fscrypt) | Enterprise | App-level | Yes (AES-256-GCM `EncryptedBlobStore`, every object) | **Have** |
@@ -171,17 +171,17 @@ marked **Different** (e.g. goroutines instead of thread-per-core) count as Have.
 | Performance | 6 | 0 | 2 | 4 | 0 | 12 |
 | Scalability | 4 | 0 | 1 | 1 | 0 | 6 |
 | Fault Tolerance | 3 | 0 | 2 | 1 | 0 | 6 |
-| Multi-Tenancy & Security | 4 | 1 | 2 | 2 | 0 | 9 |
-| Networking | 3 | 0 | 1 | 2 | 0 | 6 |
+| Multi-Tenancy & Security | 5 | 1 | 1 | 2 | 0 | 9 |
+| Networking | 3 | 0 | 1 | 1 | 0 | 5 |
 | API & Access | 4 | 0 | 1 | 2 | 3 | 10 |
 | Data Lifecycle | 5 | 1 | 1 | 2 | 0 | 9 |
 | Special Features | 3 | 0 | 4 | 1 | 3 | 11 |
-| **Total** | **51** | **2** | **16** | **18** | **8** | **95** |
+| **Total** | **52** | **2** | **15** | **17** | **8** | **94** |
 
-- **51 features delivered** (54%)
+- **52 features delivered** (55%)
 - **2 partial** — primitives exist but are not wired into the data path (per-tenant encryption, per-bucket snapshots)
-- **16 planned** in the roadmap (17%)
-- **18 gaps** to consider (19%)
+- **15 planned** in the roadmap (16%)
+- **17 gaps** to consider (18%)
 - **8 intentional gaps** — not target use cases (8%)
 
 > The two **Partial** rows name the honest state: the tenant key hierarchy and the
