@@ -9,7 +9,7 @@
     ],
     "timezone": "browser",
     "schemaVersion": 38,
-    "version": 1,
+    "version": 2,
     "refresh": "5s",
     "time": {
       "from": "now-15m",
@@ -548,6 +548,140 @@
         "fieldConfig": {
           "defaults": {
             "unit": "short",
+            "custom": {
+              "fillOpacity": 20,
+              "lineWidth": 1
+            }
+          }
+        }
+      },
+      {
+        "id": 22,
+        "title": "Coordination Handoffs / Quorum Loss",
+        "type": "timeseries",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 32
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "targets": [
+          {
+            "expr": "increase(momo_coordination_handoffs_total[5m])",
+            "legendFormat": "handoffs {{instance}}",
+            "refId": "A"
+          },
+          {
+            "expr": "increase(momo_coordination_quorum_loss_total[5m])",
+            "legendFormat": "quorum loss {{instance}}",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "custom": {
+              "fillOpacity": 20,
+              "lineWidth": 1
+            }
+          }
+        }
+      },
+      {
+        "id": 23,
+        "title": "Peer Disk Used (%)",
+        "type": "timeseries",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 32
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "targets": [
+          {
+            "expr": "max by (peer) (momo_peer_disk_used_percent)",
+            "legendFormat": "peer {{peer}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "custom": {
+              "fillOpacity": 20,
+              "lineWidth": 1
+            }
+          }
+        }
+      },
+      {
+        "id": 24,
+        "title": "Peer In-Flight Requests",
+        "type": "timeseries",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 40
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "targets": [
+          {
+            "expr": "max by (peer) (momo_peer_inflight_requests)",
+            "legendFormat": "peer {{peer}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "custom": {
+              "fillOpacity": 20,
+              "lineWidth": 1
+            }
+          }
+        }
+      },
+      {
+        "id": 25,
+        "title": "Adaptive Thresholds",
+        "type": "timeseries",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 40
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "targets": [
+          {
+            "expr": "momo_adaptive_max_threshold",
+            "legendFormat": "max {{instance}}",
+            "refId": "A"
+          },
+          {
+            "expr": "momo_adaptive_min_threshold",
+            "legendFormat": "min {{instance}}",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
             "custom": {
               "fillOpacity": 20,
               "lineWidth": 1
