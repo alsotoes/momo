@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"log"
+	"time"
 
 	"github.com/alsotoes/momo/src/common"
 	"github.com/alsotoes/momo/src/p2p"
@@ -30,10 +31,10 @@ func installVersionReplication(ctx context.Context, cs *storage.CASStore, cmap *
 // wireVersionReplication builds the metadata RPC provider and installs the
 // version-replication hook during P2P bootstrap. Kept out of bootstrapP2P to
 // stay within the complexity budget.
-func wireVersionReplication(ctx context.Context, cfg common.Configuration, daemons []*common.Daemon, self int32, store storage.Store, transport p2p.Transport, gossip *p2p.Gossiper) {
+func wireVersionReplication(ctx context.Context, cfg common.Configuration, daemons []*common.Daemon, self int32, store storage.Store, transport p2p.Transport, gossip *p2p.Gossiper) *p2p.MetadataRPCProvider {
 	cs, ok := store.(*storage.CASStore)
 	if !ok {
-		return
+		return nil
 	}
 	ids := make([]int32, len(daemons))
 	nodes := make([]*common.Node, len(daemons))
@@ -59,6 +60,42 @@ func wireVersionReplication(ctx context.Context, cfg common.Configuration, daemo
 			provider.ReplayMetadataHints(peer)
 		}
 	})
+	return provider
+}
+
+// metadataHintReplayInterval is how often pending hints are swept for peers that
+// are already ALIVE. The transition-triggered replay covers the normal case; the
+// sweep covers a missed transition (restart, hook installed late) so a hint
+// cannot wait for an unrelated peer flap.
+const metadataHintReplayInterval = 5 * time.Minute
+
+// startHintReplaySweep runs the periodic hint replay until ctx is done. The
+// returned channel closes when the goroutine has exited, so callers (and tests)
+// can wait for a clean shutdown; a nil provider returns an already-closed
+// channel.
+func startHintReplaySweep(ctx context.Context, provider *p2p.MetadataRPCProvider) <-chan struct{} {
+	done := make(chan struct{})
+	if provider == nil {
+		close(done)
+		return done
+	}
+	go func() {
+		defer close(done)
+		defer common.RecoverClose("hint replay sweep", nil) //nolint:staticcheck // log-only guard
+		ticker := time.NewTicker(metadataHintReplayInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if n := provider.ReplayAllHints(); n > 0 {
+					log.Printf("AUDIT: replayed pending metadata hints to %d peer(s)", n)
+				}
+			}
+		}
+	}()
+	return done
 }
 
 // versionReplicator fans one version record out to an object's replica set.

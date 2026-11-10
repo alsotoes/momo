@@ -256,7 +256,10 @@ map, so no coordinator is involved.
 **Hinted handoff.** A replica that is down (or errors) while a write or delete
 fans out misses the record. The coordinator stores the encoded RPC in `metadata_hints`
 (keyed by peer + name), and replays it when SWIM reports that peer `ALIVE` again
-(`ReplayMetadataHints`), deleting the hint only after the acknowledgement. Hints
+(`ReplayMetadataHints`), deleting the hint only after the acknowledgement. A
+five-minute sweep (`ReplayAllHints`) also replays pending hints for peers that are
+already ALIVE, covering a missed transition (a restart, or a hook installed after
+the peer returned) so a hint cannot wait for an unrelated peer flap. Hints
 expire after one hour and are capped at 4096 per peer (oldest pruned first); a
 replayed record with an older vector clock is ignored, so replay is idempotent.
 Hint storage failures are audited and never fail the caller: they weaken eventual

@@ -73,7 +73,9 @@
   `ReplayMetadataHints` re-sends each one and deletes the hint only after the
   acknowledgement; a replayed record with an older vector clock is ignored by the
   replica, so replay is idempotent. Failures are audited and never fail the
-  already-acknowledged quorum write.
+  already-acknowledged quorum write. A five-minute sweep (`ReplayAllHints`) also
+  covers a missed ALIVE transition — a restart, or a hook installed after the
+  peer returned — so a hint cannot wait for an unrelated peer flap.
 - [ ] **Integration tests**: 3-node cluster, concurrent writes → conflict detection, quorum with 1 replica down — needs the read path to observe conflicts
 
 ## Phase 3 — Any-Node Read Path + Repair

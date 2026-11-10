@@ -177,3 +177,24 @@ func TestVersionPlacementKey(t *testing.T) {
 		t.Fatalf("delete markers key on the object name, got %q", got)
 	}
 }
+
+func TestHintReplaySweepNilProviderIsNoop(t *testing.T) {
+	// A nil provider must not start a goroutine (nothing to sweep).
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if done := startHintReplaySweep(ctx, nil); done != nil {
+		<-done
+	}
+}
+
+func TestHintReplaySweepExitsOnCancel(t *testing.T) {
+	provider := p2p.NewMetadataRPCProvider(0, nil, nil, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := startHintReplaySweep(ctx, provider)
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("sweep goroutine did not exit after cancellation")
+	}
+}
