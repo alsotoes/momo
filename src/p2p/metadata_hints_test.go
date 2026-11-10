@@ -12,6 +12,7 @@ import (
 // fails sends to the rest, so a quorum can succeed while one replica is down.
 type hintTransport struct {
 	ackPeer   map[int32]bool
+	alive     []int32
 	provider  *MetadataRPCProvider
 	replicate int
 	deletes   int
@@ -22,9 +23,17 @@ func (t *hintTransport) Dial(int32, string) (*Peer, error) { return nil, nil }
 func (t *hintTransport) Connect(*Peer) error               { return nil }
 func (t *hintTransport) Consume() <-chan RPC               { return nil }
 func (t *hintTransport) Broadcast(*RPC) int                { return 0 }
-func (t *hintTransport) Peers() *PeerMap                   { return NewPeerMap() }
-func (t *hintTransport) Close() error                      { return nil }
-func (t *hintTransport) Addr() string                      { return "" }
+func (t *hintTransport) Peers() *PeerMap {
+	pm := NewPeerMap()
+	for _, id := range t.alive {
+		p := NewPeer(id, "")
+		p.SetState(PeerStateAlive)
+		pm.Add(p)
+	}
+	return pm
+}
+func (t *hintTransport) Close() error { return nil }
+func (t *hintTransport) Addr() string { return "" }
 
 func (t *hintTransport) Send(peer int32, rpc *RPC) error {
 	if !t.ackPeer[peer] {
@@ -215,5 +224,37 @@ func TestStoreMetadataHintCapPrunesOldest(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("the new hint must survive pruning")
+	}
+}
+
+func TestReplayAllHintsSkipsPeersThatAreNotAlive(t *testing.T) {
+	defer goleak.VerifyNone(t)
+	p, tr, store := newHintProvider(t, map[int32]bool{1: true}) // peer 2 down, 1 alive
+
+	if _, err := p.PutMetadata(&PutMetadataArgs{Name: "a.txt", Hash: "h", Size: 1}); err != nil {
+		t.Fatalf("quorum write: %v", err)
+	}
+	if hints, _ := store.ListMetadataHints(2); len(hints) != 1 {
+		t.Fatalf("expected one pending hint for peer 2, got %+v", hints)
+	}
+
+	// Peer 2 is still not alive: the sweep must leave the hint alone.
+	tr.alive = []int32{1}
+	if n := p.ReplayAllHints(); n != 0 {
+		t.Fatalf("sweep reported %d peers, want 0 while peer 2 is down", n)
+	}
+	if hints, _ := store.ListMetadataHints(2); len(hints) != 1 {
+		t.Fatalf("hint replayed while the peer was down: %+v", hints)
+	}
+
+	// Peer 2 returns and the send succeeds: the sweep clears the hint even
+	// though the ALIVE transition hook never fired.
+	tr.alive = []int32{1, 2}
+	tr.ackPeer[2] = true
+	if n := p.ReplayAllHints(); n != 1 {
+		t.Fatalf("sweep replayed %d peers, want 1", n)
+	}
+	if hints, _ := store.ListMetadataHints(2); len(hints) != 0 {
+		t.Fatalf("hint not cleared after sweeping replay: %+v", hints)
 	}
 }

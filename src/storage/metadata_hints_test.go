@@ -110,3 +110,25 @@ func TestPruneMetadataHintsDropsExpired(t *testing.T) {
 		t.Fatalf("after prune: %+v", hints)
 	}
 }
+
+func TestListMetadataHintPeersReturnsDistinctIDs(t *testing.T) {
+	s := newHintStore(t)
+	now := time.Now()
+	if err := s.PutMetadataHint(1, "a", []byte("x"), now); err != nil {
+		t.Fatalf("PutMetadataHint: %v", err)
+	}
+	if err := s.PutMetadataHint(1, "b", []byte("y"), now); err != nil {
+		t.Fatalf("PutMetadataHint: %v", err)
+	}
+	if err := s.PutMetadataHint(3, "c", []byte("z"), now); err != nil {
+		t.Fatalf("PutMetadataHint: %v", err)
+	}
+
+	peers, err := s.ListMetadataHintPeers()
+	if err != nil {
+		t.Fatalf("ListMetadataHintPeers: %v", err)
+	}
+	if len(peers) != 2 || peers[0] != 1 || peers[1] != 3 {
+		t.Fatalf("got %v, want [1 3]", peers)
+	}
+}

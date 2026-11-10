@@ -70,6 +70,39 @@ func dropOldestHints(m *MetadataRPCProvider, peer int32, hints []storage.Metadat
 	}
 }
 
+// ReplayAllHints replays pending hints for every peer the transport currently
+// considers ALIVE. A hint is normally replayed on the ALIVE transition, but that
+// event can be missed (a restart, or a hook installed after the peer returned),
+// which would strand the hint until the peer flapped again. The sweep is bounded
+// by the hint TTL and per-peer cap.
+func (m *MetadataRPCProvider) ReplayAllHints() (peers int) {
+	if m.store == nil || m.transport == nil {
+		return 0
+	}
+	defer common.RecoverClose("MetadataRPC.ReplayAllHints", nil) //nolint:staticcheck // no resource to close; log-only guard
+	pm := m.transport.Peers()
+	if pm == nil {
+		return 0
+	}
+	alive := make(map[int32]bool)
+	for _, p := range pm.Alive() {
+		alive[p.ID] = true
+	}
+	pending, err := m.store.ListMetadataHintPeers()
+	if err != nil {
+		log.Printf("AUDIT: metadata hint peer list failed: %v (errno=%d)", err, syscall.EIO)
+		return 0
+	}
+	for _, peer := range pending {
+		if !alive[peer] {
+			continue
+		}
+		m.ReplayMetadataHints(peer)
+		peers++
+	}
+	return peers
+}
+
 // ReplayMetadataHints sends every hint owed to a peer that just came back, and
 // deletes each one only after the peer acknowledges. Idempotent: a replayed
 // record carrying an older vector clock is ignored by the replica.

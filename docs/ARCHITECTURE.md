@@ -407,7 +407,9 @@ durability for deployments that cannot lose a name when a node dies.
   `metadata_hints` bucket keyed by peer + name (one-hour TTL, 4096 hints per
   peer, oldest pruned first). `ReplayMetadataHints` re-sends each hint when the
   peer is alive and deletes it only after the acknowledgement, so a brief outage
-  does not depend on read repair or on the next write to converge.
+  does not depend on read repair or on the next write to converge. A five-minute
+  sweep replays hints for peers already ALIVE, so a missed transition cannot
+  strand a hint until an unrelated flap.
 - **Backup/restore**: `momo backup/restore` (`--output`, `--compress`, `--force`)
   wraps BoltDB snapshot I/O for point-in-time recovery.
 - **Scope**: behind `[momofs] enabled=true` + `metadata_replication > 1`. With it

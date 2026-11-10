@@ -1137,7 +1137,9 @@ func bootstrapP2P(ctx context.Context, cfg common.Configuration, serverId int, d
 
 	// R10 follow-up (#1233): replicate version records across the object's
 	// replica set so version listing/get/lock agree on every node.
-	wireVersionReplication(ctx, cfg, daemons, int32(serverId), store, transport, gossip)
+	if provider := wireVersionReplication(ctx, cfg, daemons, int32(serverId), store, transport, gossip); provider != nil {
+		startHintReplaySweep(ctx, provider)
+	}
 
 	// R11 step 1 (#1261): publish this node's load on every gossip interval.
 	gossip.SetLoadProvider(loadSampler)

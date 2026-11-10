@@ -72,6 +72,33 @@ func (s *CASStore) ListMetadataHints(peer int32) (hints []MetadataHint, err erro
 	return hints, err
 }
 
+// ListMetadataHintPeers returns the distinct peer IDs that have pending hints.
+// Used by the periodic replay sweep so a hint cannot linger if the ALIVE
+// transition that would have triggered its replay was missed (a restart, or a
+// hook registered after the peer came back).
+func (s *CASStore) ListMetadataHintPeers() (peers []int32, err error) {
+	err = s.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(bucketMetadataHints)
+		if b == nil {
+			return nil
+		}
+		seen := make(map[int32]bool)
+		c := b.Cursor()
+		for k, _ := c.First(); k != nil; k, _ = c.Next() {
+			if len(k) < 4 {
+				continue
+			}
+			id := int32(binary.BigEndian.Uint32(k[:4]))
+			if !seen[id] {
+				seen[id] = true
+				peers = append(peers, id)
+			}
+		}
+		return nil
+	})
+	return peers, err
+}
+
 // DeleteMetadataHint removes one hint after a successful replay.
 func (s *CASStore) DeleteMetadataHint(peer int32, name string) (err error) {
 	return s.db.Update(func(tx *bolt.Tx) error {
