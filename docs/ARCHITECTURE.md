@@ -461,6 +461,9 @@ the data layout:
   over resources named `bucket/<name>` and `object/<bucket>/<key>`.
   `CASStore.Authorize(tenantID, perm, resource)` is **default-deny** with an
   `admin` bypass, and every S3 handler calls it before touching the store.
+  Evaluation is per level (object ACL, then bucket ACL) and tri-state: an explicit
+  `deny` refuses immediately instead of falling through to the broader ACL, an
+  `allow` permits, and no match defers to the next level (#1313).
 - **Audit log** (`audit_log` bucket): each entry records timestamp, tenant,
   identity, operation, resource, outcome and request ID, and chains to its
   predecessor with SHA-256 (`prev_hash` + `entry_hash`), so altering a stored

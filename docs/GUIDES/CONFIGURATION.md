@@ -871,6 +871,16 @@ tenant and permission, and explicit `deny` entries win. Admins (tenant ID
 `admin`) bypass ACL checks. Permissions are `read`, `write`, `delete`, and
 `admin`, checked against resources `bucket/<name>` and `object/<bucket>/<key>`.
 
+Evaluation is per level, in order — **object ACL, then bucket ACL**:
+
+- an explicit `deny` at a level refuses the request immediately (it does not
+  fall through to the broader ACL);
+- an `allow` at a level permits it;
+- no match passes to the next level, and no match anywhere means denied.
+
+Within one level, a `deny` beats an `allow`. Entries with an empty `tenant_id`
+apply to every tenant.
+
 ### `[audit]` section
 
 Every mutating and read operation on the S3 gateway and the native TCP/QUIC
