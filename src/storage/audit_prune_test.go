@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"go.etcd.io/bbolt"
+	"go.uber.org/goleak"
 
 	"github.com/alsotoes/momo/src/common"
 )
@@ -45,6 +46,7 @@ func countAuditEntries(t *testing.T, s *CASStore) int {
 }
 
 func TestPruneAuditLog_PartialKeepsChainValid(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	s := newTestStore(t)
 	writeAudit(t, s, "PutObject")
 	cutoff := writeAudit(t, s, "GetObject")
@@ -70,6 +72,7 @@ func TestPruneAuditLog_PartialKeepsChainValid(t *testing.T) {
 }
 
 func TestPruneAuditLog_AllEntries(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	s := newTestStore(t)
 	writeAudit(t, s, "PutObject")
 	writeAudit(t, s, "GetObject")
@@ -91,6 +94,7 @@ func TestPruneAuditLog_AllEntries(t *testing.T) {
 }
 
 func TestPruneAuditLog_NewWritesChainOnAnchor(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	s := newTestStore(t)
 	writeAudit(t, s, "PutObject")
 	cutoff := writeAudit(t, s, "GetObject")
@@ -108,6 +112,7 @@ func TestPruneAuditLog_NewWritesChainOnAnchor(t *testing.T) {
 }
 
 func TestPruneAuditLog_NoopPaths(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	s := newTestStore(t)
 	writeAudit(t, s, "PutObject")
 
@@ -124,6 +129,7 @@ func TestPruneAuditLog_NoopPaths(t *testing.T) {
 }
 
 func TestPruneAuditLog_TamperStillDetectedWithinWindow(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	s := newTestStore(t)
 	writeAudit(t, s, "PutObject")
 	cutoff := writeAudit(t, s, "GetObject")
@@ -163,6 +169,7 @@ func TestPruneAuditLog_TamperStillDetectedWithinWindow(t *testing.T) {
 }
 
 func TestPruneAuditLog_AnchorRecordedInMeta(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	s := newTestStore(t)
 	writeAudit(t, s, "PutObject")
 	cutoff := writeAudit(t, s, "GetObject")

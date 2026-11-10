@@ -7,9 +7,11 @@ import (
 
 	"github.com/alsotoes/momo/src/common"
 	"github.com/alsotoes/momo/src/storage"
+	"go.uber.org/goleak"
 )
 
 func TestStartAuditPruneLoop_NoopPaths(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	ctx := context.Background()
 
 	// Nil store exits immediately.
@@ -36,6 +38,7 @@ func TestStartAuditPruneLoop_NoopPaths(t *testing.T) {
 }
 
 func TestStartAuditPruneLoop_PrunesAtStartupAndStops(t *testing.T) {
+	defer goleak.VerifyNone(t)
 	store, err := storage.NewCASStore(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewCASStore: %v", err)

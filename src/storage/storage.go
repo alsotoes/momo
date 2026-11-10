@@ -1451,11 +1451,11 @@ func pruneAuditTx(tx *bbolt.Tx, limit uint64) (int, error) {
 		}
 		var entry common.AuditLogEntry
 		if err := json.Unmarshal(v, &entry); err != nil {
-			return 0, fmt.Errorf("failed to unmarshal audit entry at %d: %w", binary.BigEndian.Uint64(k), err)
+			return 0, fmt.Errorf("failed to unmarshal audit entry at %d: %v: %w", binary.BigEndian.Uint64(k), err, syscall.EIO)
 		}
 		anchor = entry.EntryHash
 		if err := c.Delete(); err != nil {
-			return 0, fmt.Errorf("failed to delete audit entry at %d: %w", binary.BigEndian.Uint64(k), err)
+			return 0, fmt.Errorf("failed to delete audit entry at %d: %v: %w", binary.BigEndian.Uint64(k), err, syscall.EIO)
 		}
 		pruned++
 	}
@@ -1464,7 +1464,7 @@ func pruneAuditTx(tx *bbolt.Tx, limit uint64) (int, error) {
 	}
 	meta := tx.Bucket(bucketAuditMeta)
 	if meta == nil {
-		return 0, fmt.Errorf("audit_meta bucket not found")
+		return 0, fmt.Errorf("audit_meta bucket not found: %w", syscall.EIO)
 	}
 	return pruned, meta.Put(auditPruneAnchorKey, []byte(anchor))
 }
