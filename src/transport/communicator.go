@@ -84,6 +84,16 @@ type MetricsHook interface {
 	IncErrors()
 }
 
+// DenialReporter is the optional hook for refusals, which by definition complete
+// no operation and therefore never reach the success counters (#1319). Hooks that
+// do not implement it are simply not counted.
+type DenialReporter interface {
+	// IncAuthzDenial records an authorization refusal.
+	IncAuthzDenial()
+	// IncQuotaRefusal records a refusal caused by a tenant quota.
+	IncQuotaRefusal()
+}
+
 // LatencyRecorder is the optional R5 phase 4 histogram hook implemented by the
 // MetricsCollector. Communicators must type-assert before capturing time.Now()
 // so disabled histograms carry zero timing overhead (#933).

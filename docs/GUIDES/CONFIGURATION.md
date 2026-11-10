@@ -907,7 +907,11 @@ apply to every tenant.
 ### `[audit]` section
 
 Every mutating and read operation on the S3 gateway and the native TCP/QUIC
-protocols is appended to a tamper-evident audit log. Entries are SHA-256
+protocols is appended to a tamper-evident audit log. **Refusals are audited too**
+— an ACL denial records `Authorize/denied` and an over-quota write records
+`PutObject/denied`, both attributed to the tenant — and each increments
+`momo_authorization_denials_total` or `momo_tenant_quota_refusals_total`, so a
+dashboard can tell "unused" from "denied". Entries are SHA-256
 hash-chained in the `audit_log` BoltDB bucket; `VerifyAuditLog` walks the chain
 to detect tampering.
 
