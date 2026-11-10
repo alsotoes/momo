@@ -298,6 +298,10 @@ type MetadataRPCProvider struct {
 	// RPCTimeout bounds a request/response call; zero means MetadataRPCTimeout.
 	// Per-instance so tests can shorten it without racing a shared global.
 	RPCTimeout time.Duration
+
+	// quorumOverride is the configured metadata write/delete quorum (0 = strict
+	// majority of the replica set), from [momofs] metadata_quorum (#1323).
+	quorumOverride int
 }
 
 type pendingMetadata struct {
@@ -327,6 +331,32 @@ func NewMetadataRPCProvider(localID int32, transport Transport, ring *Ring, stor
 		resolvePending: make(map[uint64]chan *ResolveMetadataReply),
 		RPCTimeout:     MetadataRPCTimeout,
 	}
+}
+
+// SetWriteQuorum configures how many replicas must acknowledge a metadata write
+// or delete. Zero (the default) means a majority of the replica set. Values are
+// clamped to the replica count so a misconfiguration cannot make every write
+// fail (#1323).
+func (m *MetadataRPCProvider) SetWriteQuorum(n int) {
+	if n < 0 {
+		n = 0
+	}
+	m.quorumOverride = n
+}
+
+// writeQuorum is the acknowledgement count required for a replica set of the
+// given size, honouring the configured override.
+func (m *MetadataRPCProvider) writeQuorum(replicas int) int {
+	if replicas <= 1 {
+		return 1
+	}
+	if q := m.quorumOverride; q > 0 {
+		if q > replicas {
+			return replicas
+		}
+		return q
+	}
+	return majorityQuorum(replicas)
 }
 
 // HandleRPC dispatches metadata RPCs. Called by the Gossiper's consumer loop.
@@ -702,7 +732,7 @@ func (m *MetadataRPCProvider) DeleteMetadata(name string) error {
 	if len(replicas) == 0 {
 		return fmt.Errorf("no replicas for shard %q: %w", shardKey, syscall.ENOTSUP)
 	}
-	need := writeQuorum(len(replicas))
+	need := m.writeQuorum(len(replicas))
 	acks := 0
 	if m.isLocalReplica(replicas) {
 		if err := m.store.DeleteReplica(name); err != nil {
@@ -902,15 +932,6 @@ func (r *Ring) ReplicationFactor() int {
 	return r.replicaM
 }
 
-// writeQuorum returns the number of acknowledgements a write needs: a strict
-// majority of the replica set, capped at its size.
-func writeQuorum(replicas int) int {
-	if replicas <= 1 {
-		return 1
-	}
-	return replicas/2 + 1
-}
-
 // replicateToPeer sends one metadata replica and waits for its acknowledgement.
 func (m *MetadataRPCProvider) replicateToPeer(peer int32, args *ReplicateMetadataArgs) (*ReplicateMetadataReply, error) {
 	requestID := m.nextRequestID.Add(1)
@@ -958,7 +979,7 @@ func (m *MetadataRPCProvider) PutMetadata(args *PutMetadataArgs) (*PutMetadataRe
 	if err != nil {
 		return &PutMetadataReply{Success: false, Error: err.Error()}, err
 	}
-	need := writeQuorum(len(replicas))
+	need := m.writeQuorum(len(replicas))
 
 	acks := 0
 	if m.isLocalReplica(replicas) {

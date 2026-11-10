@@ -257,8 +257,10 @@ rule and the cluster converges as a side effect (stigmergy, not scheduling).
   `replication_factor >= 2`, at least two daemons) so a misconfigured loop fails
   at startup instead of never running.
 - **Metadata quorum writes**: an any-node metadata write fans out to the shard's
-  replica set and is acknowledged only after a strict majority
-  (W = M/2 + 1) of acks, with the writer advancing its vector-clock entry first.
+  replica set and is acknowledged only after W acks, with the writer advancing
+  its vector-clock entry first. W is `[momofs] metadata_quorum` when set and a
+  strict majority (M/2 + 1) otherwise, clamped to the replica count (#1323);
+  the same W governs tombstone deletes.
   Partial success is reported as an error, and replicas fail closed on nameless
   records. A send that fails is also recorded as a hint, so the replica converges
   once it returns even though the request itself still fails below quorum. The daemon's PUT path uses it whenever distributed metadata is enabled

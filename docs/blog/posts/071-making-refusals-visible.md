@@ -11,7 +11,7 @@ categories:
   - metrics
 summary: "Audit logs record what succeeded. The requests that matter after an incident are the ones that were refused, and a refusal completes nothing — no success counter moves, nothing is stored. Making denials visible takes a deliberate hook at the refusal point."
 artifacts: [{type: spec, path: openspec/changes/denial-observability}, {type: adr, path: docs/adr/0091-denial-observability.md}]
-related: ["053-multitenancy-authorization-audit", "070-tenant-quotas"]
+related: ["053-multitenancy-authorization-audit", "070-tenant-quotas", "072-configuration-that-cannot-lie"]
 difficulty: "intermediate"
 pattern: "denial-observability"
 teaches:

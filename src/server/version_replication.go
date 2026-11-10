@@ -47,6 +47,9 @@ func wireVersionReplication(ctx context.Context, cfg common.Configuration, daemo
 		mFactor = cfg.Global.ReplicationFactor
 	}
 	provider := p2p.NewMetadataRPCProvider(self, transport, p2p.NewRing(ids, mFactor), cs)
+	// [momofs] metadata_quorum sets how many replicas must acknowledge a metadata
+	// write or delete; 0 keeps the strict-majority default (#1323).
+	provider.SetWriteQuorum(cfg.Momofs.MetadataQuorum)
 	gossip.SetMetadataRPCProvider(provider)
 	installVersionReplication(ctx, cs, &common.ClusterMap{Nodes: nodes}, provider, self, cfg.Global.ReplicationFactor)
 	installQuorumMetadataPublish(cfg, provider, mFactor)
