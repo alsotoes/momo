@@ -476,6 +476,10 @@ func (m *S3Communicator) OnStorageError(err error) error {
 	}
 	// R8 quotas (#1315): the object was refused before its bytes were accepted.
 	if errors.Is(err, syscall.EDQUOT) {
+		m.writeAuditLog("PutObject", m.meta.Name, "denied")
+		if dr, ok := m.metricsHook.(DenialReporter); ok {
+			dr.IncQuotaRefusal()
+		}
 		_, _ = writeS3Error(m.conn, http.StatusForbidden, "QuotaExceeded",
 			"The tenant quota for this bucket owner has been exceeded.", m.meta.Name)
 		return err
@@ -816,8 +820,14 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			Authorize(string, common.Permission, string) error
 		}); ok {
 			if err := authorizer.Authorize(m.tenantID, perm, resource); err != nil {
-				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-				writeS3Error(m.conn, http.StatusForbidden, "AccessDenied", err.Error(), "")
+				// A refusal completes no operation, so nothing else would record
+				// it: audit it and count it here (#1319).
+				m.writeAuditLog("Authorize", resource, "denied")
+				if dr, ok := m.metricsHook.(DenialReporter); ok {
+					dr.IncAuthzDenial()
+				}
+				_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				_, _ = writeS3Error(m.conn, http.StatusForbidden, "AccessDenied", err.Error(), "")
 				return 0, 0, err
 			}
 		}

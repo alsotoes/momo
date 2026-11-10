@@ -89,6 +89,10 @@ type MetricsCollector struct {
 	rebalanceCycles   atomic.Uint64
 	rebalanceFailures atomic.Uint64
 
+	// R8 (#1319): refusals that leave no completed operation behind.
+	authzDenials  atomic.Uint64
+	quotaRefusals atomic.Uint64
+
 	// R8 (#1307): audit retention pruning.
 	auditPruneRuns   atomic.Uint64
 	auditPrunedTotal atomic.Uint64
@@ -200,6 +204,12 @@ func (m *MetricsCollector) IncReplication() { m.replicationTotal.Add(1) }
 
 // IncErrors records an operation error.
 func (m *MetricsCollector) IncErrors() { m.errorsTotal.Add(1) }
+
+// IncAuthzDenial records a request refused by authorization (R8, #1319).
+func (m *MetricsCollector) IncAuthzDenial() { m.authzDenials.Add(1) }
+
+// IncQuotaRefusal records a write refused by a tenant quota (R8, #1319).
+func (m *MetricsCollector) IncQuotaRefusal() { m.quotaRefusals.Add(1) }
 
 // AddBytesUploaded adds n bytes to the uploaded-byte counter.
 func (m *MetricsCollector) AddBytesUploaded(n uint64) { m.bytesUploaded.Add(n) }
@@ -340,6 +350,14 @@ func (m *MetricsCollector) writeMetrics(w io.Writer) {
 	fmt.Fprintf(w, "# HELP momo_replication_total Total number of replication operations.\n")
 	fmt.Fprintf(w, "# TYPE momo_replication_total counter\n")
 	fmt.Fprintf(w, "momo_replication_total %d\n", m.replicationTotal.Load())
+
+	_, _ = fmt.Fprintf(w, "# HELP momo_authorization_denials_total Requests refused by tenant authorization.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE momo_authorization_denials_total counter\n")
+	_, _ = fmt.Fprintf(w, "momo_authorization_denials_total %d\n", m.authzDenials.Load())
+
+	_, _ = fmt.Fprintf(w, "# HELP momo_tenant_quota_refusals_total Writes refused because a tenant quota was exceeded.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE momo_tenant_quota_refusals_total counter\n")
+	_, _ = fmt.Fprintf(w, "momo_tenant_quota_refusals_total %d\n", m.quotaRefusals.Load())
 
 	fmt.Fprintf(w, "# HELP momo_errors_total Total number of errors.\n")
 	fmt.Fprintf(w, "# TYPE momo_errors_total counter\n")
