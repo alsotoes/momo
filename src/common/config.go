@@ -34,6 +34,8 @@ const (
 	sectionRebalance = "rebalance"
 	// sectionTenants is the name of the [tenants] section in the configuration file (R8, #936).
 	sectionTenants = "tenants"
+	// sectionACL is the prefix of the per-bucket ACL sections, `[acl.<bucket>]`.
+	sectionACL = "acl."
 	// sectionAudit is the name of the [audit] section in the configuration file (R8, #936).
 	sectionAudit = "audit"
 	// sectionSecrets is the name of the [secrets] section in the configuration file (R9, #937).
@@ -306,6 +308,12 @@ func GetConfig(path string) (Configuration, error) {
 	config.Tenants, err = loadTenantsConfig(cfg)
 	if err != nil {
 		return Configuration{}, fmt.Errorf("failed to load [%s] section: %w", sectionTenants, err)
+	}
+
+	// Load [acl.<bucket>] sections (optional, #1325)
+	config.ACLs, err = loadACLConfig(cfg)
+	if err != nil {
+		return Configuration{}, fmt.Errorf("failed to load [%s] sections: %w", sectionACL, err)
 	}
 
 	// Load [audit] section (optional, R8 #936)
@@ -698,6 +706,94 @@ func loadTenantsConfig(cfg *ini.File) (map[string]*TenantConfig, error) {
 		tenants[t.ID] = t
 	}
 	return tenants, nil
+}
+
+// loadACLConfig parses the per-bucket ACL sections (#1325).
+//
+// Each `[acl.<bucket>]` section holds one key per tenant, whose value is a
+// comma-separated permission list:
+//
+//	[acl.photos]
+//	acme = read,write
+//	beta = read,!delete
+//
+// A permission prefixed with "!" is stored as an explicit deny, which is what
+// makes the tri-state evaluation from #1313 reachable from configuration. An
+// entry may be "*" (every tenant) or "admin" (bypasses ACL checks).
+func loadACLConfig(cfg *ini.File) (map[string]*BucketACL, error) {
+	acls := make(map[string]*BucketACL)
+	for _, sectionName := range cfg.SectionStrings() {
+		if !strings.HasPrefix(sectionName, sectionACL) {
+			continue
+		}
+		acl, err := loadBucketACL(cfg, sectionName)
+		if err != nil {
+			return nil, err
+		}
+		acls[acl.Bucket] = acl
+	}
+	return acls, nil
+}
+
+// loadBucketACL parses one `[acl.<bucket>]` section.
+func loadBucketACL(cfg *ini.File, sectionName string) (*BucketACL, error) {
+	bucket := strings.TrimPrefix(sectionName, sectionACL)
+	if bucket == "" {
+		return nil, fmt.Errorf("ACL section %q has no bucket name: %w", sectionName, syscall.EINVAL)
+	}
+	// A bucket name is a path component here: no separators, no traversal.
+	if strings.ContainsAny(bucket, "/\\") || HasPathTraversalChars(bucket) {
+		return nil, fmt.Errorf("ACL section %q: invalid bucket name %q: %w", sectionName, bucket, syscall.EINVAL)
+	}
+
+	section, err := cfg.GetSection(sectionName)
+	if err != nil {
+		return nil, fmt.Errorf("unexpected error getting section %s", sectionName)
+	}
+
+	acl := &BucketACL{Bucket: bucket}
+	for _, key := range section.KeyStrings() {
+		tenantID := strings.TrimSpace(key)
+		if tenantID == "" {
+			return nil, fmt.Errorf("ACL section %q has an empty tenant key: %w", sectionName, syscall.EINVAL)
+		}
+		entries, perr := parseACLPermissions(tenantID, section.Key(key).String())
+		if perr != nil {
+			return nil, fmt.Errorf("ACL section %q, tenant %q: %w", sectionName, tenantID, perr)
+		}
+		acl.Entries = append(acl.Entries, entries...)
+	}
+	if len(acl.Entries) == 0 {
+		return nil, fmt.Errorf("ACL section %q declares no permissions: %w", sectionName, syscall.EINVAL)
+	}
+	return acl, nil
+}
+
+// parseACLPermissions turns "read,write,!delete" into ACL entries, rejecting
+// unknown permission names so a typo cannot silently widen access.
+func parseACLPermissions(tenantID, raw string) ([]ACLEntry, error) {
+	var entries []ACLEntry
+	for _, part := range strings.Split(raw, ",") {
+		perm := strings.TrimSpace(part)
+		if perm == "" {
+			continue
+		}
+		effect := "allow"
+		if strings.HasPrefix(perm, "!") {
+			effect = "deny"
+			perm = strings.TrimSpace(strings.TrimPrefix(perm, "!"))
+		}
+		switch Permission(perm) {
+		case PermRead, PermWrite, PermDelete, PermAdmin:
+			entries = append(entries, ACLEntry{TenantID: tenantID, Permission: Permission(perm), Effect: effect})
+		default:
+			return nil, fmt.Errorf("unknown permission %q (want read, write, delete or admin): %w", perm, syscall.EINVAL)
+		}
+	}
+	if len(entries) == 0 {
+		return nil, fmt.Errorf("no permissions listed: %w", syscall.EINVAL)
+	}
+	return entries, nil
 }
 
 // getConfigFromFileMu protects getConfigFromFileFn from concurrent reads/writes (Rule 471).

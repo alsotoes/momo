@@ -862,6 +862,43 @@ enabled=true
 | `quota_objects` | no | Object-count quota (0 = unlimited). |
 | `enabled` | no | Defaults to `true`. |
 
+**Declared tenants are persisted at startup** (#1325). The daemon writes every
+`[tenant.<id>]` section into the tenant store before it opens its listener, because
+the S3 handshake resolves a token by looking it up there — without this step a
+tenant declared in configuration could not authenticate at all. Seeding is
+idempotent. Pruning is conservative: a tenant present in the store but absent from
+configuration is deleted **only when the configuration still declares at least one
+tenant**, so dropping the whole section never revokes everything by accident,
+while removing one of several does revoke it on the next start.
+
+### `[acl.<bucket>]` sections
+
+Declare bucket permissions. Each key is a tenant ID (`*` matches every tenant),
+each value a comma-separated permission list. A permission prefixed with `!` is
+stored as an explicit **deny**, which wins over an `allow` for the same resource.
+
+```ini
+[acl.photos]
+acme = read,write
+beta = read,!delete
+* = read
+```
+
+| Permission | Grants |
+|------------|--------|
+| `read` | GET, HEAD, LIST |
+| `write` | PUT, POST, COPY, DELETE |
+| `delete` | DELETE (explicit) |
+| `admin` | bucket configuration, versioning, lifecycle; bypasses ACL checks |
+
+ACLs are **default-deny**: a bucket with no section is refused for every tenant, so
+declaring an ACL is what makes a tenant usable. The same startup bootstrap applies
+every section to the store and prunes buckets that are no longer declared (again
+only when at least one section exists). An unknown permission name, an invalid
+bucket name, an empty tenant key or an empty permission list fails the load with
+the offending entry named, so a typo cannot silently widen access. Object-level
+ACLs are not declarable yet — only bucket ACLs are.
+
 **Quotas are enforced** (#1315). A tenant is charged for each object it stores:
 bytes and object count, recorded in a `tenant_usage` bucket and checked in the
 same transaction that applies the change, so concurrent uploads at the boundary

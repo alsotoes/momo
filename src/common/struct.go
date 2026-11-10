@@ -454,6 +454,10 @@ type Configuration struct {
 	Storage ConfigurationStorage
 	// Tenants maps tenant ID to per-tenant configuration (R8, #936).
 	Tenants map[string]*TenantConfig
+
+	// ACLs maps bucket name to its configured access control list (#1325).
+	// Seeded into the store at startup; object-level ACLs remain API-only.
+	ACLs map[string]*BucketACL
 	// Audit is the audit logging configuration (R8, #936).
 	Audit AuditConfig
 	// Momofs is the optional [momofs] FUSE configuration.

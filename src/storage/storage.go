@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/binary"
@@ -1668,6 +1669,38 @@ func (s *CASStore) GetBucketACL(bucket string) (*common.BucketACL, error) {
 		return json.Unmarshal(data, &acl)
 	})
 	return &acl, err
+}
+
+// ListBucketACLs returns every stored bucket ACL. Used by the startup bootstrap
+// to prune entries that are no longer declared in configuration (#1325).
+func (s *CASStore) ListBucketACLs() ([]*common.BucketACL, error) {
+	var acls []*common.BucketACL
+	prefix := []byte(bucketResourcePrefix)
+	err := s.db.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket(bucketACL)
+		return b.ForEach(func(k, v []byte) error {
+			if !bytes.HasPrefix(k, prefix) {
+				return nil
+			}
+			var acl common.BucketACL
+			if err := json.Unmarshal(v, &acl); err != nil {
+				return fmt.Errorf("corrupt bucket ACL %q: %w", k, syscall.EIO)
+			}
+			acls = append(acls, &acl)
+			return nil
+		})
+	})
+	return acls, err
+}
+
+// DeleteBucketACL removes a bucket ACL, returning it to default-deny.
+func (s *CASStore) DeleteBucketACL(bucket string) error {
+	if bucket == "" {
+		return fmt.Errorf("bucket name required: %w", syscall.EINVAL)
+	}
+	return s.db.Update(func(tx *bbolt.Tx) error {
+		return tx.Bucket(bucketACL).Delete([]byte(bucketResourcePrefix + bucket))
+	})
 }
 
 // PutObjectACL stores an object ACL.

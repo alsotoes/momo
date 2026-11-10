@@ -137,6 +137,16 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 		}
 	}
 
+	// R8 (#1325): the tenancy layers read state nothing used to write, so the
+	// declared tenants and bucket ACLs are seeded before the listener opens. A
+	// failure here is fatal: running with unusable tenancy would deny every
+	// tenant while looking healthy.
+	if cs, ok := store.(*storage.CASStore); ok {
+		if err := bootstrapTenancy(cs, cfg); err != nil {
+			return fmt.Errorf("tenancy bootstrap failed: %w", err)
+		}
+	}
+
 	server, err := factory.Listen(daemons[serverId].Host)
 	if err != nil {
 		return fmt.Errorf("Error listening: %v", err)
