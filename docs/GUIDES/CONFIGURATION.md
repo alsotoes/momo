@@ -878,6 +878,16 @@ retention_days=365
 | `enabled` | no | Defaults to `false`. |
 | `retention_days` | no | Must be ≥ 1 when set; defaults to `365`. |
 
+Retention is enforced: at daemon startup and then once every 24 hours, entries
+older than `retention_days` are deleted from the log. Because the log is
+hash-chained, the hash of the last deleted entry is recorded as the new chain
+anchor (`audit_meta` bucket), so `VerifyAuditLog` still validates everything that
+survives. Pruning deliberately gives up tamper evidence for entries older than
+the window — that is the trade-off of any retention policy.
+
+Two counters expose the mechanism: `momo_audit_prune_runs_total` (passes
+executed) and `momo_audit_pruned_entries_total` (entries removed).
+
 ## Adaptive Volume Storage (R-VS, #1128)
 
 Two additional `[storage]` backends pack small objects into append-only

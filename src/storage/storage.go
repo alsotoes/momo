@@ -40,6 +40,7 @@ var (
 	bucketLifecycle      = []byte("lifecycle")         // Maps bucket -> JSON LifecycleConfig (R10, #938)
 	bucketNotification   = []byte("notification")      // Maps bucket -> JSON NotificationConfig (R10, #938)
 	bucketObjectLockCfg  = []byte("object_lock")       // Maps bucket -> lock-enabled flag (R10-LK1, #938)
+	bucketAuditMeta      = []byte("audit_meta")        // Audit retention anchor: hash of the last pruned entry (R8, #1307)
 	bucketLockState      = []byte("object_lock_state") // Maps bucket\x00key\x00versionID -> ObjectLockState JSON (R10-LK1, #938)
 	bucketMetadataHints  = []byte("metadata_hints")    // Maps peer+name -> pending metadata record (R6 v2 hinted handoff)
 )
@@ -301,6 +302,7 @@ var metaBuckets = [][]byte{
 	bucketLifecycle,
 	bucketNotification,
 	bucketObjectLockCfg,
+	bucketAuditMeta,
 	bucketLockState,
 	bucketMetadataHints,
 }
@@ -1403,6 +1405,70 @@ func (s *CASStore) DeleteTenantConfig(tenantID string) error {
 
 // === R8 Audit Log Methods ===
 
+// auditPruneAnchorKey stores, in bucketAuditMeta, the EntryHash of the last
+// audit entry removed by retention pruning. VerifyAuditLog starts its chain
+// check from this hash so the retained window remains tamper-verifiable (#1307).
+var auditPruneAnchorKey = []byte("pruned_through")
+
+// PruneAuditLog deletes audit entries older than cutoff and returns how many
+// were removed. The hash of the last deleted entry is recorded as the new chain
+// anchor so VerifyAuditLog still validates the retained window.
+//
+// Retention is bounded by the operator's [audit] retention_days setting; it
+// deliberately weakens tamper evidence for entries older than the window, which
+// is the documented trade-off of a retention policy.
+func (s *CASStore) PruneAuditLog(cutoff time.Time) (int, error) {
+	if cutoff.IsZero() {
+		return 0, nil
+	}
+	limit := uint64(cutoff.UnixNano())
+	pruned := 0
+	err := s.db.Update(func(tx *bbolt.Tx) error {
+		n, perr := pruneAuditTx(tx, limit)
+		pruned = n
+		return perr
+	})
+	if err != nil {
+		return 0, err
+	}
+	return pruned, nil
+}
+
+// pruneAuditTx deletes audit entries below limit and records the chain anchor.
+// It is a free function so the exported method stays within the complexity
+// budget (Rule 345).
+func pruneAuditTx(tx *bbolt.Tx, limit uint64) (int, error) {
+	b := tx.Bucket(bucketAuditLog)
+	if b == nil {
+		return 0, nil
+	}
+	pruned := 0
+	anchor := ""
+	c := b.Cursor()
+	for k, v := c.First(); k != nil; k, v = c.Next() {
+		if binary.BigEndian.Uint64(k) >= limit {
+			break
+		}
+		var entry common.AuditLogEntry
+		if err := json.Unmarshal(v, &entry); err != nil {
+			return 0, fmt.Errorf("failed to unmarshal audit entry at %d: %v: %w", binary.BigEndian.Uint64(k), err, syscall.EIO)
+		}
+		anchor = entry.EntryHash
+		if err := c.Delete(); err != nil {
+			return 0, fmt.Errorf("failed to delete audit entry at %d: %v: %w", binary.BigEndian.Uint64(k), err, syscall.EIO)
+		}
+		pruned++
+	}
+	if pruned == 0 {
+		return 0, nil
+	}
+	meta := tx.Bucket(bucketAuditMeta)
+	if meta == nil {
+		return 0, fmt.Errorf("audit_meta bucket not found: %w", syscall.EIO)
+	}
+	return pruned, meta.Put(auditPruneAnchorKey, []byte(anchor))
+}
+
 // WriteAuditLog appends an audit log entry with hash chaining for tamper evidence.
 func (s *CASStore) WriteAuditLog(entry *common.AuditLogEntry) error {
 	return s.db.Update(func(tx *bbolt.Tx) error {
@@ -1470,7 +1536,12 @@ func (s *CASStore) VerifyAuditLog() error {
 			return nil // No audit log yet
 		}
 
+		// A pruned log starts from the hash of the last deleted entry, so the
+		// retained window stays verifiable (#1307).
 		var prevHash string
+		if meta := tx.Bucket(bucketAuditMeta); meta != nil {
+			prevHash = string(meta.Get(auditPruneAnchorKey))
+		}
 		c := b.Cursor()
 		for k, v := c.First(); k != nil; k, v = c.Next() {
 			var entry common.AuditLogEntry

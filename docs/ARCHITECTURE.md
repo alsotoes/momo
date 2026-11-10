@@ -499,6 +499,7 @@ Momo includes a built-in Prometheus metrics exporter (`src/server/metrics_export
 | **P2P** | `momo_cluster_peers`, `momo_swim_alive_count`, `momo_swim_suspect_count`, `momo_swim_offline_count`, `momo_swim_ping_latency_seconds` (mean EWMA RTT), `momo_peer_disk_used_percent{peer}`, `momo_peer_inflight_requests{peer}` (last gossip report; absent until one arrives) | gauge |
 | **Leases** | `momo_leases_active` (held), `momo_coordination_handoffs_total` (proactive resignations), `momo_coordination_quorum_loss_total` (coordination suspensions) | gauge + counters |
 | **Scatter/Gather** | `momo_scatter_queries_total`, `momo_scatter_timeout_total` | counter |
+| **Audit retention** | `momo_audit_prune_runs_total` (retention passes), `momo_audit_pruned_entries_total` (entries removed) | counter |
 | **Latency Histograms** | `momo_request_latency_seconds{operation}` (upload/download/delete/list), `momo_replication_latency_seconds` | opt-in histogram |
 
 The only phase 2-4 metric not yet implemented is `momo_lease_contentions_total`.
@@ -536,6 +537,14 @@ it is cluster-wide:
 gossip peer map and SWIM states, RTT EWMA, peer load reports, leases, the
 replication buffer-pool target, client pheromone tuning, and Prometheus counters.
 A restart costs convergence time (seconds), not decisions.
+
+**The audit log is bounded by policy.** The `audit_log` bucket is hash-chained
+for tamper evidence, so retention cannot just delete rows: the daemon prunes
+entries older than `[audit] retention_days` at startup and then daily, and stores
+the hash of the last removed entry in `audit_meta` as the new chain anchor
+(#1307). `VerifyAuditLog` seeds from that anchor, so the retained window still
+verifies and tampering inside it is still detected. Pruning intentionally gives
+up tamper evidence for entries older than the window.
 
 **Inspecting it:** `GET /health/detailed` on each node returns a `learned_state`
 object with the election status, the resumed replication mode (plus whether it is

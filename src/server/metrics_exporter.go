@@ -88,8 +88,12 @@ type MetricsCollector struct {
 	rebalanceBytes    atomic.Uint64
 	rebalanceCycles   atomic.Uint64
 	rebalanceFailures atomic.Uint64
-	startTime         time.Time
-	hostname          string
+
+	// R8 (#1307): audit retention pruning.
+	auditPruneRuns   atomic.Uint64
+	auditPrunedTotal atomic.Uint64
+	startTime        time.Time
+	hostname         string
 
 	// R5 phase 2: dedup + GC counters (incremented in server + storage paths).
 	dedupHitsTotal   atomic.Uint64
@@ -234,6 +238,12 @@ func (m *MetricsCollector) AddRebalanceBytes(n uint64) { m.rebalanceBytes.Add(n)
 // IncRebalanceCycles counts rebalance evaluations.
 func (m *MetricsCollector) IncRebalanceCycles() { m.rebalanceCycles.Add(1) }
 
+// IncAuditPruneRun records one audit-retention pruning pass.
+func (m *MetricsCollector) IncAuditPruneRun() { m.auditPruneRuns.Add(1) }
+
+// AddAuditPruned counts audit entries removed by retention pruning.
+func (m *MetricsCollector) AddAuditPruned(n uint64) { m.auditPrunedTotal.Add(n) }
+
 // IncRebalanceFailures counts rebalance pushes that failed or were aborted.
 func (m *MetricsCollector) IncRebalanceFailures() { m.rebalanceFailures.Add(1) }
 
@@ -318,6 +328,14 @@ func (m *MetricsCollector) writeMetrics(w io.Writer) {
 	_, _ = fmt.Fprintf(w, "# HELP momo_rebalance_failures_total Rebalance pushes that failed or were aborted.\n")
 	_, _ = fmt.Fprintf(w, "# TYPE momo_rebalance_failures_total counter\n")
 	_, _ = fmt.Fprintf(w, "momo_rebalance_failures_total %d\n", m.rebalanceFailures.Load())
+
+	_, _ = fmt.Fprintf(w, "# HELP momo_audit_prune_runs_total Audit retention pruning passes run.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE momo_audit_prune_runs_total counter\n")
+	_, _ = fmt.Fprintf(w, "momo_audit_prune_runs_total %d\n", m.auditPruneRuns.Load())
+
+	_, _ = fmt.Fprintf(w, "# HELP momo_audit_pruned_entries_total Audit entries removed by retention pruning.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE momo_audit_pruned_entries_total counter\n")
+	_, _ = fmt.Fprintf(w, "momo_audit_pruned_entries_total %d\n", m.auditPrunedTotal.Load())
 
 	fmt.Fprintf(w, "# HELP momo_replication_total Total number of replication operations.\n")
 	fmt.Fprintf(w, "# TYPE momo_replication_total counter\n")
