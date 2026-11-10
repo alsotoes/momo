@@ -805,24 +805,31 @@ func TestGetConfig_R3DurabilityAndWriteQuorum(t *testing.T) {
 		t.Errorf("Durability = %q, want group-commit", cfg.Storage.Durability)
 	}
 
+	// write_quorum above 1 is refused until replica acknowledgements are
+	// collected (#1323): accepting it would promise durability the daemon cannot
+	// deliver.
 	tmpW := filepath.Join(t.TempDir(), "momo.conf")
 	if err := os.WriteFile(tmpW, []byte(writeGlobal("write_quorum = 2")), 0666); err != nil {
 		t.Fatal(err)
 	}
-	cfgW, err := GetConfig(tmpW)
-	if err != nil {
-		t.Fatalf("GetConfig failed: %v", err)
-	}
-	if cfgW.Global.WriteQuorum != 2 {
-		t.Errorf("WriteQuorum = %d, want 2", cfgW.Global.WriteQuorum)
+	if _, werr := GetConfig(tmpW); werr == nil {
+		t.Fatal("expected write_quorum > 1 to be refused as unimplemented")
+	} else if !strings.Contains(werr.Error(), "not implemented") {
+		t.Fatalf("expected an 'not implemented' error, got %v", werr)
 	}
 
-	// Defaults: durability empty (-> fsync at use), write_quorum 1.
-	cfgD, err := GetConfig(tmpW) // same config as cfgW but override? reuse validConfig path
-	if err != nil {
-		t.Fatalf("GetConfig failed: %v", err)
+	// write_quorum = 1 is accepted and is the default.
+	tmpOne := filepath.Join(t.TempDir(), "momo.conf")
+	if err := os.WriteFile(tmpOne, []byte(writeGlobal("write_quorum = 1")), 0666); err != nil {
+		t.Fatal(err)
 	}
-	_ = cfgD
+	cfgW, err := GetConfig(tmpOne)
+	if err != nil {
+		t.Fatalf("GetConfig with write_quorum=1: %v", err)
+	}
+	if cfgW.Global.WriteQuorum != 1 {
+		t.Errorf("WriteQuorum = %d, want 1", cfgW.Global.WriteQuorum)
+	}
 	tmpDef := filepath.Join(t.TempDir(), "momo.conf")
 	if err := os.WriteFile(tmpDef, []byte(validConfig), 0666); err != nil {
 		t.Fatal(err)

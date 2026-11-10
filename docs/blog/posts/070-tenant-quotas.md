@@ -11,7 +11,7 @@ categories:
   - storage
 summary: "A quota setting nobody reads is a promise with no mechanism behind it. Bounding a tenant means deciding what to count, refusing the write before its bytes land, and releasing the charge when the write turns out to be invalid."
 artifacts: [{type: spec, path: openspec/changes/tenant-quota-enforcement}, {type: adr, path: docs/adr/0097-tenant-quota-enforcement.md}]
-related: ["053-multitenancy-authorization-audit", "069-an-audit-log-that-cannot-grow-forever", "071-making-refusals-visible"]
+related: ["053-multitenancy-authorization-audit", "069-an-audit-log-that-cannot-grow-forever", "071-making-refusals-visible", "072-configuration-that-cannot-lie"]
 difficulty: "intermediate"
 pattern: "resource-quotas"
 teaches:

@@ -132,7 +132,7 @@ This section contains cluster-wide settings that affect all daemons.
     -   **Default:** number of configured daemons (all)
 
 -   **`write_quorum`**
-    -   **Description:** The minimum number of **durable** replicas required before a write is acknowledged (R3-C2, #931). Default `1`; must be within `[1, replication_factor]` (validated at load). A write that cannot reach `write_quorum` durable replicas fails instead of silently acknowledging. The metrics controller's `minimum_durability_factor` floor (issue #822) is honored beneath it: the controller never selects a mode whose achievable durable replicas fall below the quorum.
+    -   **Description:** The minimum number of **durable** replicas that must acknowledge a write (R3-C2, #931). **Only `1` is accepted today**: replica acknowledgements are not collected on the blob write path, so a larger value would promise durability the daemon cannot deliver. Setting it above `1` is a **load error** rather than a silent no-op (#1323); enforcement is tracked in that issue.
     -   **Type:** Integer
     -   **Default:** `1`
 
@@ -384,7 +384,7 @@ Becomes a SWIM indirect ping fan-out.
     -   **Default:** `5`
 
 -   **`lease_timeout`**
-    -   **Description:** The timeout in seconds for lease-based consensus on destructive operations (delete). Leases are acquired before deletes and released after propagation.
+    -   **Description:** The timeout in seconds for lease-based consensus on destructive operations. **Not implemented** — callers pass their own lease duration (the S3 delete path uses 10s), so setting this key is a **load error** (#1323). The default of 10 is what the delete path already uses.
     -   **Type:** Integer
     -   **Default:** `10`
 
@@ -674,14 +674,14 @@ FUSE transport itself is selected at launch with `-imp fs`.
     -   **Default:** `3`
 
 -   **`metadata_quorum`**
-    -   **Description:** Acknowledgements required for a metadata write (W). Must be in `[1, metadata_replication]`; `0` means majority (`M/2 + 1`).
+    -   **Description:** Acknowledgements required for a metadata write **and delete** (W). Must be in `[1, metadata_replication]`; `0` means a strict majority (`M/2 + 1`). Values above the replica count are clamped to it so a misconfiguration cannot make every metadata write fail. Honoured since #1323 — before that the quorum was hardcoded.
     -   **Type:** Integer
     -   **Default:** `0` (majority)
 
 -   **`metadata_ttl`**
-    -   **Description:** Lifetime in seconds of the local metadata cache. `0` disables caching.
-    -   **Type:** Integer
-    -   **Default:** `60`
+    -   **Description:** Lifetime of the local metadata cache. **Not implemented** — no such cache exists, so setting this key is a **load error** (#1323).
+    -   **Type:** Duration
+    -   **Default:** `60s`
 
 ### [s3] (optional)
 
@@ -728,7 +728,6 @@ fanout = 3
 ping_timeout = 500
 indirect_ping_count = 3
 scatter_gather_timeout = 5
-lease_timeout = 10
 # Production deployments should enable TLS to encrypt P2P traffic (see note below)
 # tls_cert_file = /etc/momo/p2p.crt
 # tls_key_file = /etc/momo/p2p.key

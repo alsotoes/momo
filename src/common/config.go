@@ -476,7 +476,12 @@ func loadMomofsConfig(section *ini.Section) (ConfigurationMomofs, error) {
 	momofsCfg.Enabled = section.Key("enabled").MustBool(false)
 	momofsCfg.MetadataReplication = section.Key("metadata_replication").MustInt(3)
 	momofsCfg.MetadataQuorum = section.Key("metadata_quorum").MustInt(0) // 0 = default (M/2)+1
-	momofsCfg.MetadataTTL = section.Key("metadata_ttl").MustDuration(60 * time.Second)
+	momofsCfg.MetadataTTL = 60 * time.Second
+	if section.HasKey("metadata_ttl") {
+		// 🛡️ issue #1323: no metadata response cache exists, so this key would
+		// silently do nothing.
+		return ConfigurationMomofs{}, fmt.Errorf("'metadata_ttl' is not implemented yet (no metadata cache): see https://github.com/alsotoes/momo/issues/1323: %w", syscall.ENOTSUP)
+	}
 
 	// Backward compat: accept deprecated "consistency" key but log warning
 	if consistency := section.Key("consistency").String(); consistency != "" {
@@ -818,6 +823,13 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 			if v < 1 || v > globalCfg.ReplicationFactor {
 				return ConfigurationGlobal{}, fmt.Errorf("'write_quorum' %d out of range [1, replication_factor=%d]: %w", v, globalCfg.ReplicationFactor, syscall.EINVAL)
 			}
+			// 🛡️ issue #1323: replica acknowledgements are not collected on the
+			// blob write path, so a quorum above 1 would be a durability promise
+			// the daemon cannot keep. Refuse it instead of accepting a setting
+			// that has no effect.
+			if v > 1 {
+				return ConfigurationGlobal{}, fmt.Errorf("'write_quorum' > 1 is not implemented yet (replica acks are not collected): see https://github.com/alsotoes/momo/issues/1323: %w", syscall.ENOTSUP)
+			}
 			globalCfg.WriteQuorum = v
 		}
 	}
@@ -1106,9 +1118,11 @@ func loadP2PConfig(section *ini.Section) (ConfigurationP2P, error) {
 		p2pCfg.ScatterGatherTimeout = 5
 	}
 
-	p2pCfg.LeaseTimeout, err = section.Key("lease_timeout").Int()
-	if err != nil || p2pCfg.LeaseTimeout <= 0 {
-		p2pCfg.LeaseTimeout = 10
+	p2pCfg.LeaseTimeout = 10
+	if section.HasKey("lease_timeout") {
+		// 🛡️ issue #1323: lease durations are supplied per call (the S3 delete
+		// path passes its own), so this key would silently do nothing.
+		return ConfigurationP2P{}, fmt.Errorf("'lease_timeout' is not implemented yet (callers pass their own lease duration): see https://github.com/alsotoes/momo/issues/1323: %w", syscall.ENOTSUP)
 	}
 
 	p2pCfg.TLSCertFile = section.Key("tls_cert_file").String()
