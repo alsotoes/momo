@@ -653,7 +653,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 	// would panic inside PadString on attacker-controlled input. Refuse it cleanly.
 	if len(token) > common.AuthTokenLength {
 		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		_, _ = writeS3Error(m.conn, http.StatusForbidden, "AccessDenied", "Access Denied.", "")
+		_, _ = writeS3Error(m.conn, http.StatusForbidden, "AccessDenied", s3MsgAccessDenied, "")
 		return 0, 0, syscall.EACCES
 	}
 
@@ -667,7 +667,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		want := []byte(common.PadString(common.TrimNullBytesString([]byte(m.sigV4AccessKey)), common.AuthTokenLength))
 		if subtle.ConstantTimeCompare([]byte(common.PadString(token, common.AuthTokenLength)), want) != 1 {
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			writeS3Error(m.conn, http.StatusForbidden, "AccessDenied", "Access Denied.", "")
+			_, _ = writeS3Error(m.conn, http.StatusForbidden, "AccessDenied", s3MsgAccessDenied, "")
 			return 0, 0, syscall.EACCES
 		}
 		// External S3 client using gateway SigV4 credentials is never a peer.
@@ -686,7 +686,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			m.isPeer = false
 		} else {
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			writeS3Error(m.conn, http.StatusForbidden, "AccessDenied", "Access Denied.", "")
+			_, _ = writeS3Error(m.conn, http.StatusForbidden, "AccessDenied", s3MsgAccessDenied, "")
 			return 0, 0, syscall.EACCES
 		}
 	}
@@ -2435,6 +2435,10 @@ func FormatGetBucketLocationXML(region string) []byte {
 // 'K' means the page ended on a Contents key (resume after that key);
 // 'P' means it ended on a CommonPrefix (resume after the whole prefix group).
 // This is deterministic and stable across s3-tcp/s3-quic and server restarts.
+// s3MsgAccessDenied is the single wire message for a rejected credential; AWS
+// clients render it verbatim, so it must not drift between call sites.
+const s3MsgAccessDenied = "Access Denied."
+
 const (
 	continuationKindKey     byte = 'K'
 	continuationKindPrefix  byte = 'P'

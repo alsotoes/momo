@@ -124,43 +124,17 @@ func getFile(comm transport.Communicator, store storage.Store, fileName string, 
 	reader := io.TeeReader(comm, sink)
 
 	// R8 quotas (#1315): charge the tenant before the bytes land, so an
-	// over-quota write is refused instead of consuming disk first. Overwrites
-	// only pay the delta and never add to the object count.
-	tenantID := tenantOf(comm)
-	quota, hasQuota := store.(tenantQuotaAdjuster)
-	var reservedBytes, reservedObjects int64
-	if hasQuota && tenantID != "" {
-		var oldSize int64
-		if meta, merr := store.GetMeta(fileName); merr == nil {
-			oldSize = meta.Size
-		} else {
-			reservedObjects = 1
-		}
-		reservedBytes = fileSize - oldSize
-		if qerr := quota.AdjustTenantQuota(tenantID, reservedBytes, reservedObjects); qerr != nil {
-			if e2 := comm.OnStorageError(qerr); e2 != nil {
-				log.Printf("AUDIT: OnStorageError failed for %s: %v", fileName, common.SanitizeLog(e2.Error()))
-			}
-			return fmt.Errorf("tenant quota for %s: %w", fileName, qerr)
-		}
-	}
-	// releaseQuota undoes the reservation when the object is not persisted.
-	releaseQuota := func() {
-		if !hasQuota || (reservedBytes == 0 && reservedObjects == 0) {
-			return
-		}
-		if rerr := quota.AdjustTenantQuota(tenantID, -reservedBytes, -reservedObjects); rerr != nil {
-			log.Printf("AUDIT: failed to release tenant quota for %s: %v", fileName, common.SanitizeLog(rerr.Error()))
-		}
+	// over-quota write is refused instead of consuming disk first.
+	releaseQuota, qerr := reserveTenantQuota(comm, store, fileName, fileSize)
+	if qerr != nil {
+		return qerr
 	}
 
 	// Use store.Put which handles deduplication and atomicity.
 	if err := store.Put(fileName, expectedHash, fileSize, remotePath, io.LimitReader(reader, fileSize)); err != nil {
 		releaseQuota()
 		if errors.Is(err, syscall.ENOSPC) {
-			if err2 := comm.OnStorageError(err); err2 != nil {
-				log.Printf("AUDIT: OnStorageError failed for %s: %v", fileName, common.SanitizeLog(err2.Error()))
-			}
+			reportStorageError(comm, fileName, err)
 		}
 		return fmt.Errorf("storage error: failed to put object %s: %w", fileName, err)
 	}
@@ -171,31 +145,18 @@ func getFile(comm transport.Communicator, store storage.Store, fileName string, 
 	hex.Encode(hexBuf[:], hashBytes)
 	hash := string(hexBuf[:])
 
-	if hash != expectedHash {
-		store.Delete(fileName)
-		releaseQuota()
-		err = fmt.Errorf("file hash mismatch: expected %s, got %s: %w", expectedHash, hash, syscall.EBADMSG)
+	if err = verifyStoredDigest(store, fileName, expectedHash, hash, releaseQuota); err != nil {
 		return err
 	}
 
-	// Additive integrity-checksum verification (issue #820 P2 / #903): the
-	// payload digest(s) accumulated centrally by ChecksumSet are compared to the
-	// client-supplied values. On mismatch, delete the just-stored object so no
-	// dishonest checksum is persisted and notify the surface (e.g. S3 writes
-	// 400 BadDigest). This is protocol-agnostic — surfaces without additive
-	// checksums, or transfers with none, are inert.
-	if checksumSet != nil && mismatchHook != nil {
-		refs := mismatchHook.ChecksumExpectations()
-		if !checksumSet.Verified(refs) {
-			store.Delete(fileName)
-			releaseQuota()
-			if hookErr := mismatchHook.OnIntegrityChecksumMismatch(); hookErr != nil {
-				err = hookErr
-			} else {
-				err = fmt.Errorf("%w: %s", common.ErrIntegrityMismatch, fileName)
-			}
-			return err
-		}
+	// Additive integrity checksums (#820 P2 / #903), protocol-agnostic: surfaces
+	// without them, or transfers with none, are inert.
+	undo := func() {
+		_ = store.Delete(fileName)
+		releaseQuota()
+	}
+	if err = verifyIngestChecksums(checksumSet, mismatchHook, undo, fileName); err != nil {
+		return err
 	}
 
 	// Distributed metadata write (R6 v2, #1142): the record must reach a quorum
@@ -211,6 +172,74 @@ func getFile(comm transport.Communicator, store storage.Store, fileName string, 
 	log.Printf("Received file completely!")
 	auditPut(comm, store, fileName)
 	return nil
+}
+
+// verifyStoredDigest refuses an object whose stored bytes do not hash to the
+// advertised digest, deleting it and undoing the reservation.
+func verifyStoredDigest(store storage.Store, fileName, expectedHash, actualHash string, undo func()) error {
+	if actualHash == expectedHash {
+		return nil
+	}
+	_ = store.Delete(fileName)
+	undo()
+	return fmt.Errorf("file hash mismatch: expected %s, got %s: %w", expectedHash, actualHash, syscall.EBADMSG)
+}
+
+// verifyIngestChecksums refuses a payload whose additive checksums do not match
+// the surface's declarations, deleting the just-stored object so no dishonest
+// checksum is persisted and notifying the surface (e.g. S3 writes 400 BadDigest).
+func verifyIngestChecksums(set *common.ChecksumSet, hook transport.ChecksumProvider, undo func(), fileName string) error {
+	if set == nil || hook == nil || set.Verified(hook.ChecksumExpectations()) {
+		return nil
+	}
+	undo()
+	if hookErr := hook.OnIntegrityChecksumMismatch(); hookErr != nil {
+		return hookErr
+	}
+	return fmt.Errorf("%w: %s", common.ErrIntegrityMismatch, fileName)
+}
+
+// reserveTenantQuota charges a tenant before the payload is read and returns the
+// compensating release for a write that never becomes an object. It is a no-op
+// (returning a harmless release) for tenant-less surfaces and stores that do not
+// implement quota accounting. An overwrite pays only the size delta and never
+// consumes another object.
+func reserveTenantQuota(comm transport.Communicator, store storage.Store, fileName string, fileSize int64) (release func(), err error) {
+	tenantID := tenantOf(comm)
+	quota, hasQuota := store.(tenantQuotaAdjuster)
+	if !hasQuota || tenantID == "" {
+		return func() {}, nil
+	}
+	var deltaBytes, deltaObjects int64
+	if meta, merr := store.GetMeta(fileName); merr == nil {
+		deltaBytes = fileSize - meta.Size
+	} else {
+		deltaBytes, deltaObjects = fileSize, 1
+	}
+	if qerr := quota.AdjustTenantQuota(tenantID, deltaBytes, deltaObjects); qerr != nil {
+		reportStorageError(comm, fileName, qerr)
+		return func() {}, fmt.Errorf("tenant quota for %s: %w", fileName, qerr)
+	}
+	return func() { releaseTenantQuota(tenantID, quota, fileName, deltaBytes, deltaObjects) }, nil
+}
+
+// releaseTenantQuota reverses a reservation after the object was not persisted.
+func releaseTenantQuota(tenantID string, quota tenantQuotaAdjuster, fileName string, deltaBytes, deltaObjects int64) {
+	if deltaBytes == 0 && deltaObjects == 0 {
+		return
+	}
+	if rerr := quota.AdjustTenantQuota(tenantID, -deltaBytes, -deltaObjects); rerr != nil {
+		log.Printf("AUDIT: failed to release tenant quota for %s: %v", fileName, common.SanitizeLog(rerr.Error()))
+	}
+}
+
+// reportStorageError lets the surface translate a storage refusal (e.g. ENOSPC,
+// quota) into its own wire error. Failures are only logged: the request already
+// failed, and a reporting failure must not mask the original error.
+func reportStorageError(comm transport.Communicator, fileName string, cause error) {
+	if rerr := comm.OnStorageError(cause); rerr != nil {
+		log.Printf("AUDIT: OnStorageError failed for %s: %v", fileName, common.SanitizeLog(rerr.Error()))
+	}
 }
 
 // tenantQuotaAdjuster is the optional storage seam for per-tenant quota
