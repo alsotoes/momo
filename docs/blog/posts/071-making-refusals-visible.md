@@ -78,6 +78,33 @@ through an *optional* transport interface rather than the existing metrics hook,
 so every test double in the repository keeps compiling — the hook type only gains
 the methods that daemons actually implement.
 
+## The Refusal You Cannot Afford to Log
+
+Making denials auditable creates a new problem, because a denial is something the
+client controls. Every request to a forbidden key now appends a record to the
+metadata database, inside a write transaction. A tenant that hammers that key
+turns the audit log — the thing that exists to prove nothing was tampered with —
+into the resource that fills the disk.
+
+Prefix matching does not save you either, because the resource name is in the
+path: an attacker varying the key defeats any scheme that remembers "we already
+logged this bucket". Two limits are needed, not one:
+
+- a per-key window, so the same denial is recorded once a minute rather than once
+  per request;
+- a global rate cap on denial records per second, so distinct keys are bounded too.
+
+The counters stay exact. That is the division of labour: the counter answers "how
+many requests are being refused", the audit log answers "who was refused what" with
+a sample that is thick enough to investigate and thin enough to survive a flood.
+The suppression state itself is a fixed-capacity set, because a limiter that grows
+without bound is the same bug wearing a different hat, and the daemon logs one line
+per hundred suppressed entries so the sampling is never invisible.
+
+Successful operations are deliberately excluded from the limiter. Nothing a
+successful client does is unbounded in the same way, and suppressing the record of
+an operation that actually happened would be trading the wrong property.
+
 ## What Is Deliberately Not Covered
 
 The native protocols carry no tenant identity and perform no ACL evaluation. They

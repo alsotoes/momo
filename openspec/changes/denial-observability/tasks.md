@@ -19,6 +19,18 @@
 - [x] `TestQuotaRefusalMapsToForbidden` — wire contract
 - [x] `TestDenialCountersAreExported` / `TestDenialCountersStartAtZero` — families and values
 
+### Rate limiting (#1321)
+
+- [x] `src/transport/denial_audit_limiter.go`: per-key window (1 min) + per-second
+      burst cap (50), fixed-capacity insertion-ordered state
+- [x] `src/transport/s3_communicator.go`: denial records go through the limiter;
+      successful records unchanged
+- [x] `TestDenialLimiterSuppressesRepeats`, `_ReopensAfterWindow`,
+      `_CapsDistinctKeys`, `_RefillsOverTime`, `_StateIsBounded`, `_Concurrent`,
+      `TestNilDenialLimiterAllows`
+- [x] `TestRepeatedDenialAuditsOnce` (20 denials → 1 entry) and
+      `TestSuccessfulAuditIsNeverSuppressed` (20 successes → 20 entries)
+
 ## Docs & Compliance
 
 - [x] `docs/REFERENCE/ARCHITECTURE.md` metric table

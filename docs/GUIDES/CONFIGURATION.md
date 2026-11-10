@@ -911,7 +911,14 @@ protocols is appended to a tamper-evident audit log. **Refusals are audited too*
 — an ACL denial records `Authorize/denied` and an over-quota write records
 `PutObject/denied`, both attributed to the tenant — and each increments
 `momo_authorization_denials_total` or `momo_tenant_quota_refusals_total`, so a
-dashboard can tell "unused" from "denied". Entries are SHA-256
+dashboard can tell "unused" from "denied".
+
+Denial records are rate-limited because the client induces them: an identical
+`(tenant, operation, resource)` denial is written at most once per minute, and at
+most 50 denial records per second are written whatever the resource names. The
+**counters stay exact** — the audit log is an attributed sample, so a flood costs
+disk only in the sample, not per request. Successful operations are never
+suppressed. Suppression is reported in the daemon log once per hundred entries. Entries are SHA-256
 hash-chained in the `audit_log` BoltDB bucket; `VerifyAuditLog` walks the chain
 to detect tampering.
 
