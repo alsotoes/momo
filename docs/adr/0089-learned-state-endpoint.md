@@ -18,8 +18,8 @@ whether the cluster will resume the mode it was running or fall back, and cannot
 tell whether it is even the controller.
 
 ## Decision
-- Detailed health reports learned state: `GET /health/detailed` SHALL include a `learned_state` object describing what the node learned at runtime and whether it is persisted. - **Given** a node with `[coordination] enabled=true` that holds the lease - **And** the persisted replication mode is 2 with order `[1,2,3,4]` - **When** an operator requests `/health/detailed` - **Then** `learned_state.controller.is_holder` is `true`, `election_enabled` is `true`, and `lease_ttl_seconds` matches the configured TTL - **And** `learned_state.repli...
-- The payload never leaks infrastructure paths: `learned_state` SHALL report persistence as a boolean plus a relative store name. - **Given** any configuration with a data directory - **When** `/health/detailed` is rendered - **Then** no field value contains an absolute filesystem path
+- Detailed health reports learned state: `GET /health/detailed` SHALL include a `learned_state` object describing what the node learned at runtime and whether it is persisted.
+- The payload never leaks infrastructure paths: `learned_state` SHALL report persistence as a boolean plus a relative store name.
 
 ## Consequences
 

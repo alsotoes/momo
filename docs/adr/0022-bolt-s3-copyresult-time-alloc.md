@@ -15,7 +15,7 @@ pressure during sustained Copy workloads. The standard-library idiom
 into the response `bytes.Buffer` with zero heap allocations.
 
 ## Decision
-- allocation-free LastModified formatting: `FormatCopyObjectResultXML` SHALL render the `LastModified` element using `time.AppendFormat` with a stack-allocated `[32]byte` scratch buffer written directly into the response `bytes.Buffer`, without calling `time.Format()` and without any dynamic string allocation for the timestamp. ## UNCHANGED Behavior - `formatLastModified` remains in use at its other call sites. - XML structure, escaping, and ETag handling in the CopyObject result are unchanged. - CopyObject request semantics and S3 respo...
+- allocation-free LastModified formatting: `FormatCopyObjectResultXML` SHALL render the `LastModified` element using `time.AppendFormat` with a stack-allocated `[32]byte` scratch buffer written directly into the response `bytes.Buffer`, without calling `time.Format()` and without any dynamic string allocation for the timestamp.
 
 ## Consequences
 

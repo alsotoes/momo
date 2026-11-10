@@ -474,7 +474,19 @@ func (m *S3Communicator) OnStorageError(err error) error {
 			"There is insufficient storage space to complete the request.", m.meta.Name)
 		return err
 	}
+	// R8 quotas (#1315): the object was refused before its bytes were accepted.
+	if errors.Is(err, syscall.EDQUOT) {
+		_, _ = writeS3Error(m.conn, http.StatusForbidden, "QuotaExceeded",
+			"The tenant quota for this bucket owner has been exceeded.", m.meta.Name)
+		return err
+	}
 	return err
+}
+
+// tenantQuotaAdjuster is the optional storage seam for per-tenant quota
+// accounting (#1315). Stores without it leave quotas unenforced.
+type tenantQuotaAdjuster interface {
+	AdjustTenantQuota(tenantID string, deltaBytes, deltaObjects int64) error
 }
 
 // Write writes to the underlying HTTP connection.
@@ -637,6 +649,14 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		return 0, 0, fmt.Errorf("incomplete presigned auth query parameters: %w", syscall.EBADMSG)
 	}
 
+	// A credential longer than the token width cannot be valid, and comparing it
+	// would panic inside PadString on attacker-controlled input. Refuse it cleanly.
+	if len(token) > common.AuthTokenLength {
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, _ = writeS3Error(m.conn, http.StatusForbidden, "AccessDenied", s3MsgAccessDenied, "")
+		return 0, 0, syscall.EACCES
+	}
+
 	// issue #656: when dedicated S3 gateway SigV4 credentials are configured,
 	// inbound SigV4 requests must present the gateway access key and be signed
 	// with the gateway secret key. Otherwise the legacy single-token mode holds
@@ -647,7 +667,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		want := []byte(common.PadString(common.TrimNullBytesString([]byte(m.sigV4AccessKey)), common.AuthTokenLength))
 		if subtle.ConstantTimeCompare([]byte(common.PadString(token, common.AuthTokenLength)), want) != 1 {
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			writeS3Error(m.conn, http.StatusForbidden, "AccessDenied", "Access Denied.", "")
+			_, _ = writeS3Error(m.conn, http.StatusForbidden, "AccessDenied", s3MsgAccessDenied, "")
 			return 0, 0, syscall.EACCES
 		}
 		// External S3 client using gateway SigV4 credentials is never a peer.
@@ -658,9 +678,15 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			m.isPeer = false
 		} else if peerToken := common.DerivePeerToken(expectedAuthToken); subtle.ConstantTimeCompare(tokenBuf, peerToken) == 1 {
 			m.isPeer = true
+		} else if tenantID := m.resolveTenantToken(token); tenantID != "" {
+			// R8 (#1316): a tenant's auth_token is a credential in its own right.
+			// Binding it here is what makes ACLs, quotas and tenant-attributed
+			// audit entries reachable at all.
+			m.tenantID = tenantID
+			m.isPeer = false
 		} else {
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			writeS3Error(m.conn, http.StatusForbidden, "AccessDenied", "Access Denied.", "")
+			_, _ = writeS3Error(m.conn, http.StatusForbidden, "AccessDenied", s3MsgAccessDenied, "")
 			return 0, 0, syscall.EACCES
 		}
 	}
@@ -669,6 +695,10 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		secretKey := common.TrimNullBytesString(expectedAuthToken)
 		if sigV4GatewayCreds {
 			secretKey = common.TrimNullBytesString([]byte(m.sigV4SecretKey))
+		} else if m.tenantID != "" {
+			// Single-token convention, scoped to the tenant: the presented access
+			// key doubles as the signing secret.
+			secretKey = common.TrimNullBytesString([]byte(token))
 		}
 		if !verifySigV4Signature(req, authHeader, secretKey) {
 			log.Printf("AUDIT: SigV4 signature verification failed from %s", m.conn.RemoteAddr())
@@ -1407,11 +1437,28 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			deleteStart = time.Now()
 		}
 
+		// R8 quotas (#1315): read the size first so a successful delete can
+		// charge the bytes and the object back to the tenant.
+		var freedSize int64
+		freedQuota := false
+		if _, ok := m.store.(tenantQuotaAdjuster); ok && m.tenantID != "" {
+			if meta, mErr := m.store.GetMeta(key); mErr == nil {
+				freedSize, freedQuota = meta.Size, true
+			}
+		}
+
 		err := m.store.Delete(key)
 		if err != nil {
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "The request failed due to an internal error.", key)
 			return 0, 0, fmt.Errorf("failed to delete file %q: %w", key, err)
+		}
+		if freedQuota {
+			if qm, ok := m.store.(tenantQuotaAdjuster); ok {
+				if qErr := qm.AdjustTenantQuota(m.tenantID, -freedSize, -1); qErr != nil {
+					log.Printf("AUDIT: failed to release tenant quota for %s: %v", common.SanitizeLog(key), qErr)
+				}
+			}
 		}
 
 		// Propagate delete to all peers via scatter-gather (best-effort).
@@ -2388,6 +2435,10 @@ func FormatGetBucketLocationXML(region string) []byte {
 // 'K' means the page ended on a Contents key (resume after that key);
 // 'P' means it ended on a CommonPrefix (resume after the whole prefix group).
 // This is deterministic and stable across s3-tcp/s3-quic and server restarts.
+// s3MsgAccessDenied is the single wire message for a rejected credential; AWS
+// clients render it verbatim, so it must not drift between call sites.
+const s3MsgAccessDenied = "Access Denied."
+
 const (
 	continuationKindKey     byte = 'K'
 	continuationKindPrefix  byte = 'P'
@@ -3829,6 +3880,25 @@ func writeXMLString(w *bytes.Buffer, name, value string) {
 	w.WriteString("</")
 	w.WriteString(name)
 	w.WriteByte('>')
+}
+
+// resolveTenantToken maps a presented credential to a configured tenant ID, or
+// returns "" when the store has no tenant table or the token is not a tenant.
+func (m *S3Communicator) resolveTenantToken(token string) string {
+	if m.store == nil || token == "" {
+		return ""
+	}
+	ts, ok := m.store.(interface {
+		GetTenantIDByAuthToken(string) (string, error)
+	})
+	if !ok {
+		return ""
+	}
+	tenantID, err := ts.GetTenantIDByAuthToken(token)
+	if err != nil {
+		return ""
+	}
+	return tenantID
 }
 
 // TenantID returns the authenticated tenant ID for this S3 connection (R8, #936).

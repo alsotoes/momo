@@ -54,31 +54,23 @@ func parseRequirements(content string) []model.Requirement {
 	return requirements
 }
 
+// extractSummary returns the requirement's own prose: everything between the
+// "### Requirement:" line and the next heading of any level. Scenarios and
+// trailing constraint sections are deliberately excluded — they are test cases,
+// not decisions, and folding them in made ADR entries unreadable (#1317).
 func extractSummary(content string) string {
-	lines := strings.Split(content, "\n")
-	var summaryParts []string
-	inScenario := false
-
-	for _, line := range lines {
+	var parts []string
+	for _, line := range strings.Split(content, "\n") {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "#### Scenario:") {
-			inScenario = true
-			continue
+		if strings.HasPrefix(trimmed, "##") {
+			break
 		}
-		if inScenario && strings.HasPrefix(trimmed, "- ") {
-			continue
-		}
-		if inScenario && trimmed == "" {
-			inScenario = false
-			continue
-		}
-		if !inScenario && trimmed != "" && !strings.HasPrefix(trimmed, "###") {
-			summaryParts = append(summaryParts, trimmed)
+		if trimmed != "" {
+			parts = append(parts, trimmed)
 		}
 	}
 
-	summary := strings.Join(summaryParts, " ")
-	summary = strings.TrimSpace(summary)
+	summary := strings.TrimSpace(strings.Join(parts, " "))
 	if len(summary) > 500 {
 		summary = summary[:500] + "..."
 	}

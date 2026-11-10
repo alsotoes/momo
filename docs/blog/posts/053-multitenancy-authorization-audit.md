@@ -17,7 +17,7 @@ summary: "How momo isolates tenants without a central secret server: HKDF-derive
 artifacts:
   - type: spec
     path: openspec/changes/r8-multitenancy-authz
-related: ["013-e2ee-envelope-encryption", "002-replication-strategies-polymorphic", "044-plugin-seam-architecture", "054-secrets-management-key-rotation", "069-an-audit-log-that-cannot-grow-forever"]
+related: ["013-e2ee-envelope-encryption", "002-replication-strategies-polymorphic", "044-plugin-seam-architecture", "054-secrets-management-key-rotation", "069-an-audit-log-that-cannot-grow-forever", "070-tenant-quotas"]
 difficulty: "advanced"
 pattern: "security-boundary"
 teaches:

@@ -16,7 +16,7 @@ would have to guess or fan out a query per request.
 - Fixed-size load payload: The system SHALL encode a load report in a fixed 20-byte payload containing disk utilisation percent, in-flight requests, replication queue depth, and a sample timestamp.
 - Publication rides the heartbeat fanout: The system SHALL publish the local report to the same peers that receive a heartbeat, on the same cadence, and only when a load provider is installed.
 - Peers store the latest report: The system SHALL store the most recent valid report on the peer record and expose it by peer ID.
-- Peer load is exported as metrics: The system SHALL export the last report per peer as `momo_peer_disk_used_percent{peer}` and `momo_peer_inflight_requests{peer}` gauges, and SHALL declare the families even before any report arrives. ## Out of scope - Any redirect or admission decision (tracked in #1261). - Replication queue depth accounting (field reserved, reports zero today).
+- Peer load is exported as metrics: The system SHALL export the last report per peer as `momo_peer_disk_used_percent{peer}` and `momo_peer_inflight_requests{peer}` gauges, and SHALL declare the families even before any report arrives.
 
 ## Consequences
 

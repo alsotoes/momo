@@ -26,7 +26,7 @@ mandatory steering rule so the defect class cannot recur.
 ## Decision
 - no duplicate auto-trace issues per PR: The AI reviewer SHALL NOT create a second auto-trace tracking issue for a PR that already has one.
 - current PR body for issue-link detection: The reviewer SHALL determine whether the PR body carries an issue link from the CURRENT PR body fetched via the GitHub API, not from the (possibly stale) webhook event payload.
-- workflow concurrency control: The reviewer workflow SHALL serialize runs per PR so parallel pushes cannot race. ## REMOVED Requirements None. ## Acceptance Criteria 1. `ai_reviewer.py` exposes `find_existing_auto_trace` and `get_current_pr_body`. 2. `create_missing_issue` reuses an existing canonical auto-trace issue (verified by the #1057 incident reproduction: search for PR #996 returns an existing issue number). 3. `gemini_reviewer.yml` declares `concurrency` with `cancel-in-progress: true` keyed by PR. 4. Rule 90 present...
+- workflow concurrency control: The reviewer workflow SHALL serialize runs per PR so parallel pushes cannot race.
 
 ## Consequences
 
