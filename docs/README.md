@@ -69,6 +69,7 @@ Momo is engineered around two foundational philosophies that govern all subsyste
 | [BLOG](blog/README.md) | Engineering journal (Hugo-format posts) — journey, research, architecture decisions, changes |
 | [ADR](adr/README.md) | Architecture Decision Records (Fowler pattern) — one per ratified OpenSpec change, auto-synced from specs |
 | [ECC_TOOLS](ECC_TOOLS.md) | ECC Tools GitHub App — advisory PR audits, reviewer integration, bundle triage |
+| [RESEARCH_PAPERS](RESEARCH_PAPERS.md) | Project map with the research papers and production systems behind each subsystem |
 
 ## Key Features
 
