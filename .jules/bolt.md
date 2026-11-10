@@ -267,3 +267,7 @@
 ## 2026-11-09 - Eliminate time formatting and XML allocations in S3 ListVersions
 **Learning:** Formatting timestamps with `time.Format` inside large array serialization loops (like S3 ListVersions `FormatListVersionsXML`) combined with `xml.MarshalIndent` creates significant garbage collection pressure due to heavy heap allocation overhead per element.
 **Action:** When manually formatting XML with iterative structs, drop `xml.MarshalIndent` and strings generated via `time.Format`. Switch to appending directly to `bytes.Buffer`, and format timestamps locally per loop using `t.AppendFormat(timeBuf[:0], ...)` to achieve zero-allocation string writing.
+
+## 2026-11-10 - Zero-allocation /proc parsing requires dropping Fields and string()
+**Learning:** Replacing `strings.Split` with a `bytes.IndexByte` line scan removes the string conversion of the whole file and the per-line slice, but the win is easily lost again: `bytes.Fields` still allocates the field slice, and `strconv.ParseUint(string(f))` allocates a string per field. On `/proc/meminfo` that left ~24 allocations per sample.
+**Action:** For small, fixed-shape text formats, scan the raw bytes: skip separators, read digits with an in-line `parseDecimal` (with an overflow guard), and compare labels with `bytes.Equal` against package-level `[]byte` keys. Measured on the health sampler: `/proc/stat` 1324 ns/1840 B/5 allocs → 484 ns/0 B/0 allocs, `/proc/meminfo` 3299 ns/1888 B/24 allocs → 749 ns/0 B/0 allocs. Keep a `splitBaseline*` benchmark so future changes can prove they did not regress.
