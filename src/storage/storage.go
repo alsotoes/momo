@@ -1701,16 +1701,26 @@ func (s *CASStore) GetObjectACL(key string) (*common.ObjectACL, error) {
 	return &acl, err
 }
 
-// checkACL evaluates an ACL entry against a tenant and permission.
-func checkACL(acl *common.ACLEntry, tenantID string, perm common.Permission) bool {
+// aclVerdict is the tri-state result of evaluating one ACL level. Distinguishing
+// "no match" from "explicit deny" is what lets a deny win instead of being read
+// as "not allowed, try the next level" (#1313).
+type aclVerdict int
+
+const (
+	aclNoMatch aclVerdict = iota
+	aclAllow
+	aclDeny
+)
+
+// checkACL evaluates one entry against a tenant and permission.
+func checkACL(acl *common.ACLEntry, tenantID string, perm common.Permission) aclVerdict {
 	if acl == nil {
-		return false
+		return aclNoMatch
 	}
 	// Wildcard tenant matches all
 	if acl.TenantID != "" && acl.TenantID != tenantID {
-		return false
+		return aclNoMatch
 	}
-	// Check permission match
 	permMatch := false
 	switch acl.Permission {
 	case common.PermRead:
@@ -1723,14 +1733,31 @@ func checkACL(acl *common.ACLEntry, tenantID string, perm common.Permission) boo
 		permMatch = perm == common.PermDelete || perm == common.PermAdmin
 	}
 	if !permMatch {
-		return false
+		return aclNoMatch
 	}
-	// Default effect is "allow" if not specified
-	effect := acl.Effect
-	if effect == "" {
-		effect = "allow"
+	// Default effect is "allow" if not specified.
+	if acl.Effect == "deny" {
+		return aclDeny
 	}
-	return effect == "allow"
+	return aclAllow
+}
+
+// evaluateACL reduces a level's entries to one verdict. An explicit deny wins
+// over any allow at the same level.
+func evaluateACL(entries []common.ACLEntry, tenantID string, perm common.Permission) aclVerdict {
+	sawAllow := false
+	for i := range entries {
+		switch checkACL(&entries[i], tenantID, perm) {
+		case aclDeny:
+			return aclDeny
+		case aclAllow:
+			sawAllow = true
+		}
+	}
+	if sawAllow {
+		return aclAllow
+	}
+	return aclNoMatch
 }
 
 // Resource prefixes for Authorize.
@@ -1758,16 +1785,6 @@ func parseACLResource(resource string) (bucket, object string, err error) {
 	}
 }
 
-// aclAllows reports whether any entry grants tenantID the permission.
-func aclAllows(entries []common.ACLEntry, tenantID string, perm common.Permission) bool {
-	for i := range entries {
-		if checkACL(&entries[i], tenantID, perm) {
-			return true
-		}
-	}
-	return false
-}
-
 // Authorize checks if a tenant has permission to perform an operation on a resource.
 // Returns nil if authorized, or an error with EACCES if denied.
 // Resource format: "bucket/<bucket>" or "object/<bucket>/<key>"
@@ -1785,14 +1802,21 @@ func (s *CASStore) Authorize(tenantID string, perm common.Permission, resource s
 		return err
 	}
 
-	// Object ACL is the most specific rule; bucket ACL is the fallback.
+	// Object ACL is the most specific rule; bucket ACL is the fallback. An
+	// explicit deny at a level stops evaluation instead of deferring to the
+	// broader one (#1313).
 	if object != "" {
 		acl, aErr := s.GetObjectACL(bucket + "/" + object)
 		if aErr != nil {
 			return aErr
 		}
-		if acl != nil && aclAllows(acl.Entries, tenantID, perm) {
-			return nil
+		if acl != nil {
+			switch evaluateACL(acl.Entries, tenantID, perm) {
+			case aclDeny:
+				return deniedACL(tenantID, resource)
+			case aclAllow:
+				return nil
+			}
 		}
 	}
 	if bucket != "" {
@@ -1800,12 +1824,21 @@ func (s *CASStore) Authorize(tenantID string, perm common.Permission, resource s
 		if aErr != nil {
 			return aErr
 		}
-		if acl != nil && aclAllows(acl.Entries, tenantID, perm) {
-			return nil
+		if acl != nil {
+			switch evaluateACL(acl.Entries, tenantID, perm) {
+			case aclDeny:
+				return deniedACL(tenantID, resource)
+			case aclAllow:
+				return nil
+			}
 		}
 	}
 
-	// No matching ACL = deny (default deny)
+	return deniedACL(tenantID, resource)
+}
+
+// deniedACL builds the default 403 mapping for an ACL refusal.
+func deniedACL(tenantID, resource string) error {
 	return fmt.Errorf("access denied for tenant %s to %s: %w", tenantID, resource, syscall.EACCES)
 }
 

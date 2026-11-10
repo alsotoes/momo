@@ -173,3 +173,82 @@ func TestAuthorize_InvalidInput(t *testing.T) {
 		t.Fatal("invalid resource format should error")
 	}
 }
+
+// TestACL_DenyWinsOverAllow pins the documented semantic (#1313): an explicit
+// deny beats a broader allow, at the same level and at the object level.
+func TestACL_DenyWinsOverAllow(t *testing.T) {
+	s := newTestStore(t)
+
+	// Bucket-wide allow, with an explicit deny on one object.
+	if err := s.PutBucketACL(&common.BucketACL{
+		Bucket: "b1",
+		Entries: []common.ACLEntry{
+			{TenantID: "tenant-a", Permission: common.PermRead, Effect: "allow"},
+		},
+	}); err != nil {
+		t.Fatalf("PutBucketACL: %v", err)
+	}
+	if err := s.PutObjectACL(&common.ObjectACL{
+		Key: "b1/secret.txt",
+		Entries: []common.ACLEntry{
+			{TenantID: "tenant-a", Permission: common.PermRead, Effect: "deny"},
+			{TenantID: "", Permission: common.PermRead, Effect: "allow"},
+		},
+	}); err != nil {
+		t.Fatalf("PutObjectACL: %v", err)
+	}
+
+	if err := s.Authorize("tenant-a", common.PermRead, "object/b1/secret.txt"); err == nil {
+		t.Fatal("object-level deny must override a wildcard allow at the same level")
+	}
+	if err := s.Authorize("tenant-a", common.PermRead, "object/b1/public.txt"); err != nil {
+		t.Fatalf("bucket allow must still grant access to other objects: %v", err)
+	}
+}
+
+// TestACL_DenyDoesNotFallThroughToBucket pins the second half of #1313: a deny at
+// the object level stops evaluation instead of deferring to the bucket ACL.
+func TestACL_DenyDoesNotFallThroughToBucket(t *testing.T) {
+	s := newTestStore(t)
+
+	if err := s.PutBucketACL(&common.BucketACL{
+		Bucket: "b2",
+		Entries: []common.ACLEntry{
+			{TenantID: "tenant-a", Permission: common.PermRead, Effect: "allow"},
+		},
+	}); err != nil {
+		t.Fatalf("PutBucketACL: %v", err)
+	}
+	if err := s.PutObjectACL(&common.ObjectACL{
+		Key: "b2/locked.txt",
+		Entries: []common.ACLEntry{
+			{TenantID: "tenant-a", Permission: common.PermRead, Effect: "deny"},
+		},
+	}); err != nil {
+		t.Fatalf("PutObjectACL: %v", err)
+	}
+
+	if err := s.Authorize("tenant-a", common.PermRead, "object/b2/locked.txt"); err == nil {
+		t.Fatal("object deny must not fall through to the bucket allow")
+	}
+}
+
+func TestACL_BucketDenyWins(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.PutBucketACL(&common.BucketACL{
+		Bucket: "b3",
+		Entries: []common.ACLEntry{
+			{TenantID: "", Permission: common.PermWrite, Effect: "allow"},
+			{TenantID: "tenant-a", Permission: common.PermWrite, Effect: "deny"},
+		},
+	}); err != nil {
+		t.Fatalf("PutBucketACL: %v", err)
+	}
+
+	if err := s.Authorize("tenant-a", common.PermWrite, "bucket/b3"); err == nil {
+		t.Fatal("tenant-specific deny must override a wildcard allow")
+	}
+	if err := s.Authorize("tenant-b", common.PermWrite, "bucket/b3"); err != nil {
+		t.Fatalf("wildcard allow must still apply to other tenants: %v", err)
+	}
+}
