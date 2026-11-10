@@ -101,3 +101,32 @@ func TestGetConfig_NoACLSectionsIsNotAnError(t *testing.T) {
 		t.Fatalf("expected no ACLs, got %d", len(cfg.ACLs))
 	}
 }
+
+// TestParseACLPermissionsEdges covers the parser's tolerances: surrounding
+// whitespace, empty list items, the admin permission and repeated permissions.
+func TestParseACLPermissionsEdges(t *testing.T) {
+	entries, err := parseACLPermissions("acme", " read , ,admin,write,, ")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 entries (empty items skipped), got %d: %+v", len(entries), entries)
+	}
+	perms := map[Permission]string{}
+	for _, e := range entries {
+		perms[e.Permission] = e.Effect
+		if e.TenantID != "acme" {
+			t.Fatalf("tenant must be preserved, got %q", e.TenantID)
+		}
+	}
+	if perms[PermRead] != "allow" || perms[PermAdmin] != "allow" || perms[PermWrite] != "allow" {
+		t.Fatalf("unexpected permissions: %+v", perms)
+	}
+
+	if _, err := parseACLPermissions("acme", "  ,  "); err == nil {
+		t.Fatal("a list of only separators must be refused")
+	}
+	if _, err := parseACLPermissions("acme", "!nonsense"); err == nil {
+		t.Fatal("a deny of an unknown permission must be refused")
+	}
+}

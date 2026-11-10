@@ -269,3 +269,82 @@ func s3GetAsTenant(t *testing.T, store *storage.CASStore, token, target string) 
 	<-done
 	return string(buf[:n]), handshakeErr
 }
+
+// failingListStore reports an error from the enumeration step, so the bootstrap's
+// error handling is covered (a half-applied tenancy must not be silent).
+type failingListStore struct {
+	*fakeTenancyStore
+	failTenants bool
+	failACLs    bool
+	failDelete  bool
+}
+
+func (f *failingListStore) ListTenantConfigs() ([]*common.TenantConfig, error) {
+	if f.failTenants {
+		return nil, syscall.EIO
+	}
+	return f.fakeTenancyStore.ListTenantConfigs()
+}
+
+func (f *failingListStore) ListBucketACLs() ([]*common.BucketACL, error) {
+	if f.failACLs {
+		return nil, syscall.EIO
+	}
+	return f.fakeTenancyStore.ListBucketACLs()
+}
+
+func (f *failingListStore) DeleteTenantConfig(id string) error {
+	if f.failDelete {
+		return syscall.EIO
+	}
+	return f.fakeTenancyStore.DeleteTenantConfig(id)
+}
+
+func (f *failingListStore) DeleteBucketACL(bucket string) error {
+	if f.failDelete {
+		return syscall.EIO
+	}
+	return f.fakeTenancyStore.DeleteBucketACL(bucket)
+}
+
+// TestBootstrapTenancyErrorPaths keeps every failure visible at startup.
+func TestBootstrapTenancyErrorPaths(t *testing.T) {
+	base := func() *fakeTenancyStore {
+		s := newFakeTenancyStore()
+		s.tenants["stale"] = tenantCfg("stale")
+		s.acls["stale"] = aclCfg("stale", "stale")
+		return s
+	}
+
+	t.Run("tenant listing fails", func(t *testing.T) {
+		store := &failingListStore{fakeTenancyStore: base(), failTenants: true}
+		err := bootstrapTenancy(store, common.Configuration{Tenants: map[string]*common.TenantConfig{"acme": tenantCfg("acme")}})
+		if !errors.Is(err, syscall.EIO) {
+			t.Fatalf("want EIO, got %v", err)
+		}
+	})
+
+	t.Run("acl listing fails", func(t *testing.T) {
+		store := &failingListStore{fakeTenancyStore: base(), failACLs: true}
+		err := bootstrapTenancy(store, common.Configuration{ACLs: map[string]*common.BucketACL{"photos": aclCfg("photos", "acme")}})
+		if !errors.Is(err, syscall.EIO) {
+			t.Fatalf("want EIO, got %v", err)
+		}
+	})
+
+	t.Run("tenant prune fails", func(t *testing.T) {
+		store := &failingListStore{fakeTenancyStore: base(), failDelete: true}
+		err := bootstrapTenancy(store, common.Configuration{Tenants: map[string]*common.TenantConfig{"acme": tenantCfg("acme")}})
+		if !errors.Is(err, syscall.EIO) {
+			t.Fatalf("want EIO, got %v", err)
+		}
+	})
+
+	t.Run("acl prune fails", func(t *testing.T) {
+		store := &failingListStore{fakeTenancyStore: base(), failDelete: true}
+		err := bootstrapTenancy(store, common.Configuration{ACLs: map[string]*common.BucketACL{"photos": aclCfg("photos", "acme")}})
+		if !errors.Is(err, syscall.EIO) {
+			t.Fatalf("want EIO, got %v", err)
+		}
+	})
+}
