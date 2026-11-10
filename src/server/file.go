@@ -123,8 +123,40 @@ func getFile(comm transport.Communicator, store storage.Store, fileName string, 
 	}
 	reader := io.TeeReader(comm, sink)
 
+	// R8 quotas (#1315): charge the tenant before the bytes land, so an
+	// over-quota write is refused instead of consuming disk first. Overwrites
+	// only pay the delta and never add to the object count.
+	tenantID := tenantOf(comm)
+	quota, hasQuota := store.(tenantQuotaAdjuster)
+	var reservedBytes, reservedObjects int64
+	if hasQuota && tenantID != "" {
+		var oldSize int64
+		if meta, merr := store.GetMeta(fileName); merr == nil {
+			oldSize = meta.Size
+		} else {
+			reservedObjects = 1
+		}
+		reservedBytes = fileSize - oldSize
+		if qerr := quota.AdjustTenantQuota(tenantID, reservedBytes, reservedObjects); qerr != nil {
+			if e2 := comm.OnStorageError(qerr); e2 != nil {
+				log.Printf("AUDIT: OnStorageError failed for %s: %v", fileName, common.SanitizeLog(e2.Error()))
+			}
+			return fmt.Errorf("tenant quota for %s: %w", fileName, qerr)
+		}
+	}
+	// releaseQuota undoes the reservation when the object is not persisted.
+	releaseQuota := func() {
+		if !hasQuota || (reservedBytes == 0 && reservedObjects == 0) {
+			return
+		}
+		if rerr := quota.AdjustTenantQuota(tenantID, -reservedBytes, -reservedObjects); rerr != nil {
+			log.Printf("AUDIT: failed to release tenant quota for %s: %v", fileName, common.SanitizeLog(rerr.Error()))
+		}
+	}
+
 	// Use store.Put which handles deduplication and atomicity.
 	if err := store.Put(fileName, expectedHash, fileSize, remotePath, io.LimitReader(reader, fileSize)); err != nil {
+		releaseQuota()
 		if errors.Is(err, syscall.ENOSPC) {
 			if err2 := comm.OnStorageError(err); err2 != nil {
 				log.Printf("AUDIT: OnStorageError failed for %s: %v", fileName, common.SanitizeLog(err2.Error()))
@@ -141,6 +173,7 @@ func getFile(comm transport.Communicator, store storage.Store, fileName string, 
 
 	if hash != expectedHash {
 		store.Delete(fileName)
+		releaseQuota()
 		err = fmt.Errorf("file hash mismatch: expected %s, got %s: %w", expectedHash, hash, syscall.EBADMSG)
 		return err
 	}
@@ -155,6 +188,7 @@ func getFile(comm transport.Communicator, store storage.Store, fileName string, 
 		refs := mismatchHook.ChecksumExpectations()
 		if !checksumSet.Verified(refs) {
 			store.Delete(fileName)
+			releaseQuota()
 			if hookErr := mismatchHook.OnIntegrityChecksumMismatch(); hookErr != nil {
 				err = hookErr
 			} else {
@@ -179,15 +213,27 @@ func getFile(comm transport.Communicator, store storage.Store, fileName string, 
 	return nil
 }
 
+// tenantQuotaAdjuster is the optional storage seam for per-tenant quota
+// accounting (#1315). Stores without it leave quotas unenforced.
+type tenantQuotaAdjuster interface {
+	AdjustTenantQuota(tenantID string, deltaBytes, deltaObjects int64) error
+}
+
+// tenantOf returns the authenticated tenant for a tenant-aware surface (the S3
+// gateway), or "" for surfaces that carry no tenant identity.
+func tenantOf(comm transport.Communicator) string {
+	if tp, ok := comm.(interface{ TenantID() string }); ok {
+		return tp.TenantID()
+	}
+	return ""
+}
+
 // auditPut records a successful write in the tamper-evident audit log (R8,
 // #936). The tenant is only present on the tenant-authenticated S3 surface;
 // peer and native writes record an empty tenant. Failures are logged, never
 // fatal, so auditing can never break the write path.
 func auditPut(comm transport.Communicator, store storage.Store, fileName string) {
-	tenantID := ""
-	if tp, ok := comm.(interface{ TenantID() string }); ok {
-		tenantID = tp.TenantID()
-	}
+	tenantID := tenantOf(comm)
 	entry := &common.AuditLogEntry{
 		TenantID:  tenantID,
 		Identity:  "put",

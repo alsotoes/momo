@@ -834,7 +834,14 @@ Now, standard S3 client tools can list, download, and delete files directly over
 Declare each tenant in its own section. The section suffix is the tenant ID
 and must match the `id` key. Tenants are addressed on the S3 gateway by their
 `auth_token` (sent as `Authorization: Bearer <token>` or as the SigV4 access
-key). Per-tenant key material is derived from the root key with HKDF-SHA256
+key). A tenant token is a credential in its own right: it authenticates the
+request and binds the tenant for ACL checks, quota accounting and audit
+attribution. In SigV4 single-token mode the presented access key is also the
+signing secret, and a credential longer than the token width is refused with
+`403` rather than compared.
+
+A tenant with no ACL entry on a bucket is denied: ACLs are default-deny, so a
+newly declared tenant needs at least one `allow` before it can read or write. Per-tenant key material is derived from the root key with HKDF-SHA256
 (`info = tenantID`), so no two tenants share a KEK.
 
 ```ini
@@ -856,11 +863,27 @@ enabled=true
 | `quota_objects` | no | Object-count quota (0 = unlimited). |
 | `enabled` | no | Defaults to `true`. |
 
-> **Current limits (honest):** `quota_bytes` / `quota_objects` are parsed and
-> stored but **not enforced** on the write path, and the per-tenant KEK is not yet
-> selected per request (the node-wide at-rest key is still used). Both are tracked
-> in `openspec/changes/r8-multitenancy-authz/tasks.md`; the parts that are live are
-> tenant resolution, ACL authorization and the audit log.
+**Quotas are enforced** (#1315). A tenant is charged for each object it stores:
+bytes and object count, recorded in a `tenant_usage` bucket and checked in the
+same transaction that applies the change, so concurrent uploads at the boundary
+cannot overshoot. The reservation happens *before* the payload is read, so an
+over-quota write is refused without consuming disk; a write that fails afterwards
+(hash or checksum mismatch) releases its reservation, and a delete charges the
+object back. Overwrites pay only the size difference and never consume another
+object.
+
+Two properties worth knowing:
+
+- accounting counts **logical objects per tenant**, not content-addressed blobs —
+  two names that deduplicate to the same bytes still count as two objects;
+- enforcement is an **S3-gateway boundary**. The native protocols carry no tenant
+  identity, so their writes are neither charged nor refused (they are audited).
+
+A refusal is `403 QuotaExceeded`. `0` on either quota means unlimited.
+
+> **Remaining limit (honest):** the per-tenant KEK is not yet selected per request
+> — the node-wide at-rest key is still used. Tracked in
+> `openspec/changes/r8-multitenancy-authz/tasks.md`.
 
 ### Authorization
 

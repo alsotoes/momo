@@ -43,6 +43,7 @@ var (
 	bucketAuditMeta      = []byte("audit_meta")        // Audit retention anchor: hash of the last pruned entry (R8, #1307)
 	bucketLockState      = []byte("object_lock_state") // Maps bucket\x00key\x00versionID -> ObjectLockState JSON (R10-LK1, #938)
 	bucketMetadataHints  = []byte("metadata_hints")    // Maps peer+name -> pending metadata record (R6 v2 hinted handoff)
+	bucketTenantUsage    = []byte("tenant_usage")      // Maps TenantID -> {Bytes,Objects} quota accounting (R8, #1315)
 )
 
 // ObjectMeta is the binary metadata stored in the objects bucket.
@@ -305,6 +306,7 @@ var metaBuckets = [][]byte{
 	bucketAuditMeta,
 	bucketLockState,
 	bucketMetadataHints,
+	bucketTenantUsage,
 }
 
 // initBuckets creates every metadata bucket if it does not already exist.

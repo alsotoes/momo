@@ -11,7 +11,7 @@ categories:
   - storage
 summary: "A retention setting that is parsed but never applied is a promise the database cannot keep. Bounding a hash-chained audit log means deleting old rows without breaking the chain that proves the remaining ones are authentic."
 artifacts: [{type: spec, path: openspec/changes/audit-log-retention}, {type: adr, path: docs/adr/0083-audit-log-retention.md}]
-related: ["053-multitenancy-authorization-audit", "065-metadata-writes-that-need-a-majority"]
+related: ["053-multitenancy-authorization-audit", "065-metadata-writes-that-need-a-majority", "070-tenant-quotas"]
 difficulty: "intermediate"
 pattern: "retention-policy"
 teaches:

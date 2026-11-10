@@ -473,6 +473,18 @@ the data layout:
   anchor, see §7b). **Tamper evidence is only as strong as the node's own
   database**: an attacker with write access can delete the log wholesale; the
   chain detects edits and the anchor makes the window boundary explicit.
+- **Tenant credentials**: a tenant's `auth_token` is a credential in its own
+  right (#1316). The handshake resolves it against the tenant table and binds the
+  connection to that tenant before any routing happens; the cluster token stays
+  tenant-less (admin) and gateway SigV4 credentials (`s3_server_*`) remain
+  operator-only. Without this binding the ACL, quota and audit layers are
+  unreachable — the field they all read would always be empty.
+- **Quotas** (`tenant_usage` bucket, #1315): bytes and logical object count per
+  tenant, checked and updated in one transaction. The shared ingest path reserves
+  before reading the payload (an over-quota write never touches disk), releases on
+  a failed write, and a delete charges usage back. Overwrites pay the delta only.
+  Accounting counts objects per tenant, not deduplicated blobs, and applies to the
+  S3 gateway — the native protocols carry no tenant identity.
 - **Per-tenant keys**: `DeriveTenantKeys` (HKDF-SHA256), `WrapTenantKEK` /
   `UnwrapTenantKEK` (AES-256-GCM with the tenant ID as AAD) and `RotateTenantKEK`
   exist and are tested, but the write path still uses the node-wide at-rest key —

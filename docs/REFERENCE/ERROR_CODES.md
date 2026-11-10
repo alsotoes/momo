@@ -68,6 +68,7 @@ an S3 `Code`, and a message.
 | `400` | `AuthorizationQueryParametersError` | A presigned (query-string) request is missing a required SigV4 parameter. |
 | `403` | `AuthorizationHeaderMalformed` | SigV4 header missing a required component, stale timestamp, or unsupported credential scope. |
 | `403` | `AccessDenied` | Tenant authorization denied, governance retention weakened without `x-amz-bypass-governance-retention`, or a version/object protected by retention or legal hold. |
+| `403` | `QuotaExceeded` | The write would exceed the tenant's `quota_bytes` or `quota_objects`; the object is not stored and no usage is charged. |
 | `404` | `NoSuchBucket` | The bucket named in the path does not exist. |
 | `404` | `NoSuchKey` / `NoSuchVersion` | Unknown object or version. |
 | `409` | `InvalidBucketState` | Illegal bucket-state transition (for example, enabling object lock with existing objects). |
