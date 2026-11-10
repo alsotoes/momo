@@ -83,7 +83,7 @@ Ratified in [prod-ready-roadmap](../../openspec/changes/prod-ready-roadmap/specs
 | R5 | Metrics phases 2–4 + dashboards/alerts | ✅ Storage/CAS + P2P/cluster gauges, latency histograms, dashboards/alerts (implemented #933) |
 | R6 | Metadata catalog HA + backup/recovery | ✅ Sharded quorum writes, tombstone propagation, any-node reads with vector-clock conflict resolution and read repair, backup/restore CLI (#934, #1142/#1233) |
 | R7 | Error model & ops | ✅ ENOSPC preserved end-to-end (507 on S3), cause-specific exit codes 2–6, `/health/detailed` (#935) |
-| R8 | Multi-tenancy + authorization + audit | ✅ Per-tenant keys, default-deny ACLs in the S3 gateway, tenant-scoped quotas enforced before the write, hash-chained audit log with denial records + rate-limited sampling, denial counters (#936, #1315, #1319, #1321) |
+| R8 | Multi-tenancy + authorization + audit | ✅ Per-tenant keys, declarative tenants + bucket ACLs seeded from config, default-deny ACLs in the S3 gateway, tenant-scoped quotas enforced before the write, hash-chained audit log with denial records + rate-limited sampling, denial counters (#936, #1315, #1319, #1321, #1325) |
 | R9 | Secrets management + key rotation | ✅ `env`/`file` providers behind a `SecretProvider` seam, versioned key registry, rotation with grace period + audit, SIGHUP/HTTP reload (#937) |
 
 ### P2 — S3 Breadth & Scale

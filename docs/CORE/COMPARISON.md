@@ -88,7 +88,7 @@ This document maps every major feature of Ceph, Lustre, ScyllaDB, and IPFS to Mo
 
 | Feature | Ceph | Lustre | ScyllaDB | IPFS | MomoFS | Status |
 |---------|------|--------|----------|------|--------|--------|
-| Per-tenant auth | Yes (cephx/RGW) | Yes (Kerberos) | Yes (CQL roles) | No | Yes (Bearer/SigV4 tenant, default-deny ACLs) | **Have** (S3 gateway) |
+| Per-tenant auth | Yes (cephx/RGW) | Yes (Kerberos) | Yes (CQL roles) | No | Yes (Bearer/SigV4 tenant, declarative ACLs, default-deny) | **Have** (S3 gateway) |
 | Per-tenant quotas | Yes | Yes (user/group) | Partial | No | Yes (bytes + logical objects, refused before the write lands) | **Have** |
 | Per-tenant encryption | Yes (dmcrypt) | Yes (fscrypt) | Enterprise (TDE) | App-level | Partial (HKDF tenant keys + AES-GCM KEK wrapping; not yet wired per tenant in the write path) | **Partial** |
 | Encryption in transit | Yes (msgr2) | Yes (GSS) | Yes (TLS) | Yes (Noise) | Yes (QUIC TLS) | **Have** |
