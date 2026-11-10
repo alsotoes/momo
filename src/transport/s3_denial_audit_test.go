@@ -242,3 +242,58 @@ func TestQuotaRefusalMapsToForbidden(t *testing.T) {
 		t.Fatalf("expected 403, got:\n%s", resp)
 	}
 }
+
+// TestRepeatedDenialAuditsOnce proves the wiring behind #1321: the refusal is
+// counted every time, but the audit trail is sampled, so a client cannot grow the
+// audit bucket at request rate.
+func TestRepeatedDenialAuditsOnce(t *testing.T) {
+	store := newTenantS3Store(t)
+	server, client := net.Pipe()
+	defer func() { _ = client.Close() }()
+
+	comm := NewS3Communicator(server)
+	comm.SetStore(store)
+	comm.tenantID = "acme"
+
+	for i := 0; i < 20; i++ {
+		comm.writeAuditLog("Authorize", "object/bucket/docs/a.txt", "denied")
+	}
+	_ = server.Close()
+
+	var denials int
+	for _, e := range auditEntries(t, store) {
+		if e.Operation == "Authorize" && e.Outcome == "denied" {
+			denials++
+		}
+	}
+	if denials != 1 {
+		t.Fatalf("20 identical denials must produce 1 audit entry, got %d", denials)
+	}
+}
+
+// TestSuccessfulAuditIsNeverSuppressed guards the obvious over-reach: the limiter
+// applies to denials only.
+func TestSuccessfulAuditIsNeverSuppressed(t *testing.T) {
+	store := newTenantS3Store(t)
+	server, client := net.Pipe()
+	defer func() { _ = client.Close() }()
+
+	comm := NewS3Communicator(server)
+	comm.SetStore(store)
+	comm.tenantID = "acme"
+
+	for i := 0; i < 20; i++ {
+		comm.writeAuditLog("GetObject", "object/bucket/docs/a.txt", "success")
+	}
+	_ = server.Close()
+
+	var successes int
+	for _, e := range auditEntries(t, store) {
+		if e.Operation == "GetObject" && e.Outcome == "success" {
+			successes++
+		}
+	}
+	if successes != 20 {
+		t.Fatalf("successful operations must always be audited, got %d of 20", successes)
+	}
+}

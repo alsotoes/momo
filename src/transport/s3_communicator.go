@@ -102,6 +102,9 @@ type S3Communicator struct {
 	// tenantID is the authenticated tenant ID for multi-tenancy (R8, #936)
 	tenantID string
 
+	// denialAudit bounds how many refusal records a client can induce (#1321).
+	denialAudit *denialAuditLimiter
+
 	// Server state
 	meta common.FileMetadata
 	// isExternalClient is true when the client did not send X-Momo-Requested-Mode,
@@ -180,10 +183,11 @@ type S3Communicator struct {
 func NewS3Communicator(conn net.Conn) *S3Communicator {
 	connReader := &LimitedConnReader{r: conn}
 	return &S3Communicator{
-		conn:       conn,
-		connReader: connReader,
-		reader:     bufio.NewReader(connReader),
-		remoteAddr: conn.RemoteAddr(),
+		conn:        conn,
+		connReader:  connReader,
+		reader:      bufio.NewReader(connReader),
+		remoteAddr:  conn.RemoteAddr(),
+		denialAudit: newDenialAuditLimiter(),
 	}
 }
 
@@ -3918,10 +3922,24 @@ func (m *S3Communicator) TenantID() string {
 	return m.tenantID
 }
 
-// writeAuditLog writes an audit log entry for the current operation.
+// writeAuditLog writes an audit log entry for the current operation. A denied
+// outcome is a record the client can induce at will, so it is rate-limited; the
+// exact refusal volume is carried by the counters instead (#1321).
 func (m *S3Communicator) writeAuditLog(operation, resource, outcome string) {
 	if m.tenantID == "" || m.store == nil {
 		return
+	}
+	if outcome == "denied" {
+		if m.denialAudit == nil {
+			m.denialAudit = newDenialAuditLimiter()
+		}
+		allowed, suppressed := m.denialAudit.Allow(m.tenantID+"|"+operation+"|"+resource, time.Now())
+		if !allowed {
+			if suppressed%denialAuditLogEvery == 0 {
+				log.Printf("AUDIT: %d denial audit entries suppressed (rate limit)", suppressed)
+			}
+			return
+		}
 	}
 	entry := &common.AuditLogEntry{
 		TenantID:  m.tenantID,
