@@ -88,7 +88,6 @@ type ListVersionsResult struct {
 func FormatListVersionsXML(bucket, prefix, keyMarker, versionIDMarker string, maxKeys int, page storage.VersionPage) (xmlBytes []byte, err error) {
 	defer common.RecoverErrWith("FormatListVersionsXML", syscall.EIO, &err)
 
-
 	var buf bytes.Buffer
 	buf.WriteString(xml.Header)
 	buf.WriteString("<ListVersionsResult xmlns=\"")

@@ -229,4 +229,3 @@ func TestPheromone_EdgeCases(t *testing.T) {
 		t.Fatalf("expected valid node selected from mixed, got: %v (err: %v)", selMixed, err)
 	}
 }
-
