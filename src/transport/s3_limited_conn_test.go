@@ -3,6 +3,7 @@ package transport
 import (
 	"errors"
 	"net"
+	"runtime"
 	"syscall"
 	"testing"
 )
@@ -47,6 +48,13 @@ func TestLimitedConnReaderConcurrent(t *testing.T) {
 		n, err := lr.Read(buf)
 		got += n
 		if err != nil {
+			// A SetLimit left in force by the racing goroutine is genuinely
+			// exhausted: ENOBUFS is the correct answer, not a failure. Yield
+			// until the setter clears it. Any other error is a real failure.
+			if errors.Is(err, syscall.ENOBUFS) {
+				runtime.Gosched()
+				continue
+			}
 			t.Fatalf("read failed after %d/%d bytes: %v", got, total, err)
 		}
 	}
