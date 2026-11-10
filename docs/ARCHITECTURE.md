@@ -482,6 +482,15 @@ the data layout:
   minute, at most 50/s overall — because the client induces them (#1319, #1321).
   The counters stay exact; the audit log is an attributed sample. Successful
   operations are never rate-limited.
+- **Declarative bootstrap** (#1325): `[tenant.<id>]` and `[acl.<bucket>]` are the
+  source of truth. Before the listener opens, the daemon upserts every declared
+  tenant into `tenant_meta` and every declared bucket ACL into the `acl` bucket,
+  then prunes stored entries that are no longer declared — only when that section
+  still declares at least one entry, so an absent section never wipes state. A
+  bootstrap error aborts startup: a daemon that cannot apply its tenancy would
+  deny every tenant while looking healthy. In `[acl.<bucket>]` each key is a
+  tenant (`*` = all) and each value a permission list, with a leading `!` stored
+  as an explicit deny.
 - **Tenant credentials**: a tenant's `auth_token` is a credential in its own
   right (#1316). The handshake resolves it against the tenant table and binds the
   connection to that tenant before any routing happens; the cluster token stays
