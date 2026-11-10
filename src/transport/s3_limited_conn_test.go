@@ -7,6 +7,10 @@ import (
 	"testing"
 )
 
+// maxLimitedReaderExhaustions bounds how many times the racing reader may see
+// an exhausted limit before the test declares the setter stuck.
+const maxLimitedReaderExhaustions = 10
+
 // TestLimitedConnReaderConcurrent races SetLimit/ClearLimit against Read from
 // separate goroutines. It must complete without deadlock and pass under
 // -race (issue #652).
@@ -43,14 +47,27 @@ func TestLimitedConnReaderConcurrent(t *testing.T) {
 
 	buf := make([]byte, 4096)
 	got := 0
+	exhaustions := 0
 	for got < total {
 		n, err := lr.Read(buf)
 		got += n
-		if err != nil {
+		if err == nil {
+			continue
+		}
+		if !errors.Is(err, syscall.ENOBUFS) {
 			t.Fatalf("read failed after %d/%d bytes: %v", got, total, err)
 		}
+		// SetLimit installs a real 65536-byte budget, so ENOBUFS while the
+		// setter is mid-cycle is the correct answer. Synchronise on the setter
+		// finishing (it ends with ClearLimit) instead of polling, and bound the
+		// retries so a regression that never clears the limit fails loudly
+		// rather than hanging.
+		exhaustions++
+		if exhaustions > maxLimitedReaderExhaustions {
+			t.Fatalf("read limit never cleared after %d exhaustions (%d/%d bytes)", exhaustions, got, total)
+		}
+		<-stop
 	}
-	<-stop
 }
 
 // TestLimitedConnReaderEnforcesLimit verifies the read window is bounded and
