@@ -523,10 +523,14 @@ Scrapes `/metrics` from all 3 Momo nodes (`server0:9100`, `server1:9100`, `serve
 | `MomoScatterTimeouts` | `rate(momo_scatter_timeout_total[5m]) > 0.5` | 5m | warning |
 | `MomoReplicationFailures` | `rate(momo_replication_failures_total[5m]) > 0.1` | 5m | critical |
 | `MomoBlobCountSpike` | `rate(momo_blob_count[5m]) * 60 > 1000` | 5m | warning |
+| `MomoCoordinationQuorumLost` | `increase(momo_coordination_quorum_loss_total[10m]) > 0` | 1m | critical |
+| `MomoCoordinationHandoffChurn` | `increase(momo_coordination_handoffs_total[15m]) > 3` | 5m | warning |
+| `MomoPeerSaturation` | `max by (instance) (momo_peer_inflight_requests) > 100` | 5m | warning |
+| `MomoPeerDiskHigh` | `max by (instance) (momo_peer_disk_used_percent) > 90` | 10m | warning |
 
 #### Grafana Dashboard (`grafana/dashboards/momo-overview.json`)
 
-21-panel dashboard auto-provisioned on startup:
+25-panel dashboard auto-provisioned on startup:
 
 | Panel | Metric | Type |
 |---|---|---|
@@ -551,6 +555,10 @@ Scrapes `/metrics` from all 3 Momo nodes (`server0:9100`, `server1:9100`, `serve
 | Active Leases | `momo_leases_active` | stat |
 | Scatter Queries | `rate(momo_scatter_queries_total[1m])` | graph |
 | Scatter Timeouts | `rate(momo_scatter_timeout_total[1m])` | graph |
+| Coordination Handoffs / Quorum Loss | `increase(momo_coordination_handoffs_total[5m])`, `increase(momo_coordination_quorum_loss_total[5m])` | timeseries |
+| Peer Disk Used (%) | `max by (peer) (momo_peer_disk_used_percent)` | timeseries |
+| Peer In-Flight Requests | `max by (peer) (momo_peer_inflight_requests)` | timeseries |
+| Adaptive Thresholds | `momo_adaptive_max_threshold`, `momo_adaptive_min_threshold` | timeseries |
 
 #### Prometheus `/metrics` Endpoint (`src/server/metrics_exporter.go`)
 

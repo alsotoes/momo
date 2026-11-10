@@ -90,3 +90,39 @@ groups:
         annotations:
           summary: "Rapid blob growth"
           description: "{{ $labels.instance }} is adding {{ $value }}/min blobs — possible dedup regression or ingest burst"
+
+      - alert: MomoCoordinationQuorumLost
+        expr: increase(momo_coordination_quorum_loss_total[10m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Coordination quorum lost"
+          description: "{{ $labels.instance }} suspended coordination {{ $value }} time(s) in 10m — the node lost its lease quorum and stands by"
+
+      - alert: MomoCoordinationHandoffChurn
+        expr: increase(momo_coordination_handoffs_total[15m]) > 3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Repeated coordination handoffs"
+          description: "{{ $labels.instance }} resigned coordination {{ $value }} times in 15m — load or health thresholds are flapping"
+
+      - alert: MomoPeerSaturation
+        expr: max by (instance) (momo_peer_inflight_requests) > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Peer reporting a long request queue"
+          description: "A peer seen by {{ $labels.instance }} reports {{ $value }} in-flight requests — shedding will avoid it, but the node is overloaded"
+
+      - alert: MomoPeerDiskHigh
+        expr: max by (instance) (momo_peer_disk_used_percent) > 90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Peer disk above the shedding high-water mark"
+          description: "A peer seen by {{ $labels.instance }} is at {{ $value }}% disk — rebalance should be moving cold blobs off it"
