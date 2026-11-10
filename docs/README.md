@@ -73,7 +73,7 @@ Momo is engineered around two foundational philosophies that govern all subsyste
 ## Key Features
 
 - **Content-Addressable Storage (CAS)**: blobs identified by SHA-256 content hash, with server-side deduplication and at-rest integrity verification (verify-on-read + background scrub).
-- **Pluggable Storage Backends**: `local` (default), `nfs`, `s3` (zero-dependency SigV4 client), and `raw` (direct block I/O) via the `BlobStore` interface. Metadata lives in a per-node Bbolt store.
+- **Pluggable Storage Backends**: `local` (default), `nfs`, `s3` (zero-dependency SigV4 client), `raw` (direct block I/O), `volume` (append-only 1 GiB superblocks for small blobs), and `adaptive` (volume for small blobs, local files above the threshold) via the `BlobStore` interface. Metadata lives in a per-node Bbolt store.
 - **Pluggable Transports**: native TCP and QUIC (TLS 1.3), plus an S3-compatible REST gateway, through a modular `ProtocolFactory`.
 - **CRUSH-lite Placement**: deterministic, failure-domain-aware replica placement (Weighted Rendezvous Hashing) computed client-side — no central metadata service.
 - **Replication Strategies**: runtime-switchable `None`, `Chain`, `Splay`, and `Primary-Splay` modes, reconfigurable by a metrics-driven "polymorphic" controller.
@@ -82,7 +82,7 @@ Momo is engineered around two foundational philosophies that govern all subsyste
 - **Distributed Metadata (R6)**: consistent-hash ring with quorum writes and deletes (W of M), tombstone propagation, any-node reads with vector-clock conflict resolution and read repair, version records replicated to data replicas, hinted handoff for replicas that were down at write time, and backup/restore — optional and backward compatible.
 - **S3 Gateway**: SigV4 auth (dedicated gateway credentials), multipart upload, integrity checksums, bucket versioning with version-addressed access, lifecycle rules + worker, webhook notifications with retry, Object Lock (WORM retention, legal hold), and honest `501` for unsupported subresources.
 - **Stigmergic Rebalancing (R11)**: each node sheds its coldest blobs to a replica peer above a disk high-water mark, migrates on join, streams pushes with an optional bandwidth cap, and ranks targets by gossip-reported peer load — no coordinator.
-- **Multi-Tenancy & Audit (R8)**: per-tenant key hierarchies (HKDF + AES-GCM wrapped KEKs), default-deny ACLs enforced in the S3 gateway, and a SHA-256 hash-chained audit log.
+- **Multi-Tenancy & Audit (R8)**: per-tenant key hierarchies (HKDF + AES-GCM wrapped KEKs, primitives tested; per-tenant key selection not yet wired into the write path), default-deny ACLs enforced in the S3 gateway, and a SHA-256 hash-chained audit log bounded by `[audit] retention_days`.
 - **Secrets & Rotation (R9)**: pluggable `env`/`file` providers behind a `SecretProvider` seam, a versioned local key registry, and rotation with a grace period, AUDIT entries, SIGHUP and `POST /reload-secrets`.
 - **Adaptive Control Plane**: self-tuning metrics thresholds, RTT-derived pheromone constants and metadata RPC timeouts, a per-node self-sizing replication buffer pool, homeostatic connection admission, and gossip load summaries.
 - **Distributed Coordination (#1144)**: the metrics controller is elected by lease (no fixed node 0), any node propagates a replication-mode change it applied, ordering uses the payload's logical clock with a 10-minute skew bound, and each node persists the mode it observed so a restart or takeover resumes it.

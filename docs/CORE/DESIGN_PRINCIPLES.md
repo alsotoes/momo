@@ -1,6 +1,6 @@
 # Momo Design Principles & Vision
 
-Architectural decisions are documented as **Architecture Decision Records (ADRs)** in [`docs/adr/`](adr/README.md). Each ADR corresponds to an OpenSpec change under `openspec/changes/`.
+Architectural decisions are documented as **Architecture Decision Records (ADRs)** in [`docs/adr/`](../adr/README.md). Each ADR corresponds to an OpenSpec change under `openspec/changes/`.
 
 ---
 

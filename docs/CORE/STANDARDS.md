@@ -144,6 +144,6 @@ a green `make lint` is a faithful preview of the Sonar gate. `gocyclo`
 
 ## See Also
 
-- [AI_FLYING_SOLO.md](AI_FLYING_SOLO.md) — Autonomous bug-fix workflow rules 51-63 (PR workflow, clean rebase, stale reviewer re-trigger, post-merge branch cleanup)
-- [CONTRIBUTING.md](CONTRIBUTING.md) — Contribution guidelines and PR process
+- [AI_FLYING_SOLO.md](../AI_FLYING_SOLO.md) — Autonomous bug-fix workflow rules 51-63 (PR workflow, clean rebase, stale reviewer re-trigger, post-merge branch cleanup)
+- [CONTRIBUTING.md](../GUIDES/CONTRIBUTING.md) — Contribution guidelines and PR process
 - [`openspec/config.yaml`](../openspec/config.yaml) — Single source of truth for all steering rules (Rule 39)

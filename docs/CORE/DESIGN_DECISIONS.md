@@ -1,6 +1,6 @@
 # Momo Architectural Decisions (DD-1 to DD-6)
 
-All formalized architectural decisions are tracked as **Architecture Decision Records (ADRs)** in [`docs/adr/`](adr/README.md). Each ADR corresponds to an OpenSpec change under `openspec/changes/`.
+All formalized architectural decisions are tracked as **Architecture Decision Records (ADRs)** in [`docs/adr/`](../adr/README.md). Each ADR corresponds to an OpenSpec change under `openspec/changes/`.
 
 ---
 

@@ -240,7 +240,7 @@ This section controls the behavior of the decentralized polymorphic system and t
 > **Persistence:** `momo.conf` is operator-owned input — the daemon never rewrites
 > it. Whatever the node learns (replication mode, adaptive thresholds) is stored
 > per node under the data directory and restored on restart; see
-> [ARCHITECTURE §7b](../../ARCHITECTURE.md#7b-state-persistence-and-what-survives-a-restart).
+> [ARCHITECTURE §7b](../ARCHITECTURE.md#7b-state-persistence-and-what-survives-a-restart).
 > `/health/detailed` exposes the learned state per node (#1287).
 
 ### [server] — Network Deadlines (optional, #1149)
@@ -418,6 +418,8 @@ This section controls the Content-Addressable Storage (CAS) engine, including ba
         -   `nfs` — Local filesystem on an NFS mount (functionally identical to `local`; set `daemon.data` to the NFS mount path)
         -   `s3` — S3-compatible remote storage (requires `s3_*` config fields)
         -   `raw` — Raw block device (requires `raw_device_path` or `daemon.drive`)
+        -   `volume` — Append-only volume superblocks for small blobs (see [Adaptive Volume Storage](#adaptive-volume-storage-r-vs-1128))
+        -   `adaptive` — `volume` for blobs at or below `adaptive_threshold`, per-blob local files above it (see [Adaptive Volume Storage](#adaptive-volume-storage-r-vs-1128))
 
 -   **`gc_interval`**
     -   **Description:** The interval in seconds between CAS garbage collection sweeps. The GC removes orphaned blobs (refcount=0) and expired tombstones.
@@ -453,37 +455,6 @@ This section controls the Content-Addressable Storage (CAS) engine, including ba
     -   **Description:** Bounds the number of concurrent blob repairs per rebuild pass (R2-C6, #930) to prevent a thundering herd on large clusters.
     -   **Type:** Integer
     -   **Default:** `4`
-
-### `[rebalance]` — Stigmergic Load Balancing (R11, issue #1143)
-
-Coordinator-free: every node evaluates its own disk pressure and acts locally.
-A node above `disk_high_water` moves its coldest blobs (oldest write, as an
-access-time proxy) to peers that already hold a replica of that blob, and drops
-its local copy only after that peer acknowledges the bytes. Requires
-`storage.degraded_read=true` — shedding leaves metadata in place, so reads fall
-back to a verified survivor. Single-node deployments never shed.
-
--   **`enabled`** — Type: Boolean. Default: `false`.
--   **`interval`** — Evaluation period in seconds. Default: `60`.
--   **`disk_high_water`** — Used-disk percentage that starts shedding. Default: `85`.
--   **`disk_low_water`** — Used-disk percentage at which shedding stops. Must be below `disk_high_water`. Default: `70`.
--   **`max_shed_per_cycle`** — Upper bound on blobs moved per evaluation. Default: `64`.
--   **Preconditions:** `enabled=true` is rejected at load time unless `[p2p] enabled=true`, `storage.degraded_read=true`, `replication_factor >= 2`, and at least two daemons are configured — a shed blob must stay readable through a survivor, and a single node has nowhere to shed.
--   **[`coordination_failover`]** — proactive handoff of coordination leases
-    (coordinator failover Phase 2). Requires `[p2p] enabled=true`.
-    -   **`enabled`** — start the health monitor. Default: `false`.
-    -   **`interval`** — sampling period in seconds. Default: `10`.
-    -   **`cpu_threshold`** — resign when local CPU exceeds this percentage
-        (0 disables; Linux reads `/proc/stat`, other platforms report unknown).
-        Default: `90`.
-    -   **`memory_threshold`** — resign when used memory exceeds this percentage
-        (0 disables; Linux reads `/proc/meminfo`). Default: `90`.
-    -   **`goroutine_threshold`** — resign when the goroutine count exceeds this
-        value (0 disables; samples from very small processes are ignored).
-        Default: `100000`.
-    -   **`cooldown`** — seconds to suppress repeat resignations while the node
-        remains unhealthy. Default: `60`.
--   **`max_bandwidth_mbps`** — Cap on rebalance traffic in megabits per second, so shedding cannot starve foreground requests. `0` means unlimited; production deployments should set an explicit cap. Default: `0`.
 
 -   **`durability`**
     -   **Description:** The R3 write-durability barrier selected before a write is acknowledged (issue #931). `fsync` (default) fsyncs each blob's bytes before ack — the historical fully-durable behavior. `group-commit` covers a batch of renames with one winner-driven directory-fsync barrier and skips the per-blob data fsync (amortized cost; content addressing plus the R2 verified-read/self-heal loop covers any torn block between the barrier and OS writeback). `none` acknowledges buffered writes without any fsync — best-effort and explicitly **non-durable** (a crash may lose acknowledged writes). Applies to the local (and encrypted-local) backend; backends without fsync primitives rely on their own persistence guarantee.
@@ -540,6 +511,40 @@ back to a verified survivor. Single-node deployments never shed.
     -   **Description:** Path to the raw block device for blob storage (e.g., `/dev/sda1`). Overrides `daemon.drive` if set. Only used when `backend = raw`.
     -   **Type:** String
     -   **Default:** (none; falls back to `daemon.drive`)
+
+
+### `[rebalance]` — Stigmergic Load Balancing (R11, issue #1143)
+
+Coordinator-free: every node evaluates its own disk pressure and acts locally.
+A node above `disk_high_water` moves its coldest blobs (oldest write, as an
+access-time proxy) to peers that already hold a replica of that blob, and drops
+its local copy only after that peer acknowledges the bytes. Requires
+`storage.degraded_read=true` — shedding leaves metadata in place, so reads fall
+back to a verified survivor. Single-node deployments never shed.
+
+-   **`enabled`** — Type: Boolean. Default: `false`.
+-   **`interval`** — Evaluation period in seconds. Default: `60`.
+-   **`disk_high_water`** — Used-disk percentage that starts shedding. Default: `85`.
+-   **`disk_low_water`** — Used-disk percentage at which shedding stops. Must be below `disk_high_water`. Default: `70`.
+-   **`max_shed_per_cycle`** — Upper bound on blobs moved per evaluation. Default: `64`.
+-   **Preconditions:** `enabled=true` is rejected at load time unless `[p2p] enabled=true`, `storage.degraded_read=true`, `replication_factor >= 2`, and at least two daemons are configured — a shed blob must stay readable through a survivor, and a single node has nowhere to shed.
+-   **`max_bandwidth_mbps`** — Cap on rebalance traffic in megabits per second, so shedding cannot starve foreground requests. `0` means unlimited; production deployments should set an explicit cap. Default: `0`.
+
+### [coordination_failover] — Proactive Handoff (optional, #1148)
+
+A node that is running out of resources resigns its coordination leases so a
+healthy peer takes over, instead of failing mid-operation. Requires
+`[p2p] enabled=true`. Thresholds are percentages of local capacity; `0` disables a
+dimension. CPU and memory are read from `/proc` on Linux; other platforms report
+them as unknown, so only the goroutine dimension fires there. Samples taken from a
+very small process are ignored.
+
+-   **`enabled`** — start the health monitor. Default: `false`.
+-   **`interval`** — sampling period in seconds. Default: `10`.
+-   **`cpu_threshold`** — resign when local CPU exceeds this percentage. Default: `90`.
+-   **`memory_threshold`** — resign when used memory exceeds this percentage. Default: `90`.
+-   **`goroutine_threshold`** — resign when the goroutine count exceeds this value. Default: `100000`.
+-   **`cooldown`** — seconds to suppress repeat resignations while the node remains unhealthy. Default: `60`.
 
 ### [secrets] (optional, R9 #937)
 
@@ -850,6 +855,12 @@ enabled=true
 | `quota_bytes` | no | Byte quota (0 = unlimited). |
 | `quota_objects` | no | Object-count quota (0 = unlimited). |
 | `enabled` | no | Defaults to `true`. |
+
+> **Current limits (honest):** `quota_bytes` / `quota_objects` are parsed and
+> stored but **not enforced** on the write path, and the per-tenant KEK is not yet
+> selected per request (the node-wide at-rest key is still used). Both are tracked
+> in `openspec/changes/r8-multitenancy-authz/tasks.md`; the parts that are live are
+> tenant resolution, ACL authorization and the audit log.
 
 ### Authorization
 

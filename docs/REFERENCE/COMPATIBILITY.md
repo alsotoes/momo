@@ -85,6 +85,8 @@ Legend: ✅ supported · ◐ supported as an RPC mirror on a surface it is not n
 
 ## Known Issues and Considerations
 
+-   **Volume backend hole punching:** deletion on the `volume` / `adaptive` backends uses `FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE`. Filesystems that do not support it (and non-Linux builds, which report `ENOTSUP`/`ENOSYS`) fall back to a tombstone, so space is reclaimed by the volume recycler rather than immediately. Reads are unaffected either way.
+-   **momofs (FUSE):** mounting requires a FUSE implementation and `/dev/fuse` (Linux; `macfuse` on macOS). The mount E2E workflow self-skips when `/dev/fuse` is absent, so FUSE coverage is not part of every CI run.
 -   **Filesystem Performance:** The performance of file I/O can vary significantly between different operating systems and underlying filesystems.
 -   **Networking Stack:** The behavior of the networking stack, particularly regarding TCP congestion control and error handling, can differ between kernels. The polymorphic system in Momo is designed to adapt to these variations, but extreme network conditions may expose platform-specific behavior.
 -   **Windows (WSL):** When running under WSL 2, network performance and file I/O may not match bare-metal Linux performance. It is recommended to store the data directories within the Linux filesystem (`/`) rather than accessing them across the Windows mount point (`/mnt/c`).

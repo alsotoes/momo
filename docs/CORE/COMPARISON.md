@@ -88,14 +88,14 @@ This document maps every major feature of Ceph, Lustre, ScyllaDB, and IPFS to Mo
 
 | Feature | Ceph | Lustre | ScyllaDB | IPFS | MomoFS | Status |
 |---------|------|--------|----------|------|--------|--------|
-| Per-tenant auth | Yes (cephx/RGW) | Yes (Kerberos) | Yes (CQL roles) | No | Planned (Phase 3) | **Planned** |
+| Per-tenant auth | Yes (cephx/RGW) | Yes (Kerberos) | Yes (CQL roles) | No | Yes (Bearer/SigV4 tenant, default-deny ACLs) | **Have** (S3 gateway) |
 | Per-tenant quotas | Yes | Yes (user/group) | Partial | No | Planned (Phase 3) | **Planned** |
-| Per-tenant encryption | Yes (dmcrypt) | Yes (fscrypt) | Enterprise (TDE) | App-level | Planned (Phase 3-4) | **Planned** |
+| Per-tenant encryption | Yes (dmcrypt) | Yes (fscrypt) | Enterprise (TDE) | App-level | Partial (HKDF tenant keys + AES-GCM KEK wrapping; not yet wired per tenant in the write path) | **Partial** |
 | Encryption in transit | Yes (msgr2) | Yes (GSS) | Yes (TLS) | Yes (Noise) | Yes (QUIC TLS) | **Have** |
-| Encryption at rest | Yes (BlueStore) | Yes (ZFS/fscrypt) | Enterprise | App-level | Planned (Phase 4) | **Planned** |
+| Encryption at rest | Yes (BlueStore) | Yes (ZFS/fscrypt) | Enterprise | App-level | Yes (AES-256-GCM `EncryptedBlobStore`, every object) | **Have** |
 | POSIX ACLs | Yes (CephFS) | Yes | No | No | No | **Gap** — S3 ACLs instead |
 | Kerberos | Yes | Yes | Yes (LDAP) | No | No | **Gap** — could add |
-| Audit log | Yes (RGW) | Yes (lctl) | Yes | No | Planned (Phase 3) | **Planned** |
+| Audit log | Yes (RGW) | Yes (lctl) | Yes | No | Yes (SHA-256 hash-chained, per-tenant, bounded by `retention_days`) | **Have** |
 | Per-tenant replication policy | No | No | Yes (per-KS RF) | No | Planned (Phase 3) | **Planned** |
 
 ### Networking
@@ -115,7 +115,7 @@ This document maps every major feature of Ceph, Lustre, ScyllaDB, and IPFS to Mo
 |---------|------|--------|----------|------|--------|--------|
 | S3 REST API | Yes (RGW) | No | No | No | Yes | **Have** |
 | POSIX (kernel mount) | Yes (CephFS) | Yes | No | No | No | **Gap** — FUSE only |
-| POSIX (FUSE) | Yes | No | No | Yes | Planned | **Planned** |
+| POSIX (FUSE) | Yes | No | No | Yes | Yes (`momofs`, go-fuse/v2) | **Have** |
 | Native SDK | Yes (librados) | No | Yes (CQL drivers) | Yes | Yes (Go client) | **Have** |
 | Swift API | Yes (RGW) | No | No | No | No | **Gap** — S3 only |
 | DynamoDB API | No | No | Yes (Alternator) | No | No | **Intentional gap** |
@@ -128,7 +128,7 @@ This document maps every major feature of Ceph, Lustre, ScyllaDB, and IPFS to Mo
 
 | Feature | Ceph | Lustre | ScyllaDB | IPFS | MomoFS | Status |
 |---------|------|--------|----------|------|--------|--------|
-| Snapshots | Yes (pool/RBD/dir) | ZFS only | Yes (hard-link) | No (immutable) | No | **Gap** — could add per-bucket |
+| Snapshots | Yes (pool/RBD/dir) | ZFS only | Yes (hard-link) | No (immutable) | Metadata backup/restore (`momo backup` / `momo restore`, gzip, consistent bbolt snapshot) | **Partial** — whole-cluster metadata, not per-bucket point-in-time |
 | Tiering (hot/warm/cold) | Yes (RGW lifecycle) | Yes (HSM) | Enterprise | Filecoin | Planned (Phase 8) | **Planned** |
 | Garbage collection | No (immutable) | No | Yes (tombstone GC) | Yes (repo gc) | Yes (refcount GC) | **Have** |
 | Compaction | Yes (BlueStore RocksDB) | No | Yes (LSM) | No | No | **Have** (BoltDB B+tree, no compaction needed) |
@@ -160,31 +160,34 @@ This document maps every major feature of Ceph, Lustre, ScyllaDB, and IPFS to Mo
 
 ### Feature Coverage
 
-| Category | Have | Planned | Gap | Intentional Gap | Total |
-|----------|------|---------|-----|----------------|-------|
-| Architecture | 7 | 0 | 1 | 1 | 9 |
-| Storage Model | 4 | 1 | 1 | 2 | 8 |
-| Replication & Durability | 3 | 5 | 2 | 1 | 11 |
-| Performance | 6 | 2 | 3 | 0 | 11 |
-| Scalability | 4 | 2 | 1 | 0 | 7 |
-| Fault Tolerance | 3 | 3 | 0 | 0 | 6 |
-| Multi-Tenancy & Security | 2 | 6 | 2 | 0 | 10 |
-| Networking | 3 | 1 | 2 | 0 | 6 |
-| API & Access | 3 | 2 | 2 | 3 | 10 |
-| Data Lifecycle | 3 | 1 | 4 | 0 | 8 |
-| Special Features | 4 | 3 | 1 | 2 | 10 |
-| **Total** | **42** | **26** | **19** | **9** | **96** |
+Counted from the per-feature rows above (the matrix is authoritative). Rows
+marked **Different** (e.g. goroutines instead of thread-per-core) count as Have.
 
-- **42 features already have** (44%)
-- **26 features planned** in the roadmap (27%)
-- **19 gaps** to consider (20%)
-- **9 intentional gaps** — not target use cases (9%)
-- **68 features will be have or planned** (71%)
+| Category | Have | Partial | Planned | Gap | Intentional Gap | Total |
+|----------|------|---------|---------|-----|----------------|-------|
+| Architecture | 7 | 0 | 0 | 1 | 0 | 8 |
+| Storage Model | 4 | 0 | 1 | 1 | 2 | 8 |
+| Replication & Durability | 8 | 0 | 1 | 1 | 0 | 10 |
+| Performance | 6 | 0 | 2 | 4 | 0 | 12 |
+| Scalability | 4 | 0 | 1 | 1 | 0 | 6 |
+| Fault Tolerance | 3 | 0 | 2 | 1 | 0 | 6 |
+| Multi-Tenancy & Security | 4 | 1 | 2 | 2 | 0 | 9 |
+| Networking | 3 | 0 | 1 | 2 | 0 | 6 |
+| API & Access | 4 | 0 | 1 | 2 | 3 | 10 |
+| Data Lifecycle | 5 | 1 | 1 | 2 | 0 | 9 |
+| Special Features | 3 | 0 | 4 | 1 | 3 | 11 |
+| **Total** | **51** | **2** | **16** | **18** | **8** | **95** |
 
-> These counts predate the R6–R11 work; several rows marked **Planned**/**Gap**
-> above are now delivered (read repair, hinted handoff, anti-entropy/scrub,
-> checksums, vector clocks, versioning, Object Lock, notifications). The matrix
-> rows are authoritative; the summary numbers are kept for historical comparison.
+- **51 features delivered** (54%)
+- **2 partial** — primitives exist but are not wired into the data path (per-tenant encryption, per-bucket snapshots)
+- **16 planned** in the roadmap (17%)
+- **18 gaps** to consider (19%)
+- **8 intentional gaps** — not target use cases (8%)
+
+> The two **Partial** rows name the honest state: the tenant key hierarchy and the
+> metadata backup exist, but tenant keys are not yet selected per write and there
+> is no per-bucket point-in-time snapshot. See `openspec/changes/r8-multitenancy-authz/tasks.md`
+> for the remaining tenant-key wiring.
 
 ### Gaps Worth Closing
 

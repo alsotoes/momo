@@ -116,7 +116,7 @@
 ## References
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — Current system architecture
-- [REPLICATION_STRATEGIES.md](REPLICATION_STRATEGIES.md) — Chain and Splay replication
-- [P2P.md](P2P.md) — Gossip membership, SWIM, lease consensus
-- [CRUSH.md](CRUSH.md) — Data placement algorithm
+- [REPLICATION_STRATEGIES.md](../REFERENCE/REPLICATION_STRATEGIES.md) — Chain and Splay replication
+- [P2P.md](../REFERENCE/P2P.md) — Gossip membership, SWIM, lease consensus
+- [CRUSH.md](../REFERENCE/CRUSH.md) — Data placement algorithm
 - [ROADMAP.md](ROADMAP.md) — Existing roadmap

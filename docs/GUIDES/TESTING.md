@@ -208,6 +208,10 @@ Run as part of `make test` in the Go workflow.
 | `BenchmarkHeartbeatPayload_Encode` | ~86 | 1 |
 | `BenchmarkPeerMap_RandomPeers` | ~2428 | 2 |
 | `BenchmarkPeerMap_PeerInfos` | ~1838 | 1 |
+| `BenchmarkParseCPUStat` | ~484 | 0 |
+| `BenchmarkParseMemPercent` | ~749 | 0 |
+| `BenchmarkParseCPUStatSplitBaseline` (pre-#1311) | ~1324 | 5 |
+| `BenchmarkParseMemPercentSplitBaseline` (pre-#1311) | ~3299 | 24 |
 
 ---
 
@@ -234,6 +238,8 @@ These suites cover the features added after the original test map. All run under
 | Connection admission | `src/server/concurrency_test.go`, `concurrency_homeostasis_test.go` | Boot probe bounds, slot acquire/release, context cancellation, pressure sampling, homeostasis loop shedding, no-op guards |
 | S3 breadth | `src/transport/s3_versioning_test.go`, `s3_lifecycle_test.go`, `s3_notification_test.go`, `s3_objectlock_test.go` | Versioning/list/delete markers, lifecycle rule CRUD + worker, notification retry semantics, object-lock XML, retention/legal-hold APIs, delete enforcement (403), 507 on ENOSPC |
 | Checksum hot path | `src/transport/s3_checksum_hotpath_test.go` | Canonical header literals match `http.CanonicalHeaderKey`, every algorithm discovered and captured; benchmarks prove 0 allocs/op |
+| Health sampling | `src/p2p/health_linux_test.go` | Allocation-free `/proc/stat` + `/proc/meminfo` parsing: aggregate CPU line only, idle+iowait non-busy, overflow rejected as `EBADMSG`, missing `cpu ` line as `ENOENT`, meminfo without `MemAvailable` = 100%; real `/proc` smoke tests retained |
+| Audit retention | `src/storage/audit_prune_test.go`, `src/server/audit_retention_test.go` | Entries past the cutoff are deleted in one transaction, chain anchor keeps the retained window verifiable, tampering inside it still detected, post-prune appends chain correctly, loop prunes at startup and stops on cancel |
 
 ## Running Tests Locally
 
@@ -337,7 +343,7 @@ Security gates **only fail on `workflow_dispatch`** (manual trigger), not on PR/
 | CVE-009 | Plaintext auth token (no TLS) | Medium | #546 | 🔒 Open — requires E2EE (#152) |
 | CVE-004 | Virtual path traversal via upload | Low | #547 | ✅ Fixed |
 
-**Run:** `make pentest` or see [pentest/README.md](../pentest/README.md) for full reproduction guide.
+**Run:** `make pentest` or see [pentest/README.md](../../pentest/README.md) for full reproduction guide.
 
 ---
 
@@ -775,7 +781,7 @@ Runs on every push to `master` and every PR that touches Go files. Verifies the 
 
 ### R5 Metrics (Phase 2-4, all implemented)
 
-The phase 2-4 metrics from the [add-metrics-exporter spec](../openspec/changes/add-metrics-exporter/specs/observability/spec.md) are implemented in `metrics_exporter.go` and exercised by `metrics_exporter_r5_test.go` (`TestR5_*`):
+The phase 2-4 metrics from the [add-metrics-exporter spec](../../openspec/changes/add-metrics-exporter/specs/observability/spec.md) are implemented in `metrics_exporter.go` and exercised by `metrics_exporter_r5_test.go` (`TestR5_*`):
 
 | Category | Metrics | Overhead |
 |---|---|---|

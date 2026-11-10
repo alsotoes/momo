@@ -115,6 +115,6 @@ The polymorphic system never knows or cares that an external client connected. I
 ## Related
 
 - [Issue #258](https://github.com/alsotoes/momo/issues/258) — Original question about aws-cli replication behavior
-- [Polymorphic System](POLYMORPHIC_SYSTEM.md) — Dynamic replication mode switching
-- [Wire Protocol](PROTOCOL.md) — Handshake and mode negotiation details
-- [S3 Protocol](PROTOCOL.md#s3-protocol) — S3 gateway and REST handler
+- [Polymorphic System](../REFERENCE/POLYMORPHIC_SYSTEM.md) — Dynamic replication mode switching
+- [Wire Protocol](../REFERENCE/PROTOCOL.md) — Handshake and mode negotiation details
+- [S3 Protocol](../REFERENCE/PROTOCOL.md#s3-protocol) — S3 gateway and REST handler

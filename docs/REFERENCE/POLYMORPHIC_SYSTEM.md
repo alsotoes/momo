@@ -45,8 +45,9 @@ Momo utilizes a decentralized polymorphic engine. The **metrics/polymorphic cont
 
 ```
                       +-----------------------------+
-                      | Metrics Component (Node 0)  |
-                      | (Reads local CPU/Memory)    |
+                      | Metrics Component           |
+                      | (controller node: lease    |
+                      | holder, else daemon 0)      |
                       +-----------------------------+
                                      |
                                      v

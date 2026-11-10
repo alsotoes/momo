@@ -34,6 +34,8 @@ a snapshot, not a CI gate. Run the listed command to reproduce on your hardware.
 | `BenchmarkRebalanceCycle` | `go test ./src/server -bench BenchmarkRebalanceCycle` | **~25 ms per pass @ 1000 blobs** | Statfs + blob walk + coldness sort + placement. Linear in blob count; a tick every 300 s is comfortable, a million-blob node pays ~25 s per pass and only above the high-water mark. |
 | `BenchmarkWriteThrottled` | `go test ./src/server -bench BenchmarkWriteThrottled` | **~1.2 µs per MiB @ 10 Gbps** | The bandwidth limiter is not the bottleneck above the cap. |
 | `BenchmarkTrustedRead` | `go test ./src/storage -bench BenchmarkTrustedRead` | constant **11 allocs/op** | Read-verifier seam: re-verifying a trusted blob is disk-bound, not allocation-bound. |
+| `BenchmarkParseCPUStat` | `go test ./src/p2p -bench BenchmarkParseCPUStat` | ~484 ns/op, **0 B/op, 0 allocs/op** | Health monitor `/proc/stat` parsing (#1311). The `strings.Split` baseline (`BenchmarkParseCPUStatSplitBaseline`) is ~1324 ns/op, 1840 B/op, 5 allocs/op. |
+| `BenchmarkParseMemPercent` | `go test ./src/p2p -bench BenchmarkParseMemPercent` | ~749 ns/op, **0 B/op, 0 allocs/op** | Health monitor `/proc/meminfo` parsing (#1311). The baseline is ~3299 ns/op, 1888 B/op, 24 allocs/op; the sampler runs every 10 s, so this is garbage removal rather than a hot-path win. |
 
 <!-- BENCHMARK_RESULTS_START -->
 ## Performance

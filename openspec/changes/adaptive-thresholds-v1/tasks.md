@@ -30,21 +30,34 @@
   project
 
 ## Phase 3 — Adaptive Pheromone Constants
-- [ ] Modify `src/client/pheromone.go`:
-  - Add `AdaptivePheromone` struct wrapping constants + learner
-  - `UpdateFromRTT(rtt time.Duration, success bool)` — feed RTT samples
-  - `GetConstants() PheromoneConstants` — return adapted or config values
-  - Replace package-level constants with dynamic getters
-- [ ] RTT collection:
-  - In `RecordSuccess`: record RTT sample for evaporation factor learning
-  - In `RecordFailure`: record failure for penalty factor learning
-  - Track RTT variance for evaporation factor calculation
-- [ ] Pheromone constant bounds enforcement:
-  - All computed values clamped to safe ranges (per spec table)
-- [ ] Persistence:
-  - Persist pheromone constants to `AdaptiveStore` under "pheromone_constants"
-  - Load on `NewPheromoneRouter` creation
-- [ ] Unit tests: `pheromone_adaptive_test.go` (constant adaptation from mock RTT)
+- [x] `antColonyRouter` carries the tuning pair (`evaporation`, `penalty`) instead
+  of reading the package constants; `NewPheromoneRouter` initialises them from
+  `EvaporationFactor`/`FailurePenaltyFactor`. The router is constructor-injected
+  (no `DefaultRouter` singleton, #1149).
+- [x] RTT collection: every successful transfer folds its RTT into an EWMA mean
+  and variance; `RecordSuccess` records the attempt and `RecordFailure` the
+  failure, so both adaptation signals come from the real traffic path.
+- [x] Evaporation learning: coefficient of variation maps the observed RTT
+  volatility onto `[EvaporationFloor 0.90, EvaporationCeiling 0.99]` — a stable
+  network keeps trails, a volatile one forgets faster.
+- [x] Penalty learning: the observed failure ratio maps onto
+  `[PenaltyFloor 0.10, PenaltyCeiling 0.50]`; a success path lowers it again, so a
+  transient outage cannot leave a permanently harsh penalty.
+- [x] Bounds: both values are clamped every time they are recomputed, and learning
+  only starts after `tuningMinSamples` (20) observations.
+- [x] Unit tests: `pheromone_adaptive_test.go` covers defaults, stable vs volatile
+  evaporation, failure-rate hardening, recovery with successes, that the learned
+  value actually changes evaporation, and the clamp helper.
+- [x] Observability: `Tuning()` exposes the pair plus the sample count for tests and
+  inspection; the router has no Prometheus gauge (the pair is per-client, not
+  per-node, so exporting it would be misleading on a shared `/metrics`).
+- [ ] Persistence of the learned pair — deliberately not implemented: the learner
+  reconverges within seconds of traffic, so a `pheromone_constants` bucket would
+  add a write path for no operational gain (same reasoning as the buffer-pool
+  target). The ratified spec's `adaptive_config` bucket layout is therefore only
+  realised as `adaptive_thresholds` in `adaptive.db`; this divergence is recorded
+  here rather than in the Accepted spec.
+
 
 ## Phase 4 — Adaptive Pool Sizes + Timeouts
 - [x] Adaptive replication payload pool: each broadcast feeds its real size to an

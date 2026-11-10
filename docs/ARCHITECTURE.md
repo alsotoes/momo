@@ -63,7 +63,8 @@ The metrics controller (`metrics.GetMetrics`, `src/metrics/metrics.go`) runs on 
 Momo utilizes a **Shared-Nothing Partitioned Architecture** for its object storage layer, encapsulated in the `src/storage` package:
 
 - **Data Placement (CRUSH)**: We use a simplified Go implementation of the **CRUSH** (Controlled Replication Under Scalable Hashing) algorithm, originally designed by **Sage Weil** (the creator of Ceph). CRUSH allows us to calculate data locations deterministically, eliminating the need for a central metadata server or coordinator. Given a file hash and the cluster map, both the client and all nodes can calculate exactly which nodes should store the data.
-- **Pluggable Blob Storage**: Raw blob bytes are stored via a `BlobStore` interface (`blobstore.go`) with a `StorageFactory` (`factory.go`) that selects the backend via `[storage] backend` config. Backends: `local` (filesystem, default), `nfs`, `s3` (zero-dep SigV4 client), `raw` (block device with bump allocator).
+- **Pluggable Blob Storage**: Raw blob bytes are stored via a `BlobStore` interface (`blobstore.go`) with a `StorageFactory` (`factory.go`) that selects the backend via `[storage] backend` config. Backends: `local` (filesystem, default), `nfs`, `s3` (zero-dep SigV4 client), `raw` (block device with bump allocator), `volume` (append-only superblocks), and `adaptive` (volume for small blobs, local for large ones).
+- **Adaptive Volume Layout** (`backend = volume` or `adaptive`): many small objects are packed into append-only *volume superblocks* (1 GiB default, `volume_size`) as SeaweedFS-style needles: `magic \`MOMO\` | 4-byte length | 32-byte SHA-256 | 2-byte flags | payload | CRC32C`, 8-byte aligned, so a read is one `pread` at a known offset (O(1) regardless of how many blobs the volume holds). Deletion hole-punches the extent (`FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE`) and falls back to a tombstone where the filesystem does not support it; a sealed volume is never appended to, and sealing is persisted in the volume metadata rather than inferred from file size, so restore reopens it read-only. `adaptive` routes blobs at or below `adaptive_threshold` (1 MiB default) to volumes and larger ones to per-blob files, reading across both on a miss. Volume identifiers come from CRUSH placement of the blob hash, so the layout keeps the "read from any node" property. Because small-blob workloads dominate object stores, this trades a few hundred bytes of padding per needle for far fewer inodes and seeks.
 - **Metadata Management (Bbolt)**: High-speed, transactional metadata is stored in local Bbolt databases on each node (`storage.go`). Metadata is partitioned across the cluster using the same algorithmic placement as the data itself.
 - **Automatic Deduplication**: By using content-addressing (SHA-256), Momo ensures that any specific piece of data is only stored once per node, regardless of the filenames associated with it.
 - **End-to-End Encryption + Confidential Dedup**: With `encryption_enabled`, content is encrypted client-side with AES-GCM-256 (streaming, chunk-bounded memory) before storage/transfer, so servers are zero-knowledge. Dedup keys stay `H(plaintext)` via a **threshold OPRF** (`oprf_enabled`): the client blinds the dedup tag, a quorum of daemons evaluates it with Shamir-split shares (over the P2P transport), and the client unblinds to derive a deterministic content key. Identical plaintexts deduplicate across tenants while no single server can derive a content key offline; the operation fails closed when the quorum is unmet.
@@ -440,6 +441,64 @@ The gateway covers the backup-tooling surface beyond basic PUT/GET:
 - Unsupported subresources are rejected at the dispatch root with a clean
   `501 NotImplemented` rather than falling through (see §4e).
 
+### 4l. Tenancy, Authorization & Audit (R8, issue #936)
+
+Multi-tenancy is opt-in and layered on top of the existing CAS, without changing
+the data layout:
+
+- **Tenants** (`[tenants]` + `[tenant.<id>]`): an ID, the master-key ID it is
+  scoped to, an auth token, and optional `quota_bytes` / `quota_objects`. Each
+  tenant record is stored in the `tenant_meta` bucket and managed through
+  `PutTenantConfig` / `GetTenantConfig` / `ListTenantConfigs` / `DeleteTenantConfig`.
+  The quota fields are **parsed and stored but not enforced** — see
+  `openspec/changes/r8-multitenancy-authz/tasks.md`.
+- **Identity**: the S3 gateway resolves a request's tenant from its Bearer token
+  or its SigV4 access key. Native TCP/QUIC clients authenticate with the cluster
+  token but carry no tenant identity, so tenancy is an S3-gateway boundary; native
+  operations are audited but not tenant-scoped.
+- **ACLs** (`acl` bucket): bucket-level and object-level entries, with an object
+  ACL overriding its bucket. Permissions are `read`, `write`, `delete`, `admin`
+  over resources named `bucket/<name>` and `object/<bucket>/<key>`.
+  `CASStore.Authorize(tenantID, perm, resource)` is **default-deny** with an
+  `admin` bypass, and every S3 handler calls it before touching the store.
+- **Audit log** (`audit_log` bucket): each entry records timestamp, tenant,
+  identity, operation, resource, outcome and request ID, and chains to its
+  predecessor with SHA-256 (`prev_hash` + `entry_hash`), so altering a stored
+  entry breaks `VerifyAuditLog`. Entries are appended for S3
+  GET/HEAD/PUT/DELETE/LIST and native LIST/GET/DELETE plus the shared PUT path.
+  The log is bounded by `[audit] retention_days` (startup + daily prune, chain
+  anchor, see §7b). **Tamper evidence is only as strong as the node's own
+  database**: an attacker with write access can delete the log wholesale; the
+  chain detects edits and the anchor makes the window boundary explicit.
+- **Per-tenant keys**: `DeriveTenantKeys` (HKDF-SHA256), `WrapTenantKEK` /
+  `UnwrapTenantKEK` (AES-256-GCM with the tenant ID as AAD) and `RotateTenantKEK`
+  exist and are tested, but the write path still uses the node-wide at-rest key —
+  per-tenant key selection is not yet wired.
+
+### 4m. Secrets & Key Rotation (R9, issue #937)
+
+Secret material is resolved through a compile-time seam (Rule 74) rather than
+being read directly wherever it is needed:
+
+- **`SecretProvider`** (`GetSecret`, `Init`, `Reload`, `HealthCheck`, `Close`)
+  with a **`ProviderChain`** tried in the configured order. The default is
+  `sources = "env, momo"`: `EnvProvider` reads `MOMO_<NAME>` (prefix configurable),
+  and `FileProvider` reads `conf/momo.conf`, which keeps every existing deployment
+  working with no migration.
+- **External providers are declared but not implemented**: `vault`, `aws-sm`,
+  `gcp-sm` and `azure-kv` are accepted by the enum and return an explicit
+  "not yet implemented" error at construction. They are deliberately not faked —
+  a silent fallback to env/file would hide a misconfiguration.
+- **Key registry** (`keys.db`, its own bbolt file because two `bbolt.Open` calls on
+  one file deadlock): versioned keys per purpose with status
+  `active` / `retired` / `pending_rotation` / `compromised`; any node resolves the
+  active key from its local copy, so there is no central secret server.
+- **Rotation**: `RotationManager` rotates on a schedule (24 h default grace
+  period), keeps the previous version usable during the grace window, and records
+  both success and failure in the audit log. Rotation is triggered by `momo
+  rotate-secrets -purpose`, by `SIGHUP`, or by the authenticated
+  `POST /reload-secrets` admin endpoint.
+
 ### 5. Automated Governance & AI Reviewer
 To maintain high integrity in a single-contributor environment, Momo employs an automated governance layer:
 - **Gemini AI Reviewer**: A GitHub Action that uses the Gemini API to analyze PR diffs. It specifically enforces the **⚡ Bolt** (performance) and **🛡️ Sentinel** (security) patterns.
@@ -469,7 +528,7 @@ Momo includes a built-in Prometheus metrics exporter (`src/server/metrics_export
 - `MetricsCollector` is also used directly in `server.go` for connection, upload, replication, and error counters on the main request path.
 - Runtime gauges (goroutines, memory, GC runs) are computed only at scrape time via `runtime.ReadMemStats` — zero per-request overhead.
 
-**Currently exported metrics (34 families):**
+**Currently exported metrics (47 families):**
 
 | Metric | Type | Description |
 |---|---|---|
@@ -499,6 +558,8 @@ Momo includes a built-in Prometheus metrics exporter (`src/server/metrics_export
 | **P2P** | `momo_cluster_peers`, `momo_swim_alive_count`, `momo_swim_suspect_count`, `momo_swim_offline_count`, `momo_swim_ping_latency_seconds` (mean EWMA RTT), `momo_peer_disk_used_percent{peer}`, `momo_peer_inflight_requests{peer}` (last gossip report; absent until one arrives) | gauge |
 | **Leases** | `momo_leases_active` (held), `momo_coordination_handoffs_total` (proactive resignations), `momo_coordination_quorum_loss_total` (coordination suspensions) | gauge + counters |
 | **Scatter/Gather** | `momo_scatter_queries_total`, `momo_scatter_timeout_total` | counter |
+| **Rebalance (R11)** | `momo_rebalance_blobs_moved_total`, `momo_rebalance_bytes_moved_total`, `momo_rebalance_cycles_total`, `momo_rebalance_failures_total` | counter |
+| **Adaptive** | `momo_adaptive_max_threshold`, `momo_adaptive_min_threshold` (percent), `momo_adaptive_threshold_samples` | gauge |
 | **Audit retention** | `momo_audit_prune_runs_total` (retention passes), `momo_audit_pruned_entries_total` (entries removed) | counter |
 | **Latency Histograms** | `momo_request_latency_seconds{operation}` (upload/download/delete/list), `momo_replication_latency_seconds` | opt-in histogram |
 

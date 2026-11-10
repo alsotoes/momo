@@ -65,7 +65,7 @@ deferred (each documented in its OpenSpec change):
 
 ## Production-Readiness Roadmap
 
-Ratified in [prod-ready-roadmap](../openspec/changes/prod-ready-roadmap/specs/prod-ready-roadmap/spec.md) (#928). Momo is currently a replicated content-addressed blob store + S3 gateway with an operational FUSE/POSIX filesystem layer over the CAS store (`docs/momofs/`, R4 implemented in #963). Phases gate production readiness.
+Ratified in [prod-ready-roadmap](../../openspec/changes/prod-ready-roadmap/specs/prod-ready-roadmap/spec.md) (#928). Momo is currently a replicated content-addressed blob store + S3 gateway with an operational FUSE/POSIX filesystem layer over the CAS store (`docs/momofs/`, R4 implemented in #963). Phases gate production readiness.
 
 ### P0 — Correctness & Durability (blockers)
 

@@ -64,8 +64,11 @@ an S3 `Code`, and a message.
 | `400` | `InvalidRequest` | Unsupported SSE request (SSE-C), conflicting checksum declaration, malformed XML, or a lock/retention field used on a bucket without the feature enabled. |
 | `400` | `BadDigest` | Supplied `x-amz-checksum-*` did not match the received bytes (the object is not stored). |
 | `400` | `InvalidArgument` | Unknown SSE algorithm or an out-of-range value. |
+| `400` | `MalformedXML` | The request body is not well-formed XML (bucket/object subresource configuration). |
+| `400` | `AuthorizationQueryParametersError` | A presigned (query-string) request is missing a required SigV4 parameter. |
 | `403` | `AuthorizationHeaderMalformed` | SigV4 header missing a required component, stale timestamp, or unsupported credential scope. |
 | `403` | `AccessDenied` | Tenant authorization denied, governance retention weakened without `x-amz-bypass-governance-retention`, or a version/object protected by retention or legal hold. |
+| `404` | `NoSuchBucket` | The bucket named in the path does not exist. |
 | `404` | `NoSuchKey` / `NoSuchVersion` | Unknown object or version. |
 | `409` | `InvalidBucketState` | Illegal bucket-state transition (for example, enabling object lock with existing objects). |
 | `409` | `BucketNotEmpty` | Bucket deletion attempted while objects remain. |
@@ -74,6 +77,7 @@ an S3 `Code`, and a message.
 | `412` | `PreconditionFailed` | Conditional request (`If-Match`/`If-None-Match`) did not match. |
 | `501` | `NotImplemented` | Known-unsupported subresource or operation (bucket configuration, object tagging/ACL, `SelectObjectContent`, `UploadPartCopy`, SSE-KMS). |
 | `507` | `InsufficientStorage` | Local disk is full (`ENOSPC`). |
+| `500` | `InternalError` | Store/lookup failure on the server side that is not the client's fault (the response carries no internal detail). |
 
 ## Admin Endpoint Errors
 
