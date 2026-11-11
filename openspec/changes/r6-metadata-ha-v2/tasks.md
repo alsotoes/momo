@@ -105,17 +105,18 @@
   the same code paths with an in-process transport.
 
 ## Phase 4 — ListObjects + Config + Backward Compat
-- [x] Implement shard-aware `ListShard` RPC:
-  - Args: `ShardKey`, `Prefix`, `Delimiter`, `MaxKeys`, `ContinuationToken`
-  - Reply: `FileMetadata[]`, `CommonPrefixes[]`, `NextContinuationToken`
-- [x] Modify S3 ListObjectsV2 handler (`s3_communicator.go`):
-  - When `momofs.enabled=true`: determine shard owners for prefix
-  - Fan-out `ListShard` RPC to shard owners only
-  - Merge responses → return to client
+- [x] Cluster-wide `ListObjectsV2` via the scatter-gather `GlobalList` seam
+      (`SetGlobalLister` → `ScatterGatherLister`), merged and deduplicated by the
+      S3 communicator; local `CASStore.List()` when P2P is off.
+      *Corrected 2026-11-10 (#1327): the `ListShard` RPC pair was a stub whose
+      caller returned "not implemented" and which nothing ever sent — it was
+      deleted, not implemented. Numbers 20/21 stay retired.*
 - [x] Add config keys: `metadata_ttl`, `[global] metadata_snapshot_interval`, `metadata_backup_retention`
 - [x] Backward compat: `momofs.enabled=false` → skip all distributed logic, use local `CASStore.List()`
 - [x] Update `docs/GUIDES/CONFIGURATION.md`, `conf/momo.conf` with new keys
-- [x] Integration tests: ListObjectsV2 with prefix on 10-node cluster → O(M) RPCs verified
+- [x] Integration tests: listing merges peers and deduplicates (scatter-gather
+      seam); a 10-node O(M) RPC optimisation is **not** implemented — the delivered
+      cost is O(N), see the correction above
 
 ## Phase 5 — Backup/Recovery (R6a)
 - [x] Implement `momo backup` CLI in `src/momo.go`:

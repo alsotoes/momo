@@ -13,12 +13,13 @@ deployment an S3 write handled by node A registers a version only on A, so
 consulted from node B do not see that version. Versioning therefore behaves
 correctly only on the node that served the write.
 
-The original sketch proposed reusing the R6 metadata RPC ring. Inspection
-showed the R6 client path is scaffolding: `PutMetadata`/`ResolveMetadata`/
-`ReplicateMetadata`/`ListShard` return canned replies and no server wires the
-provider. Rather than build a second control plane, this change reuses the P2P
-transport that already carries gossip and version metadata is co-located with
-the blob copies themselves.
+The original sketch proposed reusing the R6 metadata RPC ring. Inspection showed
+that ring is the wrong carrier for this job: the R6 provider is wired for
+quorum metadata *writes* and *reads* of blob metadata, but it is keyed by shard
+and replica set, whereas a version record must reach the object's **data**
+replicas, and listing was never part of it at all. Rather than build a second
+control plane, this change reuses the P2P transport that already carries gossip,
+so a version record is co-located with the blob copies themselves.
 
 ## Decision
 
