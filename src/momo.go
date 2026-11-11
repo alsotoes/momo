@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -417,44 +416,18 @@ func runRestore(inputPath string, force bool) error {
 	return nil
 }
 
-// runRotateSecrets triggers a manual key rotation for the specified purpose.
-// It connects to the server's /reload-secrets endpoint to trigger a hot reload.
+// runRotateSecrets reports that key rotation is not available. The previous
+// implementation POSTed to /reload-secrets, which only re-read the provider
+// chain into the key registry: it did not generate a key, and the running
+// daemon never adopted one anyway (#1329). Reporting the refusal is the honest
+// behaviour; provider secrets can still be reloaded with SIGHUP or
+// POST /reload-secrets.
 func runRotateSecrets(cfg common.Configuration, serverId int) error {
 	if serverId < 0 || serverId >= len(cfg.Daemons) {
 		return fmt.Errorf("invalid server ID %d: %w", serverId, syscall.EINVAL)
 	}
-
-	daemon := cfg.Daemons[serverId]
-	metricsHost := daemon.MetricsBindHost
-	if metricsHost == "" {
-		metricsHost = "127.0.0.1"
-	}
-	metricsPort := daemon.MetricsBindPort
-	if metricsPort == 0 {
-		metricsPort = 9100
-	}
-
-	// The metrics endpoint is a localhost admin listener without TLS; plain HTTP is intentional.
-	url := fmt.Sprintf("http://%s:%d/reload-secrets", metricsHost, metricsPort) // NOSONAR
-	req, err := http.NewRequest("POST", url, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to call /reload-secrets: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("/reload-secrets returned %d: %s: %w", resp.StatusCode, common.SanitizeLog(string(body)), syscall.EIO)
-	}
-
-	log.Printf("Secrets rotation triggered successfully on %s:%d", metricsHost, metricsPort)
-	return nil
+	return fmt.Errorf("%w: the daemon keeps using its configured secret; use SIGHUP or POST /reload-secrets to reload provider secrets: https://github.com/alsotoes/momo/issues/1329: %w",
+		common.ErrRotationNotWired, syscall.ENOTSUP)
 }
 
 // runMetricsLoop runs the metrics loop with panic recovery.

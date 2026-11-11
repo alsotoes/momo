@@ -126,11 +126,12 @@ func TestAdminListenerRefusesUnauthenticatedMutationOffLoopback(t *testing.T) {
 
 	port := freePort(t)
 	reloaded := make(chan struct{}, 1)
-	reloadFn := func() {
+	reloadFn := func() error {
 		select {
 		case reloaded <- struct{}{}:
 		default:
 		}
+		return nil
 	}
 	done := make(chan struct{})
 	go func() { StartMetricsServer(ctx, "0.0.0.0", port, NewMetricsCollector(), reloadFn, ""); close(done) }()
@@ -162,11 +163,12 @@ func TestAdminListenerTokenProtectsReadsAndMutation(t *testing.T) {
 	const token = "0123456789abcdef" // notsecret
 	port := freePort(t)
 	reloaded := make(chan struct{}, 1)
-	reloadFn := func() {
+	reloadFn := func() error {
 		select {
 		case reloaded <- struct{}{}:
 		default:
 		}
+		return nil
 	}
 	done := make(chan struct{})
 	go func() { StartMetricsServer(ctx, "0.0.0.0", port, NewMetricsCollector(), reloadFn, token); close(done) }()

@@ -219,15 +219,13 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 		return buildLearnedState(cfg, serverId)
 	})
 	// Pass reload function for /reload-secrets endpoint (nil when R9 is disabled).
-	var reloadFn func()
+	var reloadFn func() error
 	if rotationMgr != nil {
-		reloadFn = func() {
-			defer func() {
-				if r := recover(); r != nil {
-					log.Printf("CRITICAL: Panic recovered in /reload-secrets: %v", r)
-				}
-			}()
-			_ = rotationMgr.Reload(ctx)
+		reloadFn = func() (err error) {
+			// Reload re-reads the provider chain into the key registry. It does
+			// not rotate anything (#1329), and its error must reach the caller.
+			common.RecoverErr("secrets reload", &err)
+			return rotationMgr.Reload(ctx)
 		}
 	}
 	StartMetricsServer(ctx, metricsHost, metricsPort, metricsCollector, reloadFn, cfg.Metrics.AdminToken)

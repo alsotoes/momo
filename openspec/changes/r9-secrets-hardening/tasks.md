@@ -2,10 +2,10 @@
 
 ## Implementation
 
-- [x] Fix `RotationManager.Rotate` to store generated material, activate the new key, and report real key IDs (`src/common/rotation.go`)
+- [x] Fix `RotationManager.Rotate` to store generated material, activate the new key, and report real key IDs (`src/common/rotation.go`) — **superseded: rotation refuses while unwired (#1329)**
 - [x] Fix `loadSecretsConfig` to read `[secrets.<source>]` child sections; decompose into helpers to cut cognitive complexity (`src/common/config.go`)
 - [x] Initialize R9 before `StartMetricsServer`; extract `initSecretsManager` (`src/server/server.go`)
-- [x] Add Rule 37 panic recovery to the scheduler goroutine and rotation methods; map failures to `syscall` constants
+- [x] Add Rule 37 panic recovery to rotation methods; map failures to `syscall` constants (the scheduler goroutine was deleted in #1329)
 - [x] Hoist the purpose list to a package-level `rotationPurposes`
 - [x] Correct the invalid documented duration `90d` to `2160h` (`conf/momo.conf`, `docs/GUIDES/CONFIGURATION.md`)
 

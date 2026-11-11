@@ -819,7 +819,7 @@ func (m *MetricsCollector) learnedStateNow() (ls *LearnedState) {
 	return m.learnedState()
 }
 
-func StartMetricsServer(ctx context.Context, host string, port int, collector *MetricsCollector, reloadFn func(), adminToken string) {
+func StartMetricsServer(ctx context.Context, host string, port int, collector *MetricsCollector, reloadFn func() error, adminToken string) {
 	if port <= 0 {
 		return
 	}
@@ -838,7 +838,12 @@ func StartMetricsServer(ctx context.Context, host string, port int, collector *M
 				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 				return
 			}
-			reloadFn()
+			if err := reloadFn(); err != nil {
+				// A failed reload must not look like a successful one: the
+				// previous code discarded the error and always answered 200.
+				http.Error(w, "Secrets reload failed: "+common.SanitizeLog(err.Error()), http.StatusInternalServerError)
+				return
+			}
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("Secrets reloaded\n"))
 		}

@@ -2,8 +2,11 @@ package common
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"path/filepath"
+	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -55,9 +58,9 @@ func TestRotationManager_Hooks(t *testing.T) {
 	reloaded := false
 	rm.RegisterReloadHook(func() { reloaded = true })
 
-	rotated := false
+	var hookSuccess *bool
 	rm.RegisterRotationHook(func(purpose, oldKeyID, newKeyID, trigger string, success bool, err error) {
-		rotated = true
+		hookSuccess = &success
 	})
 
 	// Reload fires reload hooks.
@@ -68,12 +71,15 @@ func TestRotationManager_Hooks(t *testing.T) {
 		t.Fatal("reload hook was not fired")
 	}
 
-	// Rotate fires rotation hooks.
-	if err := rm.Rotate(context.Background(), "encryption"); err != nil {
-		t.Fatalf("Rotate: %v", err)
+	// Rotate refuses and reports the refusal to the hook.
+	if err := rm.Rotate(context.Background(), "encryption"); !errors.Is(err, ErrRotationNotWired) {
+		t.Fatalf("expected ErrRotationNotWired, got %v", err)
 	}
-	if !rotated {
+	if hookSuccess == nil {
 		t.Fatal("rotation hook was not fired")
+	}
+	if *hookSuccess {
+		t.Fatal("a refused rotation must not be reported as a success")
 	}
 }
 
@@ -84,34 +90,24 @@ func TestRotationManager_ReloadProviderError(t *testing.T) {
 	}
 }
 
-func TestRotationManager_StartStop(t *testing.T) {
+func TestRotationManager_StartIsDisabled(t *testing.T) {
 	kr, db := newTestRegistry(t)
 	defer db.Close()
 
-	// interval <= 0 disables scheduling and does not set a ticker.
-	rmDisabled := NewRotationManager(kr, &errProvider{}, time.Hour)
-	rmDisabled.Start(context.Background(), 0)
-	if rmDisabled.ticker != nil {
-		t.Fatal("ticker should not be set for non-positive interval")
-	}
-
-	// interval > 0 starts the scheduler; Stop must clean it up.
 	rm := NewRotationManager(kr, &errProvider{}, time.Hour)
+	// The scheduler is disabled because rotation is not wired (#1329); Start
+	// must be a no-op that is safe to call with any interval, and it must not
+	// create a key behind the operator's back.
+	rm.Start(context.Background(), 0)
 	rm.Start(context.Background(), time.Hour)
-	if rm.ticker == nil {
-		t.Fatal("ticker should be set for positive interval")
+
+	entries, err := readRotationAudit(t, db)
+	if err != nil {
+		t.Fatalf("read audit: %v", err)
 	}
-	rm.Stop()
-}
-
-func TestRotationManager_StartContextCancel(t *testing.T) {
-	kr, db := newTestRegistry(t)
-	defer db.Close()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	rm := NewRotationManager(kr, &errProvider{}, time.Hour)
-	rm.Start(ctx, time.Hour)
-	cancel() // goroutine exits via ctx.Done()
+	if len(entries) != 0 {
+		t.Fatalf("Start must not rotate, got %d audit entries", len(entries))
+	}
 }
 
 func TestRotationManager_RotateAll(t *testing.T) {
@@ -119,30 +115,8 @@ func TestRotationManager_RotateAll(t *testing.T) {
 	defer db.Close()
 
 	rm := NewRotationManager(kr, &errProvider{}, time.Hour)
-	if err := rm.RotateAll(context.Background()); err != nil {
-		t.Fatalf("RotateAll: %v", err)
-	}
-}
-
-func TestRotationManager_GenerateKeyForPurpose(t *testing.T) {
-	rm := NewRotationManager(nil, &errProvider{}, time.Hour)
-
-	for _, purpose := range []string{"encryption", "auth", "e2ee"} {
-		key, err := rm.generateKeyForPurpose(purpose)
-		if err != nil {
-			t.Fatalf("generateKeyForPurpose(%s): %v", purpose, err)
-		}
-		if len(key) != 32 {
-			t.Fatalf("expected 32-byte key for %s, got %d", purpose, len(key))
-		}
-	}
-
-	if _, err := rm.generateKeyForPurpose("oprf"); err != nil {
-		t.Fatalf("generateKeyForPurpose(oprf): %v", err)
-	}
-
-	if _, err := rm.generateKeyForPurpose("bogus"); err == nil {
-		t.Fatal("expected error for unknown purpose")
+	if err := rm.RotateAll(context.Background()); !errors.Is(err, ErrRotationNotWired) {
+		t.Fatalf("expected RotateAll to propagate ErrRotationNotWired, got %v", err)
 	}
 }
 
@@ -167,5 +141,93 @@ func TestRotationManager_Status(t *testing.T) {
 	status := rm.Status()
 	if status.ActiveKeys == nil {
 		t.Fatal("Status.ActiveKeys should be non-nil")
+	}
+}
+
+// readRotationAudit decodes every AuditRotationEntry in the audit_log bucket.
+func readRotationAudit(t *testing.T, db *bbolt.DB) ([]AuditRotationEntry, error) {
+	t.Helper()
+	var out []AuditRotationEntry
+	err := db.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte("audit_log"))
+		if b == nil {
+			return nil
+		}
+		return b.ForEach(func(_, v []byte) error {
+			var e AuditRotationEntry
+			if err := json.Unmarshal(v, &e); err != nil {
+				return err
+			}
+			out = append(out, e)
+			return nil
+		})
+	})
+	return out, err
+}
+
+func TestRotationManager_RotateRefusesEveryPurpose(t *testing.T) {
+	kr, db := newTestRegistry(t)
+	defer func() { _ = db.Close() }()
+
+	rm := NewRotationManager(kr, &errProvider{}, time.Hour)
+	rm.SetAuditDB(db)
+
+	for _, purpose := range []string{"encryption", "auth", "e2ee", "oprf"} {
+		if err := rm.Rotate(context.Background(), purpose); !errors.Is(err, ErrRotationNotWired) {
+			t.Fatalf("Rotate(%s): expected ErrRotationNotWired, got %v", purpose, err)
+		}
+		// Nothing may be stored: a key in the registry that no data path reads
+		// is exactly the lie this change removes.
+		if id, _, err := kr.GetActiveKeyForPurpose(context.Background(), purpose); err == nil && id != "" {
+			t.Fatalf("Rotate(%s) stored active key %q", purpose, id)
+		}
+	}
+
+	entries, err := readRotationAudit(t, db)
+	if err != nil {
+		t.Fatalf("read audit: %v", err)
+	}
+	if len(entries) != 4 {
+		t.Fatalf("expected 4 audit entries, got %d", len(entries))
+	}
+	for _, e := range entries {
+		if e.Success {
+			t.Fatalf("refused rotation audited as success: %+v", e)
+		}
+		if !strings.Contains(e.Error, ErrRotationNotWired.Error()) {
+			t.Fatalf("audit entry does not explain the refusal: %q", e.Error)
+		}
+	}
+}
+
+func TestRotationManager_RotateUnknownPurpose(t *testing.T) {
+	rm := NewRotationManager(nil, &errProvider{}, time.Hour)
+	if err := rm.Rotate(context.Background(), "bogus"); !errors.Is(err, syscall.EINVAL) {
+		t.Fatalf("expected EINVAL for unknown purpose, got %v", err)
+	}
+}
+
+func TestAlgorithmForPurpose(t *testing.T) {
+	cases := map[string]string{
+		"encryption": "AES-256-GCM",
+		"e2ee":       "AES-256-GCM",
+		"auth":       "raw",
+		"oprf":       "raw",
+	}
+	for purpose, want := range cases {
+		if got := algorithmForPurpose(purpose); got != want {
+			t.Errorf("algorithmForPurpose(%s) = %q, want %q", purpose, got, want)
+		}
+	}
+}
+
+func TestIsRotationPurpose(t *testing.T) {
+	for _, p := range []string{"encryption", "auth", "e2ee", "oprf"} {
+		if !isRotationPurpose(p) {
+			t.Errorf("%s should be a rotation purpose", p)
+		}
+	}
+	if isRotationPurpose("bogus") {
+		t.Error("bogus must not be a rotation purpose")
 	}
 }

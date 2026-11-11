@@ -2,6 +2,7 @@ package common
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -27,33 +28,7 @@ func TestSecretProviderChain_Fallback(t *testing.T) {
 	}
 }
 
-func TestRotationManager_AuditRecorded(t *testing.T) {
-	kr, db := newTestRegistry(t)
-	defer db.Close()
-
-	rm := NewRotationManager(kr, &errProvider{}, time.Hour)
-	rm.SetAuditDB(db)
-
-	if err := rm.Rotate(context.Background(), "encryption"); err != nil {
-		t.Fatalf("Rotate: %v", err)
-	}
-
-	var count int
-	if err := db.View(func(tx *bbolt.Tx) error {
-		b := tx.Bucket([]byte("audit_log"))
-		if b == nil {
-			return nil
-		}
-		return b.ForEach(func(_, _ []byte) error { count++; return nil })
-	}); err != nil {
-		t.Fatalf("read audit_log: %v", err)
-	}
-	if count == 0 {
-		t.Fatal("expected at least one rotation audit entry")
-	}
-}
-
-func TestRotationManager_OldKeyRetained(t *testing.T) {
+func TestRotationManager_RotateLeavesRegistryUntouched(t *testing.T) {
 	kr, db := newTestRegistry(t)
 	defer db.Close()
 
@@ -64,35 +39,52 @@ func TestRotationManager_OldKeyRetained(t *testing.T) {
 	}
 
 	rm := NewRotationManager(kr, &errProvider{}, time.Hour)
-	if err := rm.Rotate(ctx, "encryption"); err != nil {
-		t.Fatalf("Rotate: %v", err)
+	rm.SetAuditDB(db)
+
+	if err := rm.Rotate(ctx, "encryption"); !errors.Is(err, ErrRotationNotWired) {
+		t.Fatalf("expected ErrRotationNotWired, got %v", err)
 	}
 
-	// The old key must still be retrievable (readable for decryption) after rotation.
+	// The configured key must still be the active one: a refused rotation must
+	// not demote it, because nothing would ever decrypt the old data again.
+	activeID, _, err := kr.GetActiveKeyForPurpose(ctx, "encryption")
+	if err != nil {
+		t.Fatalf("GetActiveKeyForPurpose: %v", err)
+	}
+	if activeID != oldID {
+		t.Fatalf("refused rotation changed the active key: %q -> %q", oldID, activeID)
+	}
 	old, err := kr.GetKey(ctx, oldID)
 	if err != nil {
-		t.Fatalf("old key should remain retrievable after rotation: %v", err)
+		t.Fatalf("GetKey: %v", err)
 	}
-	if old.Status != KeyStatusRetired {
-		t.Fatalf("expected old key retired, got %s", old.Status)
+	if old.Status != KeyStatusActive {
+		t.Fatalf("refused rotation changed the key status to %s", old.Status)
 	}
 
-	// And the active key must differ from the old one.
-	newID, _, err := kr.GetActiveKey(ctx, "encryption", "")
-	if err != nil {
-		t.Fatalf("GetActiveKey: %v", err)
+	// And the refusal is still recorded.
+	count := 0
+	if err := db.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte("audit_log"))
+		if b == nil {
+			return nil
+		}
+		return b.ForEach(func(_, _ []byte) error { count++; return nil })
+	}); err != nil {
+		t.Fatalf("read audit_log: %v", err)
 	}
-	if newID == oldID {
-		t.Fatal("expected a new active key after rotation")
+	if count == 0 {
+		t.Fatal("expected a rotation audit entry")
 	}
 }
 
-func TestRotationManager_AuditError(t *testing.T) {
+func TestRotationManager_AuditFailureDoesNotMaskRefusal(t *testing.T) {
 	kr, db := newTestRegistry(t)
 	defer db.Close()
 
-	// A separate, closed audit DB forces AuditRotation to fail; rotation must
-	// still succeed (auditing is best-effort).
+	// A separate, closed audit DB forces AuditRotation to fail; the refusal
+	// must still be reported as ErrRotationNotWired, not as a panic or a
+	// misleading success.
 	auditDB, err := bbolt.Open(filepath.Join(t.TempDir(), "audit.db"), 0600, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -102,7 +94,7 @@ func TestRotationManager_AuditError(t *testing.T) {
 	rm := NewRotationManager(kr, &errProvider{}, time.Hour)
 	rm.SetAuditDB(auditDB)
 
-	if err := rm.Rotate(context.Background(), "encryption"); err != nil {
-		t.Fatalf("Rotate should succeed despite an audit failure: %v", err)
+	if err := rm.Rotate(context.Background(), "encryption"); !errors.Is(err, ErrRotationNotWired) {
+		t.Fatalf("expected ErrRotationNotWired despite audit failure, got %v", err)
 	}
 }

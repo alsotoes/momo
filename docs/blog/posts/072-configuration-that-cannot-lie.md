@@ -11,7 +11,7 @@ categories:
   - durability
 summary: "Four configuration keys were parsed, validated, documented and ignored. One of them promised durability the daemon never delivered. A setting nobody reads is worse than no setting, so the fix is either a wire or a refusal — never silence."
 artifacts: [{type: spec, path: openspec/changes/honest-config-surface}, {type: adr, path: docs/adr/0096-honest-config-surface.md}]
-related: ["070-tenant-quotas", "071-making-refusals-visible", "064-failing-over-coordination-in-seconds", "073-tenancy-you-can-write-down"]
+related: ["070-tenant-quotas", "071-making-refusals-visible", "064-failing-over-coordination-in-seconds", "073-tenancy-you-can-write-down", "074-when-rotation-does-nothing"]
 difficulty: "intermediate"
 pattern: "fail-loud-configuration"
 teaches:

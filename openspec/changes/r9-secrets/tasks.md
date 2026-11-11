@@ -14,11 +14,11 @@
 - [x] Schema: `{version, material, status, algorithm, tenant, timestamps}` with statuses active/retired/pending_rotation/compromised
 
 ### Rotation
-- [x] `src/common/rotation.go`: `RotationManager` with `Start()` (ticker), `Rotate`, `RotateAll`
-- [x] On rotation: generate new material, `StoreKey` pending, `SetActive` (promotes new, retires old)
+- [x] `src/common/rotation.go`: `RotationManager` with `Start()`, `Rotate`, `RotateAll` — **rotated keys were never consumed; rotation now refuses (#1329)**
+- [x] On rotation: generate new material, `StoreKey` pending, `SetActive` (promotes new, retires old) — **reverted: refused until wired (#1329)**
 - [x] Grace period: the previous key is retained (not deleted), so old ciphertext keeps decrypting
 - [x] `src/common/secrets.go`: `Reload()` on providers; `fireReloadHooks` hot-swap signal
-- [x] `src/momo.go`: `rotate-secrets` CLI command (`--purpose`)
+- [x] `src/momo.go`: `rotate-secrets` CLI command — **now reports the refusal (#1329)**
 - [x] `src/server/server.go`: `POST /reload-secrets` endpoint
 - [x] `src/server/server.go`: `SIGHUP` → `RotationManager.Reload()`
 
