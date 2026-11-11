@@ -84,7 +84,7 @@ Ratified in [prod-ready-roadmap](../../openspec/changes/prod-ready-roadmap/specs
 | R6 | Metadata catalog HA + backup/recovery | ✅ Sharded quorum writes, tombstone propagation, any-node reads with vector-clock conflict resolution and read repair, backup/restore CLI (#934, #1142/#1233) |
 | R7 | Error model & ops | ✅ ENOSPC preserved end-to-end (507 on S3), cause-specific exit codes 2–6, `/health/detailed` (#935) |
 | R8 | Multi-tenancy + authorization + audit | ✅ Per-tenant keys, declarative tenants + bucket ACLs seeded from config, default-deny ACLs in the S3 gateway, tenant-scoped quotas enforced before the write, hash-chained audit log with denial records + rate-limited sampling, denial counters (#936, #1315, #1319, #1321, #1325) |
-| R9 | Secrets management + key rotation | ✅ `env`/`file` providers behind a `SecretProvider` seam, versioned key registry, rotation with grace period + audit, SIGHUP/HTTP reload (#937) |
+| R9 | Secrets management | ✅ `env`/`file` providers behind a `SecretProvider` seam, versioned key registry, audited refusal on rotation, SIGHUP/HTTP reload (#937). Rotation is **not wired** to the data path (#1329) — the daemon keeps its configured secret; real rotation (envelope re-wrap, cluster-wide token rollout, OPRF re-sharing) is the remaining design task. |
 
 ### P2 — S3 Breadth & Scale
 
