@@ -57,13 +57,14 @@
 - [ ] Integration tests: owner down → fallback to replica; cache hit after 2 reads; read repair on stale replica
 
 ## Phase 4 — ListObjects + Config + Backward Compat
-- [x] Implement shard-aware `ListShard` RPC:
-  - Args: `ShardKey`, `Prefix`, `Delimiter`, `MaxKeys`, `ContinuationToken`
-  - Reply: `FileMetadata[]`, `CommonPrefixes[]`, `NextContinuationToken`
-- [x] Modify S3 ListObjectsV2 handler (`s3_communicator.go`):
-  - When `momofs.enabled=true`: determine shard owners for prefix
-  - Fan-out `ListShard` RPC to shard owners only
-  - Merge responses → return to client
+- [x] Cluster-wide `ListObjectsV2` — delivered by the scatter-gather
+      `GlobalList` seam (`SetGlobalLister` → `ScatterGatherLister`), not by a
+      dedicated shard RPC: `S3Communicator.listFiles` fans out a list query to
+      every peer, merges and dedupes, and falls back to the local
+      `CASStore.List()` without P2P.
+      *Corrected 2026-11-10 (#1327): the `ListShard` RPC pair (msg 20/21) was
+      present but never sent — its caller was a stub returning "not implemented" —
+      so it was deleted instead of implemented. Numbers 20/21 stay unused.*
 - [x] Add config keys: `metadata_ttl`, `[global] metadata_snapshot_interval`, `metadata_backup_retention`
 - [x] Backward compat: `momofs.enabled=false` → skip all distributed logic, use local `CASStore.List()`
 - [x] Update `docs/GUIDES/CONFIGURATION.md`, `conf/momo.conf` with new keys
