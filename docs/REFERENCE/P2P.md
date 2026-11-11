@@ -68,8 +68,7 @@ All RPCs use a binary, length-prefixed frame format for zero-allocation encoding
 | `MsgResolveMetadataResponse` | 17 | Metadata read reply with vector clock |
 | `MsgReplicateMetadata` | 18 | Metadata replication / read-repair write |
 | `MsgReplicateMetadataResponse` | 19 | Replication acknowledgement |
-| `MsgListShard` | 20 | Shard-scoped listing request (R6 phase 4) |
-| `MsgListShardResponse` | 21 | Shard-scoped listing reply |
+| *(20, 21 retired)* | — | Were a shard-scoped listing pair; removed because cluster-wide listing is scatter-gather's job. The numbers stay unused so the enum does not shift. |
 | `MsgReplicateVersion` | 22 | Version-record replication (R10 follow-up) |
 | `MsgReplicateVersionResponse` | 23 | Version-record acknowledgement |
 | `MsgLoad` | 24 | Bounded load summary published with heartbeats (R11) |
@@ -250,7 +249,7 @@ map, so no coordinator is involved.
 | Put | `MsgPutMetadata` → `MsgPutMetadataResponse` | Fan-out to the shard's replica set; acknowledged at `W = M/2 + 1`. A partial write fails closed so the client retries (idempotent). The writer's vector clock advances on success. |
 | Delete | `MsgDeleteMetadata` → `MsgDeleteMetadataResponse` | Tombstone fan-out at the same quorum. Replica-applied deletes skip the local delete hook, so propagation cannot loop. |
 | Read | `MsgResolveMetadata` → `MsgResolveMetadataResponse` | Any replica may answer. The reader picks the dominating vector clock; genuinely concurrent clocks are broken deterministically (newest modtime, then greater hash) and logged. Stale replicas are repaired with the winner (`MsgReplicateMetadata`). A locally tombstoned name is never resolved from a replica. |
-| List | `MsgListShard` → `MsgListShardResponse` | Prefix/delimiter/pagination scoped to one shard. |
+| List | *(no metadata RPC)* | Listing is **not** a metadata RPC: `S3Communicator.listFiles` uses the scatter-gather `GlobalList` seam (`SetGlobalLister`), which asks every peer for its local store list and merges/dedupes it. Without P2P it falls back to the local `CASStore.List()`. |
 | Version records | `MsgReplicateVersion` → `MsgReplicateVersionResponse` | Per-object version records replicate to the object's data replica set so version listing/get/delete and lock checks agree on every holder. Best-effort, audit-logged. |
 
 **Hinted handoff.** A replica that is down (or errors) while a write or delete

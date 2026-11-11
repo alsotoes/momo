@@ -71,10 +71,14 @@ Enable full "Read From Any Node" capability for metadata by replicating metadata
 #### Scenario: S3 ListObjectsV2 with prefix
 **Given** a prefix "tenant/photos/"
 **When** ListObjectsV2 is invoked
-**Then** the handler determines which shards overlap the prefix
-**And** queries only the shard owners (via ResolveMetadata or ListShard RPC)
-**And** merges results and returns to client
-**And** total RPCs = O(shard_owners) not O(all_nodes)
+**Then** the handler fans a list query out to every peer via the scatter-gather
+`GlobalList` seam and merges the answers with the local store
+**And** deduplicates by name, sorts, and applies prefix/delimiter/pagination
+**And** total RPCs = O(all_nodes)
+
+> Corrected 2026-11-10 (#1327): the O(shard owners) shard-list RPC was never
+> implemented (its caller was a stub and nothing sent it) and has been deleted;
+> the delivered mechanism is the scatter-gather fan-out.
 
 ### Requirement 8: Backup/Restore CLI
 

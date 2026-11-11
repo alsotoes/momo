@@ -112,16 +112,34 @@ The system SHALL provide a read path with local metadata cache (TTL=60s) and aut
 - **THEN** Node X tries replicas from `ring.Replicas(key, M)` in order
 - **THEN** first responsive replica serves metadata
 
-### Requirement: Shard-Aware ListObjectsV2
+### Requirement: Cluster-Wide ListObjectsV2
 
-S3 ListObjectsV2 SHALL query only shard owners for the prefix, not all N nodes.
+S3 ListObjectsV2 SHALL return objects held by the whole cluster, not only those
+whose metadata happens to live on the node that served the request.
 
 #### Scenario: ListObjectsV2 with prefix
-- **GIVEN** client calls ListObjectsV2 with prefix "images/"
-- **WHEN** Node X determines shard owners for keys matching "images/*"
-- **THEN** Node X sends ListShard RPC only to those shard owners
-- **THEN** RPC count = number of shard owners (not N)
-- **THEN** responses merged and returned to client
+- **GIVEN** a client calls ListObjectsV2 with prefix "images/"
+- **WHEN** the S3 communicator handles the request
+- **THEN** it uses the scatter-gather `GlobalList` seam to ask every peer for its
+  local store list (falling back to the local store when P2P is disabled)
+- **THEN** responses are merged, deduplicated by name and sorted
+- **THEN** prefix, delimiter and pagination are applied to the merged set
+
+#### Scenario: A peer does not answer
+- **GIVEN** one peer is unreachable
+- **WHEN** a listing is served
+- **THEN** the listing completes with the reachable peers and the gap is logged,
+  rather than failing the request
+
+> **Delivery note (2026-11-10, #1327).** This requirement originally specified a
+> shard-scoped `ListShard` RPC costing O(shard owners) instead of O(N). The RPC
+> pair was implemented only as a stub (its caller returned "not implemented", and
+> nothing ever sent it), while the working implementation is the scatter-gather
+> fan-out described above. The stub was deleted rather than completed, because a
+> second listing mechanism with no measured need is not worth its surface. A
+> shard-scoped variant remains a possible optimisation, gated on evidence that the
+> O(N) fan-out is the bottleneck; the numbers 20/21 stay retired so the wire enum
+> never shifts.
 
 ### Requirement: Configuration
 

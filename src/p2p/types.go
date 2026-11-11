@@ -119,8 +119,9 @@ const (
 	MsgResolveMetadataResponse   MessageType = 17
 	MsgReplicateMetadata         MessageType = 18
 	MsgReplicateMetadataResponse MessageType = 19
-	MsgListShard                 MessageType = 20
-	MsgListShardResponse         MessageType = 21
+	// 20/21 were the shard-list RPC pair. Removed in #1327: cluster-wide listing
+	// is scatter-gather's job (SetGlobalLister), and nothing ever sent these.
+	// The numbers stay unused so the wire enum does not shift.
 	// R10 follow-up (#1233): replicate a version record to a peer.
 	MsgReplicateVersion         MessageType = 22
 	MsgReplicateVersionResponse MessageType = 23
