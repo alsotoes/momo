@@ -526,11 +526,15 @@ being read directly wherever it is needed:
   one file deadlock): versioned keys per purpose with status
   `active` / `retired` / `pending_rotation` / `compromised`; any node resolves the
   active key from its local copy, so there is no central secret server.
-- **Rotation**: `RotationManager` rotates on a schedule (24 h default grace
-  period), keeps the previous version usable during the grace window, and records
-  both success and failure in the audit log. Rotation is triggered by `momo
-  rotate-secrets -purpose`, by `SIGHUP`, or by the authenticated
-  `POST /reload-secrets` admin endpoint.
+- **Rotation is not wired (#1329)**: the registry versions keys, but no data path
+  reads them, so the daemon keeps the secret it resolved at startup. `Rotate`
+  refuses with `ENOTSUP` and audits the refusal rather than recording a success;
+  `rotation_interval` starts no scheduler; `momo -imp rotate-secrets` reports the
+  refusal. Real rotation needs envelope re-wrapping for at-rest data, a
+  cluster-wide token rollout and OPRF re-sharing.
+- **Reload**: `SIGHUP` or the authenticated `POST /reload-secrets` re-reads the
+  provider chain into the registry and returns `500` if the provider fails. It
+  changes which secret version is recorded, not which key is in use.
 
 ### 5. Automated Governance & AI Reviewer
 To maintain high integrity in a single-contributor environment, Momo employs an automated governance layer:

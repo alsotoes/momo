@@ -12,18 +12,26 @@ tags:
 categories:
   - encryption
   - storage
-summary: "How momo manages encryption keys without a central secret server: a pluggable provider chain (env, then config file), a per-node versioned key registry in local storage, and rotation that promotes a new key without any downtime. Teaches: why a provider chain beats a single source, how key versioning enables online rotation, and when rotation is and is not worth the complexity."
+summary: "How momo sources encryption keys without a central secret server: a pluggable provider chain (env, then config file) and a per-node versioned key registry in local storage — and why rotation is deliberately refused until it can actually change the key in use. Teaches: why a provider chain beats a single source, what key versioning buys you, and why a rotation that reports success without changing anything is worse than no rotation."
 artifacts:
   - type: spec
     path: openspec/changes/r9-secrets
-related: ["053-multitenancy-authorization-audit", "013-e2ee-envelope-encryption", "044-plugin-seam-architecture", "059-r10-notification"]
+related: ["053-multitenancy-authorization-audit", "013-e2ee-envelope-encryption", "044-plugin-seam-architecture", "059-r10-notification", "074-when-rotation-does-nothing"]
 difficulty: "advanced"
 pattern: "seam-over-plugins"
 teaches:
   - "provider-chain fallback"
   - "versioned key registry"
-  - "online key rotation with grace periods"
+  - "why a no-op rotation is worse than no rotation"
 ---
+
+> **Status correction (2026-11-11).** This post originally described rotation as
+> delivered. It is not: the key registry versions keys, but **no data path reads
+> them**, so the daemon keeps the secret it loaded at startup. Rotation now
+> refuses with `ENOTSUP` and audits the refusal instead of reporting a success
+> that changes nothing (#1329). The explanation below is kept as the design
+> argument for what rotation must do before it is wired; the "Rotation as a
+> metadata change" section describes the intended behaviour, not the shipped one.
 
 Every system that encrypts data eventually faces the same operational question:
 where does the encryption key live, and how do you change it without taking the
@@ -101,17 +109,22 @@ Because the registry lives on each node, any node can resolve the active key
 locally. There is no fetch step to fail, and no central server to restate the
 whole system's vulnerability.
 
-### Rotation as a metadata change
+### Rotation as a metadata change (not yet wired)
 
-Rotation generates new material, stores it as a new version, and promotes it.
-No data is re-encrypted. Dependent components are told to re-read the registry
-via a reload signal (an HTTP endpoint and a `SIGHUP` handler).
+The design is that rotation generates new material, stores it as a new version,
+and promotes it, with no data re-encrypted and a reload signal telling dependent
+components to re-read the registry. That is not what ships today: storing a new
+version changes nothing while no data path consults the registry, and re-encrypting
+at-rest data needs envelope re-wrapping rather than a metadata swap.
 
 ```go
-// The old key stays retrievable; new writes use the new active key. The grace
-// period is the retention window during which both are valid.
-rm.RotateAll(ctx)   // rotates every purpose: encryption, auth, e2ee, oprf
+// Refused on purpose: a key nothing reads must not be reported as a success.
+err := rm.RotateAll(ctx)   // ErrRotationNotWired (ENOTSUP), audited as a failure
 ```
+
+What does work is reloading the provider chain into the registry: `SIGHUP` or
+`POST /reload-secrets` re-reads env/file, and a provider failure is returned as
+`500` instead of an unconditional `200`.
 
 > **Principle:** A secret you can derive or reconstruct is worth more than a
 > secret you must fetch. Put the derivable material on every node and keep the
@@ -121,10 +134,11 @@ rm.RotateAll(ctx)   // rotates every purpose: encryption, auth, e2ee, oprf
 
 - **Provider chain** proves a miss in the first provider falls through to the
   next, and that an all-miss returns "not found" rather than an error.
-- **Rotation audit** proves every rotation writes a chained audit entry with
-  the old and new key IDs.
-- **Old-key retention** proves that after rotation the previous key is still
-  retrievable (for decryption) while the active key has changed.
+- **Refusal is audited** proves a rotation attempt writes a chained audit entry
+  with `success=false` and the reason, and stores no key.
+- **The registry is untouched** proves a refused rotation neither demotes the
+  configured key nor changes its status — the regression guard for the lie this
+  correction removes.
 
 ## Failure Modes
 

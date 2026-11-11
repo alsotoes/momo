@@ -548,13 +548,16 @@ very small process are ignored.
 
 ### [secrets] (optional, R9 #937)
 
-This section controls the external secret sourcing and automated key rotation system (R9, issue #937). When disabled (default), the application uses static configuration values directly from `momo.conf`. When enabled, secrets are resolved through a configurable chain of providers, and keys are versioned in a local BoltDB registry with automated rotation capabilities.
+This section controls external secret sourcing (R9, issue #937). When disabled (default), the application uses static configuration values directly from `momo.conf`. When enabled, secrets are resolved through a configurable chain of providers and versioned in a local BoltDB registry.
+
+> **Rotation is not wired yet (#1329).** The registry records key versions, but no data path reads them: the daemon keeps using the secret resolved at startup. `Rotate` therefore refuses with `ENOTSUP` instead of reporting success, `rotation_interval` starts no scheduler, and `momo -imp rotate-secrets` reports the refusal. Reloading provider secrets (for example after a mounted secret file changes) still works: send `SIGHUP` or `POST /reload-secrets`, which re-reads the provider chain into the registry. A failed reload now answers `500`.
 
 **Key Concepts:**
 
 - **Provider Chain:** Secrets are resolved by trying each configured source in order until one returns a value. Default order: `env` (environment variables), then `file` (config file). Additional providers like Vault, AWS Secrets Manager, GCP Secret Manager, and Azure Key Vault are supported (Phase 2+).
 - **Key Registry:** All keys are stored in a local BoltDB bucket (`key_registry`) with versioning, status tracking (`active`, `retired`, `compromised`, `pending_rotation`), and per-purpose isolation (`encryption`, `auth`, `e2ee`, `oprf`).
-- **Rotation:** Scheduled (via `rotation_interval`) or manual (`momo rotate-secrets --purpose`). New keys are generated, marked `pending_rotation`, activated on reload, and old keys are retired after a grace period (`rotation_grace_period`, default 24h) but remain available for decryption.
+- **Rotation (refused):** `rotation_interval` and `momo -imp rotate-secrets` exist but report `ENOTSUP` while rotation is not connected to the data path (#1329). No key is generated, nothing is demoted, and the refusal is audited with `success=false`.
+- **Reload:** `SIGHUP` or `POST /reload-secrets` re-reads the provider chain and records the current secret versions in the registry. This does not change the key in use.
 - **Audit Trail:** Every rotation (success or failure) is logged to the `audit_log` BoltDB bucket with timestamp, purpose, old/new key IDs, operator, trigger type (`scheduled`/`manual`), success status, and error details.
 
 **Configuration:**
@@ -570,12 +573,12 @@ This section controls the external secret sourcing and automated key rotation sy
     -   **Default:** `env,file`
 
 -   **`rotation_interval`**
-    -   **Description:** Interval for automatic key rotation (Go duration string, e.g. `2160h` for 90 days).. Empty disables scheduled rotation.
+    -   **Description:** Interval for automatic key rotation (Go duration string, e.g. `2160h` for 90 days). Empty disables it. Non-empty currently logs that rotation is not wired (#1329) and starts no scheduler.
     -   **Type:** Duration string
     -   **Default:** (empty — disabled)
 
 -   **`rotation_grace_period`**
-    -   **Description:** How long old keys remain active after rotation before being marked `retired`. Default 24h.
+    -   **Description:** Grace window for retired keys once rotation is implemented. Accepted and validated, currently unused because rotation is refused (#1329). Default 24h.
     -   **Type:** Duration string
     -   **Default:** `24h`
 
