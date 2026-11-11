@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -238,11 +239,12 @@ func TestStartMetricsServer_ReloadSecrets(t *testing.T) {
 	mc := NewMetricsCollector()
 
 	reloaded := make(chan struct{}, 1)
-	reloadFn := func() {
+	reloadFn := func() error {
 		select {
 		case reloaded <- struct{}{}:
 		default:
 		}
+		return nil
 	}
 
 	done := make(chan struct{})
@@ -328,4 +330,30 @@ func TestWriteAdaptiveGauges(t *testing.T) {
 			t.Fatalf("missing %q in output:\n%s", want, out)
 		}
 	}
+}
+
+// TestStartMetricsServer_ReloadSecretsFailureIs500 verifies a failed reload is
+// reported as an error instead of the previous always-200 behaviour (#1329).
+func TestStartMetricsServer_ReloadSecretsFailureIs500(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	port := freePort(t)
+	reloadFn := func() error { return errors.New("provider reload failed") }
+
+	done := make(chan struct{})
+	go func() { StartMetricsServer(ctx, "127.0.0.1", port, NewMetricsCollector(), reloadFn, ""); close(done) }()
+	httpGetPort(t, port, "/health")
+
+	resp, err := http.Post("http://127.0.0.1:"+strconv.Itoa(port)+"/reload-secrets", "text/plain", nil)
+	if err != nil {
+		t.Fatalf("POST /reload-secrets: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("expected 500 when the reload fails, got %d", resp.StatusCode)
+	}
+
+	cancel()
+	<-done
 }

@@ -2,6 +2,7 @@ package common
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,17 +35,16 @@ func TestRotationManager_ReloadStoresSecrets(t *testing.T) {
 	}
 }
 
-func TestRotationManager_RotateOnClosedDB(t *testing.T) {
+func TestRotationManager_RotateDoesNotTouchTheRegistry(t *testing.T) {
 	kr, db := newTestRegistry(t)
-	_ = db.Close() // force registry errors
+	_ = db.Close() // a closed registry must not matter: Rotate never opens it
 
 	rm := NewRotationManager(kr, &errProvider{}, time.Hour)
-	if err := rm.Rotate(context.Background(), "encryption"); err == nil {
-		t.Fatal("expected Rotate to fail on closed DB")
+	if err := rm.Rotate(context.Background(), "encryption"); !errors.Is(err, ErrRotationNotWired) {
+		t.Fatalf("expected ErrRotationNotWired even with a closed registry, got %v", err)
 	}
-	// RotateAll logs per-purpose failures and returns nil.
-	if err := rm.RotateAll(context.Background()); err != nil {
-		t.Fatalf("RotateAll: %v", err)
+	if err := rm.RotateAll(context.Background()); !errors.Is(err, ErrRotationNotWired) {
+		t.Fatalf("expected RotateAll to report the refusal, got %v", err)
 	}
 }
 
