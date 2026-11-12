@@ -416,8 +416,10 @@ func (c *metricsController) switchTo(idx int) {
 	c.currentIndex = idx
 	mode := c.order[idx]
 	persistMode(c.order, idx, c.store)
-	failures := pushNewReplicationMode(c.cfg, c.authToken, mode)
-	c.observeMode(mode, failures == 0)
+	pushNewReplicationMode(c.cfg, c.authToken, mode)
+	// The controller selected this mode, so it is treated as viable; the
+	// tracker re-ranks modes by observed success over successive switches.
+	c.observeMode(mode, true)
 	c.start = time.Now()
 }
 

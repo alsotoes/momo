@@ -13,9 +13,8 @@ import (
 
 // pushNewReplicationMode notifies all daemons in the cluster of a replication
 // mode change. This ensures that in a Balanced Primary model, every node stays
-// synchronized with the polymorphic state. It returns the number of peers the
-// notification failed to reach, so callers can observe broadcast health.
-func pushNewReplicationMode(cfg common.Configuration, paddedAuthToken []byte, newReplicationMode int) int {
+// synchronized with the polymorphic state.
+func pushNewReplicationMode(cfg common.Configuration, paddedAuthToken []byte, newReplicationMode int) {
 	log.Printf("Notifying all daemons of new replication mode: %d", newReplicationMode)
 
 	data := common.ReplicationData{
@@ -26,7 +25,7 @@ func pushNewReplicationMode(cfg common.Configuration, paddedAuthToken []byte, ne
 	jsonData, err := json.Marshal(data)
 	if err != nil {
 		log.Printf("Encode error: %v", common.SanitizeLog(err.Error()))
-		return len(cfg.Daemons)
+		return
 	}
 
 	// ⚡ Bolt: Consolidate AuthToken and JSON payload.
@@ -36,9 +35,6 @@ func pushNewReplicationMode(cfg common.Configuration, paddedAuthToken []byte, ne
 	buf = append(buf, '\n')
 
 	var wg sync.WaitGroup
-	var mu sync.Mutex
-	failures := 0
-	recordFailure := func() { mu.Lock(); failures++; mu.Unlock() }
 	for i, d := range cfg.Daemons {
 		wg.Add(1)
 		go func(id int, addr string) {
@@ -52,23 +48,18 @@ func pushNewReplicationMode(cfg common.Configuration, paddedAuthToken []byte, ne
 			conn, err := common.DialSocket(addr)
 			if err != nil {
 				log.Printf("Dial error for node %d (%s): %v", id, addr, common.SanitizeLog(err.Error()))
-				recordFailure()
 				return
 			}
 			defer conn.Close()
 
 			if err := conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
 				log.Printf("Failed to set write deadline for node %d: %v", id, common.SanitizeLog(err.Error()))
-				recordFailure()
 				return
 			}
 			if _, err := conn.Write(buf); err != nil {
 				log.Printf("Failed to notify node %d: %v", id, common.SanitizeLog(err.Error()))
-				recordFailure()
-				return
 			}
 		}(i, d.ChangeReplication)
 	}
 	wg.Wait()
-	return failures
 }
