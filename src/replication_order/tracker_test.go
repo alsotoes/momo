@@ -148,3 +148,39 @@ func TestTracker_ApplyConstraintsNoReplicatedModes(t *testing.T) {
 		t.Fatalf("expected [None], got %v", order)
 	}
 }
+
+func TestTracker_ObserveLatencyAndThroughputEdges(t *testing.T) {
+	tr := NewTracker([]int{common.ReplicationChain}, 0.5, 1, DefaultWeights)
+	// Latency worse than current best -> latencyScore < 1.
+	tr.Observe(common.ReplicationChain, ModeResult{Success: true, LatencyNs: 1000, Bytes: 100})
+	tr.Observe(common.ReplicationChain, ModeResult{Success: true, LatencyNs: 5000, Bytes: 200})
+	sc := tr.Score(common.ReplicationChain)
+	if sc <= 0 || sc > 1 {
+		t.Fatalf("expected score in (0,1], got %v", sc)
+	}
+}
+
+func TestTracker_OrderSingleElement(t *testing.T) {
+	tr := NewTracker([]int{common.ReplicationChain}, 0.5, 1, DefaultWeights)
+	order := tr.Order()
+	if len(order) != 1 || order[0] != common.ReplicationChain {
+		t.Fatalf("expected [Chain], got %v", order)
+	}
+}
+
+func TestTracker_ApplyConstraintsNoneInMiddle(t *testing.T) {
+	tr := NewTracker([]int{common.ReplicationChain, common.ReplicationNone, common.ReplicationSplay}, 0.5, 1, DefaultWeights)
+	tr.Observe(common.ReplicationChain, ModeResult{Success: true})
+	tr.Observe(common.ReplicationNone, ModeResult{Success: true})
+	tr.Observe(common.ReplicationSplay, ModeResult{Success: true})
+	order := tr.Order()
+	noneIdx := -1
+	for i, m := range order {
+		if m == common.ReplicationNone {
+			noneIdx = i
+		}
+	}
+	if noneIdx != 2 {
+		t.Fatalf("expected None last (index 2), got %v at %d", order, noneIdx)
+	}
+}
