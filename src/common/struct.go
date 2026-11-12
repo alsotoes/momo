@@ -464,6 +464,9 @@ type Configuration struct {
 	Momofs ConfigurationMomofs
 	// Adaptive is the optional [adaptive] self-tuning configuration (#1145).
 	Adaptive ConfigurationAdaptive
+	// ReplicationOrder is the optional [replication_order] self-tuning
+	// configuration (#1146). Disabled by default.
+	ReplicationOrder ConfigurationReplicationOrder
 	// Secrets is the secrets management configuration (R9, #937).
 	Secrets SecretsConfig
 	// S3 is the optional [s3] gateway tuning configuration (R10, #938).
@@ -618,4 +621,28 @@ type ConfigurationAdaptive struct {
 	// PersistInterval is how often learned thresholds are written to disk, in
 	// seconds. Zero disables persistence.
 	PersistInterval int
+}
+
+// ConfigurationReplicationOrder holds the self-tuning replication-mode ordering
+// configuration (#1146). Disabled by default: with enabled off, the static
+// config [global] replication_order is used verbatim.
+type ConfigurationReplicationOrder struct {
+	// Enabled turns self-tuning replication-mode ordering on.
+	Enabled bool
+	// ReevaluateSeconds is how often the mode order is recomputed from the
+	// observed per-mode performance, in seconds. Default 600 (10 minutes).
+	ReevaluateSeconds int
+	// Alpha is the EWMA smoothing factor in (0, 1].
+	Alpha float64
+	// MinSamples is how many observations must be collected before a mode's
+	// score is considered reliable.
+	MinSamples int
+	// SuccessWeight is the weight of the success-rate component (0..1).
+	SuccessWeight float64
+	// LatencyWeight is the weight of the inverse-latency component (0..1).
+	LatencyWeight float64
+	// ThroughputWeight is the weight of the throughput component (0..1).
+	ThroughputWeight float64
+	// ErrorWeight is the weight of the error-rate component (0..1).
+	ErrorWeight float64
 }

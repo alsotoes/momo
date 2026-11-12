@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/alsotoes/momo/src/common"
+	"github.com/alsotoes/momo/src/replication_order"
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/mem"
 )
@@ -249,6 +250,8 @@ func GetMetrics(ctx context.Context, cfg common.Configuration, serverId int, mod
 		return
 	}
 
+	tracker := newReplicationOrderTracker(cfg)
+
 	var adaptive *AdaptiveThresholds
 	if cfg.Adaptive.Enabled {
 		a, aErr := NewAdaptiveThresholds(cfg.Adaptive.Alpha, cfg.Adaptive.MinSamples,
@@ -285,14 +288,10 @@ func GetMetrics(ctx context.Context, cfg common.Configuration, serverId int, mod
 		// push), so a controller restart or takeover does not downgrade.
 		currentIndex: resumeMode(replicationOrder, modeStore),
 		start:        time.Now(),
+		tracker:      tracker,
 	}
 	leader := IsControllerNode(serverId)
-	if leader {
-		persistMode(replicationOrder, c.currentIndex, modeStore)
-		pushNewReplicationMode(cfg, c.authToken, replicationOrder[c.currentIndex])
-	} else {
-		log.Printf("Coordination: node %d is not the metrics-controller lease holder; standing by", serverId)
-	}
+	announceReplicationMode(cfg, c, modeStore, serverId)
 
 	ticker := time.NewTicker(time.Duration(cfg.Metrics.Interval) * time.Millisecond)
 	defer ticker.Stop()
@@ -308,8 +307,8 @@ func GetMetrics(ctx context.Context, cfg common.Configuration, serverId int, mod
 				// persisted state so the cluster converges immediately instead of
 				// waiting for the next threshold crossing.
 				log.Printf("Coordination: node %d acquired the metrics-controller role", serverId)
-				persistMode(replicationOrder, c.currentIndex, modeStore)
-				pushNewReplicationMode(cfg, c.authToken, replicationOrder[c.currentIndex])
+				persistMode(c.order, c.currentIndex, modeStore)
+				pushNewReplicationMode(cfg, c.authToken, c.order[c.currentIndex])
 			}
 			leader = nowLeader
 			if !leader {
@@ -317,6 +316,40 @@ func GetMetrics(ctx context.Context, cfg common.Configuration, serverId int, mod
 			}
 			c.step()
 		}
+	}
+}
+
+// newReplicationOrderTracker builds the self-tuning replication-mode tracker
+// from config (#1146). Returns nil when replication_order is disabled, in which
+// case the static config order is used verbatim (zero behavioral change).
+func newReplicationOrderTracker(cfg common.Configuration) *replication_order.Reorderer {
+	if !cfg.ReplicationOrder.Enabled {
+		log.Printf("ADAPTIVE-ORDER: disabled; using static config replication order")
+		return nil
+	}
+	weights := replication_order.Weights{
+		Success:    cfg.ReplicationOrder.SuccessWeight,
+		Latency:    cfg.ReplicationOrder.LatencyWeight,
+		Throughput: cfg.ReplicationOrder.ThroughputWeight,
+		Error:      cfg.ReplicationOrder.ErrorWeight,
+	}
+	tracker := replication_order.NewReorderer(
+		replication_order.NewTracker(cfg.Global.ReplicationOrder, cfg.ReplicationOrder.Alpha,
+			cfg.ReplicationOrder.MinSamples, weights),
+		time.Duration(cfg.ReplicationOrder.ReevaluateSeconds)*time.Second,
+	)
+	log.Printf("ADAPTIVE-ORDER: self-tuning replication-mode order enabled (reevaluate=%ds)", cfg.ReplicationOrder.ReevaluateSeconds)
+	return tracker
+}
+
+// announceReplicationMode publishes the current replication mode to the cluster
+// when this node is the controller lease holder, or stands by otherwise (#1144).
+func announceReplicationMode(cfg common.Configuration, c *metricsController, modeStore ModeStore, serverId int) {
+	if IsControllerNode(serverId) {
+		persistMode(c.order, c.currentIndex, modeStore)
+		pushNewReplicationMode(cfg, c.authToken, c.order[c.currentIndex])
+	} else {
+		log.Printf("Coordination: node %d is not the metrics-controller lease holder; standing by", serverId)
 	}
 }
 
@@ -336,11 +369,21 @@ type metricsController struct {
 	currentIndex     int
 	start            time.Time
 	adaptive         *AdaptiveThresholds
+	tracker          *replication_order.Reorderer // nil: static config order (zero behavioral change)
 }
 
 // step evaluates one tick: a metric-driven switch first, then the timeout
 // fallback, both respecting the durability floor.
 func (c *metricsController) step() {
+	// #1146: refresh the order from the tracker each tick so the controller
+	// converges to better-performing modes. A nil tracker leaves c.order as
+	// the static config order.
+	if c.tracker != nil {
+		c.order = c.tracker.Order()
+		if c.currentIndex >= len(c.order) {
+			c.currentIndex = len(c.order) - 1
+		}
+	}
 	maxPct, minPct := c.thresholds()
 	if idx, changed := checkMetricsAndSwap(c.sm, c.currentIndex, c.order, maxPct, minPct); changed {
 		if shouldSwitchMode(c.minFloor, c.order, idx, c.cfg.Global.ReplicationFactor, c.clusterSize) {
@@ -371,9 +414,23 @@ func (c *metricsController) thresholds() (maxPct, minPct float64) {
 // switchTo adopts an order index, persists it and broadcasts it.
 func (c *metricsController) switchTo(idx int) {
 	c.currentIndex = idx
+	mode := c.order[idx]
 	persistMode(c.order, idx, c.store)
-	pushNewReplicationMode(c.cfg, c.authToken, c.order[idx])
+	pushNewReplicationMode(c.cfg, c.authToken, mode)
+	// The controller selected this mode, so it is treated as viable; the
+	// tracker re-ranks modes by observed success over successive switches.
+	c.observeMode(mode, true)
 	c.start = time.Now()
+}
+
+// observeMode records the outcome of using mode so the tracker can re-rank
+// modes by observed performance (#1146). Latency and throughput are not
+// measured yet in Phase 1; success/failure is the available signal.
+func (c *metricsController) observeMode(mode int, success bool) {
+	if c.tracker == nil {
+		return
+	}
+	c.tracker.Observe(mode, replication_order.ModeResult{Success: success})
 }
 
 // applyFallback steps one mode down after the interval, unless the durability

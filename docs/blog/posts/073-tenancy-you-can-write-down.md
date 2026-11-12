@@ -11,7 +11,7 @@ categories:
   - s3
 summary: "The tenancy code read three pieces of state that only tests ever wrote: tenant records, bucket ACLs and quota usage. Every layer was implemented, tested and unreachable. The fix is a bootstrap that makes configuration the source of truth — and a prune rule careful enough that it cannot lock you out."
 artifacts: [{type: spec, path: openspec/changes/declarative-tenancy}, {type: adr, path: docs/adr/0093-declarative-tenancy.md}]
-related: ["053-multitenancy-authorization-audit", "070-tenant-quotas", "071-making-refusals-visible", "072-configuration-that-cannot-lie", "074-when-rotation-does-nothing"]
+related: ["053-multitenancy-authorization-audit", "070-tenant-quotas", "071-making-refusals-visible", "072-configuration-that-cannot-lie", "074-when-rotation-does-nothing", "075-dynamic-replication-order"]
 difficulty: "intermediate"
 pattern: "declarative-bootstrap"
 teaches:

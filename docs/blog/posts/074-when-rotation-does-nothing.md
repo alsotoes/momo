@@ -12,7 +12,7 @@ categories:
   - encryption
 summary: "momo had a key registry, a rotation manager, a schedule, an audit trail and a CLI command — and none of it changed the key the daemon used. Rotation reported success every time. A security control that reports success without acting is more dangerous than one that is missing, because the missing one is visible."
 artifacts: [{type: spec, path: openspec/changes/secrets-rotation-honest-posture}]
-related: ["054-secrets-management-key-rotation", "072-configuration-that-cannot-lie", "071-making-refusals-visible", "073-tenancy-you-can-write-down"]
+related: ["054-secrets-management-key-rotation", "072-configuration-that-cannot-lie", "071-making-refusals-visible", "073-tenancy-you-can-write-down", "075-dynamic-replication-order"]
 difficulty: "intermediate"
 pattern: "honest-refusal"
 teaches:

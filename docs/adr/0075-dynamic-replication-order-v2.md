@@ -4,7 +4,7 @@
 Proposed
 
 ## Confidence
-Low
+Medium
 
 ## Context
 Current Momo uses a **static `ReplicationOrder`** parsed from config (`src/common/config.go:358-380`). This violates:
@@ -28,14 +28,14 @@ The replication order determines the polymorphic controller's degradation/promot
 None documented.
 
 ## Implementation Status
-- **Code**: Planned
-- **Tests**: Planned
+- **Code**: Partial
+- **Tests**: Partial
 - **Docs**: Planned
-- **Blog post**: 
+- **Blog post**: docs/blog/posts/075-dynamic-replication-order.md
 
 ## References
 - Issue: #1146
 - PR: 
 - Spec: `openspec/changes/dynamic-replication-order-v2/`
-- Blog: 
+- Blog: docs/blog/posts/075-dynamic-replication-order.md
 
