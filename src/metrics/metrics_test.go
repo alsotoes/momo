@@ -3,6 +3,7 @@ package metrics
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/alsotoes/momo/src/common"
 	"github.com/shirou/gopsutil/v3/mem"
@@ -118,6 +119,58 @@ func TestRealSystemMetrics(t *testing.T) {
 	if err != nil {
 		t.Errorf("Unexpected error from CPUPercent: %v", err)
 	}
+}
+
+func TestReplicationOrderTrackerObservesSwitch(t *testing.T) {
+	// Enabled tracker: exercises observeMode's non-nil branch and step's
+	// tracker refresh block (#1146).
+	cfg := common.Configuration{
+		Global: common.ConfigurationGlobal{
+			ReplicationOrder: []int{common.ReplicationNone, common.ReplicationChain},
+		},
+		ReplicationOrder: common.ConfigurationReplicationOrder{
+			Enabled:           true,
+			ReevaluateSeconds: 60,
+			Alpha:             0.2,
+			MinSamples:        1,
+			SuccessWeight:     0.4,
+			LatencyWeight:     0.3,
+			ThroughputWeight:  0.2,
+			ErrorWeight:       0.1,
+		},
+	}
+	tracker := newReplicationOrderTracker(cfg)
+	if tracker == nil {
+		t.Fatal("expected a tracker to be created")
+	}
+
+	c := &metricsController{
+		cfg:              cfg,
+		authToken:        []byte("token"),
+		order:            []int{common.ReplicationNone, common.ReplicationChain},
+		store:            nil,
+		sm:               &MockSystemMetrics{memStat: &mem.VirtualMemoryStat{UsedPercent: 50}, cpuStat: []float64{10}},
+		minFloor:         0,
+		clusterSize:      1,
+		maxThreshPercent: 90,
+		minThreshPercent: 10,
+		fallback:         time.Second,
+		currentIndex:     0,
+		start:            time.Now(),
+		tracker:          tracker,
+	}
+
+	// switchTo publishes the mode and observes push success via the tracker.
+	c.switchTo(0)
+	if c.currentIndex != 0 {
+		t.Fatalf("expected currentIndex 0, got %d", c.currentIndex)
+	}
+	if got := tracker.Score(common.ReplicationNone); got <= 0 {
+		t.Fatalf("expected None to have a positive score after a successful switch, got %v", got)
+	}
+
+	// step() refreshes the order from the tracker each tick.
+	c.step()
 }
 
 func TestGetMetricsNonPrimaryServer(t *testing.T) {
