@@ -53,6 +53,7 @@
 - [x] Config integration: `[replication_order]` section wired and validated in `config.go`
 - [x] Backward compatibility: `replication_order.enabled=false` → static config order
 - [x] Prometheus metrics export — `momo_replication_mode_score{mode}` and `momo_replication_mode_samples{mode}`
+- [x] Grafana panel for the ranking gauges (`momo-overview.json` panel 26, "Replication Mode Ranking"); no alert rule added — a ranking score has no meaningful threshold without a per-cluster baseline
 - [x] Update `docs/GUIDES/CONFIGURATION.md` with `[replication_order]` section
 - [x] Update `docs/ARCHITECTURE.md` with dynamic replication order section
 

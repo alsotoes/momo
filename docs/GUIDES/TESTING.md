@@ -372,11 +372,11 @@ tests/
 │   ├── docker-compose-monitoring.yml
 │   ├── prometheus/
 │   │   ├── prometheus.yml      # Scrape config (5s interval, 3 momo nodes)
-│   │   └── alerts.yml          # Alert rules (error rate, node down, goroutines, memory)
+│   │   └── alerts.yml          # Alert rules (14: error rate, node down, resource pressure, coordination, peer load)
 │   └── grafana/
 │       ├── provisioning.yml    # Auto-provisioned Prometheus datasource
 │       └── dashboards/
-│           └── momo-overview.json  # 7-panel dashboard
+│           └── momo-overview.json  # 26-panel dashboard (traffic, storage, cluster, coordination, adaptive, replication-order ranking)
 └── kubernetes/                 # Scalability testing manifests
     ├── momo-statefulset.yaml   # K8s StatefulSet (3 replicas, PVCs, health probes)
     ├── scale-test.yaml         # K8s Deployment running k6 load generator
@@ -540,7 +540,7 @@ Scrapes `/metrics` from all 3 Momo nodes (`server0:9100`, `server1:9100`, `serve
 
 #### Grafana Dashboard (`grafana/dashboards/momo-overview.json`)
 
-25-panel dashboard auto-provisioned on startup:
+26-panel dashboard auto-provisioned on startup:
 
 | Panel | Metric | Type |
 |---|---|---|
@@ -569,6 +569,7 @@ Scrapes `/metrics` from all 3 Momo nodes (`server0:9100`, `server1:9100`, `serve
 | Peer Disk Used (%) | `max by (peer) (momo_peer_disk_used_percent)` | timeseries |
 | Peer In-Flight Requests | `max by (peer) (momo_peer_inflight_requests)` | timeseries |
 | Adaptive Thresholds | `momo_adaptive_max_threshold`, `momo_adaptive_min_threshold` | timeseries |
+| Replication Mode Ranking | `momo_replication_mode_score`, `momo_replication_mode_samples` (absent when `[replication_order] enabled=false`) | timeseries |
 
 #### Prometheus `/metrics` Endpoint (`src/server/metrics_exporter.go`)
 
