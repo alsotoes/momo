@@ -52,7 +52,7 @@
 ## Phase 5 — Observability + Config + Backward Compat (partially done)
 - [x] Config integration: `[replication_order]` section wired and validated in `config.go`
 - [x] Backward compatibility: `replication_order.enabled=false` → static config order
-- [ ] Prometheus metrics export (`momo_replication_mode_score{mode}`, position, success rate)
+- [x] Prometheus metrics export — `momo_replication_mode_score{mode}` and `momo_replication_mode_samples{mode}`
 - [x] Update `docs/GUIDES/CONFIGURATION.md` with `[replication_order]` section
 - [x] Update `docs/ARCHITECTURE.md` with dynamic replication order section
 

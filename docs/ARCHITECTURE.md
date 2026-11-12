@@ -597,6 +597,7 @@ Momo includes a built-in Prometheus metrics exporter (`src/server/metrics_export
 | **Scatter/Gather** | `momo_scatter_queries_total`, `momo_scatter_timeout_total` | counter |
 | **Rebalance (R11)** | `momo_rebalance_blobs_moved_total`, `momo_rebalance_bytes_moved_total`, `momo_rebalance_cycles_total`, `momo_rebalance_failures_total` | counter |
 | **Adaptive** | `momo_adaptive_max_threshold`, `momo_adaptive_min_threshold` (percent), `momo_adaptive_threshold_samples` | gauge |
+| **Replication order** | `momo_replication_mode_score{mode}`, `momo_replication_mode_samples{mode}` (present only when `[replication_order] enabled=true`) | gauge |
 | **Audit retention** | `momo_audit_prune_runs_total` (retention passes), `momo_audit_pruned_entries_total` (entries removed) | counter |
 | **Refusals** | `momo_authorization_denials_total` (ACL refusals), `momo_tenant_quota_refusals_total` (quota refusals) — a refused request completes no operation, so it never reaches the success counters | counter |
 | **Latency Histograms** | `momo_request_latency_seconds{operation}` (upload/download/delete/list), `momo_replication_latency_seconds` | opt-in histogram |

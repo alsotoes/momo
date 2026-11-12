@@ -324,6 +324,9 @@ func GetMetrics(ctx context.Context, cfg common.Configuration, serverId int, mod
 // case the static config order is used verbatim (zero behavioral change).
 func newReplicationOrderTracker(cfg common.Configuration) *replication_order.Reorderer {
 	if !cfg.ReplicationOrder.Enabled {
+		// Clear any previous snapshot so a reloaded config cannot leave stale
+		// score gauges on the scrape.
+		replication_order.SetExportSnapshot(nil)
 		log.Printf("ADAPTIVE-ORDER: disabled; using static config replication order")
 		return nil
 	}
@@ -338,6 +341,8 @@ func newReplicationOrderTracker(cfg common.Configuration) *replication_order.Reo
 			cfg.ReplicationOrder.MinSamples, weights),
 		time.Duration(cfg.ReplicationOrder.ReevaluateSeconds)*time.Second,
 	)
+	// Publish for the Prometheus scrape (#1146): per-mode score and samples.
+	replication_order.SetExportSnapshot(tracker)
 	log.Printf("ADAPTIVE-ORDER: self-tuning replication-mode order enabled (reevaluate=%ds)", cfg.ReplicationOrder.ReevaluateSeconds)
 	return tracker
 }
