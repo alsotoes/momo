@@ -315,6 +315,10 @@ verbatim — zero behavioural change.
 -   **`error_weight`** — Weight of the error-rate component (0..1).
     Default `0.1`. The four weights must sum to `1`.
 
+When enabled, the tracker's state is exported as
+`momo_replication_mode_score{mode}` and `momo_replication_mode_samples{mode}`;
+both series are absent while ordering is disabled.
+
 ### [daemon.N]
 
 The configuration must contain a section for each daemon in the cluster, numbered sequentially starting from `0` (e.g., `[daemon.0]`, `[daemon.1]`). 

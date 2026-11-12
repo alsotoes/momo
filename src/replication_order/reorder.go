@@ -56,6 +56,12 @@ func (r *Reorderer) Score(mode int) float64 {
 	return r.tracker.Score(mode)
 }
 
+// Stats returns a copy of the latest statistics for mode, or nil when the mode
+// has never been observed.
+func (r *Reorderer) Stats(mode int) *ModeStats {
+	return r.tracker.Stats(mode)
+}
+
 // Modes returns the configured modes in their original config order.
 func (r *Reorderer) Modes() []int {
 	return r.tracker.Modes()

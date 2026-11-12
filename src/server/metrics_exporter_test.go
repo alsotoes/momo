@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alsotoes/momo/src/replication_order"
 	"go.uber.org/goleak"
 )
 
@@ -356,4 +357,24 @@ func TestStartMetricsServer_ReloadSecretsFailureIs500(t *testing.T) {
 
 	cancel()
 	<-done
+}
+
+func TestWriteReplicationOrderGauges(t *testing.T) {
+	var buf bytes.Buffer
+	writeReplicationOrderGauges(&buf, []replication_order.ModeScore{
+		{Mode: 1, Score: 0.5, Samples: 40},
+		{Mode: 3, Score: 0, Samples: 0},
+	})
+	out := buf.String()
+	for _, want := range []string{
+		`momo_replication_mode_score{mode="1"} 0.5000`,
+		`momo_replication_mode_samples{mode="1"} 40`,
+		`momo_replication_mode_score{mode="3"} 0.0000`,
+		"# TYPE momo_replication_mode_score gauge",
+		"# TYPE momo_replication_mode_samples gauge",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in output:\n%s", want, out)
+		}
+	}
 }

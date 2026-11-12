@@ -19,6 +19,7 @@ import (
 
 	"github.com/alsotoes/momo/src/common"
 	"github.com/alsotoes/momo/src/metrics"
+	"github.com/alsotoes/momo/src/replication_order"
 )
 
 // securityHeadersMiddleware adds standard security headers to HTTP responses.
@@ -516,6 +517,9 @@ func (m *MetricsCollector) writeClusterMetrics(w io.Writer) {
 	if aMax, aMin, aSamples, aOK := metrics.AdaptiveGauges(); aOK {
 		writeAdaptiveGauges(w, aMax, aMin, aSamples)
 	}
+	if scores, ok := replication_order.Scores(); ok {
+		writeReplicationOrderGauges(w, scores)
+	}
 	fmt.Fprintf(w, "# HELP momo_swim_alive_count Number of ALIVE peers.\n")
 	fmt.Fprintf(w, "# TYPE momo_swim_alive_count gauge\n")
 	fmt.Fprintf(w, "momo_swim_alive_count %d\n", alive)
@@ -899,4 +903,17 @@ func writeAdaptiveGauges(w io.Writer, upper, lower float64, samples int) {
 	fmt.Fprintf(w, "# HELP momo_adaptive_threshold_samples Observations collected by the threshold learner.\n") //nolint:errcheck
 	fmt.Fprintf(w, "# TYPE momo_adaptive_threshold_samples gauge\n")                                            //nolint:errcheck
 	fmt.Fprintf(w, "momo_adaptive_threshold_samples %d\n", samples)                                             //nolint:errcheck
+}
+
+// writeReplicationOrderGauges emits the self-tuning replication-order scores
+// (#1146). One series per tracked mode, labelled by mode id.
+func writeReplicationOrderGauges(w io.Writer, scores []replication_order.ModeScore) {
+	fmt.Fprintf(w, "# HELP momo_replication_mode_score Composite ranking score per replication mode.\n")  //nolint:errcheck
+	fmt.Fprintf(w, "# TYPE momo_replication_mode_score gauge\n")                                          //nolint:errcheck
+	fmt.Fprintf(w, "# HELP momo_replication_mode_samples Observations collected per replication mode.\n") //nolint:errcheck
+	fmt.Fprintf(w, "# TYPE momo_replication_mode_samples gauge\n")                                        //nolint:errcheck
+	for _, sc := range scores {
+		fmt.Fprintf(w, "momo_replication_mode_score{mode=\"%d\"} %.4f\n", sc.Mode, sc.Score)   //nolint:errcheck
+		fmt.Fprintf(w, "momo_replication_mode_samples{mode=\"%d\"} %d\n", sc.Mode, sc.Samples) //nolint:errcheck
+	}
 }
