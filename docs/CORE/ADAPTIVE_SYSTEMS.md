@@ -545,7 +545,7 @@ Effort: Medium. Temporal indexing + time-travel. Phase 6-8.
 | 6 | Epigenetic environment detection | Epigenetics | Low | Implemented (Phase 1, #1129) |
 | 10 | Homeostatic feedback loops | Homeostasis | Low | Implemented: Admission Backpressure (Phase 1, #1129) |
 | 4 | Apoptosis (self-decommissioning) | Apoptosis | Medium | Planned (Phase 3) |
-| 11 | Swarm-based mode propagation | Swarm intelligence | Low (extends existing) | Planned (Phase 2) |
+| 11 | Swarm-based mode propagation | Swarm intelligence | Low (extends existing) | Partial — any node may originate and forward a mode change with payload-clock ordering (#1144), and a joining node triggers local shedding from its neighbours (#1143). Neighbour *alignment/cohesion* rules (follow the flock even when this node's own pressure is normal) are not implemented |
 
 ### Phase 2-5 (Intelligence)
 

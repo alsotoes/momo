@@ -291,9 +291,12 @@ polymorphic metrics controller observes each mode's broadcast success rate via
 an exponentially-weighted moving average and re-ranks the replication-mode
 sequence so better-performing modes are tried first — implementing the
 **Stigmergy** principle (local evidence produces global order) without a central
-coordinator. The latency and throughput weights below are wired into the scorer
-but their signals are not measured yet, so ranking is currently driven by
-success/failure. A stability window (default 10 minutes) prevents thrashing, and
+coordinator. The score combines the observed success rate with the measured
+broadcast latency (the mode-change push is synchronous — it waits for peer
+ACKs — so its duration is the mode's real propagation latency); the throughput
+weight is wired but unmeasured, because the broadcast payload is
+metadata-sized and says nothing about a mode's data-path cost. A stability
+window (default 10 minutes) prevents thrashing, and
 `ReplicationNone` is never placed before `ReplicationChain`/`ReplicationSplay`,
 so durability is never silently sacrificed. The durability floor
 (`[global] minimum_durability_factor`) still applies to every move. With

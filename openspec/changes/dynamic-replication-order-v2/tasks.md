@@ -28,6 +28,7 @@
 - [ ] Background reordering goroutine (deferred): the metrics-controller tick
   (cfg.Metrics.Interval) re-reads `tracker.Order()` each step, which serves as the
   reorder cadence; a dedicated goroutine is not needed
+- [x] Latency signal: `switchTo` measures the synchronous broadcast and records it as the mode's latency; throughput stays unmeasured (metadata-sized payload)
 - [ ] Promotion/demotion margins (deferred): the composite score already ranks
   modes; explicit margins are a refinement for Phase 4+
 
