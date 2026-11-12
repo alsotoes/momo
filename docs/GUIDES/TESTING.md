@@ -372,11 +372,11 @@ tests/
 │   ├── docker-compose-monitoring.yml
 │   ├── prometheus/
 │   │   ├── prometheus.yml      # Scrape config (5s interval, 3 momo nodes)
-│   │   └── alerts.yml          # Alert rules (error rate, node down, goroutines, memory)
+│   │   └── alerts.yml          # Alert rules (14: error rate, node down, resource pressure, coordination, peer load)
 │   └── grafana/
 │       ├── provisioning.yml    # Auto-provisioned Prometheus datasource
 │       └── dashboards/
-│           └── momo-overview.json  # 7-panel dashboard
+│           └── momo-overview.json  # 26-panel dashboard (traffic, storage, cluster, coordination, adaptive, replication-order ranking)
 └── kubernetes/                 # Scalability testing manifests
     ├── momo-statefulset.yaml   # K8s StatefulSet (3 replicas, PVCs, health probes)
     ├── scale-test.yaml         # K8s Deployment running k6 load generator
