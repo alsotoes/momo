@@ -540,7 +540,7 @@ Scrapes `/metrics` from all 3 Momo nodes (`server0:9100`, `server1:9100`, `serve
 
 #### Grafana Dashboard (`grafana/dashboards/momo-overview.json`)
 
-25-panel dashboard auto-provisioned on startup:
+26-panel dashboard auto-provisioned on startup:
 
 | Panel | Metric | Type |
 |---|---|---|
@@ -569,6 +569,7 @@ Scrapes `/metrics` from all 3 Momo nodes (`server0:9100`, `server1:9100`, `serve
 | Peer Disk Used (%) | `max by (peer) (momo_peer_disk_used_percent)` | timeseries |
 | Peer In-Flight Requests | `max by (peer) (momo_peer_inflight_requests)` | timeseries |
 | Adaptive Thresholds | `momo_adaptive_max_threshold`, `momo_adaptive_min_threshold` | timeseries |
+| Replication Mode Ranking | `momo_replication_mode_score`, `momo_replication_mode_samples` (absent when `[replication_order] enabled=false`) | timeseries |
 
 #### Prometheus `/metrics` Endpoint (`src/server/metrics_exporter.go`)
 
