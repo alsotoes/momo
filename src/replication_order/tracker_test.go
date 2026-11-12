@@ -120,3 +120,31 @@ func TestTracker_ScoreEdges(t *testing.T) {
 		t.Fatalf("expected score in (0,1], got %v", sc)
 	}
 }
+
+func TestTracker_ObserveNoLatencyOrThroughput(t *testing.T) {
+	tr := NewTracker([]int{common.ReplicationChain}, 0.5, 1, DefaultWeights)
+	tr.Observe(common.ReplicationChain, ModeResult{Success: true}) // no latency, no bytes
+	if tr.Score(common.ReplicationChain) <= 0 {
+		t.Fatal("expected positive score with only success")
+	}
+}
+
+func TestTracker_ApplyConstraintsNoneAlreadyLast(t *testing.T) {
+	tr := NewTracker([]int{common.ReplicationChain, common.ReplicationSplay, common.ReplicationNone}, 0.5, 1, DefaultWeights)
+	tr.Observe(common.ReplicationChain, ModeResult{Success: true})
+	tr.Observe(common.ReplicationSplay, ModeResult{Success: true})
+	tr.Observe(common.ReplicationNone, ModeResult{Success: true})
+	order := tr.Order()
+	if order[2] != common.ReplicationNone {
+		t.Fatalf("expected None last, got %v", order)
+	}
+}
+
+func TestTracker_ApplyConstraintsNoReplicatedModes(t *testing.T) {
+	tr := NewTracker([]int{common.ReplicationNone}, 0.5, 1, DefaultWeights)
+	tr.Observe(common.ReplicationNone, ModeResult{Success: true})
+	order := tr.Order()
+	if len(order) != 1 || order[0] != common.ReplicationNone {
+		t.Fatalf("expected [None], got %v", order)
+	}
+}

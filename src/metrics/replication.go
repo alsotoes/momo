@@ -11,9 +11,8 @@ import (
 	"github.com/alsotoes/momo/src/common"
 )
 
-// pushNewReplicationMode notifies all daemons in the cluster of a replication
-// mode change. This ensures that in a Balanced Primary model, every node stays
-// synchronized with the polymorphic state.
+// pushNewReplicationMode notifies all daemons in the cluster of a replication mode change.
+// This ensures that in a Balanced Primary model, every node stays synchronized with the polymorphic state.
 func pushNewReplicationMode(cfg common.Configuration, paddedAuthToken []byte, newReplicationMode int) {
 	log.Printf("Notifying all daemons of new replication mode: %d", newReplicationMode)
 

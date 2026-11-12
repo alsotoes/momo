@@ -174,6 +174,24 @@ func TestGetConfig_Failures(t *testing.T) {
 }
 
 // TestGetConfig_ReplicationOrder_Valid ensures a valid [replication_order] section is parsed.
+func TestGetConfig_ReplicationOrder_IndividualWeights(t *testing.T) {
+	content := validConfig + "\n[replication_order]\nenabled = true\nsuccess_weight = 0.25\nlatency_weight = 0.25\nthroughput_weight = 0.25\nerror_weight = 0.25\n"
+	tmpDir := t.TempDir()
+	tmpfile := filepath.Join(tmpDir, "momo.conf")
+	if err := os.WriteFile(tmpfile, []byte(content), 0666); err != nil {
+		t.Fatalf("Failed to write to temporary config file: %v", err)
+	}
+	config, err := GetConfig(tmpfile)
+	if err != nil {
+		t.Fatalf("GetConfig failed: %v", err)
+	}
+	w := config.ReplicationOrder
+	for _, got := range []float64{w.SuccessWeight, w.LatencyWeight, w.ThroughputWeight, w.ErrorWeight} {
+		if got != 0.25 {
+			t.Errorf("Expected weight 0.25, got %v", got)
+		}
+	}
+}
 func TestGetConfig_ReplicationOrder_Valid(t *testing.T) {
 	content := validConfig + "\n[replication_order]\nenabled = true\nalpha = 0.3\nmin_samples = 50\nreevaluate_seconds = 120\nsuccess_weight = 0.5\nlatency_weight = 0.2\nthroughput_weight = 0.2\nerror_weight = 0.1\n"
 	tmpDir := t.TempDir()
