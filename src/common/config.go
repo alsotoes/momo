@@ -43,6 +43,8 @@ const (
 	// sectionCoordinationFailover is the optional [coordination_failover] section
 	// (coordinator failover Phase 2, #1148).
 	sectionCoordinationFailover = "coordination_failover"
+	// sectionReplicationOrder is the optional [replication_order] section (#1146).
+	sectionReplicationOrder = "replication_order"
 	// sectionCoordination is the optional [coordination] election section (#1144).
 	sectionCoordination = "coordination"
 	// sectionServer is the optional [server] deadline tuning section (#1149).
@@ -301,6 +303,15 @@ func GetConfig(path string) (Configuration, error) {
 		config.Adaptive, err = loadAdaptiveConfig(adaptiveSec)
 		if err != nil {
 			return Configuration{}, fmt.Errorf("failed to load [%s] section: %w", sectionAdaptive, err)
+		}
+	}
+
+	// Load [replication_order] section (optional, #1146). Disabled by default:
+	// the static config order is used verbatim.
+	if roSec, roErr := cfg.GetSection(sectionReplicationOrder); roErr == nil {
+		config.ReplicationOrder, err = loadReplicationOrderConfig(roSec)
+		if err != nil {
+			return Configuration{}, fmt.Errorf("failed to load [%s] section: %w", sectionReplicationOrder, err)
 		}
 	}
 
@@ -1086,6 +1097,75 @@ func loadAdaptiveConfig(section *ini.Section) (ConfigurationAdaptive, error) {
 		return ConfigurationAdaptive{}, fmt.Errorf("'persist_interval' must be >= 0, got %d: %w", persist, syscall.EINVAL)
 	}
 	cfg.PersistInterval = persist
+	return cfg, nil
+}
+
+// loadReplicationOrderConfig parses the optional [replication_order] section.
+// Disabled by default: with enabled=false the static config replication order
+// is used verbatim (zero behavioral change).
+func loadReplicationOrderConfig(section *ini.Section) (ConfigurationReplicationOrder, error) {
+	cfg := ConfigurationReplicationOrder{
+		Enabled:           false,
+		ReevaluateSeconds: 600, // 10 minutes
+		Alpha:             0.2,
+		MinSamples:        30,
+		SuccessWeight:     0.4,
+		LatencyWeight:     0.3,
+		ThroughputWeight:  0.2,
+		ErrorWeight:       0.1,
+	}
+	cfg.Enabled, _ = section.Key("enabled").Bool()
+	if !cfg.Enabled {
+		return cfg, nil
+	}
+	interval, err := optionalInt(section, "reevaluate_seconds", cfg.ReevaluateSeconds)
+	if err != nil {
+		return ConfigurationReplicationOrder{}, err
+	}
+	if interval < 1 {
+		return ConfigurationReplicationOrder{}, fmt.Errorf("'reevaluate_seconds' must be >= 1, got %d: %w", interval, syscall.EINVAL)
+	}
+	cfg.ReevaluateSeconds = interval
+
+	alpha, err := optionalFloat(section, "alpha", cfg.Alpha)
+	if err != nil {
+		return ConfigurationReplicationOrder{}, err
+	}
+	if alpha <= 0 || alpha > 1 {
+		return ConfigurationReplicationOrder{}, fmt.Errorf("'alpha' must be in (0,1], got %v: %w", alpha, syscall.EINVAL)
+	}
+	cfg.Alpha = alpha
+
+	minSamples, err := optionalInt(section, "min_samples", cfg.MinSamples)
+	if err != nil {
+		return ConfigurationReplicationOrder{}, err
+	}
+	if minSamples < 1 {
+		return ConfigurationReplicationOrder{}, fmt.Errorf("'min_samples' must be >= 1, got %d: %w", minSamples, syscall.EINVAL)
+	}
+	cfg.MinSamples = minSamples
+
+	// Validate that the weights sum to 1 within float tolerance.
+	cfg.SuccessWeight, err = optionalFloat(section, "success_weight", cfg.SuccessWeight)
+	if err != nil {
+		return ConfigurationReplicationOrder{}, err
+	}
+	cfg.LatencyWeight, err = optionalFloat(section, "latency_weight", cfg.LatencyWeight)
+	if err != nil {
+		return ConfigurationReplicationOrder{}, err
+	}
+	cfg.ThroughputWeight, err = optionalFloat(section, "throughput_weight", cfg.ThroughputWeight)
+	if err != nil {
+		return ConfigurationReplicationOrder{}, err
+	}
+	cfg.ErrorWeight, err = optionalFloat(section, "error_weight", cfg.ErrorWeight)
+	if err != nil {
+		return ConfigurationReplicationOrder{}, err
+	}
+	if d := cfg.SuccessWeight + cfg.LatencyWeight + cfg.ThroughputWeight + cfg.ErrorWeight - 1.0; d < -1e-9 || d > 1e-9 {
+		return ConfigurationReplicationOrder{}, fmt.Errorf("replication_order weights must sum to 1, got %v: %w",
+			[]float64{cfg.SuccessWeight, cfg.LatencyWeight, cfg.ThroughputWeight, cfg.ErrorWeight}, syscall.EINVAL)
+	}
 	return cfg, nil
 }
 
