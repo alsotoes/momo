@@ -378,3 +378,19 @@ func TestWriteReplicationOrderGauges(t *testing.T) {
 		}
 	}
 }
+
+func TestLeaseContentionsGaugeIsExported(t *testing.T) {
+	mc := NewMetricsCollector()
+	mc.SetClusterStats(&fakeClusterStats{contentions: 7})
+	var buf bytes.Buffer
+	mc.writeClusterMetrics(&buf)
+	out := buf.String()
+	for _, want := range []string{
+		"# TYPE momo_lease_contentions_total counter",
+		"momo_lease_contentions_total 7",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in output:\n%s", want, out)
+		}
+	}
+}

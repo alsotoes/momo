@@ -593,7 +593,7 @@ Momo includes a built-in Prometheus metrics exporter (`src/server/metrics_export
 | **CAS** | `momo_dedup_hits_total`, `momo_cas_gc_runs_total`, `momo_cas_gc_evicted_bytes` | counter |
 | **Replication** | `momo_replication_bytes_total`, `momo_replication_failures_total`, `momo_replication_latency_seconds` (opt-in histogram) | counter / histogram |
 | **P2P** | `momo_cluster_peers`, `momo_swim_alive_count`, `momo_swim_suspect_count`, `momo_swim_offline_count`, `momo_swim_ping_latency_seconds` (mean EWMA RTT), `momo_peer_disk_used_percent{peer}`, `momo_peer_inflight_requests{peer}` (last gossip report; absent until one arrives) | gauge |
-| **Leases** | `momo_leases_active` (held), `momo_coordination_handoffs_total` (proactive resignations), `momo_coordination_quorum_loss_total` (coordination suspensions) | gauge + counters |
+| **Leases** | `momo_leases_active` (held), `momo_coordination_handoffs_total` (proactive resignations), `momo_coordination_quorum_loss_total` (coordination suspensions), `momo_lease_contentions_total` (requests denied because another holder still owned the key) | gauge + counters |
 | **Scatter/Gather** | `momo_scatter_queries_total`, `momo_scatter_timeout_total` | counter |
 | **Rebalance (R11)** | `momo_rebalance_blobs_moved_total`, `momo_rebalance_bytes_moved_total`, `momo_rebalance_cycles_total`, `momo_rebalance_failures_total` | counter |
 | **Adaptive** | `momo_adaptive_max_threshold`, `momo_adaptive_min_threshold` (percent), `momo_adaptive_threshold_samples` | gauge |
@@ -602,7 +602,7 @@ Momo includes a built-in Prometheus metrics exporter (`src/server/metrics_export
 | **Refusals** | `momo_authorization_denials_total` (ACL refusals), `momo_tenant_quota_refusals_total` (quota refusals) — a refused request completes no operation, so it never reaches the success counters | counter |
 | **Latency Histograms** | `momo_request_latency_seconds{operation}` (upload/download/delete/list), `momo_replication_latency_seconds` | opt-in histogram |
 
-The only phase 2-4 metric not yet implemented is `momo_lease_contentions_total`.
+Every phase 2-4 metric is now implemented; `momo_lease_contentions_total` was the last gap (a denial on the granting side is the contention signal — it rises when destructive operations queue behind a holder).
 Latency histograms are gated behind `enable_latency_histograms = true` in the
 `[metrics]` section and add zero overhead when disabled (no `time.Now()` /
 bucket increments on the hot path).

@@ -23,17 +23,18 @@ func (f *fakeStorageStats) ScrubStatus() (bool, int64, uint64)    { return false
 
 // fakeClusterStats is a deterministic clusterStatsProvider for exporter tests.
 type fakeClusterStats struct {
-	peers      int
-	alive      int
-	suspect    int
-	offline    int
-	latency    float64
-	leases     int
-	queries    uint64
-	timeouts   uint64
-	loads      []PeerLoadSample
-	handoffs   uint64
-	quorumLoss uint64
+	peers       int
+	alive       int
+	suspect     int
+	offline     int
+	latency     float64
+	leases      int
+	queries     uint64
+	timeouts    uint64
+	loads       []PeerLoadSample
+	handoffs    uint64
+	quorumLoss  uint64
+	contentions uint64
 }
 
 func (f *fakeClusterStats) PeerCount() int { return f.peers }
@@ -48,6 +49,8 @@ func (f *fakeClusterStats) PeerLoads() []PeerLoadSample         { return f.loads
 func (f *fakeClusterStats) CoordinationCounters() (uint64, uint64) {
 	return f.handoffs, f.quorumLoss
 }
+
+func (f *fakeClusterStats) LeaseContentions() uint64 { return f.contentions }
 
 // TestR5_ReplicationAndDedupCounters verifies replication bytes/failures and
 // the dedup-hit counter surface in the scrape output.

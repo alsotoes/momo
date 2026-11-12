@@ -13,6 +13,7 @@
 - [x] `momo_swim_ping_latency_seconds` (EWMA mean of alive peers)
 - [x] `momo_leases_active` (`LeaseManager.ActiveLeases`)
 - [x] `momo_scatter_queries_total` + `momo_scatter_timeout_total` (`ScatterGather` counters)
+- [x] `momo_lease_contentions_total` — peer-side denials of a lease held by another holder; completes the phase 2-4 metric set (renewals by the same holder are not contention)
 - [x] Tests: p2p gauge accuracy, scatter counters, lease gauge, no-provider zeros
 
 ## 3. Phase 4: Latency histograms (opt-in)

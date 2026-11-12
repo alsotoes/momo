@@ -84,3 +84,18 @@ func TestCoordinationCountersRendered(t *testing.T) {
 		}
 	}
 }
+
+func TestP2PClusterStatsLeaseContentionsNilSafe(t *testing.T) {
+	c := &p2pClusterStats{}
+	if got := c.LeaseContentions(); got != 0 {
+		t.Fatalf("nil lease manager must report zero contentions, got %d", got)
+	}
+}
+
+func TestP2PClusterStatsLeaseContentionsReadsManager(t *testing.T) {
+	lm := p2p.NewLeaseManager(1, nil)
+	c := &p2pClusterStats{leases: lm}
+	if got := c.LeaseContentions(); got != 0 {
+		t.Fatalf("fresh lease manager must report zero contentions, got %d", got)
+	}
+}
