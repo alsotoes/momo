@@ -284,6 +284,35 @@ changes smaller than 5 points are ignored to prevent twitching.
 Exported as `momo_adaptive_max_threshold`, `momo_adaptive_min_threshold` and
 `momo_adaptive_threshold_samples`.
 
+### [replication_order] (optional, #1146)
+
+Self-tuning replication-mode ordering, disabled by default. When enabled, the
+polymorphic metrics controller observes each mode's real performance (success
+rate, latency, throughput, error rate) via an exponentially-weighted moving
+average and re-ranks the replication-mode sequence so better-performing modes
+are tried first — implementing the **Stigmergy** principle (local evidence
+produces global order) without a central coordinator. A stability window
+(default 10 minutes) prevents thrashing, and `ReplicationNone` is never placed
+before `ReplicationChain`/`ReplicationSplay`, so durability is never silently
+sacrificed. The durability floor (`[global] minimum_durability_factor`) still
+applies to every move. With `enabled=false` (the default), the static
+`[global] replication_order` is used verbatim — zero behavioural change.
+
+-   **`enabled`** — Boolean, default `false`.
+-   **`reevaluate_seconds`** — Seconds between reordering computations.
+    Default `600` (10 minutes); must be positive.
+-   **`alpha`** — EWMA smoothing factor in (0,1]. Default `0.2`.
+-   **`min_samples`** — Observations before a mode's score is considered
+    reliable. Default `30`.
+-   **`success_weight`** — Weight of the success-rate component (0..1).
+    Default `0.4`.
+-   **`latency_weight`** — Weight of the inverse-latency component (0..1).
+    Default `0.3`.
+-   **`throughput_weight`** — Weight of the throughput component (0..1).
+    Default `0.2`.
+-   **`error_weight`** — Weight of the error-rate component (0..1).
+    Default `0.1`. The four weights must sum to `1`.
+
 ### [daemon.N]
 
 The configuration must contain a section for each daemon in the cluster, numbered sequentially starting from `0` (e.g., `[daemon.0]`, `[daemon.1]`). 
