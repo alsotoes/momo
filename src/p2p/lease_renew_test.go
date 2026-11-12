@@ -130,6 +130,10 @@ func TestLeaseGrantRejectsDifferentHolderAndAcceptsRenewal(t *testing.T) {
 	}
 	lm.grantedMu.Unlock()
 
+	if got := lm.LeaseContentions(); got != 1 {
+		t.Fatalf("a denied different-holder request must count as one contention, got %d", got)
+	}
+
 	// The same holder renews with a later expiry.
 	later := future + int64(time.Minute)
 	lm.handleLeaseRequest(&RPC{From: 2, Type: MsgLeaseRequest, Payload: (&LeasePayload{LeaseID: 7, Key: "k", Expiry: later}).Encode()})
@@ -137,5 +141,8 @@ func TestLeaseGrantRejectsDifferentHolderAndAcceptsRenewal(t *testing.T) {
 	defer lm.grantedMu.Unlock()
 	if lm.granted["k"] != later || lm.grantedID["k"] != 7 {
 		t.Fatalf("renewal not applied: expiry=%d id=%d", lm.granted["k"], lm.grantedID["k"])
+	}
+	if got := lm.LeaseContentions(); got != 1 {
+		t.Fatalf("a renewal by the same holder must not count as contention, got %d", got)
 	}
 }

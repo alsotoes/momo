@@ -804,8 +804,9 @@ The phase 2-4 metrics from the [add-metrics-exporter spec](../../openspec/change
 | **Scatter/Gather** | `momo_scatter_queries_total`, `momo_scatter_timeout_total` | ~5ns per query (atomic) |
 | **Latency** | `momo_request_latency_seconds{operation}` | ~40ns per request (opt-in, config-gated) |
 | **Latency** | `momo_replication_latency_seconds` | ~40ns per op (opt-in, config-gated) |
+| **Lease contention** | `momo_lease_contentions_total` | ~5ns (atomic, peer-side denial) |
 
-The only phase 2-4 metric not yet implemented is `momo_lease_contentions_total`.
+`momo_lease_contentions_total` completes the phase 2-4 set: a lease request denied because another holder still owned the key counts one contention (renewals by the same holder do not).
 
 **Design principle:** All Phase 2-4 metrics maintain the zero-overhead guarantee — counters use `sync/atomic` (~5ns), gauges are read at scrape time only, and histograms are opt-in via `enable_latency_histograms` config flag (default: false).
 

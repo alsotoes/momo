@@ -55,11 +55,22 @@ type LeaseManager struct {
 	// resignations and quorum-loss suspensions, exposed as metrics.
 	handoffs   atomic.Uint64
 	quorumLoss atomic.Uint64
+	// contentions counts lease requests denied because another holder still
+	// owns the key — the signal that destructive operations are queueing.
+	contentions atomic.Uint64
 }
 
 // CoordinationCounters returns (proactive handoffs, quorum-loss suspensions).
 func (lm *LeaseManager) CoordinationCounters() (handoffs, quorumLoss uint64) {
 	return lm.handoffs.Load(), lm.quorumLoss.Load()
+}
+
+// LeaseContentions returns how many lease requests this node denied because a
+// different holder still owned the key. A rising value means destructive
+// operations are contending; a value that only ever climbs means they are
+// queued behind a stuck holder.
+func (lm *LeaseManager) LeaseContentions() uint64 {
+	return lm.contentions.Load()
 }
 
 // SetClusterSize declares the configured cluster size so lease acquisition
@@ -207,6 +218,7 @@ func (lm *LeaseManager) handleLeaseRequest(rpc *RPC) {
 	// A renewal from the current holder keeps the same lease ID; only a different
 	// holder is denied. Releasing to re-acquire would open a mutual-exclusion gap.
 	if ok && existing > now && lm.grantedID[payload.Key] != payload.LeaseID {
+		lm.contentions.Add(1)
 		lm.grantedMu.Unlock()
 		grant := &LeasePayload{LeaseID: payload.LeaseID, Key: payload.Key, Expiry: 0}
 		resp := &RPC{From: lm.localID, Type: MsgLeaseGrant, Payload: grant.Encode()}
