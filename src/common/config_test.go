@@ -136,6 +136,21 @@ func TestGetConfig_Failures(t *testing.T) {
 			content:       validConfig + "\n[storage]\nbackend = foobar\n",
 			expectedError: "failed to load [storage] section: unsupported storage backend",
 		},
+		{
+			name:          "Replication order alpha out of range",
+			content:       validConfig + "\n[replication_order]\nenabled = true\nalpha = 1.5\n",
+			expectedError: "failed to load [replication_order] section",
+		},
+		{
+			name:          "Replication order weights do not sum to one",
+			content:       validConfig + "\n[replication_order]\nenabled = true\nsuccess_weight = 0.5\nlatency_weight = 0.5\n",
+			expectedError: "failed to load [replication_order] section: replication_order weights must sum to 1",
+		},
+		{
+			name:          "Replication order reevaluate interval too small",
+			content:       validConfig + "\n[replication_order]\nenabled = true\nreevaluate_seconds = 0\n",
+			expectedError: "failed to load [replication_order] section: 'reevaluate_seconds' must be >= 1",
+		},
 	}
 
 	for _, tc := range testCases {
@@ -155,6 +170,42 @@ func TestGetConfig_Failures(t *testing.T) {
 				t.Errorf("Expected error to contain '%s', but got '%s'", tc.expectedError, err.Error())
 			}
 		})
+	}
+}
+
+// TestGetConfig_ReplicationOrder_Valid ensures a valid [replication_order] section is parsed.
+func TestGetConfig_ReplicationOrder_Valid(t *testing.T) {
+	content := validConfig + "\n[replication_order]\nenabled = true\nalpha = 0.3\nmin_samples = 50\nreevaluate_seconds = 120\nsuccess_weight = 0.5\nlatency_weight = 0.2\nthroughput_weight = 0.2\nerror_weight = 0.1\n"
+	tmpDir := t.TempDir()
+	tmpfile := filepath.Join(tmpDir, "momo.conf")
+	if err := os.WriteFile(tmpfile, []byte(content), 0666); err != nil {
+		t.Fatalf("Failed to write to temporary config file: %v", err)
+	}
+
+	config, err := GetConfig(tmpfile)
+	if err != nil {
+		t.Fatalf("GetConfig failed: %v", err)
+	}
+
+	ro := config.ReplicationOrder
+	if !ro.Enabled {
+		t.Fatal("Expected replication_order enabled")
+	}
+	if ro.Alpha != 0.3 {
+		t.Errorf("Expected Alpha 0.3, got %v", ro.Alpha)
+	}
+	if ro.MinSamples != 50 {
+		t.Errorf("Expected MinSamples 50, got %v", ro.MinSamples)
+	}
+	if ro.ReevaluateSeconds != 120 {
+		t.Errorf("Expected ReevaluateSeconds 120, got %v", ro.ReevaluateSeconds)
+	}
+	expected := []float64{0.5, 0.2, 0.2, 0.1}
+	got := []float64{ro.SuccessWeight, ro.LatencyWeight, ro.ThroughputWeight, ro.ErrorWeight}
+	for i := range expected {
+		if got[i] != expected[i] {
+			t.Errorf("Expected weight %d = %v, got %v", i, expected[i], got[i])
+		}
 	}
 }
 

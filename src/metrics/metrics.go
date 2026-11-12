@@ -250,25 +250,7 @@ func GetMetrics(ctx context.Context, cfg common.Configuration, serverId int, mod
 		return
 	}
 
-	// #1146: self-tuning replication-mode order. Disabled by default: the
-	// static config order is used verbatim (zero behavioral change).
-	var tracker *replication_order.Reorderer
-	if cfg.ReplicationOrder.Enabled {
-		weights := replication_order.Weights{
-			Success:    cfg.ReplicationOrder.SuccessWeight,
-			Latency:    cfg.ReplicationOrder.LatencyWeight,
-			Throughput: cfg.ReplicationOrder.ThroughputWeight,
-			Error:      cfg.ReplicationOrder.ErrorWeight,
-		}
-		tracker = replication_order.NewReorderer(
-			replication_order.NewTracker(replicationOrder, cfg.ReplicationOrder.Alpha,
-				cfg.ReplicationOrder.MinSamples, weights),
-			time.Duration(cfg.ReplicationOrder.ReevaluateSeconds)*time.Second,
-		)
-		log.Printf("ADAPTIVE-ORDER: self-tuning replication-mode order enabled (reevaluate=%ds)", cfg.ReplicationOrder.ReevaluateSeconds)
-	} else {
-		log.Printf("ADAPTIVE-ORDER: disabled; using static config replication order")
-	}
+	tracker := newReplicationOrderTracker(cfg)
 
 	var adaptive *AdaptiveThresholds
 	if cfg.Adaptive.Enabled {
@@ -309,12 +291,7 @@ func GetMetrics(ctx context.Context, cfg common.Configuration, serverId int, mod
 		tracker:      tracker,
 	}
 	leader := IsControllerNode(serverId)
-	if leader {
-		persistMode(c.order, c.currentIndex, modeStore)
-		pushNewReplicationMode(cfg, c.authToken, c.order[c.currentIndex])
-	} else {
-		log.Printf("Coordination: node %d is not the metrics-controller lease holder; standing by", serverId)
-	}
+	announceReplicationMode(cfg, c, modeStore, serverId)
 
 	ticker := time.NewTicker(time.Duration(cfg.Metrics.Interval) * time.Millisecond)
 	defer ticker.Stop()
@@ -339,6 +316,40 @@ func GetMetrics(ctx context.Context, cfg common.Configuration, serverId int, mod
 			}
 			c.step()
 		}
+	}
+}
+
+// newReplicationOrderTracker builds the self-tuning replication-mode tracker
+// from config (#1146). Returns nil when replication_order is disabled, in which
+// case the static config order is used verbatim (zero behavioral change).
+func newReplicationOrderTracker(cfg common.Configuration) *replication_order.Reorderer {
+	if !cfg.ReplicationOrder.Enabled {
+		log.Printf("ADAPTIVE-ORDER: disabled; using static config replication order")
+		return nil
+	}
+	weights := replication_order.Weights{
+		Success:    cfg.ReplicationOrder.SuccessWeight,
+		Latency:    cfg.ReplicationOrder.LatencyWeight,
+		Throughput: cfg.ReplicationOrder.ThroughputWeight,
+		Error:      cfg.ReplicationOrder.ErrorWeight,
+	}
+	tracker := replication_order.NewReorderer(
+		replication_order.NewTracker(cfg.Global.ReplicationOrder, cfg.ReplicationOrder.Alpha,
+			cfg.ReplicationOrder.MinSamples, weights),
+		time.Duration(cfg.ReplicationOrder.ReevaluateSeconds)*time.Second,
+	)
+	log.Printf("ADAPTIVE-ORDER: self-tuning replication-mode order enabled (reevaluate=%ds)", cfg.ReplicationOrder.ReevaluateSeconds)
+	return tracker
+}
+
+// announceReplicationMode publishes the current replication mode to the cluster
+// when this node is the controller lease holder, or stands by otherwise (#1144).
+func announceReplicationMode(cfg common.Configuration, c *metricsController, modeStore ModeStore, serverId int) {
+	if IsControllerNode(serverId) {
+		persistMode(c.order, c.currentIndex, modeStore)
+		pushNewReplicationMode(cfg, c.authToken, c.order[c.currentIndex])
+	} else {
+		log.Printf("Coordination: node %d is not the metrics-controller lease holder; standing by", serverId)
 	}
 }
 

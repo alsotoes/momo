@@ -62,3 +62,28 @@ func TestReorderer_Defaults(t *testing.T) {
 		t.Fatal("expected Chain only")
 	}
 }
+
+func TestReorderer_ScoreAndModes(t *testing.T) {
+	tr := NewTracker([]int{common.ReplicationChain}, 0.5, 1, DefaultWeights)
+	r := NewReorderer(tr, 0)
+	if r.Score(common.ReplicationChain) != 0 {
+		t.Fatal("unobserved mode score should be 0")
+	}
+	modes := r.Modes()
+	if len(modes) != 1 || modes[0] != common.ReplicationChain {
+		t.Fatalf("expected [Chain], got %v", modes)
+	}
+
+	tr.Observe(common.ReplicationChain, ModeResult{Success: true})
+	if r.Score(common.ReplicationChain) <= 0 {
+		t.Fatal("observed mode should have a positive score")
+	}
+}
+
+func TestReorderer_NilIntervalDefaults(t *testing.T) {
+	tr := NewTracker([]int{common.ReplicationChain}, 0.5, 1, DefaultWeights)
+	r := NewReorderer(tr, -5)
+	if r.Order()[0] != common.ReplicationChain {
+		t.Fatal("negative interval should not panic and should return modes")
+	}
+}

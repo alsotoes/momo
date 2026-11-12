@@ -97,3 +97,26 @@ func TestDefaultWeightsSumToOne(t *testing.T) {
 }
 
 // keep the linter happy about time import in tests that don't use it directly.
+
+func TestTracker_NewTrackerDefaults(t *testing.T) {
+	tr := NewTracker([]int{common.ReplicationChain}, 1.5, 0, DefaultWeights) // invalid alpha and minSamples -> defaults
+	if tr.alpha != 0.2 {
+		t.Errorf("expected default alpha 0.2, got %v", tr.alpha)
+	}
+	if tr.minSamples != 1 {
+		t.Errorf("expected default minSamples 1, got %v", tr.minSamples)
+	}
+}
+
+func TestTracker_ScoreEdges(t *testing.T) {
+	tr := NewTracker([]int{common.ReplicationChain}, 0.5, 1, DefaultWeights)
+	if tr.Score(common.ReplicationChain) != 0 {
+		t.Fatal("unobserved mode score should be 0")
+	}
+	tr.Observe(common.ReplicationChain, ModeResult{Success: true})
+	tr.Observe(common.ReplicationChain, ModeResult{Success: false})
+	sc := tr.Score(common.ReplicationChain)
+	if sc <= 0 || sc > 1 {
+		t.Fatalf("expected score in (0,1], got %v", sc)
+	}
+}
