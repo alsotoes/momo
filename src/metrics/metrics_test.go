@@ -168,6 +168,11 @@ func TestReplicationOrderTrackerObservesSwitch(t *testing.T) {
 	if got := tracker.Score(common.ReplicationNone); got <= 0 {
 		t.Fatalf("expected None to have a positive score after a successful switch, got %v", got)
 	}
+	// The broadcast duration is recorded as the mode's latency, so the scorer
+	// has a real signal rather than success alone (#1146).
+	if st := tracker.Stats(common.ReplicationNone); st == nil || st.LatencyNs <= 0 {
+		t.Fatalf("expected a measured latency for the switched mode, got %+v", st)
+	}
 
 	// step() refreshes the order from the tracker each tick.
 	c.step()

@@ -421,21 +421,30 @@ func (c *metricsController) switchTo(idx int) {
 	c.currentIndex = idx
 	mode := c.order[idx]
 	persistMode(c.order, idx, c.store)
+	// The broadcast is synchronous (it waits for peer ACKs, bounded by the
+	// propagation timeout), so its duration is the mode's real propagation
+	// latency — the signal the scorer ranks on (#1146).
+	started := time.Now()
 	pushNewReplicationMode(c.cfg, c.authToken, mode)
 	// The controller selected this mode, so it is treated as viable; the
-	// tracker re-ranks modes by observed success over successive switches.
-	c.observeMode(mode, true)
+	// tracker re-ranks modes by observed success and latency.
+	c.observeMode(mode, true, time.Since(started))
 	c.start = time.Now()
 }
 
 // observeMode records the outcome of using mode so the tracker can re-rank
-// modes by observed performance (#1146). Latency and throughput are not
-// measured yet in Phase 1; success/failure is the available signal.
-func (c *metricsController) observeMode(mode int, success bool) {
+// modes by observed performance (#1146): success/failure plus the measured
+// broadcast latency. Throughput is not measured (the payload is metadata-sized,
+// so its bytes say nothing about a mode's data-path cost).
+func (c *metricsController) observeMode(mode int, success bool, latency time.Duration) {
 	if c.tracker == nil {
 		return
 	}
-	c.tracker.Observe(mode, replication_order.ModeResult{Success: success})
+	result := replication_order.ModeResult{Success: success}
+	if latency > 0 {
+		result.LatencyNs = latency.Nanoseconds()
+	}
+	c.tracker.Observe(mode, result)
 }
 
 // applyFallback steps one mode down after the interval, unless the durability
