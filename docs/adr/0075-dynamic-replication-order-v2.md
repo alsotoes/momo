@@ -30,7 +30,7 @@ None documented.
 ## Implementation Status
 - **Code**: Partial
 - **Tests**: Partial
-- **Docs**: Planned
+- **Docs**: Done
 - **Blog post**: docs/blog/posts/075-dynamic-replication-order.md
 
 ## References

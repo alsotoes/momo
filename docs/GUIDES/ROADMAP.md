@@ -51,7 +51,6 @@ deferred (each documented in its OpenSpec change):
 | Multi-node integration harness (metadata, rebalance, adaptive) | OpenSpec task lists | The unit suites drive the same code paths with in-process transports; a real multi-node harness is a project of its own. |
 | Failure-domain migration during rebalance | [#1260](https://github.com/alsotoes/momo/issues/1260) | Needs per-blob replica-location records; R1 spreads new writes and R2 repair prefers another domain meanwhile. |
 | Handshake/propagation adaptive timeouts | `openspec/changes/adaptive-thresholds-v1/tasks.md` | Fixed protocol deadlines both peers rely on; adapting them needs a cross-version compatibility plan. |
-| Dynamic replication order | [#1146](https://github.com/alsotoes/momo/issues/1146) | Scoring needs a per-mode latency/outcome source threaded through the data path; shipping a tracker without it would be dead code. |
 | Remaining singleton phases | [#1149](https://github.com/alsotoes/momo/issues/1149) | Phase 3 (the last replication-state globals) only buys test isolation and embedded/multi-daemon safety; the router and payload-pool singletons are gone. |
 | Multi-node integration harness | [#1144](https://github.com/alsotoes/momo/issues/1144) | The control-plane unit suites drive the same code with real sockets; a reusable multi-node harness is a project of its own. |
 
@@ -95,8 +94,10 @@ Ratified in [prod-ready-roadmap](../../openspec/changes/prod-ready-roadmap/specs
 | R-VS | Adaptive volume layout | ✅ Append-only volume superblocks for small blobs, per-blob files for large ones, hole-punch deletion (#1128) |
 
 Beyond the R-series, the adaptive control plane landed: gossip load summaries,
-load-aware shed targets, self-tuning metrics thresholds, pheromone constants that
-follow RTT variance, replication-pool sizing, homeostatic connection admission,
+load-aware shed targets, self-tuning metrics thresholds, self-tuning
+replication-mode ordering (#1146: EWMA success scoring + stability window),
+pheromone constants that follow RTT variance, replication-pool sizing,
+homeostatic connection admission,
 RTT-derived metadata RPC timeouts, and SWIM-driven lease failover with
 split-brain-safe quorums.
 

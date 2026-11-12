@@ -53,22 +53,22 @@
 - [x] Config integration: `[replication_order]` section wired and validated in `config.go`
 - [x] Backward compatibility: `replication_order.enabled=false` → static config order
 - [ ] Prometheus metrics export (`momo_replication_mode_score{mode}`, position, success rate)
-- [ ] Update `docs/GUIDES/CONFIGURATION.md` with `[replication_order]` section
-- [ ] Update `docs/ARCHITECTURE.md` with dynamic replication order section
+- [x] Update `docs/GUIDES/CONFIGURATION.md` with `[replication_order]` section
+- [x] Update `docs/ARCHITECTURE.md` with dynamic replication order section
 
 ## Phase 6 — Testing + Validation (partially done)
 - [x] `go build ./...` clean, `go test ./...` passes, `go vet`/`gofmt -l` clean, `go work vendor` parity
 - [ ] Benchstat: compare dynamic vs static order
 - [ ] Chaos test: rapid load changes → verify no thrashing (stability window)
-- [ ] Blog post per Rule 76 (teach the stigmergic reordering pattern)
+- [x] Blog post per Rule 76 (teach the stigmergic reordering pattern) — `docs/blog/posts/075-dynamic-replication-order.md`
 
 ## Cross-Phase Requirements
 - [x] `go build ./...` clean at each phase
 - [x] `go test ./...` passes at each phase
 - [x] `go vet`, `gofmt -l` clean
 - [x] `go work vendor` parity (Rule 25)
-- [ ] Blog post per Rule 76
-- [ ] ADR sync (Rule 78) — `make adr-sync`
+- [x] Blog post per Rule 76 — `docs/blog/posts/075-dynamic-replication-order.md`
+- [x] ADR sync (Rule 78) — `make adr-sync`
 - [x] PR body with `Resolves #1146`
 
 ## Definition of Done (Per Phase)

@@ -32,10 +32,13 @@ Momo utilizes a decentralized polymorphic engine. The **metrics/polymorphic cont
 > `<data_dir>/adaptive.db` and are exported as `momo_adaptive_*` gauges. With
 > adaptive disabled (default) the static behaviour described above is unchanged.
 
-> **Dynamic replication order** (reordering the mode sequence by observed mode
-> performance) is tracked in #1146 and not implemented: the order remains the
-> operator-configured sequence, with only the threshold crossing moving the
-> index.
+> **Dynamic replication order** (#1146, `[replication_order] enabled=true`) ranks
+> the mode sequence by each mode's observed broadcast success rate and reshapes
+> it once per stability window (default 10 min), while `ReplicationNone` is kept
+> behind the replicated modes and the durability floor still applies. Latency and
+> throughput weights exist in the scorer but are not measured yet, so today the
+> ranking is driven by success/failure. Disabled by default: the operator
+> sequence is then used verbatim, with only threshold crossings moving the index.
     *   **Under high load:** Switch to a *less* robust strategy (e.g., Splay -> Chain).
     *   **Under low load:** After a `fallback_interval`, switch to a *more* robust strategy (e.g., Chain -> Splay).
 

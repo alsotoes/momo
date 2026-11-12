@@ -287,16 +287,18 @@ Exported as `momo_adaptive_max_threshold`, `momo_adaptive_min_threshold` and
 ### [replication_order] (optional, #1146)
 
 Self-tuning replication-mode ordering, disabled by default. When enabled, the
-polymorphic metrics controller observes each mode's real performance (success
-rate, latency, throughput, error rate) via an exponentially-weighted moving
-average and re-ranks the replication-mode sequence so better-performing modes
-are tried first — implementing the **Stigmergy** principle (local evidence
-produces global order) without a central coordinator. A stability window
-(default 10 minutes) prevents thrashing, and `ReplicationNone` is never placed
-before `ReplicationChain`/`ReplicationSplay`, so durability is never silently
-sacrificed. The durability floor (`[global] minimum_durability_factor`) still
-applies to every move. With `enabled=false` (the default), the static
-`[global] replication_order` is used verbatim — zero behavioural change.
+polymorphic metrics controller observes each mode's broadcast success rate via
+an exponentially-weighted moving average and re-ranks the replication-mode
+sequence so better-performing modes are tried first — implementing the
+**Stigmergy** principle (local evidence produces global order) without a central
+coordinator. The latency and throughput weights below are wired into the scorer
+but their signals are not measured yet, so ranking is currently driven by
+success/failure. A stability window (default 10 minutes) prevents thrashing, and
+`ReplicationNone` is never placed before `ReplicationChain`/`ReplicationSplay`,
+so durability is never silently sacrificed. The durability floor
+(`[global] minimum_durability_factor`) still applies to every move. With
+`enabled=false` (the default), the static `[global] replication_order` is used
+verbatim — zero behavioural change.
 
 -   **`enabled`** — Boolean, default `false`.
 -   **`reevaluate_seconds`** — Seconds between reordering computations.
