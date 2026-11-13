@@ -383,6 +383,29 @@ func TestDaemonReplicationForwardTimeout(t *testing.T) {
 	close(blocked)
 }
 
+// stubForwarder installs a server-side forwarder that drains the streamed
+// payload and returns want, so quorum tests control ACK counts without a peer.
+func stubForwarder(t *testing.T, want error) {
+	t.Helper()
+	original := connectToPeerStream.Load()
+	fn := forwardStreamFunc(func(cfg common.Configuration, content io.Reader, name, hash string, size int64, remotePath string, s3Headers map[string]string, serverId int, timestamp int64, requestedMode int, replicationFactor int) error {
+		_, _ = io.Copy(io.Discard, content)
+		return want
+	})
+	connectToPeerStream.Store(&fn)
+	t.Cleanup(func() { connectToPeerStream.Store(original) })
+}
+
+// receiveACKWithDeadline reads the server ACK under a bounded deadline so a
+// missing ACK surfaces as an error instead of hanging the test.
+func receiveACKWithDeadline(t *testing.T, comm *transport.MomoTCPCommunicator) error {
+	t.Helper()
+	if err := comm.SetAbsoluteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		t.Fatalf("SetAbsoluteDeadline: %v", err)
+	}
+	return comm.ReceiveACK()
+}
+
 // TestDaemonWriteQuorumDefaultStillAcks proves the default (quorum 1) path is
 // unchanged: the local store alone satisfies the quorum, so the client is acked
 // regardless of whether this node was selected to forward.
@@ -391,21 +414,11 @@ func TestDaemonWriteQuorumDefaultStillAcks(t *testing.T) {
 
 	comm, cleanup := startDaemonForForwardTestQuorum(t, 1)
 	defer cleanup()
-
-	originalForward := connectToPeerStream.Load()
-	okFn := forwardStreamFunc(func(cfg common.Configuration, content io.Reader, name, hash string, size int64, remotePath string, s3Headers map[string]string, serverId int, timestamp int64, requestedMode int, replicationFactor int) error {
-		_, _ = io.Copy(io.Discard, content)
-		return nil
-	})
-	connectToPeerStream.Store(&okFn)
-	defer func() { connectToPeerStream.Store(originalForward) }()
+	stubForwarder(t, nil)
 
 	uploadToForwardTest(t, comm, "quorum-default.txt", "quorum-default-data")
 
-	if err := comm.SetAbsoluteDeadline(time.Now().Add(5 * time.Second)); err != nil {
-		t.Fatalf("SetAbsoluteDeadline: %v", err)
-	}
-	if err := comm.ReceiveACK(); err != nil {
+	if err := receiveACKWithDeadline(t, comm); err != nil {
 		t.Fatalf("Expected ACK with the default write_quorum, got %v", err)
 	}
 }
@@ -419,21 +432,11 @@ func TestDaemonWriteQuorumUnmetWithholdsACK(t *testing.T) {
 
 	comm, cleanup := startDaemonForForwardTestQuorum(t, 3)
 	defer cleanup()
-
-	originalForward := connectToPeerStream.Load()
-	okFn := forwardStreamFunc(func(cfg common.Configuration, content io.Reader, name, hash string, size int64, remotePath string, s3Headers map[string]string, serverId int, timestamp int64, requestedMode int, replicationFactor int) error {
-		_, _ = io.Copy(io.Discard, content)
-		return nil
-	})
-	connectToPeerStream.Store(&okFn)
-	defer func() { connectToPeerStream.Store(originalForward) }()
+	stubForwarder(t, nil)
 
 	uploadToForwardTest(t, comm, "quorum-unmet.txt", "quorum-unmet-data")
 
-	if err := comm.SetAbsoluteDeadline(time.Now().Add(5 * time.Second)); err != nil {
-		t.Fatalf("SetAbsoluteDeadline: %v", err)
-	}
-	if err := comm.ReceiveACK(); err == nil {
+	if err := receiveACKWithDeadline(t, comm); err == nil {
 		t.Fatalf("Expected no ACK when write_quorum cannot be met, but it succeeded")
 	}
 }
