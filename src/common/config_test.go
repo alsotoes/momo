@@ -874,17 +874,31 @@ func TestGetConfig_R3DurabilityAndWriteQuorum(t *testing.T) {
 		t.Errorf("Durability = %q, want group-commit", cfg.Storage.Durability)
 	}
 
-	// write_quorum above 1 is refused until replica acknowledgements are
-	// collected (#1323): accepting it would promise durability the daemon cannot
-	// deliver.
+	// write_quorum above 1 is now honoured on the server-side forwarding path,
+	// so the default order (splay, primary-splay, chain) accepts it (#1323).
 	tmpW := filepath.Join(t.TempDir(), "momo.conf")
 	if err := os.WriteFile(tmpW, []byte(writeGlobal("write_quorum = 2")), 0666); err != nil {
 		t.Fatal(err)
 	}
-	if _, werr := GetConfig(tmpW); werr == nil {
-		t.Fatal("expected write_quorum > 1 to be refused as unimplemented")
-	} else if !strings.Contains(werr.Error(), "not implemented") {
-		t.Fatalf("expected an 'not implemented' error, got %v", werr)
+	cfgQ, werr := GetConfig(tmpW)
+	if werr != nil {
+		t.Fatalf("write_quorum = 2 with a server-side forwarding mode must load: %v", werr)
+	}
+	if cfgQ.Global.WriteQuorum != 2 {
+		t.Errorf("WriteQuorum = %d, want 2", cfgQ.Global.WriteQuorum)
+	}
+
+	// ...but not when the order cannot forward (client-side only), because no
+	// replica acknowledgement would ever arrive.
+	tmpNoFwd := filepath.Join(t.TempDir(), "momo.conf")
+	noFwd := strings.Replace(writeGlobal("write_quorum = 2"), "replication_order = 2,3,1", "replication_order = 3,0", 1)
+	if err := os.WriteFile(tmpNoFwd, []byte(noFwd), 0666); err != nil {
+		t.Fatal(err)
+	}
+	if _, nerr := GetConfig(tmpNoFwd); nerr == nil {
+		t.Fatal("expected write_quorum > 1 without a server-side forwarding mode to be refused")
+	} else if !strings.Contains(nerr.Error(), "server-side forwarding mode") {
+		t.Fatalf("expected a server-side forwarding error, got %v", nerr)
 	}
 
 	// write_quorum = 1 is accepted and is the default.

@@ -641,6 +641,12 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 				forwardFailed = true
 				forwardMu.Unlock()
 			}
+			// forwardAcks counts peers that answered a forwarding ACK, i.e.
+			// confirmed the blob is stored. Client.ConnectStream waits for
+			// ReceiveACK, so a forwarder that returns nil is a durable replica.
+			// It feeds the write_quorum check below (R3-C2, #1323).
+			var forwardAcks atomic.Int32
+			markForwardAck := func() { forwardAcks.Add(1) }
 
 			// waitForForwarders blocks until all replication forwarding goroutines
 			// complete, bounded by a hard deadline. If a forwarder hangs (e.g. an
@@ -755,6 +761,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 							return
 						}
 						metricsCollector.AddBytesReplicated(uint64(metadata.Size))
+						markForwardAck()
 						if !replStart.IsZero() {
 							metricsCollector.RecordReplicationLatency(time.Since(replStart))
 						}
@@ -838,6 +845,7 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 								return
 							}
 							metricsCollector.AddBytesReplicated(uint64(metadata.Size))
+							markForwardAck()
 							if !replStart.IsZero() {
 								metricsCollector.RecordReplicationLatency(time.Since(replStart))
 							}
@@ -875,6 +883,19 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 			if forwardFailedFlag {
 				log.Printf("AUDIT: Upload from %s stored locally but replication forwarding failed", remoteAddr)
 				metricsCollector.IncErrors()
+				return
+			}
+
+			// R3-C2 (#1323): enforce write_quorum. The local store is one
+			// acknowledged replica; each successful forwarder waited for its
+			// peer's ACK, so it is another. Suppressing success withholds the
+			// ACK, which surfaces to the client as a failed write instead of a
+			// durability promise we did not keep.
+			acks := 1 + int(forwardAcks.Load())
+			if q := cfg.Global.WriteQuorum; q > 1 && acks < q {
+				log.Printf("AUDIT: Upload from %s reached %d replica(s) but write_quorum requires %d; withholding ACK", remoteAddr, acks, q)
+				metricsCollector.IncErrors()
+				metricsCollector.IncReplicationFailures()
 				return
 			}
 			success = true

@@ -336,10 +336,16 @@ consistency model, both enforced in the storage core and documented here.
   `durabilityRegistry`; invalid values fail at config load with `EINVAL`
   (fail-closed, never silently under-durable).
 - **Write quorum (`write_quorum`, default `1`, `[1, replication_factor]`)**:
-  a write is acknowledged only after `write_quorum` replicas are durably
-  persisted. A write that cannot reach the quorum fails (no silent ack). The
-  metrics controller's `minimum_durability_factor` floor (#822) never selects a
-  mode whose achievable durable replicas fall below the quorum.
+  a write is acknowledged only after `write_quorum` replicas have acknowledged
+  it. The local store counts as one; each successful replication forwarder
+  counts as another, because the forwarder waits for the peer's ACK before
+  returning (a peer that acked has stored the blob). A write that cannot reach
+  the quorum is **not** acknowledged, so the client sees a failure instead of a
+  silent ack (#1323). A quorum above 1 therefore needs a server-side forwarding
+  mode (chain or splay) in `replication_order`; client-side-only orders are
+  refused at load. The metrics controller's `minimum_durability_factor` floor
+  (#822) never selects a mode whose achievable durable replicas fall below the
+  quorum.
 - **Consistency model (`R3-C3/R3-C4`)**: single-object operations are
   **sequential**: `CASStore` serializes writes per object (global lock + single
   transactional metadata update, so a value is never torn), the last
@@ -347,10 +353,10 @@ consistency model, both enforced in the storage core and documented here.
   subsequent reads on the same object (read-your-writes). Multi-object /
   namespace operations have **no cross-object atomicity** — each object obeys
   the model independently (no distributed transaction at this milestone).
-- The multi-replica ack-counting (client waits for `write_quorum` durable acks
-  across daemons) is the daemon transport layer's wiring over the storage
-  barrier, delivered as a follow-up; the storage core enforces the per-node
-  durable-persist half of the contract.
+- The quorum counts **acknowledged replicas**, not fsyncs: each node's on-disk
+  durability is set independently by `[storage] durability`. Use
+  `durability = fsync` with `write_quorum > 1` when the requirement is "N copies
+  on stable storage".
 
 ### 4i. momofs — POSIX layer over CAS (R4, issue #932)
 `src/momofs` is the storage-backed virtual filesystem core ratifying the

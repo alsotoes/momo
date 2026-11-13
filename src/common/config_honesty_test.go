@@ -28,7 +28,6 @@ func TestGetConfig_UnimplementedKnobsAreRefused(t *testing.T) {
 		extra string
 		key   string
 	}{
-		{"write_quorum above one", "\n[global]\nwrite_quorum = 2\n", "write_quorum"},
 		{"metadata_ttl", "\n[momofs]\nmetadata_ttl = 30\n", "metadata_ttl"},
 		{"lease_timeout", "\n[p2p]\nenabled = true\nlease_timeout = 20\n", "lease_timeout"},
 	}

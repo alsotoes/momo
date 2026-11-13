@@ -36,7 +36,7 @@ This document maps every major feature of Ceph, Lustre, ScyllaDB, and IPFS to Mo
 |---------|------|--------|----------|------|--------|--------|
 | N-way replication | Yes | Via RAID/FLR | Yes | No (popularity) | Yes (Chain/Splay) | **Have** |
 | Erasure coding | Yes (in-band, K+M) | Via ZFS only | No | No | Planned (Phase 7) | **Planned** |
-| Tunable consistency | Yes (min_size) | Yes (POSIX locks) | Yes (CL per-request) | No | Partial (metadata quorum configurable; blob write quorum fixed at 1, see #1323) | **Partial** |
+| Tunable consistency | Yes (min_size) | Yes (POSIX locks) | Yes (CL per-request) | No | Partial (metadata quorum and server-side blob write quorum configurable; no read quorum) | **Partial** |
 | Read repair | Yes | No | Yes | No | Yes (any-node read repairs stale replicas) | **Have** |
 | Hinted handoff | No | No | Yes | No | Yes (bounded, expiring metadata hints replayed on ALIVE) | **Have** |
 | Anti-entropy repair | Yes (scrub) | Yes (LFSCK) | Yes (Merkle repair) | No | Yes (at-rest scrub + self-heal rebuild) | **Have** |
@@ -179,16 +179,16 @@ marked **Different** (e.g. goroutines instead of thread-per-core) count as Have.
 | **Total** | **51** | **3** | **15** | **17** | **8** | **94** |
 
 - **51 features delivered** (54%)
-- **3 partial** — primitives exist but are not wired into the data path (per-tenant encryption, per-bucket snapshots, blob write quorum)
+- **3 partial** — primitives exist but are not fully wired into the data path (per-tenant encryption, per-bucket snapshots, read quorum)
 - **15 planned** in the roadmap (16%)
 - **17 gaps** to consider (18%)
 - **8 intentional gaps** — not target use cases (8%)
 
 > The **Partial** rows name the honest state: the tenant key hierarchy and the
 > metadata backup exist, but tenant keys are not yet selected per write, there is
-> no per-bucket point-in-time snapshot, and the blob write quorum cannot exceed one
-> because replica acknowledgements are not collected (the knob is refused above
-> one — see issue #1323).
+> no per-bucket point-in-time snapshot, and there is no read quorum — writes can
+> demand `write_quorum` acknowledgements on the server-side forwarding path
+> (#1323), but reads are served from a single replica.
 
 ### Gaps Worth Closing
 
