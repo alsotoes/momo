@@ -1227,3 +1227,64 @@ func TestGetConfig_S3Section(t *testing.T) {
 		}
 	})
 }
+
+// quorumCase is one write_quorum config boundary: either a load error
+// containing wantErr, or a successfully parsed WriteQuorum value.
+type quorumCase struct {
+	name    string
+	content string
+	wantErr string
+	wantQ   int
+}
+
+// assertQuorumCase loads one case and asserts its expected outcome.
+func assertQuorumCase(t *testing.T, load func(*testing.T, string) (Configuration, error), tc quorumCase) {
+	t.Helper()
+	cfg, err := load(t, tc.content)
+	if tc.wantErr != "" {
+		if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+			t.Fatalf("expected error containing %q, got %v", tc.wantErr, err)
+		}
+		return
+	}
+	if err != nil {
+		t.Fatalf("expected the config to load, got %v", err)
+	}
+	if cfg.Global.WriteQuorum != tc.wantQ {
+		t.Fatalf("WriteQuorum = %d, want %d", cfg.Global.WriteQuorum, tc.wantQ)
+	}
+}
+
+// TestGetConfigWriteQuorumBoundaries pins the acceptance boundary of
+// write_quorum: the range is enforced against replication_factor, and a value
+// above 1 needs a server-side forwarding mode (chain or splay) in the
+// replication order (#1340, regression coverage from #1342).
+func TestGetConfigWriteQuorumBoundaries(t *testing.T) {
+	// configWith rewrites the replication order and appends a [global] key.
+	configWith := func(order, globalExtra string) string {
+		out := strings.Replace(validConfig, "replication_order = 2,3,1", "replication_order = "+order, 1)
+		return strings.Replace(out, "polymorphic_system = true",
+			"polymorphic_system = true\n"+globalExtra, 1)
+	}
+	load := func(t *testing.T, content string) (Configuration, error) {
+		t.Helper()
+		path := filepath.Join(t.TempDir(), "momo.conf")
+		if err := os.WriteFile(path, []byte(content), 0666); err != nil {
+			t.Fatal(err)
+		}
+		return GetConfig(path)
+	}
+
+	cases := []quorumCase{
+		{"upper bound equals replication_factor", configWith("2,3,1", "write_quorum = 3"), "", 3},
+		{"chain only accepts a quorum", configWith("1,0", "write_quorum = 2"), "", 2},
+		{"splay only accepts a quorum", configWith("2,0", "write_quorum = 2"), "", 2},
+		{"zero is out of range", configWith("2,3,1", "write_quorum = 0"), "out of range", 0},
+		{"negative is out of range", configWith("2,3,1", "write_quorum = -1"), "out of range", 0},
+		{"above replication_factor rejected", configWith("2,3,1", "write_quorum = 4"), "out of range", 0},
+		{"client-side only order rejected", configWith("3,0", "write_quorum = 2"), "server-side forwarding mode", 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) { assertQuorumCase(t, load, tc) })
+	}
+}
