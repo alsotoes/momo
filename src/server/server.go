@@ -669,6 +669,32 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 				}
 			}
 
+			// replicateToPeer forwards the stored blob to one peer and counts a
+			// durable ACK on success. Chain and splay share it: the work is
+			// identical and only the log label differed (#1340).
+			replicateToPeer := func(id int) (err error) {
+				defer common.RecoverErr("replicateToPeer", &err)
+				reader, _, getErr := store.Get(storageKey)
+				if getErr != nil {
+					return fmt.Errorf("read blob for forwarding: %w", getErr)
+				}
+				defer func() { _ = reader.Close() }()
+				// R5 phase 4: time replication only when histograms are armed.
+				var replStart time.Time
+				if metricsCollector.HistogramsEnabled() {
+					replStart = time.Now()
+				}
+				if fwdErr := forwardStream()(cfg, reader, storageKey, metadata.Hash, metadata.Size, "", getS3Meta(store, storageKey), id, finalTs, replicationMode, factor); fwdErr != nil {
+					return fwdErr
+				}
+				metricsCollector.AddBytesReplicated(uint64(metadata.Size))
+				markForwardAck()
+				if !replStart.IsZero() {
+					metricsCollector.RecordReplicationLatency(time.Since(replStart))
+				}
+				return nil
+			}
+
 			// Handle the file based on the replication mode
 			switch replicationMode {
 			// ReplicationPrimarySplay is intentionally grouped with ReplicationNone:
@@ -730,40 +756,13 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 					nextHop := placement[myPos+1]
 					log.Printf("AUDIT: Chain forwarding from Node %d to Node %d", serverId, nextHop.ID)
 
-					// 🛡️ Zero-Crash: Wrap Chain forwarding in a goroutine with recovery for consistency and safety.
 					go func(id int) {
 						defer wg.Done()
-						defer func() {
-							if r := recover(); r != nil {
-								log.Printf("CRITICAL: Panic recovered in Chain forwarder to node %d: %v", id, r)
-								metricsCollector.IncErrors()
-							}
-						}()
-						reader, _, err := store.Get(storageKey)
-						if err != nil {
-							log.Printf("AUDIT: Failed to get blob for chain forwarding: %v", common.SanitizeLog(err.Error()))
-							metricsCollector.IncErrors()
-							markForwardFail()
-							return
-						}
-						defer reader.Close()
-						// R5 phase 4: time replication only when histograms are armed.
-						var replStart time.Time
-						if metricsCollector.HistogramsEnabled() {
-							replStart = time.Now()
-						}
-						fwdErr := forwardStream()(cfg, reader, storageKey, metadata.Hash, metadata.Size, "", getS3Meta(store, storageKey), id, finalTs, replicationMode, factor)
-						if fwdErr != nil {
-							log.Printf("AUDIT: Chain forwarding to node %d failed: %v", id, common.SanitizeLog(fwdErr.Error()))
+						if rErr := replicateToPeer(id); rErr != nil {
+							log.Printf("AUDIT: Chain forwarding to node %d failed: %v", id, common.SanitizeLog(rErr.Error()))
 							metricsCollector.IncErrors()
 							metricsCollector.IncReplicationFailures()
 							markForwardFail()
-							return
-						}
-						metricsCollector.AddBytesReplicated(uint64(metadata.Size))
-						markForwardAck()
-						if !replStart.IsZero() {
-							metricsCollector.RecordReplicationLatency(time.Since(replStart))
 						}
 					}(nextHop.ID)
 				} else {
@@ -817,37 +816,11 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 					for _, targetId := range targets {
 						go func(id int) {
 							defer wg.Done()
-							defer func() {
-								if r := recover(); r != nil {
-									log.Printf("CRITICAL: Panic recovered in Splay forwarder to node %d: %v", id, r)
-									metricsCollector.IncErrors()
-								}
-							}()
-							reader, _, err := store.Get(storageKey)
-							if err != nil {
-								log.Printf("AUDIT: Failed to get blob for splay forwarding: %v", common.SanitizeLog(err.Error()))
-								metricsCollector.IncErrors()
-								markForwardFail()
-								return
-							}
-							defer reader.Close()
-							// R5 phase 4: time replication only when histograms are armed.
-							var replStart time.Time
-							if metricsCollector.HistogramsEnabled() {
-								replStart = time.Now()
-							}
-							fwdErr := forwardStream()(cfg, reader, storageKey, metadata.Hash, metadata.Size, "", getS3Meta(store, storageKey), id, finalTs, replicationMode, factor)
-							if fwdErr != nil {
-								log.Printf("AUDIT: Splay forwarding to node %d failed: %v", id, common.SanitizeLog(fwdErr.Error()))
+							if rErr := replicateToPeer(id); rErr != nil {
+								log.Printf("AUDIT: Splay forwarding to node %d failed: %v", id, common.SanitizeLog(rErr.Error()))
 								metricsCollector.IncErrors()
 								metricsCollector.IncReplicationFailures()
 								markForwardFail()
-								return
-							}
-							metricsCollector.AddBytesReplicated(uint64(metadata.Size))
-							markForwardAck()
-							if !replStart.IsZero() {
-								metricsCollector.RecordReplicationLatency(time.Since(replStart))
 							}
 						}(targetId)
 					}
