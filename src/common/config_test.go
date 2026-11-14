@@ -860,13 +860,19 @@ func TestGetConfig_R3DurabilityAndWriteQuorum(t *testing.T) {
 		return strings.Replace(validConfig, "polymorphic_system = true",
 			"polymorphic_system = true\n"+globalExtra, 1)
 	}
-
-	// Valid R3 profile + write quorum parse.
-	tmp := filepath.Join(t.TempDir(), "momo.conf")
-	if err := os.WriteFile(tmp, []byte(writeStorage("durability = group-commit")), 0666); err != nil {
-		t.Fatal(err)
+	// loadConfig writes content to a temp file and parses it, so each case is
+	// one call instead of a repeated write/parse block.
+	loadConfig := func(t *testing.T, content string) (Configuration, error) {
+		t.Helper()
+		path := filepath.Join(t.TempDir(), "momo.conf")
+		if err := os.WriteFile(path, []byte(content), 0666); err != nil {
+			t.Fatal(err)
+		}
+		return GetConfig(path)
 	}
-	cfg, err := GetConfig(tmp)
+
+	// Valid R3 profile.
+	cfg, err := loadConfig(t, writeStorage("durability = group-commit"))
 	if err != nil {
 		t.Fatalf("GetConfig failed: %v", err)
 	}
@@ -874,36 +880,34 @@ func TestGetConfig_R3DurabilityAndWriteQuorum(t *testing.T) {
 		t.Errorf("Durability = %q, want group-commit", cfg.Storage.Durability)
 	}
 
-	// write_quorum above 1 is refused until replica acknowledgements are
-	// collected (#1323): accepting it would promise durability the daemon cannot
-	// deliver.
-	tmpW := filepath.Join(t.TempDir(), "momo.conf")
-	if err := os.WriteFile(tmpW, []byte(writeGlobal("write_quorum = 2")), 0666); err != nil {
-		t.Fatal(err)
+	// write_quorum above 1 is honoured on the server-side forwarding path, so
+	// the default order (splay, primary-splay, chain) accepts it (#1340).
+	cfgQ, werr := loadConfig(t, writeGlobal("write_quorum = 2"))
+	if werr != nil {
+		t.Fatalf("write_quorum = 2 with a server-side forwarding mode must load: %v", werr)
 	}
-	if _, werr := GetConfig(tmpW); werr == nil {
-		t.Fatal("expected write_quorum > 1 to be refused as unimplemented")
-	} else if !strings.Contains(werr.Error(), "not implemented") {
-		t.Fatalf("expected an 'not implemented' error, got %v", werr)
+	if cfgQ.Global.WriteQuorum != 2 {
+		t.Errorf("WriteQuorum = %d, want 2", cfgQ.Global.WriteQuorum)
+	}
+
+	// ...but not when the order cannot forward (client-side only), because no
+	// replica acknowledgement would ever arrive.
+	noFwd := strings.Replace(writeGlobal("write_quorum = 2"), "replication_order = 2,3,1", "replication_order = 3,0", 1)
+	if _, nerr := loadConfig(t, noFwd); nerr == nil {
+		t.Fatal("expected write_quorum > 1 without a server-side forwarding mode to be refused")
+	} else if !strings.Contains(nerr.Error(), "server-side forwarding mode") {
+		t.Fatalf("expected a server-side forwarding error, got %v", nerr)
 	}
 
 	// write_quorum = 1 is accepted and is the default.
-	tmpOne := filepath.Join(t.TempDir(), "momo.conf")
-	if err := os.WriteFile(tmpOne, []byte(writeGlobal("write_quorum = 1")), 0666); err != nil {
-		t.Fatal(err)
-	}
-	cfgW, err := GetConfig(tmpOne)
+	cfgW, err := loadConfig(t, writeGlobal("write_quorum = 1"))
 	if err != nil {
 		t.Fatalf("GetConfig with write_quorum=1: %v", err)
 	}
 	if cfgW.Global.WriteQuorum != 1 {
 		t.Errorf("WriteQuorum = %d, want 1", cfgW.Global.WriteQuorum)
 	}
-	tmpDef := filepath.Join(t.TempDir(), "momo.conf")
-	if err := os.WriteFile(tmpDef, []byte(validConfig), 0666); err != nil {
-		t.Fatal(err)
-	}
-	cfgDef, err := GetConfig(tmpDef)
+	cfgDef, err := loadConfig(t, validConfig)
 	if err != nil {
 		t.Fatalf("GetConfig failed: %v", err)
 	}
@@ -915,20 +919,12 @@ func TestGetConfig_R3DurabilityAndWriteQuorum(t *testing.T) {
 	}
 
 	// Invalid durability rejected (EINVAL).
-	tmpBad := filepath.Join(t.TempDir(), "momo.conf")
-	if err := os.WriteFile(tmpBad, []byte(writeStorage("durability = durable")), 0666); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := GetConfig(tmpBad); err == nil {
+	if _, err := loadConfig(t, writeStorage("durability = durable")); err == nil {
 		t.Fatal("expected invalid durability to be rejected")
 	}
 
 	// write_quorum > replication_factor rejected.
-	tmpBig := filepath.Join(t.TempDir(), "momo.conf")
-	if err := os.WriteFile(tmpBig, []byte(writeGlobal("write_quorum = 4")), 0666); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := GetConfig(tmpBig); err == nil {
+	if _, err := loadConfig(t, writeGlobal("write_quorum = 4")); err == nil {
 		t.Fatal("expected write_quorum > replication_factor to be rejected")
 	}
 }

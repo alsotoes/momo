@@ -132,9 +132,10 @@ This section contains cluster-wide settings that affect all daemons.
     -   **Default:** number of configured daemons (all)
 
 -   **`write_quorum`**
-    -   **Description:** The minimum number of **durable** replicas that must acknowledge a write (R3-C2, #931). **Only `1` is accepted today**: replica acknowledgements are not collected on the blob write path, so a larger value would promise durability the daemon cannot deliver. Setting it above `1` is a **load error** rather than a silent no-op (#1323); enforcement is tracked in that issue.
+    -   **Description:** The minimum number of replicas that must acknowledge a write before the client is told it succeeded (R3-C2, #931; enforced on the server-side forwarding path since #1323). The local store counts as one; every peer that returns a forwarding ACK counts as another. If the count falls short, the server withholds the ACK, so the client observes a failed write instead of a durability promise the daemon did not keep. A value above `1` requires a **server-side forwarding mode** (`1` = chain or `2` = splay) in `replication_order`; an order containing only client-side modes is a load error, because the client-side fan-out does not collect replica acknowledgements. Range: `1 <= write_quorum <= replication_factor`.
     -   **Type:** Integer
     -   **Default:** `1`
+    -   **Note:** each replica's on-disk durability still depends on `[storage] durability` (`fsync` / `group-commit` / `none`). Quorum counts acknowledgements, not fsyncs; pair `write_quorum > 1` with `durability = fsync` when the requirement is "N copies on stable storage".
 
 ### [metrics] (required)
 

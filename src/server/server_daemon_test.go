@@ -232,6 +232,13 @@ func TestDaemonReal(t *testing.T) {
 // function, and a cleanup to stop the daemon.
 func startDaemonForForwardTest(t *testing.T) (*transport.MomoTCPCommunicator, func()) {
 	t.Helper()
+	return startDaemonForForwardTestQuorum(t, 1)
+}
+
+// startDaemonForForwardTestQuorum is startDaemonForForwardTest with an explicit
+// [global] write_quorum, so quorum enforcement can be exercised end to end.
+func startDaemonForForwardTestQuorum(t *testing.T, writeQuorum int) (*transport.MomoTCPCommunicator, func()) {
+	t.Helper()
 	tempDir := t.TempDir()
 	primaryAddr := freeAddr(t)
 	daemons := []*common.Daemon{
@@ -250,6 +257,7 @@ func startDaemonForForwardTest(t *testing.T) (*transport.MomoTCPCommunicator, fu
 			AuthToken:         authToken,
 			Protocol:          "momo-tcp",
 			ReplicationFactor: 3,
+			WriteQuorum:       writeQuorum,
 		},
 	}
 
@@ -373,4 +381,62 @@ func TestDaemonReplicationForwardTimeout(t *testing.T) {
 	// Unblock the forwarder so the daemon's forwarding goroutines (and the
 	// waitForForwarders waiter) can drain before the test ends and goleak runs.
 	close(blocked)
+}
+
+// stubForwarder installs a server-side forwarder that drains the streamed
+// payload and returns want, so quorum tests control ACK counts without a peer.
+func stubForwarder(t *testing.T, want error) {
+	t.Helper()
+	original := connectToPeerStream.Load()
+	fn := forwardStreamFunc(func(cfg common.Configuration, content io.Reader, name, hash string, size int64, remotePath string, s3Headers map[string]string, serverId int, timestamp int64, requestedMode int, replicationFactor int) error {
+		_, _ = io.Copy(io.Discard, content)
+		return want
+	})
+	connectToPeerStream.Store(&fn)
+	t.Cleanup(func() { connectToPeerStream.Store(original) })
+}
+
+// receiveACKWithDeadline reads the server ACK under a bounded deadline so a
+// missing ACK surfaces as an error instead of hanging the test.
+func receiveACKWithDeadline(t *testing.T, comm *transport.MomoTCPCommunicator) error {
+	t.Helper()
+	if err := comm.SetAbsoluteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		t.Fatalf("SetAbsoluteDeadline: %v", err)
+	}
+	return comm.ReceiveACK()
+}
+
+// TestDaemonWriteQuorumDefaultStillAcks proves the default (quorum 1) path is
+// unchanged: the local store alone satisfies the quorum, so the client is acked
+// regardless of whether this node was selected to forward.
+func TestDaemonWriteQuorumDefaultStillAcks(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	comm, cleanup := startDaemonForForwardTestQuorum(t, 1)
+	defer cleanup()
+	stubForwarder(t, nil)
+
+	uploadToForwardTest(t, comm, "quorum-default.txt", "quorum-default-data")
+
+	if err := receiveACKWithDeadline(t, comm); err != nil {
+		t.Fatalf("Expected ACK with the default write_quorum, got %v", err)
+	}
+}
+
+// TestDaemonWriteQuorumUnmetWithholdsACK proves the negative case: chain mode
+// can acknowledge at most one forwarded replica, so write_quorum = 3 can never
+// be met and the server must withhold the ACK instead of silently promising
+// durability it did not achieve (#1323).
+func TestDaemonWriteQuorumUnmetWithholdsACK(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	comm, cleanup := startDaemonForForwardTestQuorum(t, 3)
+	defer cleanup()
+	stubForwarder(t, nil)
+
+	uploadToForwardTest(t, comm, "quorum-unmet.txt", "quorum-unmet-data")
+
+	if err := receiveACKWithDeadline(t, comm); err == nil {
+		t.Fatalf("Expected no ACK when write_quorum cannot be met, but it succeeded")
+	}
 }

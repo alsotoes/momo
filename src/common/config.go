@@ -930,12 +930,14 @@ func loadGlobalConfig(section *ini.Section) (ConfigurationGlobal, error) {
 			if v < 1 || v > globalCfg.ReplicationFactor {
 				return ConfigurationGlobal{}, fmt.Errorf("'write_quorum' %d out of range [1, replication_factor=%d]: %w", v, globalCfg.ReplicationFactor, syscall.EINVAL)
 			}
-			// 🛡️ issue #1323: replica acknowledgements are not collected on the
-			// blob write path, so a quorum above 1 would be a durability promise
-			// the daemon cannot keep. Refuse it instead of accepting a setting
-			// that has no effect.
-			if v > 1 {
-				return ConfigurationGlobal{}, fmt.Errorf("'write_quorum' > 1 is not implemented yet (replica acks are not collected): see https://github.com/alsotoes/momo/issues/1323: %w", syscall.ENOTSUP)
+			// 🛡️ issue #1323: a quorum above 1 is only meaningful when the
+			// receiving server forwards to peers and waits for their ACKs
+			// (chain or splay). Client-side PrimarySplay and None never collect
+			// replica acknowledgements, so a quorum would be unattainable and
+			// every write would fail. Refuse it instead of accepting a setting
+			// that can never be satisfied.
+			if v > 1 && !hasServerSideFanout(globalCfg.ReplicationOrder) {
+				return ConfigurationGlobal{}, fmt.Errorf("'write_quorum' > 1 requires a server-side forwarding mode (chain or splay) in 'replication_order': %w", syscall.EINVAL)
 			}
 			globalCfg.WriteQuorum = v
 		}
@@ -1098,6 +1100,19 @@ func loadAdaptiveConfig(section *ini.Section) (ConfigurationAdaptive, error) {
 	}
 	cfg.PersistInterval = persist
 	return cfg, nil
+}
+
+// hasServerSideFanout reports whether any configured replication mode makes the
+// receiving server forward a write to peers (chain or splay). It gates
+// write_quorum > 1, which only server-side forwarding can satisfy because the
+// client-side PrimarySplay path does not collect replica acknowledgements.
+func hasServerSideFanout(order []int) bool {
+	for _, mode := range order {
+		if mode == ReplicationChain || mode == ReplicationSplay {
+			return true
+		}
+	}
+	return false
 }
 
 // loadReplicationOrderConfig parses the optional [replication_order] section.

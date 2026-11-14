@@ -12,7 +12,7 @@ categories:
   - metrics
 summary: "momo's polymorphic controller picked its replication mode from a static config list, so a poorly performing mode stayed in the sequence forever. Dynamic replication order observes each mode's real performance and re-ranks the sequence so better modes are tried first — with the durability floor and semantic constraints still enforced."
 artifacts: [{type: spec, path: openspec/changes/dynamic-replication-order-v2}, {type: adr, path: docs/adr/0075-dynamic-replication-order-v2.md}]
-related: ["072-configuration-that-cannot-lie", "073-tenancy-you-can-write-down", "074-when-rotation-does-nothing", "064-failing-over-coordination-in-seconds"]
+related: ["072-configuration-that-cannot-lie", "073-tenancy-you-can-write-down", "074-when-rotation-does-nothing", "064-failing-over-coordination-in-seconds", "076-write-quorum-that-counts"]
 difficulty: "intermediate"
 pattern: "stigmergy"
 teaches:
