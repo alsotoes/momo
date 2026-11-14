@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -227,17 +228,31 @@ func TestDaemonReal(t *testing.T) {
 	}
 }
 
+// daemonTestAuthToken is the shared cluster token for the daemon tests.
+// notsecret
+const daemonTestAuthToken = "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+
 // startDaemonForForwardTest boots a real Chain-mode Daemon and dials it with a
-// fresh client communicator. It returns the communicator, the forwarder-reset
-// function, and a cleanup to stop the daemon.
+// fresh client communicator. It returns the communicator and a cleanup to stop
+// the daemon.
 func startDaemonForForwardTest(t *testing.T) (*transport.MomoTCPCommunicator, func()) {
 	t.Helper()
-	return startDaemonForForwardTestQuorum(t, 1)
+	comm, _, cleanup := startReplicationDaemon(t, common.ReplicationChain, 1)
+	return comm, cleanup
 }
 
 // startDaemonForForwardTestQuorum is startDaemonForForwardTest with an explicit
 // [global] write_quorum, so quorum enforcement can be exercised end to end.
 func startDaemonForForwardTestQuorum(t *testing.T, writeQuorum int) (*transport.MomoTCPCommunicator, func()) {
+	t.Helper()
+	comm, _, cleanup := startReplicationDaemon(t, common.ReplicationChain, writeQuorum)
+	return comm, cleanup
+}
+
+// startReplicationDaemon boots a real Daemon in the given replication mode with
+// an explicit [global] write_quorum, and returns a client communicator dialled
+// to it plus the primary address for a second connection.
+func startReplicationDaemon(t *testing.T, mode int, writeQuorum int) (*transport.MomoTCPCommunicator, string, func()) {
 	t.Helper()
 	tempDir := t.TempDir()
 	primaryAddr := freeAddr(t)
@@ -250,18 +265,17 @@ func startDaemonForForwardTestQuorum(t *testing.T, writeQuorum int) (*transport.
 		os.MkdirAll(d.Data, 0755)
 	}
 
-	authToken := "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
 	cfg := common.Configuration{
 		Daemons: daemons,
 		Global: common.ConfigurationGlobal{
-			AuthToken:         authToken,
+			AuthToken:         daemonTestAuthToken,
 			Protocol:          "momo-tcp",
 			ReplicationFactor: 3,
 			WriteQuorum:       writeQuorum,
 		},
 	}
 
-	SetReplicationState(common.ReplicationChain, time.Now().UnixNano())
+	SetReplicationState(mode, time.Now().UnixNano())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go Daemon(ctx, cfg, 0)
@@ -281,16 +295,57 @@ func startDaemonForForwardTestQuorum(t *testing.T, writeQuorum int) (*transport.
 	}
 
 	comm := transport.NewMomoTCPCommunicator(conn)
-	if _, err := comm.HandshakeClient(authToken, time.Now().UnixNano(), 0); err != nil {
+	if _, err := comm.HandshakeClient(daemonTestAuthToken, time.Now().UnixNano(), 0); err != nil {
 		cancel()
 		conn.Close()
 		t.Fatalf("Handshake failed: %v", err)
 	}
 
-	return comm, func() {
+	return comm, primaryAddr, func() {
 		comm.Close()
 		cancel()
 	}
+}
+
+// dialQuorumClient opens a second authenticated connection to a running test
+// daemon, so a test can prove the daemon still serves after an earlier failure.
+func dialQuorumClient(t *testing.T, addr string) *transport.MomoTCPCommunicator {
+	t.Helper()
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatalf("Failed to dial Daemon: %v", err)
+	}
+	comm := transport.NewMomoTCPCommunicator(conn)
+	if _, err := comm.HandshakeClient(daemonTestAuthToken, time.Now().UnixNano(), 0); err != nil {
+		_ = conn.Close()
+		t.Fatalf("Handshake failed: %v", err)
+	}
+	return comm
+}
+
+// contentWithPrimaryZero returns a payload whose CRUSH placement puts this node
+// (ID 0) first, the only case where a direct-client upload forwards to peers.
+// Placement depends on node ID/Weight/Domain only, so the daemon hosts are
+// irrelevant; the bounded search fails loudly if placement semantics change.
+func contentWithPrimaryZero(t *testing.T, prefix string) string {
+	t.Helper()
+	nodes := make([]*common.Node, 3)
+	for i := range nodes {
+		nodes[i] = &common.Node{ID: i, Weight: 1}
+	}
+	cmap := &common.ClusterMap{Nodes: nodes}
+	for i := 0; i < 1000; i++ {
+		payload := fmt.Sprintf("%s-%d", prefix, i)
+		placement, err := cmap.Placement(common.HashBytes([]byte(payload)), 3)
+		if err != nil {
+			t.Fatalf("Placement: %v", err)
+		}
+		if len(placement) == 3 && placement[0].ID == 0 {
+			return payload
+		}
+	}
+	t.Fatalf("no payload found with node 0 as primary replica")
+	return ""
 }
 
 // uploadToForwardTest sends metadata + payload over the supplied communicator.
@@ -438,5 +493,80 @@ func TestDaemonWriteQuorumUnmetWithholdsACK(t *testing.T) {
 
 	if err := receiveACKWithDeadline(t, comm); err == nil {
 		t.Fatalf("Expected no ACK when write_quorum cannot be met, but it succeeded")
+	}
+}
+
+// TestDaemonWriteQuorumMetWithForwardedAck proves a quorum above 1 is
+// satisfiable: the local store plus one forwarded peer ACK reaches quorum 2.
+// Without this, a regression that always withholds for quorum > 1 would pass.
+func TestDaemonWriteQuorumMetWithForwardedAck(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	comm, cleanup := startDaemonForForwardTestQuorum(t, 2)
+	defer cleanup()
+	stubForwarder(t, nil)
+
+	content := contentWithPrimaryZero(t, "quorum-met")
+	uploadToForwardTest(t, comm, "quorum-met.txt", content)
+
+	if err := receiveACKWithDeadline(t, comm); err != nil {
+		t.Fatalf("Expected ACK when local + forwarded ack meets quorum 2, got %v", err)
+	}
+}
+
+// TestDaemonWriteQuorumSplayCountsAllAcks proves splay counts every peer ACK:
+// with this node primary, both other replicas are forwarded to, so quorum 3 is
+// met (local + 2).
+func TestDaemonWriteQuorumSplayCountsAllAcks(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	comm, _, cleanup := startReplicationDaemon(t, common.ReplicationSplay, 3)
+	defer cleanup()
+	stubForwarder(t, nil)
+
+	content := contentWithPrimaryZero(t, "quorum-splay")
+	uploadToForwardTest(t, comm, "quorum-splay.txt", content)
+
+	if err := receiveACKWithDeadline(t, comm); err != nil {
+		t.Fatalf("Expected ACK when splay collects quorum 3 of 3 acks, got %v", err)
+	}
+}
+
+// TestDaemonForwarderPanicWithholdsACKAndKeepsServing proves the Rule 37 guard
+// in replicateToPeer: a panicking forwarder becomes an error (no ACK, no dead
+// connection handler), and the daemon still serves the next upload.
+func TestDaemonForwarderPanicWithholdsACKAndKeepsServing(t *testing.T) {
+	defer goleak.VerifyNone(t)
+
+	comm, addr, cleanup := startReplicationDaemon(t, common.ReplicationChain, 1)
+	defer cleanup()
+
+	originalForward := connectToPeerStream.Load()
+	t.Cleanup(func() { connectToPeerStream.Store(originalForward) })
+	panicFn := forwardStreamFunc(func(cfg common.Configuration, content io.Reader, name, hash string, size int64, remotePath string, s3Headers map[string]string, serverId int, timestamp int64, requestedMode int, replicationFactor int) error {
+		panic("forwarder boom")
+	})
+	connectToPeerStream.Store(&panicFn)
+
+	content := contentWithPrimaryZero(t, "quorum-panic")
+	uploadToForwardTest(t, comm, "quorum-panic.txt", content)
+	if err := receiveACKWithDeadline(t, comm); err == nil {
+		t.Fatalf("Expected no ACK when the forwarder panics, but it succeeded")
+	}
+
+	// The daemon must still be alive: install a working forwarder and upload
+	// over a fresh connection to the same node.
+	okFn := forwardStreamFunc(func(cfg common.Configuration, content io.Reader, name, hash string, size int64, remotePath string, s3Headers map[string]string, serverId int, timestamp int64, requestedMode int, replicationFactor int) error {
+		_, _ = io.Copy(io.Discard, content)
+		return nil
+	})
+	connectToPeerStream.Store(&okFn)
+	second := dialQuorumClient(t, addr)
+	defer func() { _ = second.Close() }()
+
+	secondContent := contentWithPrimaryZero(t, "quorum-panic-recovery")
+	uploadToForwardTest(t, second, "quorum-panic-recovery.txt", secondContent)
+	if err := receiveACKWithDeadline(t, second); err != nil {
+		t.Fatalf("Daemon stopped serving after a forwarder panic: %v", err)
 	}
 }
