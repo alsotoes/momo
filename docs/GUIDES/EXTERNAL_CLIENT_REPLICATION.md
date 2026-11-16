@@ -31,6 +31,13 @@ Partial success is deliberately not a failure: the bytes are durable on at least
 one node and the R2 repair loop can restore the target replica count. Zero is
 always a failure, because nothing was stored anywhere (Rule 9).
 
+One caveat: when the configured protocol is a gateway (`s3-tcp`, `s3-quic`), the
+native client's ACK frame is not part of the wire contract — the gateway answers
+in HTTP. There the client logs `gateway protocols do not confirm storage` and
+counts the completed write as the outcome instead of failing, because an
+unreadable ACK does not prove the object was dropped. Confirmation is only
+guaranteed on the native protocols; use the S3 API for gateway uploads.
+
 ## The Problem
 
 When an external S3 client like aws-cli connects, it sends standard S3 headers (`Authorization: AWS4-HMAC-SHA256`, `X-Amz-Date`) but does **not** send momo-specific headers (`X-Momo-Requested-Mode`, `X-Momo-Timestamp`).

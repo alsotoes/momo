@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -194,5 +195,80 @@ func TestConnect_PartialSuccessSucceeds(t *testing.T) {
 	}
 	if err := uploadOnce(t, cfg, uploadTempFile(t, "partial"), 0, 2); err != nil {
 		t.Fatalf("one acknowledged replica must not fail the upload: %v", err)
+	}
+}
+
+// uploadWithPath runs one upload with an explicit remote path.
+func uploadWithPath(cfg common.Configuration, path, remotePath string) error {
+	var wg sync.WaitGroup
+	wg.Add(1)
+	err := Connect(&wg, cfg, path, remotePath, 0, time.Now().UnixNano(), 0, 1)
+	wg.Wait()
+	return err
+}
+
+// TestConnect_OversizedWireNameFails proves a path that cannot fit the metadata
+// frame is refused before any bytes move, instead of silently doing nothing.
+func TestConnect_OversizedWireNameFails(t *testing.T) {
+	addr := startMockDaemon(t, common.ReplicationNone, true)
+	cfg := common.Configuration{
+		Global:  common.ConfigurationGlobal{AuthToken: uploadTestToken, Protocol: "momo-tcp"},
+		Daemons: []*common.Daemon{{Host: addr}},
+	}
+	longPath := strings.Repeat("a", common.FileInfoLength+10)
+	err := uploadWithPath(cfg, uploadTempFile(t, "long"), longPath)
+	if !errors.Is(err, syscall.ENAMETOOLONG) {
+		t.Fatalf("expected ENAMETOOLONG for an oversized wire name, got %v", err)
+	}
+}
+
+// TestConnect_HandshakeRejectedFails proves a peer that drops the handshake is a
+// failure rather than a logged no-op.
+func TestConnect_HandshakeRejectedFails(t *testing.T) {
+	ln, listenErr := net.Listen("tcp", "127.0.0.1:0")
+	if listenErr != nil {
+		t.Fatalf("listen: %v", listenErr)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() {
+		for {
+			conn, accErr := ln.Accept()
+			if accErr != nil {
+				return
+			}
+			_ = conn.Close() // drop before answering the handshake
+		}
+	}()
+
+	cfg := common.Configuration{
+		Global:  common.ConfigurationGlobal{AuthToken: uploadTestToken, Protocol: "momo-tcp"},
+		Daemons: []*common.Daemon{{Host: ln.Addr().String()}},
+	}
+	err := uploadOnce(t, cfg, uploadTempFile(t, "handshake"), 0, 1)
+	if !errors.Is(err, syscall.EACCES) {
+		t.Fatalf("expected EACCES for a rejected handshake, got %v", err)
+	}
+}
+
+// TestConnect_SpoolUnavailableFails proves an encryption spool that cannot be
+// created fails the upload (it would otherwise upload nothing and report
+// success).
+func TestConnect_SpoolUnavailableFails(t *testing.T) {
+	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "missing"))
+
+	addr := startMockDaemon(t, common.ReplicationNone, true)
+	cfg := common.Configuration{
+		Global: common.ConfigurationGlobal{
+			AuthToken:         uploadTestToken,
+			Protocol:          "momo-tcp",
+			EncryptionEnabled: true,
+			EncryptionKey:     strings.Repeat("a", 64),
+			EncryptionTenant:  "default",
+		},
+		Daemons: []*common.Daemon{{Host: addr}},
+	}
+	err := uploadOnce(t, cfg, uploadTempFile(t, "spool"), 0, 1)
+	if !errors.Is(err, syscall.EIO) {
+		t.Fatalf("expected EIO when the encryption spool cannot be created, got %v", err)
 	}
 }

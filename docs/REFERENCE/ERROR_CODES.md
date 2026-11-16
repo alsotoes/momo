@@ -63,6 +63,13 @@ replica acknowledged the object. The fan-out counts ACKs, so:
 | No replica connection could be established | `3` | `no replica connection was established` (wraps `ENOTCONN`) |
 | Connections were established but none stored it (no ACK, rejected handshake, quorum withheld) | `3` | `all N replica(s) failed to store the object` (wraps `EIO`) |
 
+Gateway protocols (`s3-tcp`, `s3-quic`) are the exception: the native client can
+speak to an S3 gateway well enough to send the object, but the gateway answers in
+HTTP, so the native ACK frame is not a confirmation. There an unreadable ACK is
+reported as `WARNING: … gateway protocols do not confirm storage …` and the
+upload is **not** failed — storage is simply unconfirmed. Use the S3 API (or a
+native protocol) when confirmation matters.
+
 A non-zero exit means the object is **not** on disk anywhere reachable, so a
 retry is safe and expected. This is the client-side half of Rule 9: an upload is
 never reported as stored when it was not.

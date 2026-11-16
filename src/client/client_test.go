@@ -280,7 +280,7 @@ func TestSendFile(t *testing.T) {
 	comm := transport.NewMomoTCPCommunicator(conn)
 	go func() {
 		defer wg.Done()
-		if sErr := sendFile(comm, file.Name(), meta, ""); sErr != nil {
+		if sErr := sendFile(comm, file.Name(), meta, "", true); sErr != nil {
 			t.Errorf("sendFile: %v", sErr)
 		}
 	}()
@@ -376,7 +376,7 @@ func TestSendFile_DeduplicationHit(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		comm := transport.NewMomoTCPCommunicator(clientConn)
-		if sErr := sendFile(comm, file.Name(), meta, ""); sErr != nil {
+		if sErr := sendFile(comm, file.Name(), meta, "", true); sErr != nil {
 			t.Errorf("sendFile: %v", sErr)
 		}
 	}()
@@ -405,7 +405,7 @@ func TestSendFile_PanicRecovery(t *testing.T) {
 
 	// Passing nil communicator with a valid file triggers a panic when comm is
 	// used; sendFile must turn it into an error (Rule 37), not crash.
-	if sErr := sendFile(nil, file.Name(), &common.FileMetadata{}, ""); sErr == nil {
+	if sErr := sendFile(nil, file.Name(), &common.FileMetadata{}, "", true); sErr == nil {
 		t.Fatalf("sendFile with a nil communicator must return an error")
 	}
 }

@@ -320,6 +320,7 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 	log.Printf("=> Size:    %d", meta.Size)
 
 	// Send the file to all established connections concurrently
+	requireAck := !isGatewayProtocol(cfg.Global.Protocol)
 	var (
 		uploadMu sync.Mutex
 		uploaded int
@@ -328,7 +329,7 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 	for _, c := range communicators {
 		go func(c transport.Communicator) {
 			defer wgSendFile.Done()
-			if sErr := sendFile(c, filePath, meta, encryptedTmp); sErr != nil {
+			if sErr := sendFile(c, filePath, meta, encryptedTmp, requireAck); sErr != nil {
 				return
 			}
 			uploadMu.Lock()
@@ -355,6 +356,13 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 	return nil
 }
 
+// isGatewayProtocol reports whether the configured protocol is an S3 gateway.
+// The native client can speak to a gateway well enough to store an object, but
+// the gateway answers in HTTP, so the native ACK frame is not a confirmation.
+func isGatewayProtocol(protocol string) bool {
+	return protocol == "s3-tcp" || protocol == "s3-quic"
+}
+
 // uploadOutcome is the caller-visible result of a client-side fan-out. A write
 // that reached no replica stored nothing, so the caller must see a failure
 // (Rule 9: no silent data loss). Partial success is degraded, not failed: the
@@ -376,7 +384,12 @@ func uploadOutcome(total, acknowledged int) error {
 // sendFile reports whether this replica stored the object. Every failure is
 // both logged and returned so the caller can decide whether the upload as a
 // whole succeeded (uploadOutcome).
-func sendFile(comm transport.Communicator, filePath string, meta *common.FileMetadata, encryptedTmp string) (err error) {
+//
+// requireAck is false for the S3 gateway protocols, where the native ACK frame
+// is not part of the wire contract: a completed payload write is the only
+// available signal there, so an unreadable ACK is reported as unconfirmed
+// rather than as a lost write (see the upload contract in ERROR_CODES.md).
+func sendFile(comm transport.Communicator, filePath string, meta *common.FileMetadata, encryptedTmp string, requireAck bool) (err error) {
 	// 🛡️ Zero-Crash (Rule 37): a panic becomes an error, never a dead upload.
 	defer common.RecoverErr("sendFile", &err)
 
@@ -416,6 +429,10 @@ func sendFile(comm transport.Communicator, filePath string, meta *common.FileMet
 	// Wait for ACK: a server that withholds the ACK (quorum unmet, storage
 	// failure) has not stored the object, so this replica counts as failed.
 	if err := comm.ReceiveACK(); err != nil {
+		if !requireAck {
+			log.Printf("WARNING: %s: gateway protocols do not confirm storage over the native ACK (unconfirmed: %v)", common.SanitizeLog(meta.Name), common.SanitizeLog(err.Error()))
+			return nil
+		}
 		log.Printf("Failed to read ACK from server: %v", common.SanitizeLog(err.Error()))
 		return err
 	}
