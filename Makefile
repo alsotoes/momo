@@ -7,6 +7,11 @@ HTML_DOCS := $(DOCS_DIR)/html
 SRC := $(shell find src -name '*.go')
 BIN := $(BIN_DIR)/momo
 MAIN := src/momo.go
+# MODULES drives `make test`/`make vet` (the CLI package included).
+# COVERAGE_MODULES drops the main package: its entry point is exercised in a
+# subprocess, which Go coverage cannot attribute, so measuring it would only
+# drag the Sonar new-code gate down.
+COVERAGE_MODULES = $(filter-out ./src,$(MODULES))
 MODULES := ./src ./src/common ./src/crypto ./src/transport ./src/client ./src/metrics ./src/p2p ./src/replication_order ./src/server ./src/storage ./src/momofs
 
 .PHONY: all build clean tidy vendor test vet lint coverage doc doc-live benchmark test-e2e smoke-tcp smoke-quic smoke-encryption-tcp smoke-encryption-quic smoke-encryption-s3-tcp smoke-encryption-s3-quic smoke-scale-cas test-contract test-load test-stress test-chaos test-metrics test-external-client blog-check adr-sync adr-sync-check ai-workflow-check monitoring-up monitoring-down pentest
@@ -68,7 +73,7 @@ lint:
 	fi
 
 coverage:
-	CGO_ENABLED=1 $(GO) test -race -coverprofile=coverage.out $(MODULES)
+	CGO_ENABLED=1 $(GO) test -race -coverprofile=coverage.out $(COVERAGE_MODULES)
 	$(GO) tool cover -html=coverage.out
 
 benchmark:

@@ -272,3 +272,60 @@ func TestConnect_SpoolUnavailableFails(t *testing.T) {
 		t.Fatalf("expected EIO when the encryption spool cannot be created, got %v", err)
 	}
 }
+
+// dialMock opens a client connection to a mock daemon and completes the
+// handshake, so sendFile can be exercised in isolation.
+func dialMock(t *testing.T, addr string) *transport.MomoTCPCommunicator {
+	t.Helper()
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	comm := transport.NewMomoTCPCommunicator(conn)
+	if _, hErr := comm.HandshakeClient(uploadTestToken, time.Now().UnixNano(), 0); hErr != nil {
+		t.Fatalf("handshake: %v", hErr)
+	}
+	return comm
+}
+
+// sendMetadataAndPayload drives one sendFile exchange on an established comm.
+func sendMetadataAndPayload(t *testing.T, comm *transport.MomoTCPCommunicator, path, content string, requireAck bool) error {
+	t.Helper()
+	return sendFile(comm, path, &common.FileMetadata{
+		Name: "mock.txt",
+		Hash: common.HashBytes([]byte(content)),
+		Size: int64(len(content)),
+	}, "", requireAck)
+}
+
+// TestSendFile_GatewayProtocolDoesNotRequireAck pins the documented exception:
+// over a gateway protocol the native ACK is not part of the contract, so an
+// unreadable ACK is reported as unconfirmed instead of a lost write, while the
+// strict mode still fails.
+func TestSendFile_GatewayProtocolDoesNotRequireAck(t *testing.T) {
+	addr := startMockDaemon(t, common.ReplicationNone, false)
+	path := uploadTempFile(t, "gateway")
+
+	if err := sendMetadataAndPayload(t, dialMock(t, addr), path, "gateway-unconfirmed", false); err != nil {
+		t.Fatalf("gateway protocol must not fail on a missing ACK, got %v", err)
+	}
+	if err := sendMetadataAndPayload(t, dialMock(t, addr), path, "gateway-strict", true); err == nil {
+		t.Fatalf("strict mode must fail when the ACK is missing")
+	}
+}
+
+// TestIsGatewayProtocol pins which protocols are gateways.
+func TestIsGatewayProtocol(t *testing.T) {
+	for proto, want := range map[string]bool{
+		"momo-tcp":  false,
+		"momo-quic": false,
+		"s3-tcp":    true,
+		"s3-quic":   true,
+		"":          false,
+	} {
+		if got := isGatewayProtocol(proto); got != want {
+			t.Fatalf("isGatewayProtocol(%q) = %v, want %v", proto, got, want)
+		}
+	}
+}
