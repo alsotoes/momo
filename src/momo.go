@@ -135,8 +135,13 @@ func Run() {
 		}
 		var wg sync.WaitGroup
 		wg.Add(1)
-		client.Connect(&wg, cfg, *filePathPtr, *remotePathPtr, serverId, time.Now().UnixNano(), 0, cfg.Global.ReplicationFactor)
+		uploadErr := client.Connect(&wg, cfg, *filePathPtr, *remotePathPtr, serverId, time.Now().UnixNano(), 0, cfg.Global.ReplicationFactor)
 		wg.Wait()
+		if uploadErr != nil {
+			// Rule 9: never report a stored object that was not stored. The exit
+			// code is what a script sees, so the failure must reach it.
+			fatalExit(ExitNetworkError, "Upload of %s failed: %v", common.SanitizeLog(*filePathPtr), common.SanitizeLog(uploadErr.Error()))
+		}
 	case "server":
 		if err := runServer(context.Background(), cfg, *serverIdPtr); err != nil {
 			fatalExit(ExitP2PError, "Server error: %v", common.SanitizeLog(err.Error()))

@@ -107,7 +107,7 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 	comm, err := factory.Dial(daemons[serverId].Host)
 	if err != nil {
 		log.Printf("Failed to connect to initial daemon %s: %v", daemons[serverId].Host, common.SanitizeLog(err.Error()))
-		return
+		return fmt.Errorf("connect to primary daemon %s: %w", daemons[serverId].Host, syscall.ENOTCONN)
 	}
 	communicators = append(communicators, comm)
 
@@ -116,7 +116,7 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 	if err != nil {
 		log.Printf("Handshake failed with %s: %v", daemons[serverId].Host, common.SanitizeLog(err.Error()))
 		comm.Close()
-		return
+		return fmt.Errorf("handshake with primary daemon %s: %w", daemons[serverId].Host, syscall.EACCES)
 	}
 
 	// Compute file hash and optionally encrypt content.
@@ -155,25 +155,25 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 			if _, cErr := io.Copy(tagHash, file); cErr != nil {
 				file.Close()
 				log.Printf("Failed to hash file %s for OPRF tag: %v", common.SanitizeLog(filePath), common.SanitizeLog(cErr.Error()))
-				return
+				return fmt.Errorf("hash %s for OPRF tag: %w", filePath, syscall.EIO)
 			}
 			if _, seekErr := file.Seek(0, io.SeekStart); seekErr != nil {
 				file.Close()
 				log.Printf("Failed to rewind file %s for encryption: %v", common.SanitizeLog(filePath), common.SanitizeLog(seekErr.Error()))
-				return
+				return fmt.Errorf("rewind %s for encryption: %w", filePath, syscall.EIO)
 			}
 			fileHash = hex.EncodeToString(tagHash.Sum(nil))
 			contentKey, kErr := deriveOPRFContentKey(cfg, fileHash, serverId)
 			if kErr != nil {
 				file.Close()
 				log.Printf("Failed to derive OPRF content key for %s: %v", common.SanitizeLog(filePath), common.SanitizeLog(kErr.Error()))
-				return
+				return fmt.Errorf("derive OPRF content key: %w", syscall.EIO)
 			}
 			encCipher, kErr = momocrypto.NewCipher(contentKey)
 			if kErr != nil {
 				file.Close()
 				log.Printf("Failed to create OPRF cipher for %s: %v", common.SanitizeLog(filePath), common.SanitizeLog(kErr.Error()))
-				return
+				return fmt.Errorf("create OPRF cipher: %w", syscall.EIO)
 			}
 		}
 
@@ -181,7 +181,7 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 		if cErr != nil {
 			file.Close()
 			log.Printf("Failed to create encrypted spool: %v", cErr)
-			return
+			return fmt.Errorf("create encrypted spool: %w", syscall.EIO)
 		}
 		encryptedTmp = tmp.Name()
 		h := sha256.New()
@@ -306,13 +306,13 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 			meta.Size = info.Size()
 		} else {
 			log.Printf("Failed to stat encrypted spool: %v", sErr)
-			return
+			return fmt.Errorf("stat encrypted spool: %w", syscall.EIO)
 		}
 	}
 
 	if len(wireName) > common.FileInfoLength {
 		log.Printf("Failed to upload %s: remote path and filename exceed limit of %d characters", common.SanitizeLog(filePath), common.FileInfoLength)
-		return
+		return fmt.Errorf("remote path and filename exceed %d characters: %w", common.FileInfoLength, syscall.ENAMETOOLONG)
 	}
 
 	log.Printf("=> Hash:    %s", common.SanitizeLog(meta.Hash))
@@ -320,9 +320,21 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 	log.Printf("=> Size:    %d", meta.Size)
 
 	// Send the file to all established connections concurrently
+	var (
+		uploadMu sync.Mutex
+		uploaded int
+	)
 	wgSendFile.Add(len(communicators))
 	for _, c := range communicators {
-		go sendFile(&wgSendFile, c, filePath, meta, encryptedTmp)
+		go func(c transport.Communicator) {
+			defer wgSendFile.Done()
+			if sErr := sendFile(c, filePath, meta, encryptedTmp); sErr != nil {
+				return
+			}
+			uploadMu.Lock()
+			uploaded++
+			uploadMu.Unlock()
+		}(c)
 	}
 	wgSendFile.Wait()
 
@@ -333,26 +345,46 @@ func Connect(wg *sync.WaitGroup, cfg common.Configuration, filePath string, remo
 			log.Printf("Failed to remove encrypted spool %s: %v", encryptedTmp, rmErr)
 		}
 	}
-	return
+
+	if outcomeErr := uploadOutcome(len(communicators), uploaded); outcomeErr != nil {
+		return outcomeErr
+	}
+	if uploaded < len(communicators) {
+		log.Printf("WARNING: %s stored on %d of %d replicas (degraded; the repair loop restores the target count)", common.SanitizeLog(meta.Name), uploaded, len(communicators))
+	}
+	return nil
+}
+
+// uploadOutcome is the caller-visible result of a client-side fan-out. A write
+// that reached no replica stored nothing, so the caller must see a failure
+// (Rule 9: no silent data loss). Partial success is degraded, not failed: the
+// bytes are durable on at least one node and the R2 repair loop can restore the
+// target replica count.
+func uploadOutcome(total, acknowledged int) error {
+	if total == 0 {
+		return fmt.Errorf("no replica connection was established: %w", syscall.ENOTCONN)
+	}
+	if acknowledged == 0 {
+		return fmt.Errorf("all %d replica(s) failed to store the object: %w", total, syscall.EIO)
+	}
+	return nil
 }
 
 // sendFile sends a file over a network connection.
 // It first sends the file's metadata (SHA-256 hash, name, and size) and then the file's content.
 // It waits for an acknowledgment ("ACK") from the server upon successful reception.
-func sendFile(wg *sync.WaitGroup, comm transport.Communicator, filePath string, meta *common.FileMetadata, encryptedTmp string) {
-	defer wg.Done()
-	// 🛡️ Zero-Crash: Ensure background transmission tasks don't crash the client on unexpected panics
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("CRITICAL: Panic recovered in sendFile for %s: %v", common.SanitizeLog(filePath), r)
-		}
-	}()
+// sendFile reports whether this replica stored the object. Every failure is
+// both logged and returned so the caller can decide whether the upload as a
+// whole succeeded (uploadOutcome).
+func sendFile(comm transport.Communicator, filePath string, meta *common.FileMetadata, encryptedTmp string) (err error) {
+	// 🛡️ Zero-Crash (Rule 37): a panic becomes an error, never a dead upload.
+	defer common.RecoverErr("sendFile", &err)
 
 	// Send metadata and receive status
 	status, err := comm.SendMetadata(meta)
 	if err != nil {
 		log.Printf("Failed to send metadata for %s: %v", common.SanitizeLog(meta.Name), common.SanitizeLog(err.Error()))
-		return
+		return err
 	}
 
 	// ⚡ Bolt: Handle deduplication shortcut.
@@ -368,23 +400,28 @@ func sendFile(wg *sync.WaitGroup, comm transport.Communicator, filePath string, 
 		}
 		if err != nil {
 			log.Printf("Failed to open file %s: %v", common.SanitizeLog(filePath), common.SanitizeLog(err.Error()))
-			return
+			return err
 		}
 		if _, err := io.Copy(comm, src); err != nil {
-			src.Close()
+			_ = src.Close()
 			log.Printf("Error sending file %s: %v", common.SanitizeLog(meta.Name), common.SanitizeLog(err.Error()))
-			return
+			return err
 		}
-		src.Close()
+		if cErr := src.Close(); cErr != nil {
+			log.Printf("Failed to close %s: %v", common.SanitizeLog(filePath), common.SanitizeLog(cErr.Error()))
+			return cErr
+		}
 	}
 
-	// Wait for ACK
+	// Wait for ACK: a server that withholds the ACK (quorum unmet, storage
+	// failure) has not stored the object, so this replica counts as failed.
 	if err := comm.ReceiveACK(); err != nil {
 		log.Printf("Failed to read ACK from server: %v", common.SanitizeLog(err.Error()))
-		return
+		return err
 	}
 
 	log.Printf("File %s sent successfully.", common.SanitizeLog(meta.Name))
+	return nil
 }
 
 // ConnectStream establishes a connection with a daemon and sends file content

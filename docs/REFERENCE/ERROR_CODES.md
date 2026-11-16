@@ -46,10 +46,26 @@ disk without parsing logs.
 | :--- | :--- |
 | `1` | **General fatal error** — anything without a more specific classification. |
 | `2` | **Configuration error** — missing/invalid `momo.conf`, bad flags, daemon index out of range, unsafe feature combination rejected at load time (e.g. `[rebalance] enabled=true` without `degraded_read`). |
-| `3` | **Network error** — listener bind failure or unreachable dependency at startup. |
+| `3` | **Network error** — listener bind failure, unreachable dependency at startup, or a client upload that stored the object on **no** replica (see below). |
 | `4` | **Storage error** — store/database initialization failure, disk full (`ENOSPC`). |
 | `5` | **Crypto error** — key decode/derivation failure, TLS material rejected. |
 | `6` | **P2P error** — gossip/lease initialization failure. |
+
+### Client upload exit status
+
+A client upload (`momo -imp client -file …`) succeeds only when at least one
+replica acknowledged the object. The fan-out counts ACKs, so:
+
+| Outcome | Exit | Signal |
+| :--- | :--- | :--- |
+| Every connection established and acknowledged | `0` | No warning |
+| Some replicas failed, at least one stored it | `0` | `WARNING: … stored on N of M replicas (degraded; the repair loop restores the target count)` |
+| No replica connection could be established | `3` | `no replica connection was established` (wraps `ENOTCONN`) |
+| Connections were established but none stored it (no ACK, rejected handshake, quorum withheld) | `3` | `all N replica(s) failed to store the object` (wraps `EIO`) |
+
+A non-zero exit means the object is **not** on disk anywhere reachable, so a
+retry is safe and expected. This is the client-side half of Rule 9: an upload is
+never reported as stored when it was not.
 
 By cross-referencing the exit code with the error messages printed to standard
 error, operators can quickly diagnose and resolve issues within the Momo cluster.
