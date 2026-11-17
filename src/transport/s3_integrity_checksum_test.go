@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -182,7 +183,17 @@ func TestS3Checksum_MultipartCompleteBadDigest(t *testing.T) {
 
 	body := []byte("part-one")
 	uploadID := "uuid-555"
-	upload := &multipartUpload{bucket: "test-bucket", key: "obj.txt", parts: []multipartPart{{partNumber: 1, data: body}}}
+	spillDir := t.TempDir()
+	partPath := spillDir + "/1.part"
+	if werr := os.WriteFile(partPath, body, 0o600); werr != nil {
+		t.Fatalf("write part: %v", werr)
+	}
+	upload := &multipartUpload{
+		bucket:   "test-bucket",
+		key:      "obj.txt",
+		spillDir: spillDir,
+		parts:    []multipartPart{{partNumber: 1, size: int64(len(body)), path: partPath}},
+	}
 	muUploads.Lock()
 	uploads[uploadID] = upload
 	muUploads.Unlock()

@@ -74,6 +74,7 @@ Runs 4 parallel jobs, each testing a different wire protocol.
 | Smoke Test (QUIC) | `make smoke-quic` | `momo-quic` |
 | Smoke Test (S3-TCP) | `make smoke-s3-tcp` | `s3-tcp` |
 | Smoke Test (S3-QUIC) | `make smoke-s3-quic` | `s3-quic` |
+| S3 multipart de-framing | `src/transport/s3_multipart_deframing_test.go` | A chunked part plus a plain part assemble into exactly the decoded bytes (no framing, exact size); a 206 response carries no checksum header. The `aws-cli` compatibility check additionally asserts the stored size of a 20 MiB multipart upload equals the file size |
 | S3 client compatibility | `make smoke-s3-client` | `s3-tcp` via `aws-cli` |
 
 Each smoke test:
@@ -272,7 +273,7 @@ make smoke-s3-tcp
 make smoke-s3-quic
 
 # Real S3 client (aws-cli) round-trip: put/head/get/list/copy/20 MiB/delete.
-# Multipart uploads are excluded until #1358 lands (parts are not de-framed).
+# Includes a 20 MiB multipart upload with a stored-size assertion.
 # Catches "the gateway accepted it but the client cannot read it back" bugs
 # (issues #1346, #1348). Runs in .github/workflows/s3_client_compat.yml and
 # skips cleanly when aws-cli is not installed.
