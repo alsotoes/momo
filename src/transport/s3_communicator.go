@@ -3934,7 +3934,7 @@ func (m *S3Communicator) spoolPart(req *http.Request, path string) (etag string,
 		// otherwise copy, because the decoder spills into the OS temp dir and
 		// parts live under the daemon's data dir (EXDEV is expected, not a fault).
 		if os.Rename(name, path) != nil {
-			if cerr := copyFile(name, path); cerr != nil {
+			if copyFile(name, path) != nil {
 				_ = os.Remove(name)
 				return "", 0, m.answerPartFailure(http.StatusInternalServerError, "InternalError", s3MsgPartStorageFailure, fmt.Errorf("adopt part spill: %w", syscall.EIO))
 			}

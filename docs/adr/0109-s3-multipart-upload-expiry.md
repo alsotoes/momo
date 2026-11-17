@@ -19,7 +19,8 @@ gateway has no lifecycle support for it and no other bound.
 
 ## Decision
 - Expired Sessions Are Discarded: An incomplete multipart session older than the configured TTL SHALL be removed along with its spooled parts.
-- Orphaned Spills Are Swept: A spill directory that no live session owns SHALL be removed once it is older than the TTL.
+- Private Spill Location: Multipart parts SHALL be written below a private directory the daemon owns, not in a shared temp directory.
+- Orphaned Spills Are Swept: A spill directory that no live session owns SHALL be removed once it is older than the TTL, and only when the daemon can prove it created it.
 - Disableable: `multipart_upload_ttl = 0` SHALL disable reaping, and a negative or unparseable value SHALL be refused at config load.
 
 ## Consequences
