@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"hash"
 	"hash/crc32"
+	"hash/crc64"
 	"io"
 	"syscall"
 )
@@ -28,7 +29,14 @@ const (
 	ChecksumCRC32  = "crc32"
 	ChecksumSHA1   = "sha1"
 	ChecksumSHA256 = "sha256"
+	// ChecksumCRC64NVME is the CRC-64/NVME algorithm S3 clients default to for
+	// trailer checksums (issue #1363). Reflected CRC-64 with the NVMe polynomial,
+	// init and xorout all-ones, which is what hash/crc64 implements.
+	ChecksumCRC64NVME = "crc64nvme"
 )
+
+// crc64NVMETable is the CRC-64/NVME table (reflected polynomial 0x9A6C9329AC4BC9B5).
+var crc64NVMETable = crc64.MakeTable(0x9A6C9329AC4BC9B5)
 
 // ChecksumHasher returns a fresh digest for a supported checksum algorithm, or
 // nil when algo is not supported.
@@ -42,6 +50,8 @@ func ChecksumHasher(algo string) hash.Hash {
 		return sha1.New()
 	case ChecksumSHA256:
 		return sha256.New()
+	case ChecksumCRC64NVME:
+		return crc64.New(crc64NVMETable)
 	default:
 		return nil
 	}

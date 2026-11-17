@@ -1901,10 +1901,16 @@ func (m *S3Communicator) decodeStreamingPayloadLimited(req *http.Request, bodyLi
 		return fmt.Errorf("decoded length %d != declared %d: %w", decodedSize, expected, syscall.EBADMSG)
 	}
 
+	// A trailing checksum is the client's integrity assertion over the decoded
+	// bytes; verifying it here is what makes accepting the trailer meaningful.
+	if terr := m.verifyTrailerChecksum(req, dechunker, spill, decodedSize); terr != nil {
+		return terr
+	}
+
 	// Rewind the spill and hand it to Read() so the server pipeline consumes
 	// only de-framed content keyed by the real content hash.
 	if _, seekErr := spill.Seek(0, io.SeekStart); seekErr != nil {
-		m.writeStreamingError(http.StatusInternalServerError, "InternalError", "Failed to rewind buffered streaming payload.", "")
+		m.writeStreamingError(http.StatusInternalServerError, "InternalError", s3MsgRewindFailed, "")
 		return fmt.Errorf("failed to rewind streaming spill: %w", syscall.EIO)
 	}
 
@@ -2855,16 +2861,17 @@ var s3standardHeaders = []string{
 // Supported S3 checksum algorithms (issue #820, Tier P2). Values are stored
 // lowercase; S3 header names are case-insensitive on the wire.
 const (
-	checksumAlgoCRC32c = "crc32c"
-	checksumAlgoCRC32  = "crc32"
-	checksumAlgoSHA1   = "sha1"
-	checksumAlgoSHA256 = "sha256"
+	checksumAlgoCRC32c    = "crc32c"
+	checksumAlgoCRC64NVME = "crc64nvme"
+	checksumAlgoCRC32     = "crc32"
+	checksumAlgoSHA1      = "sha1"
+	checksumAlgoSHA256    = "sha256"
 )
 
 // isSupportedChecksum reports whether algo (lowercase) is a supported checksum.
 func isSupportedChecksum(algo string) bool {
 	switch algo {
-	case checksumAlgoCRC32c, checksumAlgoCRC32, checksumAlgoSHA1, checksumAlgoSHA256:
+	case checksumAlgoCRC32c, checksumAlgoCRC32, checksumAlgoCRC64NVME, checksumAlgoSHA1, checksumAlgoSHA256:
 		return true
 	default:
 		return false
@@ -2881,6 +2888,7 @@ var checksumRequestHeaders = []struct {
 	header string
 }{
 	{checksumAlgoCRC32c, "X-Amz-Checksum-Crc32c"},
+	{checksumAlgoCRC64NVME, "X-Amz-Checksum-Crc64nvme"},
 	{checksumAlgoCRC32, "X-Amz-Checksum-Crc32"},
 	{checksumAlgoSHA1, "X-Amz-Checksum-Sha1"},
 	{checksumAlgoSHA256, "X-Amz-Checksum-Sha256"},
@@ -3631,6 +3639,8 @@ const (
 	s3MsgPartStorageFailure = "Failed to allocate part storage."
 	// s3MsgPartsUnreadable answers a failure to read the spooled parts back.
 	s3MsgPartsUnreadable = "Failed to read the uploaded parts."
+	// s3MsgRewindFailed answers a failure to rewind a buffered payload.
+	s3MsgRewindFailed = "Failed to rewind buffered streaming payload."
 )
 
 // maxMultipartPartSize bounds a single part (S3's per-part ceiling).
@@ -3891,6 +3901,56 @@ func copyFile(src, dst string) error {
 		return werr
 	}
 	return out.Close()
+}
+
+// verifyTrailerChecksum validates a trailing x-amz-checksum-<algo> value against
+// the decoded bytes. It is a no-op when the client sent no checksum trailer.
+func (m *S3Communicator) verifyTrailerChecksum(req *http.Request, dechunker *awsChunkedReader, spill *os.File, decodedSize int64) error {
+	name, expected, ok := trailerChecksum(dechunker.TrailerValues())
+	if !ok {
+		return nil
+	}
+	algo := strings.TrimPrefix(name, s3ChecksumHeaderPrefix)
+	if newChecksumHasher(algo) == nil {
+		return m.answerPartFailure(http.StatusBadRequest, "InvalidRequest",
+			fmt.Sprintf("Unsupported checksum algorithm: %s", algo), fmt.Errorf("trailer checksum algorithm %q: %w", algo, syscall.EINVAL))
+	}
+	if _, err := spill.Seek(0, io.SeekStart); err != nil {
+		return m.answerPartFailure(http.StatusInternalServerError, "InternalError", s3MsgRewindFailed,
+			fmt.Errorf("rewind spill for trailer checksum: %w", syscall.EIO))
+	}
+	hasher := newChecksumHasher(algo)
+	written, cerr := io.Copy(hasher, io.LimitReader(spill, decodedSize))
+	if _, err := spill.Seek(0, io.SeekStart); err != nil {
+		return m.answerPartFailure(http.StatusInternalServerError, "InternalError", s3MsgRewindFailed,
+			fmt.Errorf("rewind spill after trailer checksum: %w", syscall.EIO))
+	}
+	if cerr != nil {
+		return m.answerPartFailure(http.StatusInternalServerError, "InternalError", s3MsgPartsUnreadable,
+			fmt.Errorf("hash streamed payload for trailer checksum: %w", cerr))
+	}
+	_ = written
+
+	computed := base64.StdEncoding.EncodeToString(hasher.Sum(nil))
+	if computed != expected {
+		return m.answerPartFailure(http.StatusBadRequest, "BadDigest", s3MsgChecksumMismatch,
+			fmt.Errorf("trailer checksum mismatch: expected %s got %s: %w", expected, computed, syscall.EBADMSG))
+	}
+	return nil
+}
+
+// trailerChecksum returns the x-amz-checksum-* value the client actually sent in
+// the trailer block, or ok=false when it sent none. A trailer merely *declared*
+// in X-Amz-Trailer but never delivered is treated as "no checksum": there is
+// nothing to verify, and refusing it would reject uploads S3 could not validate
+// either.
+func trailerChecksum(values map[string]string) (name, value string, ok bool) {
+	for k, v := range values {
+		if strings.HasPrefix(k, s3ChecksumHeaderPrefix) && v != "" {
+			return k, v, true
+		}
+	}
+	return "", "", false
 }
 
 // answerPartFailure writes an S3 error for a part-handling failure with a bounded
