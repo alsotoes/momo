@@ -1121,7 +1121,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 				alg = checksumAlgoCRC32
 			}
 			hdr := checksumHeaderFor(alg)
-			if s3Headers[hdr] == "" {
+			if stored := s3Headers[hdr]; stored == "" || isCompositeChecksum(stored) {
 				tmp, terr := os.CreateTemp("", "momo-s3-checksum-*")
 				if terr != nil {
 					m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
@@ -2574,6 +2574,9 @@ func FormatGetBucketLocationXML(region string) []byte {
 const s3MsgAccessDenied = "Access Denied."
 
 const (
+	// s3ChecksumHeaderPrefix prefixes every S3 checksum response header
+	// (x-amz-checksum-<algorithm>).
+	s3ChecksumHeaderPrefix = "x-amz-checksum-"
 	// s3PutOKETagPrefix starts a successful PUT response; the content hash
 	// follows as the ETag (shared by direct and forwarded PUT paths).
 	s3PutOKETagPrefix = "HTTP/1.1 200 OK\r\nETag: \""
@@ -2907,7 +2910,7 @@ var checksumRequestHeaders = []struct {
 // checksumHeaderFor returns the lowercase S3 response header for algo, e.g.
 // "x-amz-checksum-sha256".
 func checksumHeaderFor(algo string) string {
-	return "x-amz-checksum-" + algo
+	return s3ChecksumHeaderPrefix + algo
 }
 
 // normalizeChecksumAlgorithm lowercases and validates a checksum algorithm from
@@ -3085,6 +3088,23 @@ func headerKeysWithout(headers map[string]string, exclude string) []string {
 	return keys
 }
 
+// isCompositeChecksum reports whether an S3 checksum value is a composite
+// (multipart) checksum. S3 writes those with a "-<partCount>" suffix, and they
+// are a checksum of the part checksums, so they can never validate against the
+// whole object. Echoing one makes a client abort the download.
+func isCompositeChecksum(v string) bool {
+	idx := strings.LastIndexByte(v, '-')
+	if idx <= 0 || idx == len(v)-1 {
+		return false
+	}
+	for _, c := range v[idx+1:] {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 // checksumModeEnabled reports whether the request asked for checksum headers
 // (x-amz-checksum-mode: ENABLED).
 func checksumModeEnabled(req *http.Request) bool {
@@ -3108,7 +3128,12 @@ func appendS3MetaHeaders(b []byte, headers map[string]string, contentType string
 		// unsolicited makes a client validate a value it did not request, which
 		// fails for multipart objects whose stored checksum is composite
 		// ("response checksum header does not match calculated checksum").
-		if !withChecksums && strings.HasPrefix(k, "x-amz-checksum-") {
+		if !withChecksums && strings.HasPrefix(k, s3ChecksumHeaderPrefix) {
+			continue
+		}
+		// A composite checksum describes the parts, not the object: answering
+		// with it would make the client fail validation (#1354).
+		if strings.HasPrefix(k, s3ChecksumHeaderPrefix) && isCompositeChecksum(v) {
 			continue
 		}
 		if v != "" {

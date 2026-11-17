@@ -178,7 +178,9 @@ func TestRunServer_Error(t *testing.T) {
 		if err == nil {
 			t.Errorf("expected error, got nil")
 		}
-	case <-time.After(50 * time.Millisecond):
+	case <-time.After(5 * time.Second):
+		// The assertion is "fails instead of serving forever", not "fails
+		// within 50 ms": a loaded CI runner takes far longer to attempt a bind.
 		t.Errorf("expected server to exit with error, but it timed out")
 	}
 }

@@ -271,7 +271,8 @@ make smoke-quic
 make smoke-s3-tcp
 make smoke-s3-quic
 
-# Real S3 client (aws-cli) round-trip: put/head/get/list/copy/multipart/delete.
+# Real S3 client (aws-cli) round-trip: put/head/get/list/copy/20 MiB/delete.
+# Multipart uploads are excluded until #1358 lands (parts are not de-framed).
 # Catches "the gateway accepted it but the client cannot read it back" bugs
 # (issues #1346, #1348). Runs in .github/workflows/s3_client_compat.yml and
 # skips cleanly when aws-cli is not installed.
