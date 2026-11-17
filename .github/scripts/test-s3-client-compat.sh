@@ -81,6 +81,10 @@ export AWS_ACCESS_KEY_ID=compat-token
 export AWS_SECRET_ACCESS_KEY=compat-token
 export AWS_DEFAULT_REGION=us-east-1
 export AWS_EC2_METADATA_DISABLED=true
+# The gateway's checksum-mode support is incomplete (#1354), so ask the client not
+# to fail a transfer on a checksum it cannot reconcile instead of hiding that fact:
+# the checksum itself is verified separately below.
+export AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
 ENDPOINT="--endpoint-url http://127.0.0.1:$((PORT_BASE + 0))"
 
 fail() {
@@ -122,7 +126,7 @@ cmp "$DIR/big.bin" "$DIR/big.out" || fail "large round-trip differs"
 # Multipart (`aws s3 cp` over the threshold) is a known open defect: modern
 # clients send each part aws-chunked, the gateway stores the framing, and the
 # object ends up longer than the file (#1358). Tracked, not silently skipped.
-echo "note: multipart uploads are NOT covered here; see issue #1358"
+echo "note: multipart uploads are NOT covered here; see issue #1358 (parts are not de-framed)"
 
 echo "7/7 delete-object"
 aws $ENDPOINT s3api delete-object --bucket "$BUCKET" --key copy.bin >/dev/null || fail "delete-object"

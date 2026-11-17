@@ -25,7 +25,8 @@ client writes can be read back byte-for-byte.
 #### Scenario: Large object
 
 - **WHEN** aws-cli uploads a 20 MiB object in one part and downloads it again
-- **THEN** the bytes are identical
+- **THEN** the bytes are identical (with \`AWS_RESPONSE_CHECKSUM_VALIDATION=when_required\`,
+  because the gateway's checksum-mode support is incomplete — #1354)
 
 Multipart uploads are deliberately out of scope here: modern clients send each
 part aws-chunked and the gateway stores the framing, so the object is longer than
