@@ -107,6 +107,11 @@ type S3Communicator struct {
 
 	// Server state
 	meta common.FileMetadata
+	// metaParsed records that HandshakeServer already parsed the object metadata
+	// for this request, so ReceiveMetadata must not wait for another one. It is a
+	// flag rather than a check on meta.Name because a bucket-root request
+	// legitimately yields an empty key.
+	metaParsed bool
 	// isExternalClient is true when the client did not send X-Momo-Requested-Mode,
 	// indicating it is an external S3 client (e.g., aws-cli) that cannot perform
 	// client-side replication.
@@ -1625,8 +1630,8 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			}
 		}
 
-		// CreateBucket: PUT to a bucket root (key empty) in bucket mode.
-		// Legacy flat mode (no configured bucket) keeps the upload behavior.
+		// CreateBucket: PUT to a bucket root (key empty) in bucket mode. Legacy
+		// flat mode (no configured bucket) treats every path as an object name.
 		if m.configuredBucket != "" && key == "" {
 			if !m.validBucket(bucket) {
 				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
@@ -1650,7 +1655,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 				}
 				m.writeAuditLog("PutObjectLock", bucket, "success")
 			}
-			// CreateBucket succeeds for the configured bucket: 200 + LocationConstraint.
+			// CreateBucket succeeds (idempotent): 200 + LocationConstraint.
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			var buf [256]byte
 			b := buf[:0]
@@ -1685,12 +1690,13 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			return 0, 0, fmt.Errorf("invalid S3 path: %s: %w", rawPath, syscall.EBADMSG)
 		}
 
-		// Object name: in bucket mode store the bucket-relative key so GET/HEAD/DELETE
-		// (which extract the key without the bucket) resolve the same object. Legacy
-		// flat mode keeps the full cleaned path as the object name.
-		if m.configuredBucket != "" {
-			m.meta.Name = key
-		} else {
+		// Object name: the bucket-relative key whenever the path has one, so a
+		// PUT resolves the same object GET/HEAD/DELETE do (they extract the key
+		// without the bucket). Storing the full path made hierarchical objects
+		// unreadable (issue #1348). A path with no key is a flat top-level
+		// object, which legacy flat mode stores under its full path.
+		m.meta.Name = key
+		if m.meta.Name == "" {
 			m.meta.Name = strings.TrimPrefix(cleanPath, "/")
 		}
 		m.meta.Size = req.ContentLength
@@ -1750,6 +1756,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 				return 0, 0, err
 			}
 		}
+		m.metaParsed = true
 	}
 
 	return requestedMode, timestamp, nil
@@ -2192,7 +2199,7 @@ func (m *S3Communicator) ReceiveMetadata() (meta common.FileMetadata, err error)
 	// But wait! If the client used OPTIONS for handshake, then the PUT request
 	// is the NEXT HTTP request on the same connection!
 	// Let's read the next request if we haven't got metadata yet.
-	if m.meta.Name == "" {
+	if !m.metaParsed {
 		m.connReader.SetLimit(65536)                                // 🛡️ Bounded Network Loop/Read (Rule 24)
 		defer m.connReader.ClearLimit()                             // 🛡️ Always clear, even if ReadRequest panics (issue #653)
 		m.conn.SetReadDeadline(time.Now().Add(s3ReadHeaderTimeout)) // 🛡️ Slowloris mitigation (issue #592)
@@ -2213,7 +2220,11 @@ func (m *S3Communicator) ReceiveMetadata() (meta common.FileMetadata, err error)
 			return common.FileMetadata{}, fmt.Errorf("invalid S3 path: %s: %w", rawPath, syscall.EBADMSG)
 		}
 
-		m.meta.Name = strings.TrimPrefix(cleanPath, "/")
+		_, key := extractS3BucketAndKey(req)
+		m.meta.Name = key
+		if m.meta.Name == "" {
+			m.meta.Name = strings.TrimPrefix(cleanPath, "/")
+		}
 		m.meta.Size = req.ContentLength
 		hash := req.Header.Get("X-Amz-Content-Sha256")
 		if hash == "" {

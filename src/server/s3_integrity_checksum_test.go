@@ -21,6 +21,15 @@ import (
 // (HandshakeServer -> SendReplicationMode -> ReceiveMetadata -> getFile),
 // returning the server error. On checksum mismatch the S3 BadDigest response is
 // written to the peer and getFile returns the error.
+// storedName maps a path-style S3 name (bucket/key) to the object name the CAS
+// store uses: the bucket-relative key, which is what GET/HEAD/DELETE resolve.
+func storedName(name string) string {
+	if _, key, found := strings.Cut(name, "/"); found {
+		return key
+	}
+	return name
+}
+
 func driveS3Put(t *testing.T, auth, name, reqHeader, body string, store storage.Store) (string, error) {
 	t.Helper()
 
@@ -127,7 +136,7 @@ func TestS3SinglePartChecksum_GoodEcho(t *testing.T) {
 	if gErr != nil {
 		t.Fatalf("expected success, got %v (resp=%q)", gErr, resp)
 	}
-	rc, meta, err := store.Get(name)
+	rc, meta, err := store.Get(storedName(name))
 	if err != nil {
 		t.Fatalf("object should be stored: %v", err)
 	}
@@ -135,7 +144,7 @@ func TestS3SinglePartChecksum_GoodEcho(t *testing.T) {
 	if meta.Size != int64(len(body)) {
 		t.Errorf("size = %d, want %d", meta.Size, len(body))
 	}
-	if h := store.GetS3Meta(name)["x-amz-checksum-sha256"]; h != good {
+	if h := store.GetS3Meta(storedName(name))["x-amz-checksum-sha256"]; h != good {
 		t.Errorf("checksum not persisted/echoed: got %q, want %q", h, good)
 	}
 }
