@@ -14,7 +14,7 @@ MAIN := src/momo.go
 COVERAGE_MODULES = $(filter-out ./src,$(MODULES))
 MODULES := ./src ./src/common ./src/crypto ./src/transport ./src/client ./src/metrics ./src/p2p ./src/replication_order ./src/server ./src/storage ./src/momofs
 
-.PHONY: all build clean tidy vendor test vet lint coverage doc doc-live benchmark test-e2e smoke-tcp smoke-quic smoke-encryption-tcp smoke-encryption-quic smoke-encryption-s3-tcp smoke-encryption-s3-quic smoke-scale-cas test-contract test-load test-stress test-chaos test-metrics test-external-client blog-check adr-sync adr-sync-check ai-workflow-check monitoring-up monitoring-down pentest
+.PHONY: all build clean tidy vendor test vet lint coverage doc doc-live benchmark test-e2e smoke-tcp smoke-quic smoke-s3-client smoke-encryption-tcp smoke-encryption-quic smoke-encryption-s3-tcp smoke-encryption-s3-quic smoke-scale-cas test-contract test-load test-stress test-chaos test-metrics test-external-client blog-check adr-sync adr-sync-check ai-workflow-check monitoring-up monitoring-down pentest
 
 all: build
 
@@ -96,6 +96,9 @@ smoke-s3-tcp:
 
 smoke-s3-quic:
 	./.github/scripts/test-e2e.sh s3-quic
+
+smoke-s3-client:
+	./.github/scripts/test-s3-client-compat.sh
 
 smoke-encryption-tcp:
 	./.github/scripts/test-e2e-encryption.sh momo-tcp

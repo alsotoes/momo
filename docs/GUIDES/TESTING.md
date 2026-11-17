@@ -74,6 +74,7 @@ Runs 4 parallel jobs, each testing a different wire protocol.
 | Smoke Test (QUIC) | `make smoke-quic` | `momo-quic` |
 | Smoke Test (S3-TCP) | `make smoke-s3-tcp` | `s3-tcp` |
 | Smoke Test (S3-QUIC) | `make smoke-s3-quic` | `s3-quic` |
+| S3 client compatibility | `make smoke-s3-client` | `s3-tcp` via `aws-cli` |
 
 Each smoke test:
 1. Builds the momo binary
@@ -269,6 +270,12 @@ make smoke-tcp
 make smoke-quic
 make smoke-s3-tcp
 make smoke-s3-quic
+
+# Real S3 client (aws-cli) round-trip: put/head/get/list/copy/multipart/delete.
+# Catches "the gateway accepted it but the client cannot read it back" bugs
+# (issues #1346, #1348). Runs in .github/workflows/s3_client_compat.yml and
+# skips cleanly when aws-cli is not installed.
+make smoke-s3-client
 
 # TCP contract tests
 make test-contract
