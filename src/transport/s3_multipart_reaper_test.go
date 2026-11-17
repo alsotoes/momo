@@ -246,3 +246,95 @@ func TestCreateMultipartSpillDirIsPrivate(t *testing.T) {
 		t.Fatalf("spill dir %s is not below the private root %s", dir, root)
 	}
 }
+
+// TestMultipartSpillRootFallback covers the per-user cache path used when the
+// daemon has not set an override, and the private-mode validation.
+func TestMultipartSpillRootFallback(t *testing.T) {
+	SetMultipartSpillRoot("")
+	t.Cleanup(func() { SetMultipartSpillRoot("") })
+
+	root, err := multipartSpillRoot()
+	if err != nil {
+		t.Fatalf("multipartSpillRoot fallback: %v", err)
+	}
+	info, serr := os.Lstat(root)
+	if serr != nil {
+		t.Fatalf("lstat: %v", serr)
+	}
+	if perm := info.Mode().Perm(); perm != 0o700 {
+		t.Fatalf("fallback root mode = %o, want 700", perm)
+	}
+}
+
+// TestMultipartSpillRootRejectsPermissiveDir proves a world-readable root is
+// refused instead of being used for part data.
+func TestMultipartSpillRootRejectsPermissiveDir(t *testing.T) {
+	dataDir := t.TempDir()
+	root := filepath.Join(dataDir, "multipart-spill")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	SetMultipartSpillRoot(dataDir)
+	t.Cleanup(func() { SetMultipartSpillRoot("") })
+
+	if _, err := multipartSpillRoot(); err == nil {
+		t.Fatal("expected a permissive spill root to be refused")
+	}
+}
+
+// TestCopyFile proves the cross-filesystem adoption fallback copies the bytes and
+// removes a half-written destination on failure.
+func TestCopyFile(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src")
+	dst := filepath.Join(dir, "dst")
+	if err := os.WriteFile(src, []byte("part-bytes"), 0o600); err != nil {
+		t.Fatalf("write src: %v", err)
+	}
+	if err := copyFile(src, dst); err != nil {
+		t.Fatalf("copyFile: %v", err)
+	}
+	got, rerr := os.ReadFile(dst)
+	if rerr != nil {
+		t.Fatalf("read dst: %v", rerr)
+	}
+	if string(got) != "part-bytes" {
+		t.Fatalf("copied %q", got)
+	}
+	if err := copyFile(filepath.Join(dir, "missing"), filepath.Join(dir, "x")); err == nil {
+		t.Fatal("expected an error copying a missing source")
+	}
+}
+
+// TestReaperSkipsSymlinkedSpill proves a symlinked look-alike is never deleted.
+func TestReaperSkipsSymlinkedSpill(t *testing.T) {
+	root := t.TempDir()
+	target := t.TempDir()
+	if err := os.WriteFile(filepath.Join(target, multipartSpillMarker), nil, 0o600); err != nil {
+		t.Fatalf("write marker: %v", err)
+	}
+	link := filepath.Join(root, multipartSpillPrefix+"link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	if _, orphans := ReapExpiredMultipartUploads(24*time.Hour, time.Now().Add(72*time.Hour), root); orphans != 0 {
+		t.Fatalf("removed %d orphans through a symlink, want 0", orphans)
+	}
+	if _, err := os.Stat(target); err != nil {
+		t.Fatalf("symlink target was deleted: %v", err)
+	}
+}
+
+// TestReaperUnreadableRootIsNotFatal proves a bad spill root logs and returns
+// instead of panicking.
+func TestReaperUnreadableRootIsNotFatal(t *testing.T) {
+	notADir := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(notADir, []byte("x"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	sessions, orphans := ReapExpiredMultipartUploads(time.Hour, time.Now(), notADir)
+	if sessions != 0 || orphans != 0 {
+		t.Fatalf("expected no removals, got %d/%d", sessions, orphans)
+	}
+}
