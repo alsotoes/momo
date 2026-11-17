@@ -1030,7 +1030,7 @@ single-seek reads, sparse hole-punching deletion, and instant crash recovery.
 | Key | Required | Description |
 |-----|----------|-------------|
 | `backend` | no | `volume` packs **all** blobs into superblocks; `adaptive` routes blobs at or below `adaptive_threshold` to superblocks and larger ones to the per-blob local layout. |
-| `multipart_upload_ttl` | Go duration | `24h` | How long an incomplete S3 multipart upload keeps its spooled parts before being discarded. `0` disables reaping (an abandoned upload then pins its parts until the daemon restarts). A live upload is never touched; the sweep also removes spill directories left behind by a daemon that died mid-upload. |
+| `multipart_upload_ttl` | Go duration | `24h` | How long an incomplete S3 multipart upload keeps its spooled parts before being discarded. `0` disables reaping (an abandoned upload then pins its parts until the daemon restarts). A live upload is never touched; spilled parts live under `<data>/multipart-spill` (private 0700, ownership-marked), and the sweep also removes directories left behind by a daemon that died mid-upload. |
 | `adaptive_threshold` | no | Size boundary in bytes for the `adaptive` backend (default `1048576`, 1 MiB). |
 | `volume_size` | no | Bytes at which a superblock is sealed and a new one starts (default `1073741824`, 1 GiB; max 32 GiB). |
 

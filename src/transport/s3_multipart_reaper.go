@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -23,11 +24,45 @@ const multipartSpillPrefix = "momo-s3-multipart-"
 // to another user or another program).
 const multipartSpillMarker = ".momo-multipart-spill"
 
+// multipartSpillRootOverride is the operator-owned directory the daemon sets at
+// startup (its data dir). Parts never live in a shared temp directory, so
+// nothing outside this process can write where the sweep deletes.
+var multipartSpillRootOverride struct {
+	mu  sync.RWMutex
+	dir string
+}
+
+// SetMultipartSpillRoot places multipart parts below dir. The daemon calls this
+// with its data directory; without it the spill falls back to a private
+// per-user cache directory.
+func SetMultipartSpillRoot(dir string) {
+	multipartSpillRootOverride.mu.Lock()
+	multipartSpillRootOverride.dir = dir
+	multipartSpillRootOverride.mu.Unlock()
+}
+
+// configuredSpillRoot returns the override, or a private per-user cache path.
+func configuredSpillRoot() (string, error) {
+	multipartSpillRootOverride.mu.RLock()
+	dir := multipartSpillRootOverride.dir
+	multipartSpillRootOverride.mu.RUnlock()
+	if dir != "" {
+		return filepath.Join(dir, "multipart-spill"), nil
+	}
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(cache, "momo", "multipart-spill"), nil
+}
+
 // multipartSpillRoot returns this daemon's private spill root (0700), creating it
-// on first use. Parts live below it rather than directly in a shared temp
-// directory, so nothing outside this process can write where we delete.
+// on first use.
 func multipartSpillRoot() (string, error) {
-	root := filepath.Join(os.TempDir(), multipartSpillPrefix+"root")
+	root, cerr := configuredSpillRoot()
+	if cerr != nil {
+		return "", cerr
+	}
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return "", err
 	}

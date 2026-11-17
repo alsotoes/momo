@@ -3873,6 +3873,26 @@ func (m *S3Communicator) decodeError(copyErr error) error {
 	}
 }
 
+// copyFile copies src to dst, creating dst with 0600.
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = in.Close() }()
+
+	out, cerr := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	if cerr != nil {
+		return cerr
+	}
+	if _, werr := io.Copy(out, in); werr != nil {
+		_ = out.Close()
+		_ = os.Remove(dst)
+		return werr
+	}
+	return out.Close()
+}
+
 // answerPartFailure writes an S3 error for a part-handling failure with a bounded
 // write deadline, returning the POSIX-mapped error for the caller.
 func (m *S3Communicator) answerPartFailure(status int, code, msg string, mapped error) error {
@@ -3910,9 +3930,15 @@ func (m *S3Communicator) spoolPart(req *http.Request, path string) (etag string,
 			return "", 0, m.answerPartFailure(http.StatusInternalServerError, "InternalError", "Failed to read part body.", fmt.Errorf("upload part read body: %w", herr))
 		}
 		_ = spill.Close()
+		// Adopt by rename when the spill and the part live on one filesystem;
+		// otherwise copy, because the decoder spills into the OS temp dir and
+		// parts live under the daemon's data dir (EXDEV is expected, not a fault).
 		if os.Rename(name, path) != nil {
+			if cerr := copyFile(name, path); cerr != nil {
+				_ = os.Remove(name)
+				return "", 0, m.answerPartFailure(http.StatusInternalServerError, "InternalError", s3MsgPartStorageFailure, fmt.Errorf("adopt part spill: %w", syscall.EIO))
+			}
 			_ = os.Remove(name)
-			return "", 0, m.answerPartFailure(http.StatusInternalServerError, "InternalError", s3MsgPartStorageFailure, fmt.Errorf("adopt part spill: %w", syscall.EIO))
 		}
 		return hex.EncodeToString(hasher.Sum(nil)), written, nil
 	}

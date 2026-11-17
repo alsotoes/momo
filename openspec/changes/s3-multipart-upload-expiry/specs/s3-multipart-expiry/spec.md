@@ -23,10 +23,21 @@ along with its spooled parts.
 - **WHEN** a session is younger than the TTL
 - **THEN** it is untouched, including its parts
 
+### Requirement: Private Spill Location
+
+Multipart parts SHALL be written below a private directory the daemon owns, not in
+a shared temp directory.
+
+#### Scenario: Location
+
+- **WHEN** a part is spooled
+- **THEN** it is written under `<data>/multipart-spill` with a random name in a
+  0700 directory carrying the ownership marker
+
 ### Requirement: Orphaned Spills Are Swept
 
 A spill directory that no live session owns SHALL be removed once it is older
-than the TTL.
+than the TTL, and only when the daemon can prove it created it.
 
 #### Scenario: Daemon killed mid-upload
 
