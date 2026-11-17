@@ -3939,35 +3939,12 @@ func (m *S3Communicator) spoolPart(req *http.Request, path string) (etag string,
 // value over the part files. When the client asked for compute-only, the
 // computed checksum is persisted for echo on GET/HEAD.
 func (m *S3Communicator) verifyMultipartChecksumStream(req *http.Request, parts []multipartPart, key string) error {
-	algo, expected, perr := parseChecksum(req)
-	if perr != nil {
-		return m.answerPartFailure(http.StatusBadRequest, "InvalidRequest",
-			fmt.Sprintf("Unsupported checksum algorithm: %v", perr), fmt.Errorf("s3 checksum parse: %w", perr))
-	}
-	if algo == "" {
-		return nil
-	}
-
 	body, closeBody, oerr := openParts(parts)
-	algoHasher := newChecksumHasher(algo)
 	if oerr != nil {
 		return m.answerPartFailure(http.StatusInternalServerError, "InternalError", s3MsgPartsUnreadable, oerr)
 	}
-	_, cerr := io.Copy(algoHasher, body)
-	closeBody()
-	if cerr != nil {
-		return m.answerPartFailure(http.StatusInternalServerError, "InternalError", s3MsgPartsUnreadable, fmt.Errorf("checksum assembled parts: %w", cerr))
-	}
-
-	computed := base64.StdEncoding.EncodeToString(algoHasher.Sum(nil))
-	if expected != "" && computed != expected {
-		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		_, _ = writeS3Error(m.conn, http.StatusBadRequest, "BadDigest",
-			s3MsgChecksumMismatch, key)
-		return fmt.Errorf("s3 multipart checksum mismatch: expected %s got %s: %w", expected, computed, syscall.EBADMSG)
-	}
-	m.persistS3Checksum(key, checksumHeaderFor(algo), computed, algo)
-	return nil
+	defer closeBody()
+	return m.verifyChecksumOver(req, body, key)
 }
 
 // ─── CompleteMultipartUpload ───────────────────────────────────────────────
@@ -4093,6 +4070,12 @@ func (m *S3Communicator) handleCompleteMultipartUpload(req *http.Request, bucket
 // non-nil error on rejection. When the client asked for compute-only, the
 // computed checksum is persisted for echo on GET/HEAD.
 func (m *S3Communicator) verifyMultipartChecksum(req *http.Request, data []byte, key string) error {
+	return m.verifyChecksumOver(req, bytes.NewReader(data), key)
+}
+
+// verifyChecksumOver validates a client-supplied x-amz-checksum-* value against
+// the bytes read from r, persisting the computed digest for GET/HEAD echo.
+func (m *S3Communicator) verifyChecksumOver(req *http.Request, r io.Reader, key string) error {
 	algo, expected, perr := parseChecksum(req)
 	if perr != nil {
 		return m.answerPartFailure(http.StatusBadRequest, "InvalidRequest",
@@ -4101,13 +4084,16 @@ func (m *S3Communicator) verifyMultipartChecksum(req *http.Request, data []byte,
 	if algo == "" {
 		return nil
 	}
+
 	algoHasher := newChecksumHasher(algo)
-	algoHasher.Write(data)
+	if _, cerr := io.Copy(algoHasher, r); cerr != nil {
+		return m.answerPartFailure(http.StatusInternalServerError, "InternalError", s3MsgPartsUnreadable,
+			fmt.Errorf("checksum object bytes: %w", cerr))
+	}
 	computed := base64.StdEncoding.EncodeToString(algoHasher.Sum(nil))
 	if expected != "" && computed != expected {
 		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		_, _ = writeS3Error(m.conn, http.StatusBadRequest, "BadDigest",
-			s3MsgChecksumMismatch, key)
+		_, _ = writeS3Error(m.conn, http.StatusBadRequest, "BadDigest", s3MsgChecksumMismatch, key)
 		return fmt.Errorf("s3 multipart checksum mismatch: expected %s got %s: %w", expected, computed, syscall.EBADMSG)
 	}
 	m.persistS3Checksum(key, checksumHeaderFor(algo), computed, algo)
