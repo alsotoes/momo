@@ -21,6 +21,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -1243,8 +1244,12 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		b = append(b, "\"\r\nLast-Modified: "...)
 		b = time.Unix(0, meta.ModTime).UTC().AppendFormat(b, http.TimeFormat)
 		b = append(b, "\r\n"...)
-		b = appendS3MetaHeaders(b, s3Headers, contentType, checksumModeEnabled(req))
-		if forceChecksumHeader != "" {
+		// A partial response carries only part of the object, so a whole-object
+		// checksum cannot describe it. Clients validate per range and abort with
+		// a checksum mismatch, so checksums are omitted on 206 (issue #1354).
+		wantChecksums := checksumModeEnabled(req) && !serveRange
+		b = appendS3MetaHeaders(b, s3Headers, contentType, wantChecksums)
+		if forceChecksumHeader != "" && !serveRange {
 			b = append(b, forceChecksumHeader...)
 			b = append(b, "\r\n"...)
 		}
@@ -1830,6 +1835,13 @@ func (m *S3Communicator) handleOPRFEval(req *http.Request) (requestedMode int, t
 // hash/size. On failure it writes the appropriate S3 error response and
 // returns a POSIX-mapped error so the connection is torn down cleanly.
 func (m *S3Communicator) decodeStreamingPayload(req *http.Request) (err error) {
+	return m.decodeStreamingPayloadLimited(req, 0)
+}
+
+// decodeStreamingPayloadLimited de-frames an aws-chunked body, reading at most
+// bodyLimit bytes from the connection (0 = unbounded). Parts pass their request
+// Content-Length so the decoder cannot read past the part into the next request.
+func (m *S3Communicator) decodeStreamingPayloadLimited(req *http.Request, bodyLimit int64) (err error) {
 	defer common.RecoverErr("S3 decodeStreamingPayload", &err)
 
 	mode := streamingModeOf(req.Header.Get("X-Amz-Content-Sha256"), req.Header.Get("Content-Encoding"))
@@ -1837,30 +1849,12 @@ func (m *S3Communicator) decodeStreamingPayload(req *http.Request) (err error) {
 		return nil
 	}
 
-	// Expected decoded size as declared by the SDK (X-Amz-Decoded-Content-Length).
-	// Used to pre-check bounds and to reject smuggling/mismatches at the end.
-	var expected int64 = -1
-	if v := req.Header.Get(s3StreamingDecodedContentLength); v != "" {
-		ev, parseErr := strconv.ParseInt(v, 10, 64)
-		if parseErr != nil || ev < 0 {
-			m.writeStreamingError(http.StatusBadRequest, "InvalidArgument", "Invalid X-Amz-Decoded-Content-Length.", "")
-			return fmt.Errorf("invalid decoded content length %q: %w", v, syscall.EBADMSG)
-		}
-		expected = ev
+	expected, derr := m.declaredDecodedLength(req)
+	if derr != nil {
+		return derr
 	}
-	if expected > common.MaxFileSize {
-		m.writeStreamingError(http.StatusRequestEntityTooLarge, "EntityTooLarge", s3MsgEntityTooLarge, "")
-		return fmt.Errorf("decoded content length %d exceeds maximum: %w", expected, syscall.EOVERFLOW)
-	}
-
-	// Body-read deadline proportional to the decoded size (mirrors the server's
-	// size-based absolute deadline) to prevent stalled/hanging uploads.
-	if expected >= 0 {
-		m.conn.SetReadDeadline(time.Now().Add(5*time.Minute + time.Duration(expected/(10*1024*1024))*time.Minute))
-	} else {
-		m.conn.SetReadDeadline(time.Now().Add(15 * time.Minute))
-	}
-	defer m.conn.SetReadDeadline(time.Time{})
+	m.setStreamingReadDeadline(expected)
+	defer func() { _ = m.conn.SetReadDeadline(time.Time{}) }()
 
 	// Expect: 100-continue — emit the interim response before reading the body.
 	if strings.EqualFold(req.Header.Get("Expect"), "100-continue") {
@@ -1872,21 +1866,16 @@ func (m *S3Communicator) decodeStreamingPayload(req *http.Request) (err error) {
 		_ = m.conn.SetWriteDeadline(time.Time{})
 	}
 
-	// Signing context: signed modes require the verification material derived
-	// during SigV4 verification; unsigned modes de-frame without per-chunk
-	// checks (documented security posture).
-	var ctx *streamingSigningCtx
-	if mode == streamingSigned || mode == streamingSignedTrailer {
-		ctx = m.sigV4
-		if ctx == nil || len(ctx.signingKey) == 0 {
-			m.writeStreamingError(http.StatusBadRequest, "InvalidRequest", "Signed aws-chunked streaming requires SigV4 authentication.", "")
-			return fmt.Errorf("no signing context for signed streaming upload: %w", syscall.EACCES)
-		}
+	ctx, trailers, cerr := m.streamingContext(mode, req)
+	if cerr != nil {
+		return cerr
 	}
-	trailers := mode == streamingSignedTrailer || mode == streamingUnsignedTrailer ||
-		req.Header.Get(s3StreamingTrailerHeader) != ""
 
-	dechunker := newAWSChunkedReader(m.reader, ctx, trailers, common.MaxFileSize)
+	src := io.Reader(m.reader)
+	if bodyLimit > 0 {
+		src = io.LimitReader(m.reader, bodyLimit)
+	}
+	dechunker := newAWSChunkedReader(src, ctx, trailers, common.MaxFileSize)
 
 	spill, spillErr := os.CreateTemp("", "momo-aws-chunked-*")
 	if spillErr != nil {
@@ -1903,17 +1892,7 @@ func (m *S3Communicator) decodeStreamingPayload(req *http.Request) (err error) {
 	}()
 
 	if _, copyErr := io.Copy(spill, dechunker); copyErr != nil {
-		switch {
-		case errors.Is(copyErr, errStreamingSignatureMismatch):
-			m.writeStreamingError(http.StatusForbidden, "SignatureDoesNotMatch", "The chunk signature we calculated does not match the signature you provided.", "")
-			return fmt.Errorf("%w: streaming chunk signature mismatch", syscall.EACCES)
-		case errors.Is(copyErr, syscall.EOVERFLOW):
-			m.writeStreamingError(http.StatusRequestEntityTooLarge, "EntityTooLarge", s3MsgEntityTooLarge, "")
-			return fmt.Errorf("streaming payload exceeds maximum size: %w", syscall.EOVERFLOW)
-		default:
-			m.writeStreamingError(http.StatusBadRequest, "InvalidArgument", "Malformed aws-chunked body.", "")
-			return fmt.Errorf("streaming decode failed: %v: %w", copyErr, syscall.EBADMSG)
-		}
+		return m.decodeError(copyErr)
 	}
 
 	decodedSize := dechunker.DecodedSize()
@@ -3644,11 +3623,23 @@ func writeS3Error(w io.Writer, status int, code, message, resource string) (int,
 
 // ─── Multipart Upload Support (issue #764) ─────────────────────────────────
 
-// multipartUpload tracks a single multipart upload session.
+// maxMultipartPartSize bounds a single part (S3's per-part ceiling).
+const maxMultipartPartSize = 5 << 30
+
+// isAWSChunkedRequest reports whether the request body carries aws-chunked
+// framing (STREAMING-* payloads or an aws-chunked content encoding).
+func isAWSChunkedRequest(req *http.Request) bool {
+	return isStreamingLiteral(req.Header.Get("X-Amz-Content-Sha256")) ||
+		strings.Contains(req.Header.Get("Content-Encoding"), s3StreamingContentEncoding)
+}
+
+// multipartUpload tracks a single multipart upload session. Parts are spooled to
+// disk so a large part never has to fit in memory (issue #1358).
 type multipartUpload struct {
 	bucket    string
 	key       string
 	createdAt time.Time
+	spillDir  string // created on the first part; removed on complete/abort
 	parts     []multipartPart
 	mu        sync.Mutex
 }
@@ -3656,7 +3647,37 @@ type multipartUpload struct {
 type multipartPart struct {
 	partNumber int
 	etag       string
-	data       []byte
+	size       int64
+	path       string // spooled decoded bytes
+}
+
+// openParts opens every part file in order, returning the readers and a closer
+// that releases all of them.
+func openParts(parts []multipartPart) (io.Reader, func(), error) {
+	readers := make([]io.Reader, 0, len(parts))
+	files := make([]*os.File, 0, len(parts))
+	closeAll := func() {
+		for _, f := range files {
+			_ = f.Close()
+		}
+	}
+	for _, p := range parts {
+		f, err := os.Open(p.path)
+		if err != nil {
+			closeAll()
+			return nil, func() {}, fmt.Errorf("open part %d: %w", p.partNumber, err)
+		}
+		files = append(files, f)
+		readers = append(readers, f)
+	}
+	return io.MultiReader(readers...), closeAll, nil
+}
+
+// removeSpill deletes an upload's spooled parts.
+func removeSpill(dir string) {
+	if dir != "" {
+		_ = os.RemoveAll(dir)
+	}
 }
 
 var (
@@ -3731,30 +3752,40 @@ func (m *S3Communicator) handleUploadPart(req *http.Request, bucket, key string)
 		return 0, 0, fmt.Errorf("invalid part number %q: %w", partStr, syscall.EINVAL)
 	}
 
-	body, err := io.ReadAll(io.LimitReader(req.Body, 5<<30))
-	if err != nil {
-		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to read part body.", "")
-		return 0, 0, fmt.Errorf("upload part read body: %w", err)
-	}
-	req.Body.Close()
-
-	hasher := sha256.New()
-	hasher.Write(body)
-	etag := hex.EncodeToString(hasher.Sum(nil))
-
 	muUploads.Lock()
 	up, ok := uploads[uploadID]
+	muUploads.Unlock()
 	if !ok || up.bucket != bucket || up.key != key {
-		muUploads.Unlock()
 		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		writeS3Error(m.conn, http.StatusNotFound, "NoSuchUpload", "The specified upload does not exist.", "")
 		return 0, 0, ErrRequestHandled
 	}
+
 	up.mu.Lock()
-	up.parts = append(up.parts, multipartPart{partNumber: partNumber, etag: etag, data: body})
+	dir := up.spillDir
+	if dir == "" {
+		created, mkErr := os.MkdirTemp("", "momo-s3-multipart-*")
+		if mkErr != nil {
+			up.mu.Unlock()
+			_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to allocate part storage.", "")
+			return 0, 0, fmt.Errorf("create multipart spill dir: %w", syscall.EIO)
+		}
+		up.spillDir = created
+		dir = created
+	}
 	up.mu.Unlock()
-	muUploads.Unlock()
+
+	partPath := filepath.Join(dir, strconv.Itoa(partNumber)+".part")
+	etag, size, werr := m.spoolPart(req, partPath)
+	if werr != nil {
+		_ = os.Remove(partPath)
+		return 0, 0, werr
+	}
+
+	up.mu.Lock()
+	up.parts = append(up.parts, multipartPart{partNumber: partNumber, etag: etag, size: size, path: partPath})
+	up.mu.Unlock()
 
 	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	var hdrBuf [256]byte
@@ -3766,6 +3797,172 @@ func (m *S3Communicator) handleUploadPart(req *http.Request, bucket, key string)
 		return 0, 0, fmt.Errorf("failed to write UploadPart response: %v: %w", err, syscall.EPIPE)
 	}
 	return 0, 0, ErrRequestHandled
+}
+
+// streamingContext resolves the per-chunk signing material and whether a trailer
+// block follows the terminating chunk. Signed modes require SigV4 material;
+// unsigned modes de-frame without per-chunk checks (documented posture).
+func (m *S3Communicator) streamingContext(mode streamingMode, req *http.Request) (*streamingSigningCtx, bool, error) {
+	var ctx *streamingSigningCtx
+	if mode == streamingSigned || mode == streamingSignedTrailer {
+		ctx = m.sigV4
+		if ctx == nil || len(ctx.signingKey) == 0 {
+			m.writeStreamingError(http.StatusBadRequest, "InvalidRequest", "Signed aws-chunked streaming requires SigV4 authentication.", "")
+			return nil, false, fmt.Errorf("no signing context for signed streaming upload: %w", syscall.EACCES)
+		}
+	}
+	trailers := mode == streamingSignedTrailer || mode == streamingUnsignedTrailer ||
+		req.Header.Get(s3StreamingTrailerHeader) != ""
+	return ctx, trailers, nil
+}
+
+// declaredDecodedLength parses and bounds X-Amz-Decoded-Content-Length,
+// returning -1 when the client did not declare one.
+func (m *S3Communicator) declaredDecodedLength(req *http.Request) (int64, error) {
+	v := req.Header.Get(s3StreamingDecodedContentLength)
+	if v == "" {
+		return -1, nil
+	}
+	ev, parseErr := strconv.ParseInt(v, 10, 64)
+	if parseErr != nil || ev < 0 {
+		m.writeStreamingError(http.StatusBadRequest, "InvalidArgument", "Invalid X-Amz-Decoded-Content-Length.", "")
+		return -1, fmt.Errorf("invalid decoded content length %q: %w", v, syscall.EBADMSG)
+	}
+	if ev > common.MaxFileSize {
+		m.writeStreamingError(http.StatusRequestEntityTooLarge, "EntityTooLarge", s3MsgEntityTooLarge, "")
+		return -1, fmt.Errorf("decoded content length %d exceeds maximum: %w", ev, syscall.EOVERFLOW)
+	}
+	return ev, nil
+}
+
+// setStreamingReadDeadline bounds how long a streaming upload may take, scaled by
+// the declared decoded size (mirrors the server's size-based deadline) so a
+// stalled body cannot pin the handler.
+func (m *S3Communicator) setStreamingReadDeadline(expected int64) {
+	if expected >= 0 {
+		_ = m.conn.SetReadDeadline(time.Now().Add(5*time.Minute + time.Duration(expected/(10*1024*1024))*time.Minute))
+		return
+	}
+	_ = m.conn.SetReadDeadline(time.Now().Add(15 * time.Minute))
+}
+
+// decodeError answers a de-framing failure with the matching S3 error and
+// returns the POSIX-mapped error.
+func (m *S3Communicator) decodeError(copyErr error) error {
+	switch {
+	case errors.Is(copyErr, errStreamingSignatureMismatch):
+		m.writeStreamingError(http.StatusForbidden, "SignatureDoesNotMatch", "The chunk signature we calculated does not match the signature you provided.", "")
+		return fmt.Errorf("%w: streaming chunk signature mismatch", syscall.EACCES)
+	case errors.Is(copyErr, syscall.EOVERFLOW):
+		m.writeStreamingError(http.StatusRequestEntityTooLarge, "EntityTooLarge", s3MsgEntityTooLarge, "")
+		return fmt.Errorf("streaming payload exceeds maximum size: %w", syscall.EOVERFLOW)
+	default:
+		m.writeStreamingError(http.StatusBadRequest, "InvalidArgument", "Malformed aws-chunked body.", "")
+		return fmt.Errorf("streaming decode failed: %v: %w", copyErr, syscall.EBADMSG)
+	}
+}
+
+// spoolPart de-frames (when needed) and writes one part's decoded bytes to
+// path, returning its ETag (SHA-256 hex of the decoded bytes) and size. The body
+// is streamed to disk, so a part of any size costs no heap memory (issue #1358).
+func (m *S3Communicator) spoolPart(req *http.Request, path string) (etag string, size int64, err error) {
+	defer common.RecoverErr("S3 spoolPart", &err)
+
+	if isAWSChunkedRequest(req) {
+		// Modern clients frame every part with aws-chunked plus a checksum
+		// trailer; storing that framing inflated the object (#1358). The shared
+		// decoder already spills the de-framed bytes, so adopt that spill as the
+		// part file instead of copying it again.
+		if derr := m.decodeStreamingPayloadLimited(req, max(req.ContentLength, 0)); derr != nil {
+			return "", 0, derr
+		}
+		spill := m.streamingSpill
+		m.streamingSpill, m.streamingReader = nil, nil
+		if spill == nil {
+			return "", 0, fmt.Errorf("decoded part has no spill: %w", syscall.EIO)
+		}
+		name := spill.Name()
+
+		hasher := sha256.New()
+		written, herr := io.Copy(hasher, spill)
+		if herr != nil {
+			_ = spill.Close()
+			_ = os.Remove(name)
+			_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to read part body.", "")
+			return "", 0, fmt.Errorf("upload part read body: %w", herr)
+		}
+		_ = spill.Close()
+		if rerr := os.Rename(name, path); rerr != nil {
+			_ = os.Remove(name)
+			_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to allocate part storage.", "")
+			return "", 0, fmt.Errorf("adopt part spill: %w", syscall.EIO)
+		}
+		return hex.EncodeToString(hasher.Sum(nil)), written, nil
+	}
+
+	f, cerr := os.Create(path)
+	if cerr != nil {
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to allocate part storage.", "")
+		return "", 0, fmt.Errorf("create part spill: %w", syscall.EIO)
+	}
+	defer func() {
+		if clErr := f.Close(); clErr != nil && err == nil {
+			err = fmt.Errorf("close part spill: %w", syscall.EIO)
+		}
+	}()
+
+	hasher := sha256.New()
+	written, werr := io.Copy(io.MultiWriter(f, hasher), io.LimitReader(req.Body, maxMultipartPartSize))
+	if werr != nil {
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to read part body.", "")
+		return "", 0, fmt.Errorf("upload part read body: %w", werr)
+	}
+	return hex.EncodeToString(hasher.Sum(nil)), written, nil
+}
+
+// verifyMultipartChecksumStream validates the client-supplied x-amz-checksum-*
+// value over the part files. When the client asked for compute-only, the
+// computed checksum is persisted for echo on GET/HEAD.
+func (m *S3Communicator) verifyMultipartChecksumStream(req *http.Request, parts []multipartPart, key string) error {
+	algo, expected, perr := parseChecksum(req)
+	if perr != nil {
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, _ = writeS3Error(m.conn, http.StatusBadRequest, "InvalidRequest",
+			fmt.Sprintf("Unsupported checksum algorithm: %v", perr), "")
+		return fmt.Errorf("s3 checksum parse: %w", perr)
+	}
+	if algo == "" {
+		return nil
+	}
+
+	body, closeBody, oerr := openParts(parts)
+	algoHasher := newChecksumHasher(algo)
+	if oerr != nil {
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to read the uploaded parts.", "")
+		return oerr
+	}
+	_, cerr := io.Copy(algoHasher, body)
+	closeBody()
+	if cerr != nil {
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to read the uploaded parts.", "")
+		return fmt.Errorf("checksum assembled parts: %w", cerr)
+	}
+
+	computed := base64.StdEncoding.EncodeToString(algoHasher.Sum(nil))
+	if expected != "" && computed != expected {
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, _ = writeS3Error(m.conn, http.StatusBadRequest, "BadDigest",
+			"The x-amz-checksum-* value you specified did not match the checksum we calculated.", key)
+		return fmt.Errorf("s3 multipart checksum mismatch: expected %s got %s: %w", expected, computed, syscall.EBADMSG)
+	}
+	m.persistS3Checksum(key, checksumHeaderFor(algo), computed, algo)
+	return nil
 }
 
 // ─── CompleteMultipartUpload ───────────────────────────────────────────────
@@ -3794,16 +3991,30 @@ func (m *S3Communicator) handleCompleteMultipartUpload(req *http.Request, bucket
 		return parts[i].partNumber < parts[j].partNumber
 	})
 
-	var assembled bytes.Buffer
+	defer removeSpill(up.spillDir)
+
+	var finalSize int64
 	for _, p := range parts {
-		assembled.Write(p.data)
+		finalSize += p.size
 	}
 
-	data := assembled.Bytes()
+	// Hash over the part files (no assembled buffer), then stream them into the
+	// store from a second pass (issue #1358: parts must not be held in RAM).
+	hashReader, closeHash, oerr := openParts(parts)
+	if oerr != nil {
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to read the uploaded parts.", "")
+		return 0, 0, oerr
+	}
 	hasher := sha256.New()
-	hasher.Write(data)
+	_, herr := io.Copy(hasher, hashReader)
+	closeHash()
+	if herr != nil {
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to read the uploaded parts.", "")
+		return 0, 0, fmt.Errorf("hash assembled parts: %w", herr)
+	}
 	finalHash := hex.EncodeToString(hasher.Sum(nil))
-	finalSize := int64(len(data))
 
 	// R10 Phase 4 (#938): object-lock headers are parsed and version-gated
 	// before persisting, so an unhonorable request never writes bytes.
@@ -3815,7 +4026,7 @@ func (m *S3Communicator) handleCompleteMultipartUpload(req *http.Request, bucket
 	// Issue #820 (Tier P2): verify the client-supplied checksum over the
 	// assembled bytes before persisting; on mismatch reject 400 BadDigest
 	// without calling store.Put.
-	if cerr := m.verifyMultipartChecksum(req, data, key); cerr != nil {
+	if cerr := m.verifyMultipartChecksumStream(req, parts, key); cerr != nil {
 		return 0, 0, cerr
 	}
 
@@ -3829,7 +4040,15 @@ func (m *S3Communicator) handleCompleteMultipartUpload(req *http.Request, bucket
 	m.meta.Hash = finalHash
 	m.meta.Size = finalSize
 
-	if err := m.store.Put(key, finalHash, finalSize, "", bytes.NewReader(data)); err != nil {
+	body, closeBody, berr := openParts(parts)
+	if berr != nil {
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to read the uploaded parts.", "")
+		return 0, 0, berr
+	}
+	defer closeBody()
+
+	if err := m.store.Put(key, finalHash, finalSize, "", body); err != nil {
 		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		if errors.Is(err, syscall.ENOSPC) {
 			writeS3Error(m.conn, http.StatusInsufficientStorage, "InsufficientStorage", "There is insufficient storage space to complete the request.", "")
@@ -3922,8 +4141,12 @@ func (m *S3Communicator) recordMultipartVersion(bucket, key, hash string, size i
 func (m *S3Communicator) handleAbortMultipartUpload(uploadID string) (requestedMode int, timestamp int64, err error) {
 	defer common.RecoverErrClose("S3 handleAbortMultipartUpload", &err, m.conn)
 	muUploads.Lock()
+	up := uploads[uploadID]
 	delete(uploads, uploadID)
 	muUploads.Unlock()
+	if up != nil {
+		removeSpill(up.spillDir)
+	}
 
 	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	var hdrBuf [256]byte
@@ -3993,7 +4216,7 @@ func (m *S3Communicator) handleListParts(bucket, key, uploadID string) (requeste
 		xmlEscape(&buf, p.etag)
 		buf.WriteString(`"</ETag>`)
 		buf.WriteString(`<Size>`)
-		buf.Write(strconv.AppendInt(intBuf[:0], int64(len(p.data)), 10))
+		buf.Write(strconv.AppendInt(intBuf[:0], p.size, 10))
 		buf.WriteString(`</Size>`)
 		buf.WriteString(`<LastModified>`)
 		buf.Write(tstr)

@@ -81,10 +81,6 @@ export AWS_ACCESS_KEY_ID=compat-token
 export AWS_SECRET_ACCESS_KEY=compat-token
 export AWS_DEFAULT_REGION=us-east-1
 export AWS_EC2_METADATA_DISABLED=true
-# The gateway's checksum-mode support is incomplete (#1354), so ask the client not
-# to fail a transfer on a checksum it cannot reconcile instead of hiding that fact:
-# the checksum itself is verified separately below.
-export AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
 ENDPOINT="--endpoint-url http://127.0.0.1:$((PORT_BASE + 0))"
 
 fail() {
@@ -117,16 +113,14 @@ echo "5/7 copy-object"
 aws $ENDPOINT s3api copy-object --bucket "$BUCKET" --key copy.bin --copy-source "$BUCKET/$KEY" >/dev/null || fail "copy-object"
 aws $ENDPOINT s3api head-object --bucket "$BUCKET" --key copy.bin >/dev/null || fail "head-object on the copy"
 
-echo "6/7 large single-part copy (aws s3 cp, 20 MiB)"
+echo "6/7 multipart upload (aws s3 cp, 20 MiB)"
 dd if=/dev/urandom of="$DIR/big.bin" bs=1M count=20 2>/dev/null
-aws $ENDPOINT s3api put-object --bucket "$BUCKET" --key big.bin --body "$DIR/big.bin" >/dev/null || fail "large put-object"
-aws $ENDPOINT s3 cp "s3://$BUCKET/big.bin" "$DIR/big.out" --only-show-errors || fail "large download"
-cmp "$DIR/big.bin" "$DIR/big.out" || fail "large round-trip differs"
-
-# Multipart (`aws s3 cp` over the threshold) is a known open defect: modern
-# clients send each part aws-chunked, the gateway stores the framing, and the
-# object ends up longer than the file (#1358). Tracked, not silently skipped.
-echo "note: multipart uploads are NOT covered here; see issue #1358 (parts are not de-framed)"
+aws $ENDPOINT s3 cp "$DIR/big.bin" "s3://$BUCKET/big.bin" --only-show-errors || fail "multipart upload"
+STORED=$(aws $ENDPOINT s3api head-object --bucket "$BUCKET" --key big.bin --query ContentLength --output text)
+EXPECTED=$(stat -c%s "$DIR/big.bin")
+[ "$STORED" = "$EXPECTED" ] || fail "multipart upload stored $STORED bytes, expected $EXPECTED (aws-chunked framing leaked into the object)"
+aws $ENDPOINT s3 cp "s3://$BUCKET/big.bin" "$DIR/big.out" --only-show-errors || fail "multipart download"
+cmp "$DIR/big.bin" "$DIR/big.out" || fail "multipart round-trip differs"
 
 echo "7/7 delete-object"
 aws $ENDPOINT s3api delete-object --bucket "$BUCKET" --key copy.bin >/dev/null || fail "delete-object"

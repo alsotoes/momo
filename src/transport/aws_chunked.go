@@ -122,7 +122,7 @@ type streamingSigningCtx struct {
 // string-to-sign keyed by the derived signing key and seeded with the request
 // signature.
 type awsChunkedReader struct {
-	source *bufio.Reader
+	source io.Reader
 
 	// signing context; nil key means unsigned mode (no per-chunk verification)
 	signingKey []byte
@@ -145,7 +145,7 @@ type awsChunkedReader struct {
 
 // newAWSChunkedReader constructs a de-framer. When ctx is nil the reader
 // operates in unsigned mode (no per-chunk signature verification).
-func newAWSChunkedReader(src *bufio.Reader, ctx *streamingSigningCtx, trailers bool, maxTotal int64) *awsChunkedReader {
+func newAWSChunkedReader(src io.Reader, ctx *streamingSigningCtx, trailers bool, maxTotal int64) *awsChunkedReader {
 	r := &awsChunkedReader{
 		source:      src,
 		trailers:    trailers,
@@ -225,13 +225,15 @@ func (r *awsChunkedReader) readChunkHeader() error {
 				return err
 			}
 		}
-		if err := r.expectCRLF(); err != nil {
-			return fmt.Errorf("malformed aws-chunked terminating chunk: %w", err)
-		}
+		// Trailer variants put the trailing-header block straight after the
+		// terminating chunk line (0\r\n then "name:value" lines then a blank
+		// line); plain variants end with a bare CRLF (issue #1358).
 		if r.trailers {
 			if err := r.consumeTrailers(); err != nil {
 				return err
 			}
+		} else if err := r.expectCRLF(); err != nil {
+			return fmt.Errorf("malformed aws-chunked terminating chunk: %w", err)
 		}
 		r.done = true
 		return nil
@@ -293,12 +295,35 @@ func (r *awsChunkedReader) verifyChunkHash(chunkHashHex string) error {
 	return nil
 }
 
+// readLineFrag returns the next fragment up to and including a newline. The
+// buffered fast path is kept; a plain io.Reader is read byte by byte and reports
+// bufio.ErrBufferFull to mean "line not finished yet", which is the continuation
+// signal readHeaderLine already handles. Returning nil after a single byte would
+// make readHeaderLine strip that byte as if it were the newline.
+func (r *awsChunkedReader) readLineFrag() ([]byte, error) {
+	if br, ok := r.source.(*bufio.Reader); ok {
+		return br.ReadSlice('\n')
+	}
+	var one [1]byte
+	n, err := r.source.Read(one[:])
+	if n == 1 {
+		if one[0] == '\n' {
+			return one[:1], nil
+		}
+		return one[:1], bufio.ErrBufferFull
+	}
+	if err == nil {
+		err = io.ErrNoProgress
+	}
+	return nil, err
+}
+
 // readHeaderLine reads a single newline-terminated chunk header line, bounded
 // to maxAWSChunkHeaderLine bytes.
 func (r *awsChunkedReader) readHeaderLine() (string, error) {
 	buf := make([]byte, 0, 128)
 	for {
-		frag, err := r.source.ReadSlice('\n')
+		frag, err := r.readLineFrag()
 		buf = append(buf, frag...)
 		if err == bufio.ErrBufferFull {
 			if len(buf) > maxAWSChunkHeaderLine {

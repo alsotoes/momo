@@ -3,6 +3,7 @@ package transport
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -238,11 +239,17 @@ func TestS3ObjectLock_MultipartCapture(t *testing.T) {
 	}
 
 	uploadID := "uuid-lock-1"
+	spillDir1 := t.TempDir()
+	partPath1 := spillDir1 + "/1.part"
+	if werr := os.WriteFile(partPath1, []byte("worm-bytes"), 0o600); werr != nil {
+		t.Fatalf("write part: %v", werr)
+	}
 	muUploads.Lock()
 	uploads[uploadID] = &multipartUpload{
-		bucket: "bucket",
-		key:    "locked.txt",
-		parts:  []multipartPart{{partNumber: 1, data: []byte("worm-bytes")}},
+		bucket:   "bucket",
+		key:      "locked.txt",
+		spillDir: spillDir1,
+		parts:    []multipartPart{{partNumber: 1, size: 10, path: partPath1}},
 	}
 	muUploads.Unlock()
 	defer func() {
@@ -276,11 +283,17 @@ func TestS3ObjectLock_MultipartCapture(t *testing.T) {
 func TestS3ObjectLock_MultipartUnversionedRejected(t *testing.T) {
 	store, _ := newVersionedS3Stack(t)
 	uploadID := "uuid-lock-2"
+	spillDir2 := t.TempDir()
+	partPath2 := spillDir2 + "/1.part"
+	if werr := os.WriteFile(partPath2, []byte("bytes"), 0o600); werr != nil {
+		t.Fatalf("write part: %v", werr)
+	}
 	muUploads.Lock()
 	uploads[uploadID] = &multipartUpload{
-		bucket: "bucket",
-		key:    "plain.txt",
-		parts:  []multipartPart{{partNumber: 1, data: []byte("bytes")}},
+		bucket:   "bucket",
+		key:      "plain.txt",
+		spillDir: spillDir2,
+		parts:    []multipartPart{{partNumber: 1, size: 5, path: partPath2}},
 	}
 	muUploads.Unlock()
 	defer func() {
