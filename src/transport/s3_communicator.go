@@ -1741,6 +1741,14 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			if err := m.decodeStreamingPayload(req); err != nil {
 				return 0, 0, err
 			}
+		} else if m.isExternalClient && m.meta.Hash == "" {
+			// An unsigned PUT (e.g. `curl -T`, `UNSIGNED-PAYLOAD`) declares no
+			// content hash, but the SHA-256 is the CAS blob key and must exist
+			// before ingest. Derive it from the bytes instead of refusing the
+			// upload (issue #1346).
+			if err := m.bufferUnsignedPayload(req); err != nil {
+				return 0, 0, err
+			}
 		}
 	}
 
@@ -1849,12 +1857,12 @@ func (m *S3Communicator) decodeStreamingPayload(req *http.Request) (err error) {
 
 	// Expect: 100-continue — emit the interim response before reading the body.
 	if strings.EqualFold(req.Header.Get("Expect"), "100-continue") {
-		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		if _, werr := m.conn.Write([]byte("HTTP/1.1 100 Continue\r\n\r\n")); werr != nil {
-			m.conn.SetWriteDeadline(time.Time{})
+			_ = m.conn.SetWriteDeadline(time.Time{})
 			return fmt.Errorf("failed to send 100-continue: %v: %w", werr, syscall.EPIPE)
 		}
-		m.conn.SetWriteDeadline(time.Time{})
+		_ = m.conn.SetWriteDeadline(time.Time{})
 	}
 
 	// Signing context: signed modes require the verification material derived
@@ -1882,8 +1890,8 @@ func (m *S3Communicator) decodeStreamingPayload(req *http.Request) (err error) {
 	success := false
 	defer func() {
 		if !success {
-			spill.Close()
-			os.Remove(spillName)
+			_ = spill.Close()
+			_ = os.Remove(spillName)
 		}
 	}()
 
@@ -1923,6 +1931,82 @@ func (m *S3Communicator) decodeStreamingPayload(req *http.Request) (err error) {
 	return nil
 }
 
+// bufferUnsignedPayload derives the content hash for an external S3 PUT that
+// declares none. The body is spooled disk-first (never held in memory), hashed
+// while copying, rewound, and replayed through Read so the shared ingest path
+// still verifies the digest it stores (issue #1346).
+func (m *S3Communicator) bufferUnsignedPayload(req *http.Request) (err error) {
+	defer common.RecoverErr("S3 bufferUnsignedPayload", &err)
+
+	if req.ContentLength > common.MaxFileSize {
+		m.writeStreamingError(http.StatusRequestEntityTooLarge, "EntityTooLarge",
+			"Your proposed upload exceeds the maximum allowed object size.", "")
+		return fmt.Errorf("declared length %d exceeds maximum: %w", req.ContentLength, syscall.EOVERFLOW)
+	}
+
+	// Honour Expect: 100-continue before pulling the body, mirroring the
+	// aws-chunked path so clients start streaming immediately.
+	if strings.EqualFold(req.Header.Get("Expect"), "100-continue") {
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		if _, werr := m.conn.Write([]byte("HTTP/1.1 100 Continue\r\n\r\n")); werr != nil {
+			_ = m.conn.SetWriteDeadline(time.Time{})
+			return fmt.Errorf("failed to send 100-continue: %v: %w", werr, syscall.EPIPE)
+		}
+		_ = m.conn.SetWriteDeadline(time.Time{})
+	}
+
+	spill, spillErr := os.CreateTemp("", "momo-s3-unsigned-*")
+	if spillErr != nil {
+		m.writeStreamingError(http.StatusInternalServerError, "InternalError", "Failed to buffer the upload.", "")
+		return fmt.Errorf("create unsigned payload spill: %w", syscall.EIO)
+	}
+	spillName := spill.Name()
+	success := false
+	defer func() {
+		if !success {
+			_ = spill.Close()
+			_ = os.Remove(spillName)
+		}
+	}()
+
+	// Read deadline proportional to the declared size, same policy as the
+	// aws-chunked decoder (Rule 24: bounded reads).
+	if req.ContentLength > 0 {
+		_ = m.conn.SetReadDeadline(time.Now().Add(5*time.Minute + time.Duration(req.ContentLength/(10*1024*1024))*time.Minute))
+	} else {
+		_ = m.conn.SetReadDeadline(time.Now().Add(15 * time.Minute))
+	}
+	defer func() { _ = m.conn.SetReadDeadline(time.Time{}) }()
+
+	hasher := sha256.New()
+	body := http.MaxBytesReader(nil, req.Body, common.MaxFileSize)
+	written, copyErr := io.Copy(io.MultiWriter(spill, hasher), body)
+	if copyErr != nil {
+		m.writeStreamingError(http.StatusBadRequest, "InvalidArgument", "Failed to read the request body.", "")
+		return fmt.Errorf("buffer unsigned payload: %v: %w", copyErr, syscall.EBADMSG)
+	}
+	if req.ContentLength >= 0 && written != req.ContentLength {
+		m.writeStreamingError(http.StatusBadRequest, "IncompleteBody",
+			"You did not provide the number of bytes specified by the Content-Length HTTP header.", "")
+		return fmt.Errorf("body length %d != declared %d: %w", written, req.ContentLength, syscall.EBADMSG)
+	}
+
+	if _, seekErr := spill.Seek(0, io.SeekStart); seekErr != nil {
+		m.writeStreamingError(http.StatusInternalServerError, "InternalError", "Failed to rewind buffered upload.", "")
+		return fmt.Errorf("failed to rewind unsigned spill: %w", syscall.EIO)
+	}
+
+	var hexBuf [sha256.Size * 2]byte
+	hex.Encode(hexBuf[:], hasher.Sum(nil))
+	m.meta.Hash = string(hexBuf[:])
+	m.meta.Size = written
+	m.streamingSpill = spill
+	m.streamingReader = spill
+	m.streamingPayload = true
+	success = true
+	return nil
+}
+
 // writeStreamingError writes an S3 error response with a bounded write deadline.
 func (m *S3Communicator) writeStreamingError(status int, code, msg, resource string) {
 	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
@@ -1934,6 +2018,12 @@ func (m *S3Communicator) writeStreamingError(status int, code, msg, resource str
 // the S3 session.
 func (m *S3Communicator) SendReplicationMode(mode int) (err error) {
 	defer common.RecoverErr("S3 SendReplicationMode", &err)
+	// Interim momo framing again: a plain S3 client must not receive an extra
+	// 200 before its upload completes, so only momo-framed clients are told the
+	// negotiated mode (issue #1346).
+	if m.isExternalClient {
+		return nil
+	}
 	// 🛡️ Zero-Crash: Set a short write deadline to prevent stalled socket hanging
 	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	defer m.conn.SetWriteDeadline(time.Time{})
@@ -2162,6 +2252,11 @@ func (m *S3Communicator) ReceiveMetadata() (meta common.FileMetadata, err error)
 // the X-Momo-Metadata-Status header.
 func (m *S3Communicator) SendMetadataStatus(status int) (err error) {
 	defer common.RecoverErr("S3 SendMetadataStatus", &err)
+	// Interim momo framing is not part of the S3 contract: a plain S3 client
+	// reads this 200 as the final response and stops sending its body.
+	if m.isExternalClient {
+		return nil
+	}
 	// 🛡️ Zero-Crash: Set a short write deadline to prevent stalled socket hanging
 	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	defer m.conn.SetWriteDeadline(time.Time{})
@@ -2190,6 +2285,20 @@ func (m *S3Communicator) SendACK(serverId int) (err error) {
 	// 🛡️ Zero-Crash: Set a short write deadline to prevent stalled socket hanging
 	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	defer m.conn.SetWriteDeadline(time.Time{})
+
+	// An external S3 client gets a real S3 response (status + ETag), not the
+	// momo ACK frame: the framing body is meaningless to it (issue #1346).
+	if m.isExternalClient {
+		var ebuf [512]byte
+		eb := ebuf[:0]
+		eb = append(eb, "HTTP/1.1 200 OK\r\nETag: \""...)
+		eb = append(eb, common.TrimNullBytesFromString(m.meta.Hash)...)
+		eb = append(eb, "\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"...)
+		if _, werr := m.conn.Write(eb); werr != nil {
+			return fmt.Errorf("failed to write S3 PUT response: %v: %w", werr, syscall.EPIPE)
+		}
+		return nil
+	}
 
 	// ⚡ Bolt: Eliminate http.Response allocation and fmt.Sprintf using stack buffer direct write
 	var buf [256]byte

@@ -87,6 +87,8 @@ an S3 `Code`, and a message.
 | `400` | `InvalidRequest` | Unsupported SSE request (SSE-C), conflicting checksum declaration, malformed XML, or a lock/retention field used on a bucket without the feature enabled. |
 | `400` | `BadDigest` | Supplied `x-amz-checksum-*` did not match the received bytes (the object is not stored). |
 | `400` | `InvalidArgument` | Unknown SSE algorithm or an out-of-range value. |
+| `400` | `IncompleteBody` | Fewer bytes arrived than the declared `Content-Length` on a PUT (nothing is stored). |
+| `413` | `EntityTooLarge` | The declared `Content-Length` exceeds the maximum object size; the body is never read. |
 | `400` | `MalformedXML` | The request body is not well-formed XML (bucket/object subresource configuration). |
 | `400` | `AuthorizationQueryParametersError` | A presigned (query-string) request is missing a required SigV4 parameter. |
 | `403` | `AuthorizationHeaderMalformed` | SigV4 header missing a required component, stale timestamp, or unsupported credential scope. |
