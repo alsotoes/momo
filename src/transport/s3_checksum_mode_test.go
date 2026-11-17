@@ -51,3 +51,42 @@ func TestChecksumModeEnabled(t *testing.T) {
 		t.Fatal("checksum mode must be detected (case-insensitive header)")
 	}
 }
+
+// TestCompositeChecksumDetection pins the multipart checksum rule: a value with
+// a "-<partCount>" suffix is a checksum of the parts, not of the object (#1354).
+func TestCompositeChecksumDetection(t *testing.T) {
+	cases := map[string]bool{
+		"AAAAAA==":           false,
+		"abc==-4":            true,
+		"abc==-12":           true,
+		"":                   false,
+		"-3":                 false,
+		"abc==-":             false,
+		"abc==-x":            false,
+		"dGVzdC1vYmplY3Q=-1": true,
+	}
+	for value, want := range cases {
+		if got := isCompositeChecksum(value); got != want {
+			t.Fatalf("isCompositeChecksum(%q) = %v, want %v", value, got, want)
+		}
+	}
+}
+
+// TestCompositeChecksumIsNotEchoed proves a composite value is dropped from the
+// response even in checksum mode, so a client cannot validate it against the
+// object bytes.
+func TestCompositeChecksumIsNotEchoed(t *testing.T) {
+	headers := map[string]string{
+		"x-amz-checksum-crc32":     "abc==-4",
+		"x-amz-checksum-algorithm": "CRC32",
+	}
+	got := string(appendS3MetaHeaders(nil, headers, "", true))
+	if strings.Contains(got, "abc==-4") {
+		t.Fatalf("composite checksum echoed to the client: %q", got)
+	}
+
+	whole := map[string]string{"x-amz-checksum-crc32": "AAAAAA=="}
+	if out := string(appendS3MetaHeaders(nil, whole, "", true)); !strings.Contains(out, "CCCCCC") && !strings.Contains(out, "AAAAAA==") {
+		t.Fatalf("whole-object checksum must still be echoed, got %q", out)
+	}
+}
