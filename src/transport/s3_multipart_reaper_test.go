@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -211,5 +212,37 @@ func TestMultipartTTLFromConfig(t *testing.T) {
 		if got := MultipartTTLFromConfig(raw); got != want {
 			t.Fatalf("MultipartTTLFromConfig(%q) = %s, want %s", raw, got, want)
 		}
+	}
+}
+
+// TestCreateMultipartSpillDirIsPrivate proves the spill directory is created
+// below a private root with a random name and carries the ownership marker, so
+// the sweep can prove what it deletes.
+func TestCreateMultipartSpillDirIsPrivate(t *testing.T) {
+	dir, err := createMultipartSpillDir()
+	if err != nil {
+		t.Fatalf("createMultipartSpillDir: %v", err)
+	}
+	t.Cleanup(func() { removeSpill(dir) })
+
+	info, serr := os.Lstat(dir)
+	if serr != nil {
+		t.Fatalf("lstat: %v", serr)
+	}
+	if !info.IsDir() {
+		t.Fatalf("%s is not a directory", dir)
+	}
+	if perm := info.Mode().Perm(); perm != 0o700 {
+		t.Fatalf("spill dir mode = %o, want 700", perm)
+	}
+	if _, merr := os.Lstat(filepath.Join(dir, multipartSpillMarker)); merr != nil {
+		t.Fatalf("ownership marker missing: %v", merr)
+	}
+	root, rerr := multipartSpillRoot()
+	if rerr != nil {
+		t.Fatalf("multipartSpillRoot: %v", rerr)
+	}
+	if rel, _ := filepath.Rel(root, dir); rel == ".." || strings.HasPrefix(rel, "..") {
+		t.Fatalf("spill dir %s is not below the private root %s", dir, root)
 	}
 }

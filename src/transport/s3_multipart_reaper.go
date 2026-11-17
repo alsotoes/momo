@@ -2,10 +2,14 @@ package transport
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -19,12 +23,39 @@ const multipartSpillPrefix = "momo-s3-multipart-"
 // to another user or another program).
 const multipartSpillMarker = ".momo-multipart-spill"
 
-// createMultipartSpillDir makes a private (0700) spill directory and stamps it
-// with the ownership marker.
-func createMultipartSpillDir() (string, error) {
-	dir, err := os.MkdirTemp("", multipartSpillPrefix+"*")
+// multipartSpillRoot returns this daemon's private spill root (0700), creating it
+// on first use. Parts live below it rather than directly in a shared temp
+// directory, so nothing outside this process can write where we delete.
+func multipartSpillRoot() (string, error) {
+	root := filepath.Join(os.TempDir(), multipartSpillPrefix+"root")
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return "", err
+	}
+	info, err := os.Lstat(root)
 	if err != nil {
 		return "", err
+	}
+	if !info.IsDir() || info.Mode().Perm()&0o077 != 0 {
+		return "", fmt.Errorf("spill root %s is not a private directory: %w", root, syscall.EPERM)
+	}
+	return root, nil
+}
+
+// createMultipartSpillDir makes a private (0700) spill directory under the
+// private root and stamps it with the ownership marker. The name is random, so it
+// cannot be predicted by another process.
+func createMultipartSpillDir() (string, error) {
+	root, err := multipartSpillRoot()
+	if err != nil {
+		return "", err
+	}
+	var nonce [12]byte
+	if _, rerr := rand.Read(nonce[:]); rerr != nil {
+		return "", rerr
+	}
+	dir := filepath.Join(root, hex.EncodeToString(nonce[:]))
+	if merr := os.Mkdir(dir, 0o700); merr != nil {
+		return "", merr
 	}
 	if werr := os.WriteFile(filepath.Join(dir, multipartSpillMarker), nil, 0o600); werr != nil {
 		_ = os.RemoveAll(dir)
@@ -63,13 +94,12 @@ func ReapExpiredMultipartUploads(ttl time.Duration, now time.Time, tempRoot stri
 	muUploads.Unlock()
 
 	if tempRoot == "" {
-		tasks, err := filepath.Glob(filepath.Join(os.TempDir(), multipartSpillPrefix+"*"))
-		if err != nil {
-			log.Printf("AUDIT: multipart spill scan failed: %v", err)
+		root, rerr := multipartSpillRoot()
+		if rerr != nil {
+			log.Printf("AUDIT: multipart spill root unavailable: %v", rerr)
 			return sessions, 0
 		}
-		orphans = removeOrphanSpills(tasks, cutoff)
-		return sessions, orphans
+		tempRoot = root
 	}
 
 	entries, err := os.ReadDir(tempRoot)
