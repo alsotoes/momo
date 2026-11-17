@@ -1,6 +1,8 @@
 package transport
 
 import (
+	"bytes"
+	"github.com/alsotoes/momo/src/common"
 	"net/http"
 	"strings"
 	"testing"
@@ -122,6 +124,38 @@ func TestIsTrailerName(t *testing.T) {
 	for _, bad := range []string{"", "x y", "x:y", "x\x00", strings.Repeat("a", 129)} {
 		if isTrailerName(bad) {
 			t.Fatalf("%q must be rejected", bad)
+		}
+	}
+}
+
+// TestCRC64NVMEChecksum pins S3's CRC-64/NVME support (issue #1363): clients
+// default to it for trailer checksums, so an unsupported algorithm here means
+// refusing their uploads outright.
+func TestCRC64NVMEChecksum(t *testing.T) {
+	const payload = "123456789"
+	// CRC-64/NVME check value for "123456789" is 0xAE8B14860A799888.
+	h := newChecksumHasher(common.ChecksumCRC64NVME)
+	if h == nil {
+		t.Fatal("crc64nvme must be a supported checksum algorithm")
+	}
+	if _, err := h.Write([]byte(payload)); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	got := h.Sum(nil)
+	if want := []byte{0xAE, 0x8B, 0x14, 0x86, 0x0A, 0x79, 0x98, 0x88}; !bytes.Equal(got, want) {
+		t.Fatalf("crc64nvme(%q) = %x, want %x", payload, got, want)
+	}
+}
+
+// TestChecksumHeaderNamesCoverEveryAlgorithm proves each supported algorithm has
+// a canonical request/response header, so a client can send and read it back.
+func TestChecksumHeaderNamesCoverEveryAlgorithm(t *testing.T) {
+	for _, algo := range []string{
+		common.ChecksumCRC32, common.ChecksumCRC32c, common.ChecksumCRC64NVME,
+		common.ChecksumSHA1, common.ChecksumSHA256,
+	} {
+		if checksumHeaderFor(algo) == "" {
+			t.Fatalf("no checksum header for %q", algo)
 		}
 	}
 }

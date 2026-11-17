@@ -2861,16 +2861,17 @@ var s3standardHeaders = []string{
 // Supported S3 checksum algorithms (issue #820, Tier P2). Values are stored
 // lowercase; S3 header names are case-insensitive on the wire.
 const (
-	checksumAlgoCRC32c = "crc32c"
-	checksumAlgoCRC32  = "crc32"
-	checksumAlgoSHA1   = "sha1"
-	checksumAlgoSHA256 = "sha256"
+	checksumAlgoCRC32c    = "crc32c"
+	checksumAlgoCRC64NVME = "crc64nvme"
+	checksumAlgoCRC32     = "crc32"
+	checksumAlgoSHA1      = "sha1"
+	checksumAlgoSHA256    = "sha256"
 )
 
 // isSupportedChecksum reports whether algo (lowercase) is a supported checksum.
 func isSupportedChecksum(algo string) bool {
 	switch algo {
-	case checksumAlgoCRC32c, checksumAlgoCRC32, checksumAlgoSHA1, checksumAlgoSHA256:
+	case checksumAlgoCRC32c, checksumAlgoCRC32, checksumAlgoCRC64NVME, checksumAlgoSHA1, checksumAlgoSHA256:
 		return true
 	default:
 		return false
@@ -2887,6 +2888,7 @@ var checksumRequestHeaders = []struct {
 	header string
 }{
 	{checksumAlgoCRC32c, "X-Amz-Checksum-Crc32c"},
+	{checksumAlgoCRC64NVME, "X-Amz-Checksum-Crc64nvme"},
 	{checksumAlgoCRC32, "X-Amz-Checksum-Crc32"},
 	{checksumAlgoSHA1, "X-Amz-Checksum-Sha1"},
 	{checksumAlgoSHA256, "X-Amz-Checksum-Sha256"},

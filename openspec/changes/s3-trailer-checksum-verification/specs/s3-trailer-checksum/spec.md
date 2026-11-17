@@ -23,6 +23,11 @@ the payload is stored.
 - **WHEN** the trailing checksum does not match the decoded bytes
 - **THEN** the request is refused with `400 BadDigest` and no object is stored
 
+#### Scenario: CRC-64/NVME
+
+- **WHEN** a client sends its default trailer checksum, CRC-64/NVME
+- **THEN** the value is verified like any other algorithm
+
 #### Scenario: Unsupported algorithm
 
 - **WHEN** the trailer names a checksum algorithm the gateway does not support
