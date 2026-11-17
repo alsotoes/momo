@@ -3,12 +3,21 @@ package transport
 import (
 	"fmt"
 	"io"
+	"net"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/alsotoes/momo/src/common"
 )
+
+// newPipeComm returns a communicator backed by a pipe the caller can close.
+func newPipeComm(t *testing.T) (*S3Communicator, net.Conn) { //nolint:unparam // the caller closes the pipe via t.Cleanup
+	t.Helper()
+	client, server := net.Pipe()
+	t.Cleanup(func() { _ = client.Close(); _ = server.Close() })
+	return NewS3Communicator(server), client
+}
 
 // TestMultipartAWSChunkedPartStoresDecodedBytes is the regression test for issue
 // #1358: a part sent with aws-chunked framing and a checksum trailer must be

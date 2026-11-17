@@ -463,7 +463,7 @@ func (m *S3Communicator) ChecksumExpectations() []common.ChecksumRef {
 func (m *S3Communicator) OnIntegrityChecksumMismatch() error {
 	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	writeS3Error(m.conn, http.StatusBadRequest, "BadDigest",
-		"The x-amz-checksum-* value you specified did not match the checksum we calculated.", m.meta.Name)
+		s3MsgChecksumMismatch, m.meta.Name)
 	return fmt.Errorf("s3 checksum mismatch: %w", syscall.EBADMSG)
 }
 
@@ -3623,6 +3623,16 @@ func writeS3Error(w io.Writer, status int, code, message, resource string) (int,
 
 // ─── Multipart Upload Support (issue #764) ─────────────────────────────────
 
+const (
+	// s3MsgChecksumMismatch answers a client-supplied checksum that does not
+	// match the bytes we hold (single-part and multipart paths).
+	s3MsgChecksumMismatch = "The x-amz-checksum-* value you specified did not match the checksum we calculated."
+	// s3MsgPartStorageFailure answers a failure to allocate part storage.
+	s3MsgPartStorageFailure = "Failed to allocate part storage."
+	// s3MsgPartsUnreadable answers a failure to read the spooled parts back.
+	s3MsgPartsUnreadable = "Failed to read the uploaded parts."
+)
+
 // maxMultipartPartSize bounds a single part (S3's per-part ceiling).
 const maxMultipartPartSize = 5 << 30
 
@@ -3665,7 +3675,8 @@ func openParts(parts []multipartPart) (io.Reader, func(), error) {
 		f, err := os.Open(p.path)
 		if err != nil {
 			closeAll()
-			return nil, func() {}, fmt.Errorf("open part %d: %w", p.partNumber, err)
+			// Nothing was opened by the caller yet, so the release is a no-op.
+			return nil, func() { /* nothing to release */ }, fmt.Errorf("open part %d: %w", p.partNumber, err)
 		}
 		files = append(files, f)
 		readers = append(readers, f)
@@ -3768,7 +3779,7 @@ func (m *S3Communicator) handleUploadPart(req *http.Request, bucket, key string)
 		if mkErr != nil {
 			up.mu.Unlock()
 			_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to allocate part storage.", "")
+			_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", s3MsgPartStorageFailure, "")
 			return 0, 0, fmt.Errorf("create multipart spill dir: %w", syscall.EIO)
 		}
 		up.spillDir = created
@@ -3893,10 +3904,10 @@ func (m *S3Communicator) spoolPart(req *http.Request, path string) (etag string,
 			return "", 0, fmt.Errorf("upload part read body: %w", herr)
 		}
 		_ = spill.Close()
-		if rerr := os.Rename(name, path); rerr != nil {
+		if os.Rename(name, path) != nil {
 			_ = os.Remove(name)
 			_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to allocate part storage.", "")
+			_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", s3MsgPartStorageFailure, "")
 			return "", 0, fmt.Errorf("adopt part spill: %w", syscall.EIO)
 		}
 		return hex.EncodeToString(hasher.Sum(nil)), written, nil
@@ -3905,7 +3916,7 @@ func (m *S3Communicator) spoolPart(req *http.Request, path string) (etag string,
 	f, cerr := os.Create(path)
 	if cerr != nil {
 		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to allocate part storage.", "")
+		_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", s3MsgPartStorageFailure, "")
 		return "", 0, fmt.Errorf("create part spill: %w", syscall.EIO)
 	}
 	defer func() {
@@ -3943,14 +3954,14 @@ func (m *S3Communicator) verifyMultipartChecksumStream(req *http.Request, parts 
 	algoHasher := newChecksumHasher(algo)
 	if oerr != nil {
 		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to read the uploaded parts.", "")
+		_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", s3MsgPartsUnreadable, "")
 		return oerr
 	}
 	_, cerr := io.Copy(algoHasher, body)
 	closeBody()
 	if cerr != nil {
 		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to read the uploaded parts.", "")
+		_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", s3MsgPartsUnreadable, "")
 		return fmt.Errorf("checksum assembled parts: %w", cerr)
 	}
 
@@ -3958,7 +3969,7 @@ func (m *S3Communicator) verifyMultipartChecksumStream(req *http.Request, parts 
 	if expected != "" && computed != expected {
 		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		_, _ = writeS3Error(m.conn, http.StatusBadRequest, "BadDigest",
-			"The x-amz-checksum-* value you specified did not match the checksum we calculated.", key)
+			s3MsgChecksumMismatch, key)
 		return fmt.Errorf("s3 multipart checksum mismatch: expected %s got %s: %w", expected, computed, syscall.EBADMSG)
 	}
 	m.persistS3Checksum(key, checksumHeaderFor(algo), computed, algo)
@@ -4003,7 +4014,7 @@ func (m *S3Communicator) handleCompleteMultipartUpload(req *http.Request, bucket
 	hashReader, closeHash, oerr := openParts(parts)
 	if oerr != nil {
 		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to read the uploaded parts.", "")
+		_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", s3MsgPartsUnreadable, "")
 		return 0, 0, oerr
 	}
 	hasher := sha256.New()
@@ -4011,7 +4022,7 @@ func (m *S3Communicator) handleCompleteMultipartUpload(req *http.Request, bucket
 	closeHash()
 	if herr != nil {
 		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to read the uploaded parts.", "")
+		_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", s3MsgPartsUnreadable, "")
 		return 0, 0, fmt.Errorf("hash assembled parts: %w", herr)
 	}
 	finalHash := hex.EncodeToString(hasher.Sum(nil))
@@ -4043,7 +4054,7 @@ func (m *S3Communicator) handleCompleteMultipartUpload(req *http.Request, bucket
 	body, closeBody, berr := openParts(parts)
 	if berr != nil {
 		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to read the uploaded parts.", "")
+		_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", s3MsgPartsUnreadable, "")
 		return 0, 0, berr
 	}
 	defer closeBody()
@@ -4110,7 +4121,7 @@ func (m *S3Communicator) verifyMultipartChecksum(req *http.Request, data []byte,
 	if expected != "" && computed != expected {
 		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		_, _ = writeS3Error(m.conn, http.StatusBadRequest, "BadDigest",
-			"The x-amz-checksum-* value you specified did not match the checksum we calculated.", key)
+			s3MsgChecksumMismatch, key)
 		return fmt.Errorf("s3 multipart checksum mismatch: expected %s got %s: %w", expected, computed, syscall.EBADMSG)
 	}
 	m.persistS3Checksum(key, checksumHeaderFor(algo), computed, algo)
