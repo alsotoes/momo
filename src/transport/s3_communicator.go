@@ -1162,7 +1162,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			b = append(b, "\"\r\nLast-Modified: "...)
 			b = time.Unix(0, meta.ModTime).UTC().AppendFormat(b, http.TimeFormat)
 			b = append(b, "\r\nContent-Length: 0\r\n"...)
-			b = appendS3MetaHeaders(b, s3Headers, contentType)
+			b = appendS3MetaHeaders(b, s3Headers, contentType, false)
 			b = append(b, "Connection: close\r\n\r\n"...)
 			// 🛡️ Zero-Crash: Defensive bounds check to verify the formatted content fits safely within the stack buffer
 			if len(b) > 16384 {
@@ -1243,7 +1243,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		b = append(b, "\"\r\nLast-Modified: "...)
 		b = time.Unix(0, meta.ModTime).UTC().AppendFormat(b, http.TimeFormat)
 		b = append(b, "\r\n"...)
-		b = appendS3MetaHeaders(b, s3Headers, contentType)
+		b = appendS3MetaHeaders(b, s3Headers, contentType, checksumModeEnabled(req))
 		if forceChecksumHeader != "" {
 			b = append(b, forceChecksumHeader...)
 			b = append(b, "\r\n"...)
@@ -1351,7 +1351,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		b = append(b, "\r\nLast-Modified: "...)
 		b = time.Unix(0, meta.ModTime).UTC().AppendFormat(b, http.TimeFormat)
 		b = append(b, "\r\n"...)
-		b = appendS3MetaHeaders(b, s3Headers, contentType)
+		b = appendS3MetaHeaders(b, s3Headers, contentType, checksumModeEnabled(req))
 		b = append(b, "Connection: close\r\n\r\n"...)
 
 		// 🛡️ Zero-Crash: Defensive bounds check to verify the formatted content fits safely within the stack buffer
@@ -3085,10 +3085,16 @@ func headerKeysWithout(headers map[string]string, exclude string) []string {
 	return keys
 }
 
+// checksumModeEnabled reports whether the request asked for checksum headers
+// (x-amz-checksum-mode: ENABLED).
+func checksumModeEnabled(req *http.Request) bool {
+	return strings.EqualFold(req.Header.Get("X-Amz-Checksum-Mode"), "ENABLED")
+}
+
 // appendS3MetaHeaders appends Content-Type plus any preserved S3 metadata
 // header lines to the response buffer. contentType defaults to
 // application/octet-stream when the object carries no stored Content-Type.
-func appendS3MetaHeaders(b []byte, headers map[string]string, contentType string) []byte {
+func appendS3MetaHeaders(b []byte, headers map[string]string, contentType string, withChecksums bool) []byte {
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
@@ -3097,6 +3103,14 @@ func appendS3MetaHeaders(b []byte, headers map[string]string, contentType string
 	b = append(b, "\r\n"...)
 	for _, k := range headerKeysWithout(headers, "content-type") {
 		v := headers[k]
+		// Checksums are a checksum-mode response header: S3 returns them only
+		// when the request asked with x-amz-checksum-mode: ENABLED. Echoing them
+		// unsolicited makes a client validate a value it did not request, which
+		// fails for multipart objects whose stored checksum is composite
+		// ("response checksum header does not match calculated checksum").
+		if !withChecksums && strings.HasPrefix(k, "x-amz-checksum-") {
+			continue
+		}
 		if v != "" {
 			b = append(b, k...)
 			b = append(b, ": "...)
