@@ -1910,7 +1910,7 @@ func (m *S3Communicator) decodeStreamingPayloadLimited(req *http.Request, bodyLi
 	// Rewind the spill and hand it to Read() so the server pipeline consumes
 	// only de-framed content keyed by the real content hash.
 	if _, seekErr := spill.Seek(0, io.SeekStart); seekErr != nil {
-		m.writeStreamingError(http.StatusInternalServerError, "InternalError", "Failed to rewind buffered streaming payload.", "")
+		m.writeStreamingError(http.StatusInternalServerError, "InternalError", s3MsgRewindFailed, "")
 		return fmt.Errorf("failed to rewind streaming spill: %w", syscall.EIO)
 	}
 
@@ -3639,6 +3639,8 @@ const (
 	s3MsgPartStorageFailure = "Failed to allocate part storage."
 	// s3MsgPartsUnreadable answers a failure to read the spooled parts back.
 	s3MsgPartsUnreadable = "Failed to read the uploaded parts."
+	// s3MsgRewindFailed answers a failure to rewind a buffered payload.
+	s3MsgRewindFailed = "Failed to rewind buffered streaming payload."
 )
 
 // maxMultipartPartSize bounds a single part (S3's per-part ceiling).
@@ -3918,13 +3920,13 @@ func (m *S3Communicator) verifyTrailerChecksum(req *http.Request, dechunker *aws
 	}
 
 	if _, err := spill.Seek(0, io.SeekStart); err != nil {
-		return m.answerPartFailure(http.StatusInternalServerError, "InternalError", "Failed to rewind buffered streaming payload.",
+		return m.answerPartFailure(http.StatusInternalServerError, "InternalError", s3MsgRewindFailed,
 			fmt.Errorf("rewind spill for trailer checksum: %w", syscall.EIO))
 	}
 	hasher := newChecksumHasher(algo)
 	written, cerr := io.Copy(hasher, io.LimitReader(spill, decodedSize))
 	if _, err := spill.Seek(0, io.SeekStart); err != nil {
-		return m.answerPartFailure(http.StatusInternalServerError, "InternalError", "Failed to rewind buffered streaming payload.",
+		return m.answerPartFailure(http.StatusInternalServerError, "InternalError", s3MsgRewindFailed,
 			fmt.Errorf("rewind spill after trailer checksum: %w", syscall.EIO))
 	}
 	if cerr != nil {
