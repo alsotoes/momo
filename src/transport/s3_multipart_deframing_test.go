@@ -1,9 +1,12 @@
 package transport
 
 import (
+	"encoding/base64"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"net"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -12,7 +15,7 @@ import (
 )
 
 // newPipeComm returns a communicator backed by a pipe the caller can close.
-func newPipeComm(t *testing.T) (*S3Communicator, net.Conn) { //nolint:unparam // the caller closes the pipe via t.Cleanup
+func newPipeComm(t *testing.T) (*S3Communicator, net.Conn) {
 	t.Helper()
 	client, server := net.Pipe()
 	t.Cleanup(func() { _ = client.Close(); _ = server.Close() })
@@ -71,7 +74,7 @@ func TestMultipartAWSChunkedPartStoresDecodedBytes(t *testing.T) {
 	// Part 1 is aws-chunked with a checksum trailer; part 2 is plain, so both
 	// paths are covered by one completion.
 	payload1 := "chunked-part-payload"
-	framed := fmt.Sprintf("%x\r\n%s\r\n0\r\nx-amz-checksum-crc32:AAAAAA==\r\n\r\n", len(payload1), payload1)
+	framed := fmt.Sprintf("%x\r\n%s\r\n0\r\nx-amz-checksum-crc32:%s\r\n\r\n", len(payload1), payload1, crc32Checksum(payload1))
 	part1Req := fmt.Sprintf("PUT /test-bucket/chunked.txt?uploadId=%s&partNumber=1 HTTP/1.1\r\n"+
 		"Host: %s\r\nX-Amz-Date: %s\r\nAuthorization: Bearer %s\r\n"+
 		"Content-Encoding: aws-chunked\r\n"+
@@ -123,4 +126,63 @@ func TestS3RangeGetOmitsChecksumHeaders(t *testing.T) {
 	if strings.Contains(resp, "x-amz-checksum-") {
 		t.Fatalf("206 response must not carry a checksum header: %s", resp)
 	}
+}
+
+// TestStreamingDecodeVerifiesTrailerChecksum proves a trailing checksum is
+// enforced at the gateway boundary: a matching value is accepted, a wrong one is
+// refused with 400 BadDigest (issue #1363). Accepting a trailer and discarding
+// it would let a corrupted stream through silently.
+func TestStreamingDecodeVerifiesTrailerChecksum(t *testing.T) {
+	payload := "trailer-checked-payload"
+	crc := crc32Checksum(payload)
+
+	framed := func(sum string) string {
+		return fmt.Sprintf("%x\r\n%s\r\n0\r\nx-amz-checksum-crc32:%s\r\n\r\n", len(payload), payload, sum)
+	}
+
+	decode := func(t *testing.T, body string) (string, error) {
+		t.Helper()
+		comm, client := newPipeComm(t)
+		go func() {
+			_, _ = io.WriteString(client, body)
+			time.Sleep(100 * time.Millisecond)
+		}()
+
+		req, err := http.NewRequest(http.MethodPut, "http://127.0.0.1:4440/b/trailer.txt", nil)
+		if err != nil {
+			t.Fatalf("build request: %v", err)
+		}
+		req.Header.Set("X-Amz-Content-Sha256", s3StreamingUnsignedTrailer)
+		req.Header.Set("X-Amz-Decoded-Content-Length", fmt.Sprint(len(payload)))
+		req.Header.Set("X-Amz-Trailer", "x-amz-checksum-crc32")
+		req.ContentLength = int64(len(body))
+
+		response := make(chan string, 1)
+		go func() {
+			_ = client.SetReadDeadline(time.Now().Add(2 * time.Second))
+			data, _ := io.ReadAll(client)
+			response <- string(data)
+		}()
+		derr := comm.decodeStreamingPayload(req)
+		return <-response, derr
+	}
+
+	if resp, err := decode(t, framed(crc)); err != nil {
+		t.Fatalf("matching trailer checksum must be accepted, got err=%v resp=%q", err, resp)
+	}
+
+	resp, err := decode(t, framed("AAAAAA=="))
+	if err == nil {
+		t.Fatalf("wrong trailer checksum must be refused, resp=%q", truncate(resp, 200))
+	}
+	if !strings.Contains(resp, "400") || !strings.Contains(resp, "BadDigest") {
+		t.Fatalf("expected 400 BadDigest, got %q", truncate(resp, 200))
+	}
+}
+
+// crc32Checksum returns the base64 CRC32 of s, the form S3 uses in a trailer.
+func crc32Checksum(s string) string {
+	h := crc32.NewIEEE()
+	_, _ = h.Write([]byte(s))
+	return base64.StdEncoding.EncodeToString(h.Sum(nil))
 }

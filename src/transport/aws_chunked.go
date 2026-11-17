@@ -43,6 +43,8 @@ const (
 	maxAWSChunkHeaderLine = 1024
 	// maxAWSChunkTrailers bounds the cumulative trailing-header block size.
 	maxAWSChunkTrailers = 64 * 1024
+	// maxAWSChunkTrailerEntries bounds how many trailing headers are accepted.
+	maxAWSChunkTrailerEntries = 16
 
 	awsChunkSigField            = "chunk-signature="
 	awsChunkEmptySHA256         = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
@@ -132,6 +134,10 @@ type awsChunkedReader struct {
 
 	trailers bool // consume a trailing-header block after the terminating chunk
 	maxTotal int64
+	// trailerValues holds the trailing-header block, lowercased names. S3 puts
+	// the object checksum here (x-amz-checksum-<algo>) for clients that stream a
+	// trailer instead of a header.
+	trailerValues map[string]string
 
 	chunkHasher hash.Hash // SHA-256 of the current chunk's data (for its signature)
 	contentHash hash.Hash // SHA-256 of all decoded data (for momo content addressing)
@@ -407,8 +413,10 @@ func (r *awsChunkedReader) expectCRLF() error {
 	return nil
 }
 
-// consumeTrailers reads and discards the trailing-header block ("name:value"
-// lines terminated by a blank line), bounded to maxAWSChunkTrailers bytes.
+// consumeTrailers reads the trailing-header block ("name:value" lines terminated
+// by a blank line), bounded to maxAWSChunkTrailers bytes. The values are retained
+// so the caller can verify a trailing checksum: accepting one and discarding it
+// would let a corrupted stream through unnoticed.
 func (r *awsChunkedReader) consumeTrailers() error {
 	var total int
 	for {
@@ -423,5 +431,44 @@ func (r *awsChunkedReader) consumeTrailers() error {
 		if line == "" {
 			return nil // blank line terminates the trailer block
 		}
+		name, value, ok := strings.Cut(line, ":")
+		if !ok {
+			return fmt.Errorf("malformed aws-chunked trailer %q: %w", line, syscall.EBADMSG)
+		}
+		name = strings.ToLower(strings.TrimSpace(name))
+		if name == "" || !isTrailerName(name) {
+			return fmt.Errorf("malformed aws-chunked trailer name %q: %w", name, syscall.EBADMSG)
+		}
+		if len(r.trailerValues) >= maxAWSChunkTrailerEntries {
+			return fmt.Errorf("too many aws-chunked trailers: %w", syscall.EBADMSG)
+		}
+		if r.trailerValues == nil {
+			r.trailerValues = make(map[string]string, 2)
+		}
+		r.trailerValues[name] = strings.TrimSpace(value)
 	}
+}
+
+// isTrailerName accepts the header-name character set, so a trailer cannot smuggle
+// arbitrary bytes into an audit line or a response header.
+func isTrailerName(name string) bool {
+	if name == "" || len(name) > 128 {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		switch {
+		case c >= 'a' && c <= 'z':
+		case c >= '0' && c <= '9':
+		case c == '-' || c == '_':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// TrailerValues returns the trailing-header block read so far (lowercased names).
+func (r *awsChunkedReader) TrailerValues() map[string]string {
+	return r.trailerValues
 }

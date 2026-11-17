@@ -90,3 +90,38 @@ func TestCompositeChecksumIsNotEchoed(t *testing.T) {
 		t.Fatalf("whole-object checksum must still be echoed, got %q", out)
 	}
 }
+
+// TestTrailerChecksumSelection pins how a trailing checksum is located: a trailer
+// value wins, then the declared X-Amz-Trailer, then none.
+func TestTrailerChecksumSelection(t *testing.T) {
+	name, value, ok := trailerChecksum(map[string]string{"x-amz-checksum-crc32": "AAAAAA=="})
+	if !ok || name != "x-amz-checksum-crc32" || value != "AAAAAA==" {
+		t.Fatalf("got (%q,%q,%v)", name, value, ok)
+	}
+
+	if _, _, ok = trailerChecksum(nil); ok {
+		t.Fatal("no trailer must report ok=false")
+	}
+	if _, _, ok = trailerChecksum(map[string]string{"x-amz-meta-note": "v"}); ok {
+		t.Fatal("a non-checksum trailer must report ok=false")
+	}
+	// Declared but never delivered: nothing to verify, not an error.
+	if _, _, ok = trailerChecksum(map[string]string{"x-amz-checksum-crc32": ""}); ok {
+		t.Fatal("an empty trailer value must report ok=false")
+	}
+}
+
+// TestIsTrailerName pins the header-name character set, so a trailer cannot
+// smuggle arbitrary bytes into a log line or a response header.
+func TestIsTrailerName(t *testing.T) {
+	for _, good := range []string{"x-amz-checksum-crc32", "x_amz_1"} {
+		if !isTrailerName(good) {
+			t.Fatalf("%q must be accepted", good)
+		}
+	}
+	for _, bad := range []string{"", "x y", "x:y", "x\x00", strings.Repeat("a", 129)} {
+		if isTrailerName(bad) {
+			t.Fatalf("%q must be rejected", bad)
+		}
+	}
+}
