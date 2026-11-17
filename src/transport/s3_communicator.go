@@ -1561,10 +1561,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 			_, hasUploadID := q["uploadId"]
 			_, hasPartNum := q["partNumber"]
 			if hasUploadID && hasPartNum && key != "" {
-				m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-				writeS3Error(m.conn, http.StatusNotImplemented, "NotImplemented",
-					"UploadPartCopy is not supported by this server.", key)
-				return 0, 0, fmt.Errorf("unsupported UploadPartCopy: %w", syscall.ENOTSUP)
+				return m.handleUploadPartCopy(req, bucket, key, copySource)
 			}
 		}
 
@@ -3173,81 +3170,29 @@ func (m *S3Communicator) persistS3Checksum(key, hdr, value, algo string) {
 // the destination key becomes a new namespace alias via store.Get -> store.Put
 // (CAS dedup at the storage layer), preserving the source's S3 metadata, and
 // answers with CopyObjectResult XML. Handled entirely within HandshakeServer.
-func (m *S3Communicator) handleCopyObject(bucket, key, copySource string) (int, int64, error) {
-	// Destination bucket and key validation (mirrors the single-DELETE path).
-	if !m.validBucket(bucket) {
-		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		writeS3Error(m.conn, http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", bucket)
-		return 0, 0, ErrRequestHandled
+// aliasCopy stores the source bytes under the destination key and carries the
+// source's S3 object metadata onto the new alias (issue #772). Returns the source
+// metadata for the response.
+func (m *S3Communicator) aliasCopy(key, srcKey string, rc io.Reader) (common.FileMetadata, error) {
+	srcMeta, gerr := m.store.GetMeta(srcKey)
+	if gerr != nil {
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "The request failed due to an internal error.", srcKey)
+		return common.FileMetadata{}, fmt.Errorf("failed to read source metadata %q: %w", srcKey, gerr)
 	}
-	if key == "" {
-		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		writeS3Error(m.conn, http.StatusBadRequest, "InvalidArgument", "Copy source must have a destination object key.", "")
-		return 0, 0, ErrRequestHandled
-	}
-
-	// Decode and validate the copy-source (may be URL-escaped).
-	srcPath := copySource
-	if decoded, decErr := url.PathUnescape(copySource); decErr == nil {
-		srcPath = decoded
-	}
-	srcPath = strings.TrimPrefix(srcPath, "/")
-	if srcPath == "" || strings.Contains(srcPath, "..") || strings.Contains(srcPath, "\\") {
-		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		writeS3Error(m.conn, http.StatusBadRequest, "InvalidArgument", "Invalid copy source.", copySource)
-		return 0, 0, ErrRequestHandled
-	}
-
-	// Source key: in bucket mode the first segment is the source bucket; in
-	// legacy flat mode it is ignored (consistent with GET/HEAD use of `key`).
-	var srcKey string
-	// ⚡ Bolt: Extract bucket and key using IndexByte instead of SplitN to avoid heap allocation.
-	srcBucket := srcPath
-	if idx := strings.IndexByte(srcPath, '/'); idx >= 0 {
-		srcBucket = srcPath[:idx]
-		srcKey = srcPath[idx+1:]
-	} else if m.configuredBucket == "" {
-		srcKey = srcPath
-	}
-
-	if m.configuredBucket != "" {
-		if !m.validBucket(srcBucket) {
-			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			writeS3Error(m.conn, http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", srcBucket)
-			return 0, 0, ErrRequestHandled
-		}
-	}
-	if srcKey == "" {
-		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		writeS3Error(m.conn, http.StatusBadRequest, "InvalidArgument", "Invalid copy source.", copySource)
-		return 0, 0, ErrRequestHandled
-	}
-
-	rc, srcMeta, err := m.store.Get(srcKey)
-	if err != nil {
-		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		if err == syscall.ENOENT || os.IsNotExist(err) {
-			writeS3Error(m.conn, http.StatusNotFound, "NoSuchKey", "The specified source key does not exist.", srcKey)
-			return 0, 0, ErrRequestHandled
-		}
-		writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "The request failed due to an internal error.", srcKey)
-		return 0, 0, fmt.Errorf("failed to copy source file %q: %w", srcKey, err)
-	}
-	defer rc.Close()
 
 	// store.Put with the source blob: content-augmented CAS dedups under the
 	// existing hash and creates the destination namespace alias.
 	if err := m.store.Put(key, srcMeta.Hash, srcMeta.Size, "", rc); err != nil {
-		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		if errors.Is(err, syscall.ENOSPC) {
-			writeS3Error(m.conn, http.StatusInsufficientStorage, "InsufficientStorage", "There is insufficient storage space to complete the request.", key)
-			return 0, 0, fmt.Errorf("failed to copy file %q: %w", key, err)
+			_, _ = writeS3Error(m.conn, http.StatusInsufficientStorage, "InsufficientStorage", "There is insufficient storage space to complete the request.", key)
+			return srcMeta, fmt.Errorf("failed to copy file %q: %w", key, err)
 		}
-		writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "The request failed due to an internal error.", key)
-		return 0, 0, fmt.Errorf("failed to copy file %q: %w", key, err)
+		_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "The request failed due to an internal error.", key)
+		return srcMeta, fmt.Errorf("failed to copy file %q: %w", key, err)
 	}
 
-	// Preserve the source's S3 object metadata on the new alias (issue #772).
 	if srcHeaders := m.storedS3Meta(srcKey); len(srcHeaders) > 0 {
 		if ps, ok := m.store.(interface {
 			PutS3Meta(string, map[string]string) error
@@ -3257,9 +3202,248 @@ func (m *S3Communicator) handleCopyObject(bucket, key, copySource string) (int, 
 			}
 		}
 	}
+	return srcMeta, nil
+}
+
+// copySourceTarget resolves an X-Amz-Copy-Source value to the source object key,
+// writing the S3 error and returning ok=false when it is invalid. CopyObject and
+// UploadPartCopy share it so the two cannot drift.
+func (m *S3Communicator) copySourceTarget(copySource, destKey string) (srcKey string, ok bool) {
+	srcPath := copySource
+	if decoded, decErr := url.PathUnescape(copySource); decErr == nil {
+		srcPath = decoded
+	}
+	srcPath = strings.TrimPrefix(srcPath, "/")
+	if srcPath == "" || strings.Contains(srcPath, "..") || strings.Contains(srcPath, "\\") {
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, _ = writeS3Error(m.conn, http.StatusBadRequest, "InvalidArgument", "Invalid copy source.", copySource)
+		return "", false
+	}
+
+	// In bucket mode the first segment is the source bucket; in legacy flat mode
+	// it is ignored (consistent with GET/HEAD use of the destination key).
+	srcBucket := srcPath
+	if idx := strings.IndexByte(srcPath, '/'); idx >= 0 {
+		srcBucket = srcPath[:idx]
+		srcKey = srcPath[idx+1:]
+	} else if m.configuredBucket == "" {
+		srcKey = srcPath
+	}
+
+	if m.configuredBucket != "" && !m.validBucket(srcBucket) {
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, _ = writeS3Error(m.conn, http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", srcBucket)
+		return "", false
+	}
+	if srcKey == "" {
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, _ = writeS3Error(m.conn, http.StatusBadRequest, "InvalidArgument", "Invalid copy source.", destKey)
+		return "", false
+	}
+	return srcKey, true
+}
+
+// fetchCopySource opens a copy source object, answering the S3 error and
+// returning ok=false when it cannot be read. Shared by CopyObject and
+// UploadPartCopy so the two report failures identically.
+func (m *S3Communicator) fetchCopySource(srcKey string) (rc io.ReadCloser, size int64, ok bool) {
+	if m.store == nil {
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "The storage store is not initialized.", "")
+		return nil, 0, false
+	}
+	rc, meta, err := m.store.Get(srcKey)
+	if err != nil {
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		// errors.Is, because a backend may wrap ENOENT (the previous `==`
+		// comparison turned a missing object into a 500).
+		if errors.Is(err, syscall.ENOENT) || os.IsNotExist(err) {
+			_, _ = writeS3Error(m.conn, http.StatusNotFound, "NoSuchKey", "The specified source key does not exist.", srcKey)
+			return nil, 0, false
+		}
+		_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "The request failed due to an internal error.", srcKey)
+		return nil, 0, false
+	}
+	return rc, meta.Size, true
+}
+
+// handleUploadPartCopy implements PUT ?uploadId&partNumber with an
+// X-Amz-Copy-Source header: the source object's bytes become one part of an
+// existing multipart upload, without the client carrying them (issue #1365).
+func (m *S3Communicator) handleUploadPartCopy(req *http.Request, bucket, key, copySource string) (requestedMode int, timestamp int64, err error) {
+	defer common.RecoverErrClose("S3 handleUploadPartCopy", &err, m.conn)
+
+	q := req.URL.Query()
+	uploadID := q.Get("uploadId")
+	partNumber, perr := strconv.Atoi(q.Get("partNumber"))
+	if perr != nil || partNumber < 1 {
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, _ = writeS3Error(m.conn, http.StatusBadRequest, "InvalidArgument", "Part number must be a positive integer.", "")
+		return 0, 0, fmt.Errorf("invalid part number %q: %w", q.Get("partNumber"), syscall.EINVAL)
+	}
+
+	muUploads.Lock()
+	up, ok := uploads[uploadID]
+	muUploads.Unlock()
+	if !ok || up.bucket != bucket || up.key != key {
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, _ = writeS3Error(m.conn, http.StatusNotFound, "NoSuchUpload", "The specified upload does not exist.", "")
+		return 0, 0, ErrRequestHandled
+	}
+
+	srcKey, ok := m.copySourceTarget(copySource, key)
+	if !ok {
+		return 0, 0, ErrRequestHandled
+	}
+	rc, srcSize, ok := m.fetchCopySource(srcKey)
+	if !ok {
+		return 0, 0, ErrRequestHandled
+	}
+	defer func() { _ = rc.Close() }()
+
+	// x-amz-copy-source-range is inclusive on both ends, unlike a normal Range.
+	start, length, rerr := parseCopySourceRange(req.Header.Get("X-Amz-Copy-Source-Range"), srcSize)
+	if rerr != nil {
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, _ = writeS3Error(m.conn, http.StatusRequestedRangeNotSatisfiable, "InvalidRange",
+			"The x-amz-copy-source-range value cannot be satisfied.", srcKey)
+		return 0, 0, fmt.Errorf("upload part copy range: %w", syscall.EINVAL)
+	}
+	body := io.Reader(rc)
+	if start > 0 || length != srcSize {
+		if _, serr := io.CopyN(io.Discard, rc, start); serr != nil && start > 0 {
+			_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "The request failed due to an internal error.", srcKey)
+			return 0, 0, fmt.Errorf("upload part copy skip: %w", serr)
+		}
+		body = io.LimitReader(rc, length)
+	}
+
+	dir, derr := m.partSpillDir(up)
+	if derr != nil {
+		return 0, 0, derr
+	}
+	partPath := filepath.Join(dir, strconv.Itoa(partNumber)+".part")
+	etag, size, werr := spoolReader(body, partPath)
+	if werr != nil {
+		_ = os.Remove(partPath)
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", "Failed to allocate part storage.", "")
+		return 0, 0, werr
+	}
+
+	up.mu.Lock()
+	up.parts = append(up.parts, multipartPart{partNumber: partNumber, etag: etag, size: size, path: partPath})
+	up.mu.Unlock()
+
+	var buf bytes.Buffer
+	buf.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)
+	buf.WriteString(`<CopyPartResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">`)
+	writeXMLString(&buf, "ETag", `"`+etag+`"`)
+	writeXMLString(&buf, "LastModified", time.Now().UTC().Format(http.TimeFormat))
+	buf.WriteString(`</CopyPartResult>`)
+
+	_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	_, _ = writeXMLResponse(m.conn, buf.Bytes())
+	return 0, 0, ErrRequestHandled
+}
+
+// partSpillDir returns the upload's spill directory, creating it on first use.
+func (m *S3Communicator) partSpillDir(up *multipartUpload) (string, error) {
+	up.mu.Lock()
+	defer up.mu.Unlock()
+	if up.spillDir != "" {
+		return up.spillDir, nil
+	}
+	dir, err := createMultipartSpillDir()
+	if err != nil {
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, _ = writeS3Error(m.conn, http.StatusInternalServerError, "InternalError", s3MsgPartStorageFailure, "")
+		return "", fmt.Errorf("create multipart spill dir: %w", syscall.EIO)
+	}
+	up.spillDir = dir
+	return dir, nil
+}
+
+// spoolReader streams r into path, returning the SHA-256 hex ETag and byte count.
+func spoolReader(r io.Reader, path string) (etag string, size int64, err error) {
+	f, cerr := os.Create(path)
+	if cerr != nil {
+		return "", 0, fmt.Errorf("create part spill: %w", syscall.EIO)
+	}
+	hasher := sha256.New()
+	written, werr := io.Copy(io.MultiWriter(f, hasher), r)
+	if clErr := f.Close(); clErr != nil && werr == nil {
+		werr = clErr
+	}
+	if werr != nil {
+		return "", 0, fmt.Errorf("write part spill: %w", syscall.EIO)
+	}
+	return hex.EncodeToString(hasher.Sum(nil)), written, nil
+}
+
+// parseCopySourceRange parses an inclusive x-amz-copy-source-range value against
+// the source size. An empty header means the whole object. It also enforces S3's
+// 5-byte minimum for a copied part range.
+func parseCopySourceRange(value string, size int64) (start, length int64, err error) {
+	if value == "" {
+		return 0, size, nil
+	}
+	spec := strings.TrimSpace(value)
+	if !strings.HasPrefix(spec, "bytes=") {
+		return 0, 0, fmt.Errorf("range must start with bytes=: %w", syscall.EINVAL)
+	}
+	span := strings.TrimPrefix(spec, "bytes=")
+	first, last, found := strings.Cut(span, "-")
+	if !found || first == "" || last == "" {
+		return 0, 0, fmt.Errorf("range must be bytes=start-end: %w", syscall.EINVAL)
+	}
+	start, serr := strconv.ParseInt(first, 10, 64)
+	if serr != nil || start < 0 {
+		return 0, 0, fmt.Errorf("invalid range start %q: %w", first, syscall.EINVAL)
+	}
+	end, eerr := strconv.ParseInt(last, 10, 64)
+	if eerr != nil || end < start || end >= size {
+		return 0, 0, fmt.Errorf("invalid range end %q: %w", last, syscall.EINVAL)
+	}
+	length = end - start + 1
+	if length < 5 {
+		return 0, 0, fmt.Errorf("a copied part range must be at least 5 bytes: %w", syscall.EINVAL)
+	}
+	return start, length, nil
+}
+
+func (m *S3Communicator) handleCopyObject(bucket, key, copySource string) (int, int64, error) {
+	// Destination bucket and key validation (mirrors the single-DELETE path).
+	if !m.validBucket(bucket) {
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, _ = writeS3Error(m.conn, http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", bucket)
+		return 0, 0, ErrRequestHandled
+	}
+	if key == "" {
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, _ = writeS3Error(m.conn, http.StatusBadRequest, "InvalidArgument", "Copy source must have a destination object key.", "")
+		return 0, 0, ErrRequestHandled
+	}
+
+	srcKey, ok := m.copySourceTarget(copySource, key)
+	if !ok {
+		return 0, 0, ErrRequestHandled
+	}
+
+	rc, _, ok := m.fetchCopySource(srcKey)
+	if !ok {
+		return 0, 0, ErrRequestHandled
+	}
+	defer func() { _ = rc.Close() }()
+
+	srcMeta, err := m.aliasCopy(key, srcKey, rc)
+	if err != nil {
+		return 0, 0, err
+	}
 
 	xmlBytes := FormatCopyObjectResultXML(srcMeta.Hash, srcMeta.ModTime)
-	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	var hbuf [256]byte
 	hb := hbuf[:0]
 	hb = append(hb, "HTTP/1.1 200 OK\r\nContent-Type: application/xml\r\nContent-Length: "...)
