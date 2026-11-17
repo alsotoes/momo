@@ -83,7 +83,16 @@ export AWS_DEFAULT_REGION=us-east-1
 export AWS_EC2_METADATA_DISABLED=true
 ENDPOINT="--endpoint-url http://127.0.0.1:$((PORT_BASE + 0))"
 
-fail() { echo "FAIL: $*"; for i in 0 1 2; do echo "--- s$i.log ---"; tail -20 "$DIR/s$i.log"; done; exit 1; }
+fail() {
+  echo "FAIL: $*"
+  echo "--- diagnostics: checksum-mode HEAD of big.bin ---"
+  curl -s -D - -o /dev/null -H "Authorization: Bearer compat-token" \
+    -H "x-amz-checksum-mode: ENABLED" "http://127.0.0.1:$((PORT_BASE + 0))/$BUCKET/big.bin" || true
+  echo "--- aws-cli version ---"
+  aws --version || true
+  for i in 0 1 2; do echo "--- s$i.log ---"; tail -20 "$DIR/s$i.log"; done
+  exit 1
+}
 
 echo "1/7 put-object"
 dd if=/dev/urandom of="$DIR/$KEY" bs=1M count=1 2>/dev/null
