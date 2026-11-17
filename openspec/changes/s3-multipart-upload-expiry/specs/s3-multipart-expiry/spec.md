@@ -34,6 +34,12 @@ than the TTL.
   the TTL
 - **THEN** it is removed at startup or on the next sweep
 
+#### Scenario: Not ours
+
+- **WHEN** a directory in the temp root carries the spill prefix but not the
+  ownership marker the gateway writes
+- **THEN** it is never deleted, because the gateway cannot prove it created it
+
 #### Scenario: Live session protection
 
 - **WHEN** a spill directory belongs to a live session, however old

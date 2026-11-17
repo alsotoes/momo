@@ -93,6 +93,9 @@ func TestReaperRemovesOrphanSpill(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(old, "1.part"), []byte("x"), 0o600); err != nil {
 		t.Fatalf("write: %v", err)
 	}
+	if err := os.WriteFile(filepath.Join(old, multipartSpillMarker), nil, 0o600); err != nil {
+		t.Fatalf("write marker: %v", err)
+	}
 	oldTime := time.Now().Add(-72 * time.Hour)
 	if err := os.Chtimes(old, oldTime, oldTime); err != nil {
 		t.Fatalf("chtimes: %v", err)
@@ -101,6 +104,14 @@ func TestReaperRemovesOrphanSpill(t *testing.T) {
 	recent := filepath.Join(root, multipartSpillPrefix+"orphan-recent")
 	if err := os.MkdirAll(recent, 0o700); err != nil {
 		t.Fatalf("mkdir recent: %v", err)
+	}
+
+	lookAlike := filepath.Join(root, multipartSpillPrefix+"not-ours")
+	if err := os.MkdirAll(lookAlike, 0o700); err != nil {
+		t.Fatalf("mkdir look-alike: %v", err)
+	}
+	if err := os.Chtimes(lookAlike, oldTime, oldTime); err != nil {
+		t.Fatalf("chtimes look-alike: %v", err)
 	}
 
 	unrelated := filepath.Join(root, "some-other-dir")
@@ -123,6 +134,9 @@ func TestReaperRemovesOrphanSpill(t *testing.T) {
 	}
 	if _, err := os.Stat(unrelated); err != nil {
 		t.Fatalf("unrelated directory was removed: %v", err)
+	}
+	if _, err := os.Stat(lookAlike); err != nil {
+		t.Fatalf("look-alike directory without our marker was removed: %v", err)
 	}
 }
 

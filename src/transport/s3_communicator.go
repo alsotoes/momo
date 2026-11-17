@@ -3775,7 +3775,7 @@ func (m *S3Communicator) handleUploadPart(req *http.Request, bucket, key string)
 	up.mu.Lock()
 	dir := up.spillDir
 	if dir == "" {
-		created, mkErr := os.MkdirTemp("", "momo-s3-multipart-*")
+		created, mkErr := createMultipartSpillDir()
 		if mkErr != nil {
 			up.mu.Unlock()
 			_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))

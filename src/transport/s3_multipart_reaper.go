@@ -13,6 +13,26 @@ import (
 // multipart parts (issue #1358).
 const multipartSpillPrefix = "momo-s3-multipart-"
 
+// multipartSpillMarker names the file written into every spill directory this
+// process creates. The sweep only removes directories carrying it, so a
+// look-alike directory in a shared temp location is never deleted (it may belong
+// to another user or another program).
+const multipartSpillMarker = ".momo-multipart-spill"
+
+// createMultipartSpillDir makes a private (0700) spill directory and stamps it
+// with the ownership marker.
+func createMultipartSpillDir() (string, error) {
+	dir, err := os.MkdirTemp("", multipartSpillPrefix+"*")
+	if err != nil {
+		return "", err
+	}
+	if werr := os.WriteFile(filepath.Join(dir, multipartSpillMarker), nil, 0o600); werr != nil {
+		_ = os.RemoveAll(dir)
+		return "", werr
+	}
+	return dir, nil
+}
+
 // multipartReapInterval is how often expired sessions and orphaned spill
 // directories are swept. The TTL is the policy; this is only the granularity.
 const multipartReapInterval = 10 * time.Minute
@@ -87,8 +107,13 @@ func removeOrphanSpills(paths []string, cutoff time.Time) int {
 		if _, ok := live[p]; ok {
 			continue
 		}
-		info, err := os.Stat(p)
+		info, err := os.Lstat(p)
 		if err != nil || !info.IsDir() || info.ModTime().After(cutoff) {
+			continue
+		}
+		// Ownership proof: only directories this process stamped are ours to
+		// delete. Anything else in a shared temp root is left alone.
+		if _, mErr := os.Lstat(filepath.Join(p, multipartSpillMarker)); mErr != nil {
 			continue
 		}
 		removeSpill(p)
