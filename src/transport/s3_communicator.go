@@ -1339,7 +1339,7 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		contentType := s3Headers["content-type"]
 		var buf [16384]byte
 		b := buf[:0]
-		b = append(b, "HTTP/1.1 200 OK\r\nETag: \""...)
+		b = append(b, s3PutOKETagPrefix...)
 		b = append(b, meta.Hash...)
 		b = append(b, "\"\r\nContent-Length: "...)
 		b = strconv.AppendInt(b, meta.Size, 10)
@@ -1842,7 +1842,7 @@ func (m *S3Communicator) decodeStreamingPayload(req *http.Request) (err error) {
 		expected = ev
 	}
 	if expected > common.MaxFileSize {
-		m.writeStreamingError(http.StatusRequestEntityTooLarge, "EntityTooLarge", "Your proposed upload exceeds the maximum allowed object size.", "")
+		m.writeStreamingError(http.StatusRequestEntityTooLarge, "EntityTooLarge", s3MsgEntityTooLarge, "")
 		return fmt.Errorf("decoded content length %d exceeds maximum: %w", expected, syscall.EOVERFLOW)
 	}
 
@@ -1901,7 +1901,7 @@ func (m *S3Communicator) decodeStreamingPayload(req *http.Request) (err error) {
 			m.writeStreamingError(http.StatusForbidden, "SignatureDoesNotMatch", "The chunk signature we calculated does not match the signature you provided.", "")
 			return fmt.Errorf("%w: streaming chunk signature mismatch", syscall.EACCES)
 		case errors.Is(copyErr, syscall.EOVERFLOW):
-			m.writeStreamingError(http.StatusRequestEntityTooLarge, "EntityTooLarge", "Your proposed upload exceeds the maximum allowed object size.", "")
+			m.writeStreamingError(http.StatusRequestEntityTooLarge, "EntityTooLarge", s3MsgEntityTooLarge, "")
 			return fmt.Errorf("streaming payload exceeds maximum size: %w", syscall.EOVERFLOW)
 		default:
 			m.writeStreamingError(http.StatusBadRequest, "InvalidArgument", "Malformed aws-chunked body.", "")
@@ -1940,7 +1940,7 @@ func (m *S3Communicator) bufferUnsignedPayload(req *http.Request) (err error) {
 
 	if req.ContentLength > common.MaxFileSize {
 		m.writeStreamingError(http.StatusRequestEntityTooLarge, "EntityTooLarge",
-			"Your proposed upload exceeds the maximum allowed object size.", "")
+			s3MsgEntityTooLarge, "")
 		return fmt.Errorf("declared length %d exceeds maximum: %w", req.ContentLength, syscall.EOVERFLOW)
 	}
 
@@ -2291,7 +2291,7 @@ func (m *S3Communicator) SendACK(serverId int) (err error) {
 	if m.isExternalClient {
 		var ebuf [512]byte
 		eb := ebuf[:0]
-		eb = append(eb, "HTTP/1.1 200 OK\r\nETag: \""...)
+		eb = append(eb, s3PutOKETagPrefix...)
 		eb = append(eb, common.TrimNullBytesFromString(m.meta.Hash)...)
 		eb = append(eb, "\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"...)
 		if _, werr := m.conn.Write(eb); werr != nil {
@@ -2563,6 +2563,11 @@ func FormatGetBucketLocationXML(region string) []byte {
 const s3MsgAccessDenied = "Access Denied."
 
 const (
+	// s3PutOKETagPrefix starts a successful PUT response; the content hash
+	// follows as the ETag (shared by direct and forwarded PUT paths).
+	s3PutOKETagPrefix = "HTTP/1.1 200 OK\r\nETag: \""
+	// s3MsgEntityTooLarge is the S3 message for a body above the object limit.
+	s3MsgEntityTooLarge          = "Your proposed upload exceeds the maximum allowed object size."
 	continuationKindKey     byte = 'K'
 	continuationKindPrefix  byte = 'P'
 	continuationKindUnknown byte = 0
@@ -3704,7 +3709,7 @@ func (m *S3Communicator) handleUploadPart(req *http.Request, bucket, key string)
 	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	var hdrBuf [256]byte
 	b := hdrBuf[:0]
-	b = append(b, "HTTP/1.1 200 OK\r\nETag: \""...)
+	b = append(b, s3PutOKETagPrefix...)
 	b = append(b, etag...)
 	b = append(b, "\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"...)
 	if _, err := m.conn.Write(b); err != nil {
