@@ -5,6 +5,7 @@ go 1.26.2
 require (
 	github.com/alsotoes/momo/src/common v0.0.0-20260604213252-d8e9e90c2b38
 	github.com/shirou/gopsutil/v3 v3.24.5
+	go.etcd.io/bbolt v1.5.0
 	go.uber.org/goleak v1.3.0
 )
 
@@ -16,8 +17,9 @@ require (
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
+	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
-	gopkg.in/ini.v1 v1.67.3 // indirect
+	gopkg.in/ini.v1 v1.68.0 // indirect
 )
 
 replace github.com/alsotoes/momo/src/common => ../common
