@@ -17,6 +17,27 @@ Momo supports four replication modes:
 
 **Client-side modes** (3): The server just stores the file locally. The *client* is responsible for computing CRUSH placement and uploading to all replica nodes in parallel. Requires a momo-aware client.
 
+The native client counts the replica ACKs from that fan-out and reports the
+outcome honestly (#1344, `client.uploadOutcome`):
+
+| Result | Upload reports | Exit |
+|---|---|---|
+| Every replica acknowledged | success, silent | `0` |
+| At least one acknowledged, others failed | success + `WARNING: … stored on N of M replicas (degraded; the repair loop restores the target count)` | `0` |
+| No replica connection established | failure (`ENOTCONN`) | `3` |
+| Connections made, none acknowledged | failure (`EIO`) | `3` |
+
+Partial success is deliberately not a failure: the bytes are durable on at least
+one node and the R2 repair loop can restore the target replica count. Zero is
+always a failure, because nothing was stored anywhere (Rule 9).
+
+One caveat: when the configured protocol is a gateway (`s3-tcp`, `s3-quic`), the
+native client's ACK frame is not part of the wire contract — the gateway answers
+in HTTP. There the client logs `gateway protocols do not confirm storage` and
+counts the completed write as the outcome instead of failing, because an
+unreadable ACK does not prove the object was dropped. Confirmation is only
+guaranteed on the native protocols; use the S3 API for gateway uploads.
+
 ## The Problem
 
 When an external S3 client like aws-cli connects, it sends standard S3 headers (`Authorization: AWS4-HMAC-SHA256`, `X-Amz-Date`) but does **not** send momo-specific headers (`X-Momo-Requested-Mode`, `X-Momo-Timestamp`).

@@ -92,7 +92,7 @@ func TestConnect_EnvelopeStreamsToSpool(t *testing.T) {
 			return
 		}
 
-		conn.Write([]byte("ACK"))
+		_, _ = conn.Write([]byte("ACK0"))
 
 		payloadCh <- payload
 	}()

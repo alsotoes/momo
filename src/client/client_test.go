@@ -86,7 +86,7 @@ func startMockServer(t *testing.T, authToken string, expectedMode int, delay tim
 
 		// Send ACK after a small delay
 		time.Sleep(delay)
-		conn.Write([]byte("ACK"))
+		_, _ = conn.Write([]byte("ACK0"))
 	}()
 	return ln.Addr().String(), ln
 }
@@ -128,7 +128,7 @@ func startDummyServer(t *testing.T, authToken string) (string, net.Listener) {
 				// Send metadata status
 				c.Write([]byte{transport.MetadataStatusSendPayload})
 
-				c.Write([]byte("ACK"))
+				_, _ = c.Write([]byte("ACK0"))
 			}(conn)
 		}
 	}()
@@ -217,7 +217,7 @@ func TestConnect(t *testing.T) {
 		// Send metadata status
 		conn.Write([]byte{transport.MetadataStatusSendPayload})
 
-		conn.Write([]byte("ACK"))
+		_, _ = conn.Write([]byte("ACK0"))
 	}()
 
 	daemonsSplay[0].Host = addrSplay
@@ -278,7 +278,12 @@ func TestSendFile(t *testing.T) {
 	}
 
 	comm := transport.NewMomoTCPCommunicator(conn)
-	sendFile(&wg, comm, file.Name(), meta, "")
+	go func() {
+		defer wg.Done()
+		if sErr := sendFile(comm, file.Name(), meta, "", true); sErr != nil {
+			t.Errorf("sendFile: %v", sErr)
+		}
+	}()
 	wg.Wait()
 }
 
@@ -369,8 +374,11 @@ func TestSendFile_DeduplicationHit(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		comm := transport.NewMomoTCPCommunicator(clientConn)
-		sendFile(&wg, comm, file.Name(), meta, "")
+		if sErr := sendFile(comm, file.Name(), meta, "", true); sErr != nil {
+			t.Errorf("sendFile: %v", sErr)
+		}
 	}()
 
 	// Server side
@@ -381,7 +389,7 @@ func TestSendFile_DeduplicationHit(t *testing.T) {
 	// Write SkipPayload status (2)
 	serverConn.Write([]byte{2})
 	// Write ACK
-	serverConn.Write([]byte("ACK"))
+	_, _ = serverConn.Write([]byte("ACK0"))
 
 	wg.Wait()
 }
@@ -395,11 +403,11 @@ func TestSendFile_PanicRecovery(t *testing.T) {
 	}
 	defer os.Remove(file.Name())
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-	// Passing nil communicator with a valid file will trigger a panic when comm is used
-	sendFile(&wg, nil, file.Name(), &common.FileMetadata{}, "")
-	wg.Wait()
+	// Passing nil communicator with a valid file triggers a panic when comm is
+	// used; sendFile must turn it into an error (Rule 37), not crash.
+	if sErr := sendFile(nil, file.Name(), &common.FileMetadata{}, "", true); sErr == nil {
+		t.Fatalf("sendFile with a nil communicator must return an error")
+	}
 }
 
 // TestConnect_EncryptionStreamsToSpool is a regression test for issue #587:
@@ -475,7 +483,7 @@ func TestConnect_EncryptionStreamsToSpool(t *testing.T) {
 			return
 		}
 
-		conn.Write([]byte("ACK"))
+		_, _ = conn.Write([]byte("ACK0"))
 
 		payloadCh <- payload
 	}()

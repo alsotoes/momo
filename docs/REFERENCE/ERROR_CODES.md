@@ -46,10 +46,33 @@ disk without parsing logs.
 | :--- | :--- |
 | `1` | **General fatal error** — anything without a more specific classification. |
 | `2` | **Configuration error** — missing/invalid `momo.conf`, bad flags, daemon index out of range, unsafe feature combination rejected at load time (e.g. `[rebalance] enabled=true` without `degraded_read`). |
-| `3` | **Network error** — listener bind failure or unreachable dependency at startup. |
+| `3` | **Network error** — listener bind failure, unreachable dependency at startup, or a client upload that stored the object on **no** replica (see below). |
 | `4` | **Storage error** — store/database initialization failure, disk full (`ENOSPC`). |
 | `5` | **Crypto error** — key decode/derivation failure, TLS material rejected. |
 | `6` | **P2P error** — gossip/lease initialization failure. |
+
+### Client upload exit status
+
+A client upload (`momo -imp client -file …`) succeeds only when at least one
+replica acknowledged the object. The fan-out counts ACKs, so:
+
+| Outcome | Exit | Signal |
+| :--- | :--- | :--- |
+| Every connection established and acknowledged | `0` | No warning |
+| Some replicas failed, at least one stored it | `0` | `WARNING: … stored on N of M replicas (degraded; the repair loop restores the target count)` |
+| No replica connection could be established | `3` | `no replica connection was established` (wraps `ENOTCONN`) |
+| Connections were established but none stored it (no ACK, rejected handshake, quorum withheld) | `3` | `all N replica(s) failed to store the object` (wraps `EIO`) |
+
+Gateway protocols (`s3-tcp`, `s3-quic`) are the exception: the native client can
+speak to an S3 gateway well enough to send the object, but the gateway answers in
+HTTP, so the native ACK frame is not a confirmation. There an unreadable ACK is
+reported as `WARNING: … gateway protocols do not confirm storage …` and the
+upload is **not** failed — storage is simply unconfirmed. Use the S3 API (or a
+native protocol) when confirmation matters.
+
+A non-zero exit means the object is **not** on disk anywhere reachable, so a
+retry is safe and expected. This is the client-side half of Rule 9: an upload is
+never reported as stored when it was not.
 
 By cross-referencing the exit code with the error messages printed to standard
 error, operators can quickly diagnose and resolve issues within the Momo cluster.
@@ -64,6 +87,8 @@ an S3 `Code`, and a message.
 | `400` | `InvalidRequest` | Unsupported SSE request (SSE-C), conflicting checksum declaration, malformed XML, or a lock/retention field used on a bucket without the feature enabled. |
 | `400` | `BadDigest` | Supplied `x-amz-checksum-*` did not match the received bytes (the object is not stored). |
 | `400` | `InvalidArgument` | Unknown SSE algorithm or an out-of-range value. |
+| `400` | `IncompleteBody` | Fewer bytes arrived than the declared `Content-Length` on a PUT (nothing is stored). |
+| `413` | `EntityTooLarge` | The declared `Content-Length` exceeds the maximum object size; the body is never read. |
 | `400` | `MalformedXML` | The request body is not well-formed XML (bucket/object subresource configuration). |
 | `400` | `AuthorizationQueryParametersError` | A presigned (query-string) request is missing a required SigV4 parameter. |
 | `403` | `AuthorizationHeaderMalformed` | SigV4 header missing a required component, stale timestamp, or unsupported credential scope. |

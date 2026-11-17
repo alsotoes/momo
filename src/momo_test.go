@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -336,5 +337,50 @@ func TestRunServer_InvalidDaemonId(t *testing.T) {
 		}
 	case <-time.After(50 * time.Millisecond):
 		t.Errorf("expected server to exit with error, but it timed out")
+	}
+}
+
+// TestRun_UploadFailureExitCode proves the CLI surfaces an upload that stored
+// nothing: an unreachable daemon must exit with the network error code instead
+// of reporting success (Rule 9, #1344).
+func TestRun_UploadFailureExitCode(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfgPath := filepath.Join(tmpDir, "momo.conf")
+	cfg := `[global]
+auth_token=a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6 # notsecret
+debug=false
+replication_order=3
+polymorphic_system=false
+
+[metrics]
+interval=1000
+min_threshold=0.1
+max_threshold=0.9
+fallback_interval=30
+
+[daemon.0]
+host=127.0.0.1:59996
+change_replication=127.0.0.1:59996
+data=` + tmpDir + `/data0
+drive=/dev/null
+`
+	if err := os.WriteFile(cfgPath, []byte(cfg), 0666); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	payload := filepath.Join(tmpDir, "payload.txt")
+	if err := os.WriteFile(payload, []byte("uploaded nothing"), 0666); err != nil {
+		t.Fatalf("write payload: %v", err)
+	}
+
+	cmd := exec.Command(os.Args[0], "-test.run=TestRun_Subprocess")
+	cmd.Env = append(os.Environ(), "TEST_RUN_MAIN=1",
+		"TEST_MAIN_ARGS=-imp client -file "+payload+" -config "+cfgPath)
+	err := cmd.Run()
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("expected the upload to fail, got %v", err)
+	}
+	if exitErr.ExitCode() != 3 {
+		t.Fatalf("expected exit code 3 (network/storage unavailable), got %d", exitErr.ExitCode())
 	}
 }
