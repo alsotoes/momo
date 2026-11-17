@@ -1288,3 +1288,52 @@ func TestGetConfigWriteQuorumBoundaries(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) { assertQuorumCase(t, load, tc) })
 	}
 }
+
+// TestGetConfigMultipartUploadTTL pins the multipart expiry policy key
+// (issue #1361): parsed as a Go duration, defaulted to 24h, and refused when
+// negative or unparseable.
+func TestGetConfigMultipartUploadTTL(t *testing.T) {
+	cases := []struct {
+		name    string
+		value   string
+		want    string
+		wantErr bool
+	}{
+		{name: "default when absent", value: "", want: "24h"},
+		{name: "explicit hours", value: "72h", want: "72h"},
+		{name: "minutes", value: "30m", want: "30m"},
+		{name: "disabled", value: "0", want: "0"},
+		{name: "negative refused", value: "-1h", wantErr: true},
+		{name: "unparseable refused", value: "seven days", wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) { assertMultipartTTL(t, tc.value, tc.want, tc.wantErr) })
+	}
+}
+
+// assertMultipartTTL loads a config carrying one multipart_upload_ttl value and
+// checks the parsed policy (or the refusal).
+func assertMultipartTTL(t *testing.T, value, want string, wantErr bool) {
+	t.Helper()
+	cfgText := validConfig
+	if value != "" {
+		cfgText += "\n[storage]\nmultipart_upload_ttl = " + value + "\n"
+	}
+	path := filepath.Join(t.TempDir(), "momo.conf")
+	if werr := os.WriteFile(path, []byte(cfgText), 0o600); werr != nil {
+		t.Fatalf("write config: %v", werr)
+	}
+	cfg, err := GetConfig(path)
+	if wantErr {
+		if err == nil {
+			t.Fatalf("expected an error for multipart_upload_ttl=%q", value)
+		}
+		return
+	}
+	if err != nil {
+		t.Fatalf("GetConfig: %v", err)
+	}
+	if cfg.Storage.MultipartUploadTTL != want {
+		t.Fatalf("MultipartUploadTTL = %q, want %q", cfg.Storage.MultipartUploadTTL, want)
+	}
+}

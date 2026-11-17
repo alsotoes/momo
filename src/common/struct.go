@@ -292,6 +292,11 @@ type ConfigurationStorage struct {
 	// "fsync" (default), "group-commit", or "none". Empty defaults to fsync.
 	// Invalid values are rejected at config load.
 	Durability string
+	// MultipartUploadTTL is how long an incomplete S3 multipart upload keeps its
+	// spooled parts before the reaper discards them, as a Go duration
+	// (default "24h"; "0" disables reaping). Idle sessions and orphaned spill
+	// directories both expire (issue #1361).
+	MultipartUploadTTL string
 	// AdaptiveThreshold is the object-size boundary (bytes) used by the
 	// "adaptive" backend (R-VS, #1128): blobs at or below it are packed into
 	// volume superblocks, larger ones go to the per-blob local layout.
