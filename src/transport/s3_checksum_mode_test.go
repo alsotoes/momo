@@ -2,18 +2,17 @@ package transport
 
 import (
 	"bytes"
-	"github.com/alsotoes/momo/src/common"
+	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/alsotoes/momo/src/common"
 )
 
-// TestAppendS3MetaHeadersGatesChecksums pins S3 checksum-mode semantics: the
-// response carries x-amz-checksum-* only when the request asked for it with
-// x-amz-checksum-mode: ENABLED. Echoing it unsolicited made a modern S3 client
-// validate the multipart composite checksum against the downloaded bytes and
-// fail with "response checksum header does not match calculated checksum"
-// (issue #1352).
 func TestAppendS3MetaHeadersGatesChecksums(t *testing.T) {
 	headers := map[string]string{
 		"content-type":             "application/octet-stream",
@@ -157,5 +156,92 @@ func TestChecksumHeaderNamesCoverEveryAlgorithm(t *testing.T) {
 		if checksumHeaderFor(algo) == "" {
 			t.Fatalf("no checksum header for %q", algo)
 		}
+	}
+}
+
+// TestTrailerBlockValidation pins the decoder's trailer parser: every malformed
+// shape is refused instead of being silently tolerated.
+func TestTrailerBlockValidation(t *testing.T) {
+	decode := func(body string) error {
+		r := newAWSChunkedReader(strings.NewReader(body), nil, true, 1<<20)
+		_, err := io.ReadAll(r)
+		return err
+	}
+
+	// A well-formed trailer block decodes.
+	if err := decode("1\r\na\r\n0\r\nx-amz-checksum-crc32:AAAAAA==\r\n\r\n"); err != nil {
+		t.Fatalf("valid trailer rejected: %v", err)
+	}
+	// No colon.
+	if err := decode("1\r\na\r\n0\r\nnocolon\r\n\r\n"); err == nil {
+		t.Fatal("trailer without a colon must be refused")
+	}
+	// Illegal characters in the name.
+	if err := decode("1\r\na\r\n0\r\nx amz:1\r\n\r\n"); err == nil {
+		t.Fatal("trailer with an illegal name must be refused")
+	}
+	// More entries than the cap.
+	var b strings.Builder
+	b.WriteString("1\r\na\r\n0\r\n")
+	for i := 0; i < 20; i++ {
+		fmt.Fprintf(&b, "x-amz-meta-%d:v\r\n", i)
+	}
+	b.WriteString("\r\n")
+	if err := decode(b.String()); err == nil {
+		t.Fatal("too many trailers must be refused")
+	}
+}
+
+// TestTrailerValuesAreCaptured proves the decoder keeps the trailer block so the
+// gateway can verify it.
+func TestTrailerValuesAreCaptured(t *testing.T) {
+	r := newAWSChunkedReader(strings.NewReader("1\r\na\r\n0\r\nx-amz-checksum-crc32:Zg==\r\n\r\n"), nil, true, 1<<20)
+	if _, err := io.ReadAll(r); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got := r.TrailerValues()["x-amz-checksum-crc32"]; got != "Zg==" {
+		t.Fatalf("captured trailer = %q, want Zg==", got)
+	}
+}
+
+// TestTrailerUnsupportedAlgorithmIsRefused proves a trailer naming an algorithm we
+// cannot compute fails closed rather than being ignored.
+func TestTrailerUnsupportedAlgorithmIsRefused(t *testing.T) {
+	payload := "abc"
+	body := fmt.Sprintf("3\r\n%s\r\n0\r\nx-amz-checksum-bogus:AAAA\r\n\r\n", payload)
+
+	client, server := net.Pipe()
+	defer func() { _ = client.Close(); _ = server.Close() }()
+	comm := NewS3Communicator(server)
+
+	go func() {
+		_, _ = io.WriteString(client, body)
+		time.Sleep(100 * time.Millisecond)
+	}()
+	response := make(chan string, 1)
+	go func() {
+		buf := make([]byte, 1024)
+		_ = client.SetReadDeadline(time.Now().Add(2 * time.Second))
+		n, _ := client.Read(buf)
+		response <- string(buf[:n])
+	}()
+
+	req, err := http.NewRequest(http.MethodPut, "http://127.0.0.1:4440/b/k", nil)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	req.Header.Set("X-Amz-Content-Sha256", s3StreamingUnsignedTrailer)
+	req.Header.Set("X-Amz-Decoded-Content-Length", fmt.Sprint(len(payload)))
+	req.ContentLength = int64(len(body))
+
+	derr := comm.decodeStreamingPayload(req)
+	if derr == nil {
+		t.Fatal("an unsupported trailer algorithm must be refused")
+	}
+	if !strings.Contains(derr.Error(), "trailer checksum algorithm") {
+		t.Fatalf("error must name the algorithm: %v", derr)
+	}
+	if resp := <-response; !strings.Contains(resp, "400 Bad Request") {
+		t.Fatalf("expected a 400 answer, got %q", resp)
 	}
 }

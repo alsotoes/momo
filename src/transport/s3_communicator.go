@@ -3915,10 +3915,6 @@ func (m *S3Communicator) verifyTrailerChecksum(req *http.Request, dechunker *aws
 		return m.answerPartFailure(http.StatusBadRequest, "InvalidRequest",
 			fmt.Sprintf("Unsupported checksum algorithm: %s", algo), fmt.Errorf("trailer checksum algorithm %q: %w", algo, syscall.EINVAL))
 	}
-	if expected == "" {
-		return m.answerPartFailure(http.StatusBadRequest, "InvalidRequest", "Empty trailing checksum.", fmt.Errorf("empty trailer checksum: %w", syscall.EBADMSG))
-	}
-
 	if _, err := spill.Seek(0, io.SeekStart); err != nil {
 		return m.answerPartFailure(http.StatusInternalServerError, "InternalError", s3MsgRewindFailed,
 			fmt.Errorf("rewind spill for trailer checksum: %w", syscall.EIO))
