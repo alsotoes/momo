@@ -2574,6 +2574,9 @@ func FormatGetBucketLocationXML(region string) []byte {
 const s3MsgAccessDenied = "Access Denied."
 
 const (
+	// s3ChecksumHeaderPrefix prefixes every S3 checksum response header
+	// (x-amz-checksum-<algorithm>).
+	s3ChecksumHeaderPrefix = "x-amz-checksum-"
 	// s3PutOKETagPrefix starts a successful PUT response; the content hash
 	// follows as the ETag (shared by direct and forwarded PUT paths).
 	s3PutOKETagPrefix = "HTTP/1.1 200 OK\r\nETag: \""
@@ -2907,7 +2910,7 @@ var checksumRequestHeaders = []struct {
 // checksumHeaderFor returns the lowercase S3 response header for algo, e.g.
 // "x-amz-checksum-sha256".
 func checksumHeaderFor(algo string) string {
-	return "x-amz-checksum-" + algo
+	return s3ChecksumHeaderPrefix + algo
 }
 
 // normalizeChecksumAlgorithm lowercases and validates a checksum algorithm from
@@ -3125,12 +3128,12 @@ func appendS3MetaHeaders(b []byte, headers map[string]string, contentType string
 		// unsolicited makes a client validate a value it did not request, which
 		// fails for multipart objects whose stored checksum is composite
 		// ("response checksum header does not match calculated checksum").
-		if !withChecksums && strings.HasPrefix(k, "x-amz-checksum-") {
+		if !withChecksums && strings.HasPrefix(k, s3ChecksumHeaderPrefix) {
 			continue
 		}
 		// A composite checksum describes the parts, not the object: answering
 		// with it would make the client fail validation (#1354).
-		if strings.HasPrefix(k, "x-amz-checksum-") && isCompositeChecksum(v) {
+		if strings.HasPrefix(k, s3ChecksumHeaderPrefix) && isCompositeChecksum(v) {
 			continue
 		}
 		if v != "" {
