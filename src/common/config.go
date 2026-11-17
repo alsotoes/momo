@@ -1335,6 +1335,7 @@ func defaultStorageConfig() ConfigurationStorage {
 		DegradedRead:       true,
 		RebuildWorkers:     4,
 		Durability:         "",
+		MultipartUploadTTL: "24h",
 	}
 }
 
@@ -1356,6 +1357,19 @@ func loadStorageConfig(section *ini.Section) (ConfigurationStorage, error) {
 	if cfg.Backend == "" {
 		cfg.Backend = BackendLocal
 	}
+	// Incomplete multipart uploads expire after this long (issue #1361); "0"
+	// disables reaping, which lets an abandoned upload pin its parts forever.
+	if raw := section.Key("multipart_upload_ttl").String(); raw != "" {
+		ttl, perr := time.ParseDuration(raw)
+		if perr != nil {
+			return ConfigurationStorage{}, fmt.Errorf("invalid [storage] multipart_upload_ttl %q: %w", raw, syscall.EINVAL)
+		}
+		if ttl < 0 {
+			return ConfigurationStorage{}, fmt.Errorf("[storage] multipart_upload_ttl must not be negative: %w", syscall.EINVAL)
+		}
+		cfg.MultipartUploadTTL = raw
+	}
+
 	// 🛡️ Validate the backend eagerly so an invalid value (e.g. "foobar") fails
 	// at config load time instead of surfacing as a runtime error later (issue #649).
 	switch cfg.Backend {

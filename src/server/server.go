@@ -206,11 +206,8 @@ func Daemon(ctx context.Context, cfg common.Configuration, serverId int) (err er
 	if ssp, ok := store.(storageStatsProvider); ok {
 		metricsCollector.SetStorageStats(ssp)
 	}
-	// R8 (#1307): enforce [audit] retention_days so the audit log cannot grow
-	// without bound. The loop prunes at startup and then daily.
-	if cs, ok := store.(*storage.CASStore); ok && cfg.Audit.RetentionDays > 0 {
-		startAuditPruneLoop(ctx, cs, metricsCollector, cfg.Audit.RetentionDays)
-	}
+	// R8 (#1307) audit retention and #1361 multipart expiry: periodic housekeeping.
+	startBackgroundMaintenance(ctx, cfg, daemons[serverId].Data, store, metricsCollector)
 	// R5 phase 4: opt-in latency histograms (zero overhead when disabled).
 	metricsCollector.SetLatencyHistogramsEnabled(cfg.Metrics.EnableLatencyHistograms)
 	// #1287: expose what this node learned (mode, thresholds, election status)
