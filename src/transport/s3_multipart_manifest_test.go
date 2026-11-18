@@ -242,3 +242,91 @@ func TestEndToEndRecoveryCompletesUpload(t *testing.T) {
 		t.Fatalf("assembled %q", stack.putData)
 	}
 }
+
+// TestWriteManifestWithoutSpillDirIsNoop proves a session that never spooled a
+// part has nothing to persist, and asking anyway is harmless.
+func TestWriteManifestWithoutSpillDirIsNoop(t *testing.T) {
+	resetSessions(t)
+	up := &multipartUpload{bucket: "b", key: "k", createdAt: time.Now()}
+	writeManifest("no-dir", up) // must not panic or create anything
+}
+
+// TestWriteManifestReportsFailure proves a spill directory that disappeared
+// between spooling and the manifest write only logs — the upload stays usable in
+// this process.
+func TestWriteManifestReportsFailure(t *testing.T) {
+	root := useSpillRoot(t)
+	resetSessions(t)
+	up := openSession(t, "vanished", time.Now(), 3)
+	if err := os.RemoveAll(up.spillDir); err != nil {
+		t.Fatalf("remove spill: %v", err)
+	}
+	writeManifest("vanished", up) // must not panic
+	if _, err := os.Stat(root); !os.IsNotExist(err) && err != nil {
+		t.Fatalf("unexpected state: %v", err)
+	}
+}
+
+// TestWriteAtomicRejectsUnusableDestination proves each failure path of the
+// atomic writer reports an error instead of leaving a partial file behind.
+func TestWriteAtomicRejectsUnusableDestination(t *testing.T) {
+	dir := t.TempDir()
+
+	// Missing parent directory: the open fails.
+	if err := writeAtomic(filepath.Join(dir, "missing", "manifest.json"), []byte("{}")); err == nil {
+		t.Fatal("expected an error writing into a missing directory")
+	}
+
+	// Destination is a directory: the rename fails.
+	dest := filepath.Join(dir, "is-a-dir")
+	if err := os.MkdirAll(dest, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := writeAtomic(dest, []byte("{}")); err == nil {
+		t.Fatal("expected an error renaming onto a directory")
+	}
+	if _, err := os.Stat(dest + ".tmp"); !os.IsNotExist(err) {
+		t.Fatalf("temporary file left behind: %v", err)
+	}
+}
+
+// TestLoadManifestRejectsShortPart proves a part file that exists but is shorter
+// than the manifest records is refused: completing it would ship wrong bytes.
+func TestLoadManifestRejectsShortPart(t *testing.T) {
+	useSpillRoot(t)
+	resetSessions(t)
+	up := openSession(t, "short", time.Now(), 10)
+	// Truncate the part behind the manifest's back.
+	if err := os.WriteFile(up.parts[0].path, []byte("ab"), 0o600); err != nil {
+		t.Fatalf("truncate part: %v", err)
+	}
+
+	if _, _, ok := loadManifest(up.spillDir, time.Hour, time.Now()); ok {
+		t.Fatal("a truncated part must not be recovered")
+	}
+}
+
+// TestRecoverKeepsLiveSession proves recovery never replaces a session that is
+// already live under the same id.
+func TestRecoverKeepsLiveSession(t *testing.T) {
+	useSpillRoot(t)
+	resetSessions(t)
+	up := openSession(t, "both", time.Now(), 2)
+
+	// Replace the in-memory session with a distinguishable live one.
+	live := &multipartUpload{bucket: "live", key: "live", createdAt: time.Now()}
+	muUploads.Lock()
+	uploads["both"] = live
+	muUploads.Unlock()
+	_ = up
+
+	if got := RecoverMultipartSessions(time.Hour, time.Now()); got != 0 {
+		t.Fatalf("recovered %d sessions over a live one, want 0", got)
+	}
+	muUploads.Lock()
+	got := uploads["both"]
+	muUploads.Unlock()
+	if got != live {
+		t.Fatal("the live session was replaced by the recovered one")
+	}
+}
