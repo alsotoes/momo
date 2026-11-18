@@ -3423,8 +3423,9 @@ func TestS3Communicator_ObjectSubresource501(t *testing.T) {
 // TestS3Communicator_RemainingSubresource501 verifies the P5 honest posture
 // (issue #920): the remaining unsupported S3 operations return a clean 501
 // NotImplemented instead of silently misrouting. Covers the bucket
-// analytics/inventory/metrics/intelligent-tiering subresources, SelectObjectContent
-// (?select), and UploadPartCopy (PUT ?uploadId&partNumber + X-Amz-Copy-Source).
+// analytics/inventory/metrics/intelligent-tiering subresources and
+// SelectObjectContent (?select). UploadPartCopy is implemented (#1365) and is
+// asserted separately below.
 func TestS3Communicator_RemainingSubresource501(t *testing.T) {
 	defer verifyNoLeaks(t)
 
@@ -3466,14 +3467,23 @@ func TestS3Communicator_RemainingSubresource501(t *testing.T) {
 		})
 	}
 
-	// UploadPartCopy: PUT with multipart params + X-Amz-Copy-Source header.
-	t.Run("upload-part-copy put", func(t *testing.T) {
+	// UploadPartCopy is served (#1365): with no such upload it reports the
+	// multipart error, never the honest-501 posture.
+	t.Run("upload-part-copy is served", func(t *testing.T) {
 		req := "PUT /bucket/file.txt?uploadId=abcd&partNumber=1 HTTP/1.1\r\n" +
 			"Host: 127.0.0.1:4440\r\n" +
 			"Authorization: Bearer " + authToken + "\r\n" +
 			"X-Amz-Copy-Source: /bucket/src.txt\r\n\r\n"
 		resp, err := runS3RequestCaptureBucket(t, req, &mockStore{}, "bucket")
-		assertNotImplemented(resp, err)
+		if err == nil {
+			t.Fatal("expected an error for an unknown upload id")
+		}
+		if strings.Contains(resp, "<Code>NotImplemented</Code>") {
+			t.Fatalf("UploadPartCopy must not be rejected as unsupported:\n%s", resp)
+		}
+		if !strings.Contains(resp, "NoSuchUpload") {
+			t.Errorf("expected 404 NoSuchUpload, got: %s", resp)
+		}
 	})
 
 	// Plain UploadPart (no copy-source) must still route (404 NoSuchUpload for an

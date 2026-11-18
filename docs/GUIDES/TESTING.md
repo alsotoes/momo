@@ -74,6 +74,7 @@ Runs 4 parallel jobs, each testing a different wire protocol.
 | Smoke Test (QUIC) | `make smoke-quic` | `momo-quic` |
 | Smoke Test (S3-TCP) | `make smoke-s3-tcp` | `s3-tcp` |
 | Smoke Test (S3-QUIC) | `make smoke-s3-quic` | `s3-quic` |
+| S3 UploadPartCopy | `src/transport/s3_uploadpartcopy_test.go` | Whole-object copy assembles byte-identical, a ranged copy stores exactly the slice, five malformed/unsatisfiable ranges are refused, and a missing source or unknown upload reports `NoSuchKey`/`NoSuchUpload` |
 | aws-chunked trailing checksums | `src/transport/s3_checksum_mode_test.go`, `s3_multipart_deframing_test.go` | Trailer selection, header-name charset, matching checksum accepted, mismatch refused with `400 BadDigest` and nothing stored |
 | S3 multipart expiry | `src/transport/s3_multipart_reaper_test.go` | Expired sessions are reaped with their spill, fresh ones and live-session directories are kept, `ttl=0` disables the loop, orphaned spill directories are swept while unrelated ones survive, and the loop starts and stops cleanly |
 | S3 multipart de-framing | `src/transport/s3_multipart_deframing_test.go` | A chunked part plus a plain part assemble into exactly the decoded bytes (no framing, exact size); a 206 response carries no checksum header. The `aws-cli` compatibility check additionally asserts the stored size of a 20 MiB multipart upload equals the file size |
