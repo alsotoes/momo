@@ -20,7 +20,9 @@ func TestS3Communicator_FullFlow(t *testing.T) {
 
 	authToken := "test-token-11111111111111111111111111111111111111111111111111111" // notsecret
 	expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
-	addr := "127.0.0.1:45698"
+	// Bind an ephemeral port: a hardcoded one collides on a shared CI runner
+	// (same class of flake as issue #882).
+	addr := "127.0.0.1:0"
 
 	cfg := common.Configuration{
 		Global: common.ConfigurationGlobal{
@@ -36,6 +38,7 @@ func TestS3Communicator_FullFlow(t *testing.T) {
 		t.Fatalf("Failed to listen: %v", err)
 	}
 	defer l.Close()
+	addr = l.Addr().String()
 
 	timestamp := time.Now().UnixNano()
 	testPayload := []byte("s3 test payload")

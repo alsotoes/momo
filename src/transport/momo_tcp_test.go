@@ -20,7 +20,7 @@ import (
 func TestMomoTCPCommunicator_Handshake_And_Metadata(t *testing.T) {
 	authToken := "test-token-11111111111111111111111111111111111111111111111111111" // notsecret, 64 chars
 	expectedAuthToken := []byte(common.PadString(authToken, common.AuthTokenLength))
-	addr := "127.0.0.1:45699"
+	addr := "127.0.0.1:0" // ephemeral: a fixed port collides on CI (#882)
 
 	cfg := common.Configuration{
 		Global: common.ConfigurationGlobal{
@@ -35,6 +35,7 @@ func TestMomoTCPCommunicator_Handshake_And_Metadata(t *testing.T) {
 		t.Fatalf("Failed to listen: %v", err)
 	}
 	defer l.Close()
+	addr = l.Addr().String()
 
 	timestamp := time.Now().UnixNano()
 

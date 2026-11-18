@@ -121,7 +121,7 @@ func TestProtocolFactory_Dial_TCP_Error(t *testing.T) {
 func TestMomoQUICCommunicator_Handshake(t *testing.T) {
 	authToken := "test-token" // notsecret
 	timestamp := time.Now().UnixNano()
-	addr := "127.0.0.1:45684"
+	addr := "127.0.0.1:0" // ephemeral: a fixed port collides on CI (#882)
 
 	cfg := common.Configuration{
 		Global: common.ConfigurationGlobal{
@@ -137,6 +137,7 @@ func TestMomoQUICCommunicator_Handshake(t *testing.T) {
 		t.Fatalf("Server failed to listen: %v", err)
 	}
 	defer l.Close()
+	addr = l.Addr().String()
 
 	errChan := make(chan error, 1)
 	go func() {
@@ -184,7 +185,7 @@ func TestMomoQUICCommunicator_Handshake(t *testing.T) {
 
 func TestMomoQUICCommunicator_Metadata_And_Payload(t *testing.T) {
 	authToken := "test-token" // notsecret
-	addr := "127.0.0.1:45685"
+	addr := "127.0.0.1:0"     // ephemeral: a fixed port collides on CI (#882)
 	testMeta := &common.FileMetadata{
 		Name: "quic-test.txt",
 		Hash: "abc123hash",
@@ -206,6 +207,7 @@ func TestMomoQUICCommunicator_Metadata_And_Payload(t *testing.T) {
 		t.Fatalf("Server failed to listen: %v", err)
 	}
 	defer l.Close()
+	addr = l.Addr().String()
 
 	errChan := make(chan error, 1)
 	go func() {
@@ -668,7 +670,7 @@ func TestMomoQUICCommunicator_NativeGet(t *testing.T) {
 // connection teardown must run exactly once under a sync.Once guard, without
 // spawning a fire-and-forget goroutine per call.
 func TestMomoQUICCommunicator_CloseIdempotent(t *testing.T) {
-	addr := "127.0.0.1:45697"
+	addr := "127.0.0.1:0" // ephemeral: a fixed port collides on CI (#882)
 
 	cfg := common.Configuration{
 		Global: common.ConfigurationGlobal{
@@ -683,6 +685,7 @@ func TestMomoQUICCommunicator_CloseIdempotent(t *testing.T) {
 		t.Fatalf("Server failed to listen: %v", err)
 	}
 	defer l.Close()
+	addr = l.Addr().String()
 
 	serverDone := make(chan error, 1)
 	go func() {
