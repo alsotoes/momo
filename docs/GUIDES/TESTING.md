@@ -74,6 +74,7 @@ Runs 4 parallel jobs, each testing a different wire protocol.
 | Smoke Test (QUIC) | `make smoke-quic` | `momo-quic` |
 | Smoke Test (S3-TCP) | `make smoke-s3-tcp` | `s3-tcp` |
 | Smoke Test (S3-QUIC) | `make smoke-s3-quic` | `s3-quic` |
+| S3 object tagging | `src/transport/s3_tagging_test.go` | PUT/GET/DELETE round-trip over a real socket, empty set when untagged, `404 NoSuchKey` for a missing object, six invalid tag shapes refused, and key-sorted reversible encoding |
 | S3 UploadPartCopy | `src/transport/s3_uploadpartcopy_test.go` | Whole-object copy assembles byte-identical, a ranged copy stores exactly the slice, five malformed/unsatisfiable ranges are refused, and a missing source or unknown upload reports `NoSuchKey`/`NoSuchUpload` |
 | aws-chunked trailing checksums | `src/transport/s3_checksum_mode_test.go`, `s3_multipart_deframing_test.go` | Trailer selection, header-name charset, matching checksum accepted, mismatch refused with `400 BadDigest` and nothing stored |
 | Multipart restart recovery | `src/transport/s3_multipart_manifest_test.go` | A session survives a simulated restart with its id and parts, an expired session is not recovered, a missing, truncated or same-length corrupt part is refused (digest check), a part with no recorded digest is refused, a matching part keeps its ETag, the manifest is written by rename, and an upload completes correctly after recovery |

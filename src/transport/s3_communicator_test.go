@@ -3377,9 +3377,6 @@ func TestS3Communicator_ObjectSubresource501(t *testing.T) {
 		method string
 		target string
 	}{
-		{"tagging get", "GET", "/bucket/file.txt?tagging"},
-		{"tagging put", "PUT", "/bucket/file.txt?tagging"},
-		{"tagging delete", "DELETE", "/bucket/file.txt?tagging"},
 		{"acl get", "GET", "/bucket/file.txt?acl"},
 		{"acl put", "PUT", "/bucket/file.txt?acl"},
 		{"versionId get", "GET", "/bucket/file.txt?versionId=1"},

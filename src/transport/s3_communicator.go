@@ -1077,6 +1077,10 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		if handled, code, ts, herr := m.objectLockSubresourceRoute(req, q, bucket, key); handled {
 			return code, ts, herr
 		}
+		// Issue #1375: GET /{bucket}/{key}?tagging.
+		if q.Has("tagging") && key != "" {
+			return m.handleGetObjectTagging(bucket, key)
+		}
 		// R10 Phase 1 (#938): GET a specific object version.
 		if versionID := q.Get("versionId"); versionID != "" {
 			if m.versioning == nil {
@@ -1378,6 +1382,10 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		if uploadID := req.URL.Query().Get("uploadId"); uploadID != "" && key != "" {
 			return m.handleAbortMultipartUpload(uploadID)
 		}
+		// Issue #1375: DELETE /{bucket}/{key}?tagging.
+		if key != "" && req.URL.Query().Has("tagging") {
+			return m.handleDeleteObjectTagging(bucket, key)
+		}
 
 		if m.store == nil {
 			m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
@@ -1551,6 +1559,12 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		if err := m.validateSSEHeaders(req); err != nil {
 			return 0, 0, err
 		}
+		// Issue #1375: x-amz-tagging on an upload becomes the object's tag set.
+		// Validate before any bytes are read, and rewrite it into the canonical
+		// (key-sorted) form so the stored value is deterministic.
+		if err := m.validateTaggingHeader(req); err != nil {
+			return 0, 0, err
+		}
 
 		// UploadPartCopy (issue #820, P5 / #920): a PUT with multipart params
 		// AND an X-Amz-Copy-Source header. Not implemented; reject cleanly
@@ -1629,6 +1643,10 @@ func (m *S3Communicator) HandshakeServer(expectedAuthToken []byte) (requestedMod
 		if key != "" {
 			if handled, code, ts, herr := m.objectLockSubresourceRoute(req, q, bucket, key); handled {
 				return code, ts, herr
+			}
+			// Issue #1375: PUT /{bucket}/{key}?tagging.
+			if q.Has("tagging") {
+				return m.handlePutObjectTagging(req, bucket, key)
 			}
 		}
 
@@ -2399,9 +2417,8 @@ func unsupportedBucketConfigSubresource(q url.Values) (string, bool) {
 // GetObject/PutObject/DeleteObject. Only object-key addresses (key != "") are
 // intercepted; bucket-root bucket-config handling is #912/#913.
 var unsupportedObjectSubresources = map[string]string{
-	"tagging": "object tagging",
-	"acl":     "object access-control lists",
-	"select":  "SelectObjectContent",
+	"acl":    "object access-control lists",
+	"select": "SelectObjectContent",
 }
 
 // msgVersioningUnsupported is the honest-501 message used by every versioning
@@ -2848,6 +2865,7 @@ func s3ErrorCode(status int) string {
 // value AES256 (validateSSEHeaders rejects everything else before capture).
 var s3standardHeaders = []string{
 	"Content-Type",
+	"X-Amz-Tagging",
 	"Cache-Control",
 	"Content-Disposition",
 	"Content-Encoding",
