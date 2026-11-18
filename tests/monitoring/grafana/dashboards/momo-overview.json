@@ -9,7 +9,7 @@
     ],
     "timezone": "browser",
     "schemaVersion": 38,
-    "version": 3,
+    "version": 4,
     "refresh": "5s",
     "time": {
       "from": "now-15m",
@@ -712,6 +712,32 @@
           {
             "expr": "momo_replication_mode_samples",
             "legendFormat": "mode {{mode}} samples"
+          }
+        ]
+      },
+      {
+        "id": 27,
+        "title": "Multipart Upload Footprint",
+        "description": "Open S3 multipart uploads and the bytes their spooled parts hold (#1369). Parts live under <data>/multipart-spill and expire after [storage] multipart_upload_ttl.",
+        "type": "graph",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 48
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "targets": [
+          {
+            "expr": "momo_multipart_uploads_active",
+            "legendFormat": "open uploads"
+          },
+          {
+            "expr": "momo_multipart_spill_bytes / 1048576",
+            "legendFormat": "spill MiB"
           }
         ]
       }

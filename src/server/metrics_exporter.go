@@ -20,6 +20,7 @@ import (
 	"github.com/alsotoes/momo/src/common"
 	"github.com/alsotoes/momo/src/metrics"
 	"github.com/alsotoes/momo/src/replication_order"
+	"github.com/alsotoes/momo/src/transport"
 )
 
 // securityHeadersMiddleware adds standard security headers to HTTP responses.
@@ -408,6 +409,7 @@ func (m *MetricsCollector) writeMetrics(w io.Writer) {
 
 	m.writeStorageMetrics(w)
 	m.writeClusterMetrics(w)
+	writeMultipartGauges(w)
 	m.writeLatencyHistograms(w)
 
 	fmt.Fprintf(w, "# HELP momo_build_info Build information.\n")
@@ -901,6 +903,19 @@ func StartMetricsServer(ctx context.Context, host string, port int, collector *M
 // writeAdaptiveGauges emits the learned threshold gauges. Write errors are
 // ignored deliberately: the scrape response is already streaming, and the
 // handler cannot retry a partially written body.
+// writeMultipartGauges emits the S3 multipart footprint (issue #1369): how many
+// uploads are open on this node and how many bytes their spooled parts hold.
+// Emitted even at zero so a dashboard can tell "none" from "not reported".
+func writeMultipartGauges(w io.Writer) {
+	active, spillBytes := transport.MultipartStats()
+	_, _ = fmt.Fprintf(w, "# HELP momo_multipart_uploads_active Open S3 multipart uploads on this node.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE momo_multipart_uploads_active gauge\n")
+	_, _ = fmt.Fprintf(w, "momo_multipart_uploads_active %d\n", active)
+	_, _ = fmt.Fprintf(w, "# HELP momo_multipart_spill_bytes Bytes held by the spooled parts of open multipart uploads.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE momo_multipart_spill_bytes gauge\n")
+	_, _ = fmt.Fprintf(w, "momo_multipart_spill_bytes %d\n", spillBytes)
+}
+
 func writeAdaptiveGauges(w io.Writer, upper, lower float64, samples int) {
 	fmt.Fprintf(w, "# HELP momo_adaptive_max_threshold Learned upper utilisation threshold (percent).\n")       //nolint:errcheck
 	fmt.Fprintf(w, "# TYPE momo_adaptive_max_threshold gauge\n")                                                //nolint:errcheck
