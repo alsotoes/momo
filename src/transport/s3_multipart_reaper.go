@@ -240,3 +240,20 @@ func MultipartTTLFromConfig(raw string) time.Duration {
 	}
 	return ttl
 }
+
+// MultipartStats reports the open multipart uploads on this node and the bytes
+// their spooled parts currently hold. It reads the session map only, so a scrape
+// never walks the spill directory.
+func MultipartStats() (uploadsCount int, spillBytes int64) {
+	muUploads.Lock()
+	defer muUploads.Unlock()
+	for _, up := range uploads {
+		up.mu.Lock()
+		uploadsCount++
+		for _, p := range up.parts {
+			spillBytes += p.size
+		}
+		up.mu.Unlock()
+	}
+	return uploadsCount, spillBytes
+}
