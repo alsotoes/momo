@@ -3287,7 +3287,7 @@ func (m *S3Communicator) handleUploadPartCopy(req *http.Request, bucket, key, co
 	muUploads.Unlock()
 	if !ok || up.bucket != bucket || up.key != key {
 		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		_, _ = writeS3Error(m.conn, http.StatusNotFound, "NoSuchUpload", "The specified upload does not exist.", "")
+		_, _ = writeS3Error(m.conn, http.StatusNotFound, "NoSuchUpload", s3MsgNoSuchUpload, "")
 		return 0, 0, ErrRequestHandled
 	}
 
@@ -3390,19 +3390,19 @@ func parseCopySourceRange(value string, size int64) (start, length int64, err er
 		return 0, size, nil
 	}
 	spec := strings.TrimSpace(value)
-	if !strings.HasPrefix(spec, "bytes=") {
-		return 0, 0, fmt.Errorf("range must start with bytes=: %w", syscall.EINVAL)
+	if !strings.HasPrefix(spec, s3CopyRangePrefix) {
+		return 0, 0, fmt.Errorf("range must start with %s: %w", s3CopyRangePrefix, syscall.EINVAL)
 	}
-	span := strings.TrimPrefix(spec, "bytes=")
+	span := strings.TrimPrefix(spec, s3CopyRangePrefix)
 	first, last, found := strings.Cut(span, "-")
 	if !found || first == "" || last == "" {
-		return 0, 0, fmt.Errorf("range must be bytes=start-end: %w", syscall.EINVAL)
+		return 0, 0, fmt.Errorf("range must be %sstart-end: %w", s3CopyRangePrefix, syscall.EINVAL)
 	}
-	start, serr := strconv.ParseInt(first, 10, 64)
+	start, serr := strconv.ParseInt(strings.TrimSpace(first), 10, 64)
 	if serr != nil || start < 0 {
 		return 0, 0, fmt.Errorf("invalid range start %q: %w", first, syscall.EINVAL)
 	}
-	end, eerr := strconv.ParseInt(last, 10, 64)
+	end, eerr := strconv.ParseInt(strings.TrimSpace(last), 10, 64)
 	if eerr != nil || end < start || end >= size {
 		return 0, 0, fmt.Errorf("invalid range end %q: %w", last, syscall.EINVAL)
 	}
@@ -3825,6 +3825,10 @@ const (
 	s3MsgPartsUnreadable = "Failed to read the uploaded parts."
 	// s3MsgRewindFailed answers a failure to rewind a buffered payload.
 	s3MsgRewindFailed = "Failed to rewind buffered streaming payload."
+	// s3MsgNoSuchUpload answers a multipart request for an unknown session.
+	s3MsgNoSuchUpload = "The specified upload does not exist."
+	// s3CopyRangePrefix is the unit prefix of an x-amz-copy-source-range value.
+	s3CopyRangePrefix = "bytes="
 )
 
 // maxMultipartPartSize bounds a single part (S3's per-part ceiling).
@@ -3961,8 +3965,8 @@ func (m *S3Communicator) handleUploadPart(req *http.Request, bucket, key string)
 	up, ok := uploads[uploadID]
 	muUploads.Unlock()
 	if !ok || up.bucket != bucket || up.key != key {
-		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		writeS3Error(m.conn, http.StatusNotFound, "NoSuchUpload", "The specified upload does not exist.", "")
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, _ = writeS3Error(m.conn, http.StatusNotFound, "NoSuchUpload", s3MsgNoSuchUpload, "")
 		return 0, 0, ErrRequestHandled
 	}
 
@@ -4228,8 +4232,8 @@ func (m *S3Communicator) handleCompleteMultipartUpload(req *http.Request, bucket
 	up, ok := uploads[uploadID]
 	if !ok || up.bucket != bucket || up.key != key {
 		muUploads.Unlock()
-		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		writeS3Error(m.conn, http.StatusNotFound, "NoSuchUpload", "The specified upload does not exist.", "")
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, _ = writeS3Error(m.conn, http.StatusNotFound, "NoSuchUpload", s3MsgNoSuchUpload, "")
 		return 0, 0, fmt.Errorf("upload %s not found: %w", uploadID, syscall.ENOENT)
 	}
 	delete(uploads, uploadID)
@@ -4420,8 +4424,8 @@ func (m *S3Communicator) handleListParts(bucket, key, uploadID string) (requeste
 	up, ok := uploads[uploadID]
 	muUploads.Unlock()
 	if !ok || up.bucket != bucket || up.key != key {
-		m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		writeS3Error(m.conn, http.StatusNotFound, "NoSuchUpload", "The specified upload does not exist.", "")
+		_ = m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		_, _ = writeS3Error(m.conn, http.StatusNotFound, "NoSuchUpload", s3MsgNoSuchUpload, "")
 		return 0, 0, ErrRequestHandled
 	}
 

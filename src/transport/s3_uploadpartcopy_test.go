@@ -3,6 +3,8 @@ package transport
 import (
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
@@ -205,5 +207,75 @@ func TestUploadPartCopyMissingSource(t *testing.T) {
 	resp := stack.copyPart(t, id, 1, "")
 	if !strings.Contains(resp, "NoSuchKey") {
 		t.Fatalf("expected 404 NoSuchKey, got: %s", truncate(resp, 240))
+	}
+}
+
+// TestParseCopySourceRange covers the range grammar directly: the helper decides
+// whether a copy stores the right bytes, so every rejection path is pinned.
+func TestParseCopySourceRange(t *testing.T) {
+	const size = 100
+	ok := []struct {
+		value string
+		start int64
+		len   int64
+	}{
+		{"", 0, size},
+		{"bytes=0-4", 0, 5},
+		{"bytes=95-99", 95, 5},
+		{"bytes= 10-19 ", 10, 10},
+	}
+	for _, tc := range ok {
+		start, length, err := parseCopySourceRange(tc.value, size)
+		if err != nil {
+			t.Fatalf("%q: unexpected error %v", tc.value, err)
+		}
+		if start != tc.start || length != tc.len {
+			t.Fatalf("%q: got (%d,%d), want (%d,%d)", tc.value, start, length, tc.start, tc.len)
+		}
+	}
+
+	bad := []string{
+		"0-4",           // no unit
+		"bytes=",        // empty spec
+		"bytes=5",       // no separator
+		"bytes=-5",      // missing start
+		"bytes=5-",      // missing end
+		"bytes=-5-9",    // negative start
+		"bytes=9-5",     // inverted
+		"bytes=0-100",   // end beyond the object
+		"bytes=0-3",     // shorter than the 5-byte floor
+		"bytes=abc-def", // not numbers
+		"bytes=1-2-3",   // too many separators
+	}
+	for _, value := range bad {
+		if _, _, err := parseCopySourceRange(value, size); err == nil {
+			t.Fatalf("%q must be refused", value)
+		}
+	}
+}
+
+// TestSpoolReaderHashesAndCounts proves the copy spool returns the SHA-256 of the
+// bytes it wrote and their length, and refuses an unusable destination.
+func TestSpoolReaderHashesAndCounts(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "1.part")
+	etag, size, err := spoolReader(strings.NewReader("hello"), path)
+	if err != nil {
+		t.Fatalf("spoolReader: %v", err)
+	}
+	if size != 5 {
+		t.Fatalf("size = %d, want 5", size)
+	}
+	// SHA-256("hello")
+	if etag != "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824" {
+		t.Fatalf("etag = %q", etag)
+	}
+	data, rerr := os.ReadFile(path)
+	if rerr != nil || string(data) != "hello" {
+		t.Fatalf("spooled %q err=%v", data, rerr)
+	}
+
+	if _, _, serr := spoolReader(strings.NewReader("x"), filepath.Join(dir, "missing", "2.part")); serr == nil {
+		t.Fatal("expected an error for an unusable destination")
 	}
 }
