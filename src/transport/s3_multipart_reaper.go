@@ -207,6 +207,10 @@ func StartMultipartReaper(ctx context.Context, ttl time.Duration) <-chan struct{
 			}
 		}()
 
+		// Issue #1371: rebuild sessions from the manifests a previous process left
+		// behind, before the first sweep can consider them orphans.
+		RecoverMultipartSessions(ttl, time.Now())
+
 		sessions, orphans := ReapExpiredMultipartUploads(ttl, time.Now(), "")
 		if sessions+orphans > 0 {
 			log.Printf("AUDIT: multipart reaper start: %d session(s), %d orphan(s)", sessions, orphans)
