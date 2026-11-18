@@ -22,6 +22,13 @@ import (
 // PUT ?tagging and a plain PUT carrying x-amz-tagging converge on one
 // representation, and replication carries tags with the rest of the metadata.
 
+// s3MsgNoSuchBucket and s3MsgNoSuchKey are the standard not-found answers shared
+// by every tagging route.
+const (
+	s3MsgNoSuchBucket = "The specified bucket does not exist."
+	s3MsgNoSuchKey    = "The specified key does not exist."
+)
+
 const (
 	// s3TaggingHeader is the metadata key holding the encoded tag set.
 	s3TaggingHeader = "x-amz-tagging"
@@ -215,11 +222,11 @@ func formatTaggingXML(tags tagSet) []byte {
 // handleGetObjectTagging answers GET /{bucket}/{key}?tagging.
 func (m *S3Communicator) handleGetObjectTagging(bucket, key string) (requestedMode int, timestamp int64, err error) {
 	if !m.validBucket(bucket) {
-		m.writeTaggingError(http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", bucket)
+		m.writeTaggingError(http.StatusNotFound, "NoSuchBucket", s3MsgNoSuchBucket, bucket)
 		return 0, 0, ErrRequestHandled
 	}
 	if !m.objectExists(key) {
-		m.writeTaggingError(http.StatusNotFound, "NoSuchKey", "The specified key does not exist.", key)
+		m.writeTaggingError(http.StatusNotFound, "NoSuchKey", s3MsgNoSuchKey, key)
 		return 0, 0, ErrRequestHandled
 	}
 	body := formatTaggingXML(m.objectTags(key))
@@ -233,11 +240,11 @@ func (m *S3Communicator) handlePutObjectTagging(req *http.Request, bucket, key s
 	defer common.RecoverErr("S3 handlePutObjectTagging", &err)
 
 	if !m.validBucket(bucket) {
-		m.writeTaggingError(http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", bucket)
+		m.writeTaggingError(http.StatusNotFound, "NoSuchBucket", s3MsgNoSuchBucket, bucket)
 		return 0, 0, ErrRequestHandled
 	}
 	if !m.objectExists(key) {
-		m.writeTaggingError(http.StatusNotFound, "NoSuchKey", "The specified key does not exist.", key)
+		m.writeTaggingError(http.StatusNotFound, "NoSuchKey", s3MsgNoSuchKey, key)
 		return 0, 0, ErrRequestHandled
 	}
 
@@ -262,11 +269,11 @@ func (m *S3Communicator) handlePutObjectTagging(req *http.Request, bucket, key s
 // handleDeleteObjectTagging answers DELETE /{bucket}/{key}?tagging.
 func (m *S3Communicator) handleDeleteObjectTagging(bucket, key string) (requestedMode int, timestamp int64, err error) {
 	if !m.validBucket(bucket) {
-		m.writeTaggingError(http.StatusNotFound, "NoSuchBucket", "The specified bucket does not exist.", bucket)
+		m.writeTaggingError(http.StatusNotFound, "NoSuchBucket", s3MsgNoSuchBucket, bucket)
 		return 0, 0, ErrRequestHandled
 	}
 	if !m.objectExists(key) {
-		m.writeTaggingError(http.StatusNotFound, "NoSuchKey", "The specified key does not exist.", key)
+		m.writeTaggingError(http.StatusNotFound, "NoSuchKey", s3MsgNoSuchKey, key)
 		return 0, 0, ErrRequestHandled
 	}
 	if serr := m.storeObjectTags(key, ""); serr != nil {
