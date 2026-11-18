@@ -2,6 +2,8 @@ package transport
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -45,11 +47,16 @@ func openSession(t *testing.T, id string, createdAt time.Time, parts ...int64) *
 	up.spillDir = dir
 	for i, size := range parts {
 		path := filepath.Join(dir, itoaForTest(i+1)+".part")
-		if werr := os.WriteFile(path, make([]byte, size), 0o600); werr != nil {
+		content := make([]byte, size)
+		for j := range content {
+			content[j] = byte(j % 251) // deterministic, non-zero
+		}
+		if werr := os.WriteFile(path, content, 0o600); werr != nil {
 			t.Fatalf("write part: %v", werr)
 		}
+		sum := sha256.Sum256(content)
 		up.parts = append(up.parts, multipartPart{
-			partNumber: i + 1, etag: "etag", size: size, path: path,
+			partNumber: i + 1, etag: hex.EncodeToString(sum[:]), size: size, path: path,
 		})
 	}
 	muUploads.Lock()
@@ -328,5 +335,81 @@ func TestRecoverKeepsLiveSession(t *testing.T) {
 	muUploads.Unlock()
 	if got != live {
 		t.Fatal("the live session was replaced by the recovered one")
+	}
+}
+
+// TestRecoveryRejectsCorruptPartWithSameSize is the point of #1373: a part
+// overwritten in place with the same length must not be handed back as
+// complete-able, because the session would then assemble wrong bytes.
+func TestRecoveryRejectsCorruptPartWithSameSize(t *testing.T) {
+	useSpillRoot(t)
+	resetSessions(t)
+	up := openSession(t, "corrupt", time.Now(), 8)
+
+	// Same length, different bytes.
+	if err := os.WriteFile(up.parts[0].path, []byte("CLOBBER!"), 0o600); err != nil {
+		t.Fatalf("clobber part: %v", err)
+	}
+	muUploads.Lock()
+	uploads = make(map[string]*multipartUpload)
+	muUploads.Unlock()
+
+	if got := RecoverMultipartSessions(time.Hour, time.Now()); got != 0 {
+		t.Fatalf("recovered %d sessions over a corrupt part, want 0", got)
+	}
+}
+
+// TestRecoveryKeepsRecordedETag proves a verified part comes back with the digest
+// the client already holds, so ListParts stays consistent after a restart.
+func TestRecoveryKeepsRecordedETag(t *testing.T) {
+	useSpillRoot(t)
+	resetSessions(t)
+	original := openSession(t, "intact", time.Now(), 6)
+	wantETag := original.parts[0].etag
+
+	muUploads.Lock()
+	uploads = make(map[string]*multipartUpload)
+	muUploads.Unlock()
+	if got := RecoverMultipartSessions(time.Hour, time.Now()); got != 1 {
+		t.Fatalf("recovered %d sessions, want 1", got)
+	}
+
+	muUploads.Lock()
+	recovered := uploads["intact"]
+	muUploads.Unlock()
+	if recovered == nil || len(recovered.parts) != 1 {
+		t.Fatalf("recovered session = %+v", recovered)
+	}
+	if recovered.parts[0].etag != wantETag {
+		t.Fatalf("etag = %q, want %q", recovered.parts[0].etag, wantETag)
+	}
+}
+
+// TestRecoveryRejectsPartWithoutDigest proves a manifest that cannot be verified
+// is refused instead of trusted.
+func TestRecoveryRejectsPartWithoutDigest(t *testing.T) {
+	useSpillRoot(t)
+	resetSessions(t)
+	up := openSession(t, "no-etag", time.Now(), 4)
+
+	// Rewrite the manifest without digests.
+	manifest := multipartManifest{
+		Version: 1, UploadID: "no-etag", Bucket: "bucket", Key: "big.bin",
+		CreatedAt: up.createdAt,
+		Parts:     []multipartPartRec{{PartNumber: 1, Size: 4}},
+	}
+	data, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if werr := os.WriteFile(filepath.Join(up.spillDir, multipartManifestName), data, 0o600); werr != nil {
+		t.Fatalf("write manifest: %v", werr)
+	}
+
+	muUploads.Lock()
+	uploads = make(map[string]*multipartUpload)
+	muUploads.Unlock()
+	if got := RecoverMultipartSessions(time.Hour, time.Now()); got != 0 {
+		t.Fatalf("recovered %d sessions without a digest, want 0", got)
 	}
 }
