@@ -3,6 +3,8 @@ package transport
 import (
 	"errors"
 	"io"
+	"net/http"
+	"os"
 	"strings"
 	"syscall"
 	"testing"
@@ -182,5 +184,53 @@ func TestAliasCopyCarriesSourceMetadata(t *testing.T) {
 				t.Fatalf("metadata was not carried to the alias: %#v", store.saved)
 			}
 		})
+	}
+}
+
+// TestUploadPartCopyReportsStorageFailure proves a copy whose part cannot be
+// written answers 500 and leaves the session untouched, instead of registering a
+// part that does not exist.
+func TestUploadPartCopyReportsStorageFailure(t *testing.T) {
+	spill := t.TempDir()
+	if err := os.Chmod(spill, 0o500); err != nil {
+		t.Skipf("cannot make the directory read-only: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(spill, 0o700) })
+
+	comm, client := newPipeComm(t)
+	go drainFor(client)
+	comm.SetStore(&mockStore{
+		getFunc: func(name string) (io.ReadCloser, common.FileMetadata, error) {
+			return io.NopCloser(strings.NewReader("payload")), common.FileMetadata{Name: name, Hash: "h", Size: 7}, nil
+		},
+	})
+
+	id := "copy-storage-failure"
+	up := &multipartUpload{bucket: "bucket", key: "dest.bin", createdAt: time.Now(), spillDir: spill}
+	muUploads.Lock()
+	uploads[id] = up
+	muUploads.Unlock()
+	t.Cleanup(func() {
+		muUploads.Lock()
+		delete(uploads, id)
+		muUploads.Unlock()
+	})
+
+	req, err := http.NewRequest(http.MethodPut,
+		"http://127.0.0.1:4440/bucket/dest.bin?uploadId="+id+"&partNumber=1", nil)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	req.Header.Set("X-Amz-Copy-Source", "/bucket/src.bin")
+
+	if _, _, herr := comm.handleUploadPartCopy(req, "bucket", "dest.bin", "/bucket/src.bin"); herr == nil {
+		t.Fatal("expected an error when the part cannot be written")
+	}
+
+	up.mu.Lock()
+	parts := len(up.parts)
+	up.mu.Unlock()
+	if parts != 0 {
+		t.Fatalf("a failed copy registered %d part(s)", parts)
 	}
 }
