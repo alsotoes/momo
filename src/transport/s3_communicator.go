@@ -3335,6 +3335,11 @@ func (m *S3Communicator) handleUploadPartCopy(req *http.Request, bucket, key, co
 	up.mu.Lock()
 	up.parts = append(up.parts, multipartPart{partNumber: partNumber, etag: etag, size: size, path: partPath})
 	up.mu.Unlock()
+	// Issue #1371: make the session survive a restart. Written after the part
+	// file is in place so the manifest never advertises bytes we do not have.
+	if uploadID != "" {
+		writeManifest(uploadID, up)
+	}
 
 	var buf bytes.Buffer
 	buf.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)
@@ -3926,13 +3931,20 @@ func (m *S3Communicator) handleCreateMultipartUpload(bucket, key string) (reques
 	uploadID := generateUploadID()
 
 	muUploads.Lock()
-	uploads[uploadID] = &multipartUpload{
+	up := &multipartUpload{
 		bucket:    bucket,
 		key:       key,
 		createdAt: time.Now(),
 		parts:     make([]multipartPart, 0),
 	}
+	uploads[uploadID] = up
 	muUploads.Unlock()
+	// Issue #1371: give the session a spill directory and manifest immediately, so
+	// a restart between create and the first part still recovers it.
+	if dir, derr := m.partSpillDir(up); derr == nil {
+		_ = dir
+		writeManifest(uploadID, up)
+	}
 
 	var buf bytes.Buffer
 	buf.WriteString(`<?xml version="1.0" encoding="UTF-8"?>`)
@@ -3995,6 +4007,11 @@ func (m *S3Communicator) handleUploadPart(req *http.Request, bucket, key string)
 	up.mu.Lock()
 	up.parts = append(up.parts, multipartPart{partNumber: partNumber, etag: etag, size: size, path: partPath})
 	up.mu.Unlock()
+	// Issue #1371: make the session survive a restart. Written after the part
+	// file is in place so the manifest never advertises bytes we do not have.
+	if uploadID != "" {
+		writeManifest(uploadID, up)
+	}
 
 	m.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	var hdrBuf [256]byte
