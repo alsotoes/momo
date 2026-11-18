@@ -44,6 +44,17 @@ ids stable.
 - **WHEN** the manifest lists a part whose file is missing or shorter than recorded
 - **THEN** the session is not recovered, so it cannot complete with wrong bytes
 
+#### Scenario: Corrupt part of the right length
+
+- **WHEN** a part file has the recorded length but a different SHA-256 than the
+  manifest recorded
+- **THEN** the session is not recovered, because the part cannot be trusted
+
+#### Scenario: Part without a recorded digest
+
+- **WHEN** a manifest lists a part with no digest to verify against
+- **THEN** the session is not recovered
+
 #### Scenario: Malformed manifest
 
 - **WHEN** a manifest cannot be parsed or lacks bucket/key/upload id

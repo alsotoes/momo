@@ -1,7 +1,10 @@
 package transport
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -171,11 +174,8 @@ func loadManifest(dir string, ttl time.Duration, now time.Time) (*multipartUploa
 	parts := make([]multipartPart, 0, len(manifest.Parts))
 	for _, rec := range manifest.Parts {
 		path := filepath.Join(dir, strconv.Itoa(rec.PartNumber)+".part")
-		info, serr := os.Stat(path)
-		if serr != nil || info.Size() != rec.Size {
-			// The manifest claims a part the disk does not have (or has at a
-			// different size): the session cannot be completed faithfully.
-			log.Printf("AUDIT: multipart %s part %d is missing or truncated; not recovering", manifest.UploadID, rec.PartNumber)
+		if !partMatchesManifest(path, rec) {
+			log.Printf("AUDIT: multipart %s part %d is missing, truncated or corrupt; not recovering", manifest.UploadID, rec.PartNumber)
 			return nil, "", false
 		}
 		parts = append(parts, multipartPart{
@@ -190,4 +190,31 @@ func loadManifest(dir string, ttl time.Duration, now time.Time) (*multipartUploa
 		spillDir:  dir,
 		parts:     parts,
 	}, manifest.UploadID, true
+}
+
+// partMatchesManifest reports whether the spooled part on disk is exactly the
+// part the manifest recorded: same length and same SHA-256 (issue #1373). Size
+// alone is not enough — a part corrupted in place with an unchanged length would
+// otherwise be handed back to the client as complete-able.
+func partMatchesManifest(path string, rec multipartPartRec) bool {
+	info, err := os.Stat(path)
+	if err != nil || info.Size() != rec.Size {
+		return false
+	}
+	if rec.ETag == "" {
+		// No recorded digest means it cannot be verified; refuse rather than
+		// resume an upload we cannot vouch for.
+		return false
+	}
+	f, oerr := os.Open(path)
+	if oerr != nil {
+		return false
+	}
+	defer func() { _ = f.Close() }()
+
+	hasher := sha256.New()
+	if _, cerr := io.Copy(hasher, f); cerr != nil {
+		return false
+	}
+	return hex.EncodeToString(hasher.Sum(nil)) == rec.ETag
 }
