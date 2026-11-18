@@ -279,3 +279,22 @@ func TestSpoolReaderHashesAndCounts(t *testing.T) {
 		t.Fatal("expected an error for an unusable destination")
 	}
 }
+
+// TestUploadPartCopyWritesCopyPartResultShape proves the response is a
+// CopyPartResult carrying both fields clients parse.
+func TestUploadPartCopyWritesCopyPartResultShape(t *testing.T) {
+	t.Cleanup(func() { verifyNoLeaks(t) })
+	stack := newCopyStack(t, []byte("shape-checked-payload"))
+	id := stack.begin(t)
+
+	resp := stack.copyPart(t, id, 1, "")
+	if !strings.Contains(resp, `xmlns="http://s3.amazonaws.com/doc/2006-03-01/"`) {
+		t.Fatalf("CopyPartResult must carry the S3 namespace: %s", truncate(resp, 200))
+	}
+	if !strings.Contains(resp, "<LastModified>") {
+		t.Fatalf("CopyPartResult must carry LastModified: %s", truncate(resp, 200))
+	}
+	if !strings.Contains(resp, "Content-Length: ") {
+		t.Fatalf("response must declare a length: %s", truncate(resp, 200))
+	}
+}

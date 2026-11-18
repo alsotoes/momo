@@ -3637,10 +3637,10 @@ func FormatDeleteObjectsResultXML(deleted []string, errs []s3DeleteError) []byte
 // object) return serveRange=false, unsatisfiable=false.
 func parseS3Range(rangeHeader string, size int64) (start, end int64, serveRange, unsatisfiable bool) {
 	hv := strings.TrimSpace(rangeHeader)
-	if !strings.HasPrefix(hv, "bytes=") {
+	if !strings.HasPrefix(hv, s3CopyRangePrefix) {
 		return 0, 0, false, false // unknown unit: ignore the header, 200 full body
 	}
-	spec := hv[len("bytes="):]
+	spec := hv[len(s3CopyRangePrefix):]
 	// AWS S3 only supports a single range; multi-range requests receive the full object.
 	if strings.Contains(spec, ",") {
 		return 0, 0, false, false
