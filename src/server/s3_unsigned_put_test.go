@@ -16,7 +16,7 @@ import (
 )
 
 // unsignedTestToken is the cluster token used by the unsigned-PUT tests. // notsecret
-const unsignedTestToken = "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6"
+const unsignedTestToken = "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6a1b2c3d4e5f6" // notsecret
 
 // newUnsignedTestStore creates a real CAS store in a temp dir.
 func newUnsignedTestStore(t *testing.T) storage.Store {
