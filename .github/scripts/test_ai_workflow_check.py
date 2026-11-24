@@ -35,9 +35,6 @@ plugins:
     scope: project
     requires_env: "CONTEXT7_API_KEY"
     rules: [73]
-  - package: "opencode-plugin-mempalace"
-    scope: global
-    rules: [89]
 invariants:
   - project opencode.json plugins declared in manifest
 """
@@ -49,15 +46,12 @@ TEST_CONFIG = """context: |
   73. **Spec-First Implementation Mandate**: features need an OpenSpec change.
   74. **Seam-Over-Plugins**: prefer compile-time seams.
   80. **Jules PR Takeover**: rebuild rogue Jules PRs cleanly.
-  89. **MemPalace Knowledge Grounding**: ground via mempalace search.
 """
 
 TEST_OPENCODE_PROJECT = {
     "mcp": {"context7": {"command": "npx", "args": ["@context7/mcp-server"]}},
     "plugins": ["@dietrichgebert/ponytail@5.1.0"],
 }
-
-TEST_OPENCODE_GLOBAL = {"mcp": {"mempalace": {}}}
 
 
 class TestAiWorkflowCheck(unittest.TestCase):
@@ -66,7 +60,6 @@ class TestAiWorkflowCheck(unittest.TestCase):
         (self.tmpdir / "openspec").mkdir(exist_ok=True)
         (self.tmpdir / ".github").mkdir(exist_ok=True)
         (self.tmpdir / ".github" / "ecc-tools.yml").write_text("analyzer: {}\n")
-        (self.tmpdir / "mempalace.yaml").write_text("wing: test\n")
         (self.tmpdir / "openspec" / "config.yaml").write_text(TEST_CONFIG)
         (self.tmpdir / "openspec" / "ai-workflow.yaml").write_text(TEST_MANIFEST)
         (self.tmpdir / "opencode.json").write_text(json.dumps(TEST_OPENCODE_PROJECT))
@@ -79,7 +72,6 @@ class TestAiWorkflowCheck(unittest.TestCase):
             ("OPENCODE_GLOBAL", self.tmpdir / "global-opencode.json"),  # absent
             ("CONFIG_YAML", self.tmpdir / "openspec" / "config.yaml"),
             ("ECC_TOOLS_YML", self.tmpdir / ".github" / "ecc-tools.yml"),
-            ("MEMPALACE_YAML", self.tmpdir / "mempalace.yaml"),
         ]:
             self._saved[name] = getattr(checker, name)
             setattr(checker, name, value)

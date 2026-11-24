@@ -38,9 +38,8 @@ The authoritative surface for how agents, plugins and automation operate in this
 - **Rule 77**: ADR Mandate — every ratified feature/enhancement OpenSpec change MUST have an ADR in `docs/adr/NNNN-<change-id>.md` following `docs/adr/template.md`, linking spec + issue + PR + blog post; status `Proposed` → `Accepted` on merge; supersession = new ADR + `Deprecated` old (Fowler)
 - **Rule 78**: ADR-Spec Synchronization — ADRs are auto-generated from specs via `make adr-sync` (context ← proposal, decision ← requirement summaries, status ← tasks.md checkboxes, blog link ← issue match); `make adr-sync-check` validates parity and runs in CI; ADR status never hand-edited
 - **Rule 79**: No Direct Push to Master — all changes go through issue → branch → PR (`Resolves #ISSUE_ID`) → CI → reviewer → merge `--merge --delete-branch`. Doc-only / pre-commit-regen / trivial-refactor / CI-fix / emergency-hotfix exceptions may bypass, but must be tagged in the commit message
-- **Rule 89**: MemPalace Knowledge Grounding — run `mempalace mine .` from repo root + `npx repomix` to refresh context, then query `mempalace search "<topic>" --wing momo` BEFORE reading source files / re-investigating architecture. Reuse indexed project knowledge instead of re-loading files to cut token burn.
 - **Rule 90**: Auto-Trace Issue Deduplication — the AI reviewer MUST NEVER create duplicate auto-trace issues for the same PR: search existing OPEN auto-trace issues first and reuse the canonical, use the CURRENT PR body from the API (not the stale event payload), and rely on workflow `concurrency` (`cancel-in-progress: true`) to serialize pushes. Prevents the #1057 duplicate-issue incident.
-- **Rule 91**: Tool Selection Strategy — targeted tools (glob/grep/read) by default; `mempalace search` before reading files; `repomix` only for whole-repo analysis.
+- **Rule 91**: Tool Selection Strategy — targeted tools (glob/grep/read) by default; `repomix` only for whole-repo analysis.
 - **Rule 92**: Educational Blog Posts — every post must be a teachable narrative (Real Problem → Why Obvious Solutions Failed → Solution → Principle → Verification → Failure Modes → When NOT to Use), not a changelog.
 - **Rule 93**: Duplicate Jules PR/Branch Consolidation — when Jules opens multiple PRs/branches for the same task, keep the merged canonical PR, close the duplicate with `--delete-branch`, close its auto-trace issue as superseded, and prune the remote. Complements Rule 80 (one PR rebuild) and Rule 90 (reviewer-created issues). Incident: #1112 (merged) vs #1114 (closed).
 - **Rule 94**: Post-Merge Master Gate Verification — merging is not done; wait for the full master run set + Sonar master gate = OK on the merge SHA before reporting done. A red post-merge gate is a same-session hotfix duty. PR checks are never master evidence (Sonar leak-period asymmetry, #1184).
@@ -61,15 +60,6 @@ Before starting any autonomous work, verify:
    - If any run shows `failure`: **STOP**. Diagnose and fix the failure on `master` (per Rule 64) before starting new work.
    - Only proceed when all runs show `completed` with `success` conclusion.
    - **Rationale**: After merging a PR, GitHub Actions re-runs all workflows on `master`. Branching from mid-CI `master` risks branching from code that may fail or be reverted. This gate guarantees every new branch originates from a fully validated, stable `master`.
-6. **MemPalace knowledge base is current (Rule 89)**: Refresh the project knowledge base so prior decisions, specs, and architecture are queryable instead of re-derived (token efficiency):
-   ```bash
-   # Mine the repo into MemPalace (wing "momo")
-   mempalace mine . --wing momo
-   # Regenerate the codebase context map when the code has changed
-   npx repomix    # regenerates repomix-output.xml
-   ```
-   - Re-mine when significant code/spec/doc changes landed since the last session.
-   - After mining, **query MemPalace for grounding BEFORE reading source files** (see Step 1c).
 
 ## Per-Task Cycle (18 Steps)
 
@@ -116,12 +106,6 @@ Record the issue number (`ISSUE_N`).
 
 **ADR Creation (Rules 77/78):** After the OpenSpec change is authored, run `make adr-sync` to auto-generate the ADR in `docs/adr/NNNN-<change-id>.md` from the spec (context ← proposal.md, decision ← spec requirement summaries, status ← tasks.md checkboxes). The ADR links spec + issue + PR + blog post. Never hand-edit an ADR — regenerate it. `make adr-sync-check` (CI) validates parity. ADR status `Proposed` → `Accepted` on merge; supersession = new ADR + `Deprecated` old (Fowler).
 
-**MemPalace knowledge store (Rule 89):** The project knowledge base lives in MemPalace under `wing: momo`. Refresh it with `mempalace mine . --wing momo` from the repo root, and regenerate the codebase map with `npx repomix` when the code changed. **Before reading source files or re-investigating architecture, query MemPalace first** — it is the durable memory layer reusing indexed specs, decisions, and code patterns across sessions, cutting token burn:
-```bash
-mempalace search "<topic>" --wing momo [--room <room>] [--results N]
-```
-Only fall back to full file reads / `repomix-output.xml` inspection when MemPalace search returns insufficient grounding. Keep it current by re-mining `src/`, `docs/`, `openspec/`, `conf/`, `tools/` after significant changes.
-
 **Blog post (Rule 76):** Every feature PR MUST ship a matching blog post under `docs/blog/posts/NNN-<slug>.md` (front matter per `docs/blog/README.md`; `date` = anchor issue/PR `createdAt`), OR carry an explicit `no-blog` justification (ADR sibling `<adr>.no-blog.md` for internal-only changes). Coverage is enforced by `make blog-check` in CI, not just by the reviewer.
 
 For **ANY new feature / spec-driven change / architectural shift** (NOT routine bug fixes), author the OpenSpec change proposal on the branch BEFORE implementing:
@@ -141,22 +125,22 @@ Create three files (mirror the existing `openspec/changes/*/` layout):
 - Author the spec on the branch in this step; implement in Step 3; both ship in the same PR.
 - **Bug fixes / internal refactors with no behavioral surface are exempt** from a formal spec (Rule 73) but MUST still have a tracking issue from Step 1.
 
-### Step 1c: Ground via MemPalace (Rules 89, 91)
+### Step 1c: Tool Selection & Context Grounding (Rule 91)
 
 Before implementing, select the RIGHT tool for the question — token efficiency = speed:
 
 | Question Type | First Tool (Fastest) | Fallback |
 |---------------|---------------------|----------|
 | "What did we decide about X?" / "Prior discussion on Y?" | `ctx_search "X"` or `ctx_memory get [ids]` | — |
-| "Where is symbol S defined?" / "Find all usages of S" | `grep -r "S" src/` / `glob "**/*S*.go"` | `mempalace search "S" --wing momo` |
-| "Where is file/pattern X?" | `glob "pattern"` / `grep "pattern"` | `mempalace search "X" --wing momo` |
-| "What does the spec/ADR say about Z?" | `mempalace search "Z" --wing momo --room specs` | `read openspec/changes/...` |
+| "Where is symbol S defined?" / "Find all usages of S" | `grep -r "S" src/` / `glob "**/*S*.go"` | — |
+| "Where is file/pattern X?" | `glob "pattern"` / `grep "pattern"` | — |
+| "What does the spec/ADR say about Z?" | `read openspec/changes/...` / `docs/adr/...` | — |
 | "Analyze entire architecture / cross-cutting concern" | `npx repomix` → read `repomix-output.xml` | — |
-| "Verify current code matches spec" | `read` target files + `mempalace search` spec ID | — |
+| "Verify current code matches spec" | `read` target files + spec file | — |
 | "Token efficiency requested" | `caveman-compress` (inject output as session instructions) | — |
 | **Git operations** | `rtk git <cmd>` (preferred over raw `git`) | `bash "git <cmd>"` |
 
-**Rule**: Start with session memory (`ctx_search`/`ctx_memory`) → durable knowledge (`mempalace search`) → targeted tools (`grep`/`glob`/`read`). **Only** escalate to `repomix` for WHOLE-REPO questions. Never dump entire codebase when a grep answers it.
+**Rule**: Start with session memory (`ctx_search`/`ctx_memory`) → targeted tools (`grep`/`glob`/`read`). **Only** escalate to `repomix` for WHOLE-REPO questions. Never dump entire codebase when a grep answers it.
 
 ### Step 2: Create Branch
 ```bash
@@ -596,8 +580,6 @@ AI reviewer only re-evaluates on `synchronize` (push). To force re-eval:
 | `ctx_search "query"` | "Did we discuss X?" / "What was the error?" / "Find prior decision" | ~1KB |
 | `ctx_memory get [1,2,3]` | Retrieve known durable facts by ID | ~500B |
 | `ctx_memory write category="CONSTRAINTS" content="..."` | Save hard-won constraint for future sessions | — |
-| `mempalace search "topic" --wing momo` | Query indexed specs, decisions, code patterns from all sessions | ~2KB |
-| `mempalace mine . --wing momo` | Refresh knowledge base after significant changes | One-time |
 
 ### Targeted Code Tools (Precision, Low Tokens)
 
@@ -632,8 +614,6 @@ START: "I need to answer X"
   │
   ├─ Is it a SPECIFIC symbol/file/pattern? → glob / grep / read
   │
-  ├─ Is it a PROJECT KNOWLEDGE question (specs, ADRs, patterns)? → mempalace search
-  │
   ├─ Is it WHOLE-REPO architecture / cross-cutting? → npx repomix
   │
   └─ Token efficiency requested? → caveman-compress
@@ -645,7 +625,6 @@ START: "I need to answer X"
 |----------|-------|
 | `npx repomix` to find one function | `grep "funcName" src/` |
 | `read` entire directory to find a pattern | `glob "**/*pattern*.go"` |
-| Re-read files already in MemPalace | `mempalace search` first |
 | Forget `ctx_search` for session history | Check `ctx_search` before asking user |
 | Raw `git` when `rtk` available | `rtk git <cmd>` |
 
@@ -813,10 +792,6 @@ If any runs are `in_progress` or `queued`, wait. If any failed, fix `master` fir
 **Pitfall**: After force-pushing a clean rebuild to a PR, the agent assumes the old reviewer verdict (on the old head) is still valid. The reviewer must re-evaluate on the new head.
 **Solution**: Force-push triggers `synchronize` → reviewer re-runs. Verify `gh pr checks PR_N` shows `review` as `pass` on the new head. If stuck, push empty sync commit: `git commit --allow-empty -m "sync: trigger reviewer re-evaluation" && git push`.
 
-### Skipping MemPalace Grounding (Rule 89)
-**Pitfall**: Starting a task by reading source files / `repomix-output.xml` from scratch, or relying on model training knowledge, instead of querying the project knowledge base. Re-reads the same files, specs, and decisions every session — wasted tokens and possible drift from the actual codebase state.
-**Solution**: Before implementation, run `mempalace search "<topic>" --wing momo` (refresh first with `mempalace mine . --wing momo` + `npx repomix` if the code changed). Ground in indexed prior specs/decisions/code patterns first; read files only when MemPalace returns insufficient context. Re-mine after significant changes so the base stays current.
-
 ## Key Principles
 
 ### Never Assume (Rule 59)
@@ -852,12 +827,9 @@ When manual intervention is happening, automated agents MUST be told to STOP. No
    │      └─ Master CI still running? → WAIT and poll until all complete
    │         Master CI failed? → STOP, diagnose and fix on master (Rule 64)
    │
-   ├─ 0.6 MemPalace refresh (Rule 89): mempalace mine . --wing momo + npx repomix
-   │
 ├─ 0.5 Issue Ownership Gate (Rule 72): assign issue to $GIT_USER + validate labels (bug|enhancement, automation)
     │
     ├─ 1. Create issue (label: bug|enhancement, assignee: $GIT_USER)
-   ├─ 1c. Ground via MemPalace (Rule 89): mempalace search "<topic>" --wing momo BEFORE reading files
    ├─ 2. Create branch off master (fix/ or feature/)
   ├─ 3. Implement + tests
   ├─ 4. Commit (fix: or feat:)

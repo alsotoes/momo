@@ -16,7 +16,6 @@ on:
       - ".github/scripts/test_ai_reviewer_gates.py"
       - ".github/workflows/ai_workflow_check.yml"
       - ".github/ecc-tools.yml"
-      - "mempalace.yaml"
   push:
     branches: [master]
     paths:
@@ -32,7 +31,6 @@ on:
       - ".github/scripts/test_ai_reviewer_gates.py"
       - ".github/workflows/ai_workflow_check.yml"
       - ".github/ecc-tools.yml"
-      - "mempalace.yaml"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}

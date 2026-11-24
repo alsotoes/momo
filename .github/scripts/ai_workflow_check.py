@@ -8,7 +8,7 @@ against the live opencode.json and global config, ensuring:
 4. No secrets in opencode.json or manifest
 5. Referenced config files exist
 6. Referenced steering rule IDs exist in openspec/config.yaml
-7. Global MCP set == declared global set (mempalace only)
+7. Global MCP set ⊆ declared global set
 """
 
 import json
@@ -25,7 +25,6 @@ OPENCODE_PROJECT = ROOT / "opencode.json"
 OPENCODE_GLOBAL = Path.home() / ".config" / "opencode" / "opencode.json"
 CONFIG_YAML = ROOT / "openspec" / "config.yaml"
 ECC_TOOLS_YML = ROOT / ".github" / "ecc-tools.yml"
-MEMPALACE_YAML = ROOT / "mempalace.yaml"
 
 
 def load_yaml(path: Path) -> dict:
@@ -75,12 +74,18 @@ def check_plugins() -> List[str]:
 
     # Check project opencode.json
     project_plugins = project_cfg.get("plugins", [])
-    project_plugin_names = [p if isinstance(p, str) else p.get("package") for p in project_plugins if p]
+    project_plugin_names = [
+        p if isinstance(p, str) else (p[0] if isinstance(p, list) and p else p.get("package"))
+        for p in project_plugins if p and isinstance(p, (str, dict, list))
+    ]
 
     # Check global opencode.json
     global_plugins = global_cfg.get("plugin", [])  # V1 key
     global_plugins = global_cfg.get("plugins", []) if not global_plugins else global_plugins
-    global_plugin_names = [p if isinstance(p, str) else p.get("package") for p in global_plugins if p]
+    global_plugin_names = [
+        p if isinstance(p, str) else (p[0] if isinstance(p, list) and p else p.get("package"))
+        for p in global_plugins if p and isinstance(p, (str, dict, list))
+    ]
 
     # opencode.json entries carry a version suffix ("pkg@1.2.3") while the
     # manifest declares the bare package name ("pkg"), so compare on the name.
@@ -144,7 +149,7 @@ def check_plugins() -> List[str]:
             errors.append(f"Possible secret found in opencode.json")
 
     # 6. Referenced config files exist
-    for path_key, path_obj in [("ecc-tools.yml", ECC_TOOLS_YML), ("mempalace.yaml", MEMPALACE_YAML)]:
+    for path_key, path_obj in [("ecc-tools.yml", ECC_TOOLS_YML)]:
         if not path_obj.exists():
             errors.append(f"Referenced config file {path_key} does not exist at {path_obj}")
 

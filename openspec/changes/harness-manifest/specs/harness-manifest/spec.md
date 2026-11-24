@@ -17,7 +17,7 @@
 - `opencode.json` or manifest contains hardcoded tokens/secrets.
 - Declared config files (`.github/ecc-tools.yml`, etc.) are missing.
 - Referenced steering-rule IDs don't exist in `openspec/config.yaml`.
-- Global MCP set (`mempalace`) ≠ declared global set.
+- Global MCP set ≠ declared global set.
 - `ponytail.default_mode` ≠ `lite` or `ultra` is listed in allowed.
 
 ### HWC-A3: Manifest documents Ponytail with strict policy

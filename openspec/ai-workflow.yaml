@@ -41,12 +41,6 @@ plugins:
     rules: [73]
 
   # Global plugins (installed in user's global config; declared here for completeness)
-  - package: "opencode-plugin-mempalace"
-    scope: global
-    rules: [89]
-  - package: "mempalace"
-    scope: global
-    rules: []
   - package: "opencode-caveman"
     scope: global
     description: "Ultra-compressed communication mode for token efficiency"
@@ -68,6 +62,6 @@ invariants:
   - project opencode.json plugins ⊆ plugins declared here
   - pinned versions unless declared floating
   - no secrets in harness/plugin configs
-  - global MCP set == declared global set (mempalace only)
+  - global MCP set ⊆ declared global set
   - referenced rule IDs exist in openspec/config.yaml
   - Ponytail default_mode = lite; ultra not in allowed

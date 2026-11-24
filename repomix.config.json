@@ -80,7 +80,6 @@
       "node_modules/",
       "package-lock.json",
       "package.json",
-      "mempalace.yaml",
       "entities.json",
       ".cortexkit/",
       "skills-lock.json",
