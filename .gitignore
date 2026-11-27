@@ -89,8 +89,13 @@ entities.json
 # context7 via {env:CONTEXT7_API_KEY}; keep the value in the shell or a local .env)
 .env
 
+*.received.*
+testdata/**/*.received.*
 .projectmem/events.jsonl
 .projectmem/watch.pid
 .projectmem/watch.log
 .projectmem/structure.json
 .codegraph/
+
+# MemPalace per-project files (issue #185)
+mempalace.yaml

@@ -48,7 +48,8 @@ For each task, load the **primary skill** and all applicable **secondary skills*
 | Build a GraphQL API | `golang-graphql` | `golang-testing`, `golang-error-handling` |
 | Build a CLI command tree | `golang-spf13-cobra` | `golang-cli`, `golang-spf13-viper` (if config) |
 | Layer config from flags/env/file | `golang-spf13-viper` | `golang-spf13-cobra` |
-| Write tests | `golang-testing` | `golang-stretchr-testify` (if using testify) |
+| Write tests | `golang-testing` | `golang-stretchr-testify` (if using testify), `golang-approval-mutation` (golden files / mutation testing) |
+| Write approval / golden master tests or verify test effectiveness with mutation testing | `golang-approval-mutation` | `golang-testing`, `approval-tests`, `mutation-testing` |
 | Apply optimization patterns | `golang-performance` | `golang-benchmark` (measure first) |
 | Measure with pprof / benchstat | `golang-benchmark` | `golang-performance` (fix), `golang-troubleshooting` (root cause) |
 | Debug a panic or unexpected behavior | `golang-troubleshooting` | `golang-safety`, `golang-benchmark` (if perf-related) |
