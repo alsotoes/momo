@@ -11,7 +11,7 @@ require (
 	github.com/alsotoes/momo/src/crypto v0.0.0-00010101000000-000000000000
 	go.etcd.io/bbolt v1.5.0
 	go.uber.org/goleak v1.3.0
-	golang.org/x/sys v0.47.0
+	golang.org/x/sys v0.50.0
 )
 
 require (
@@ -22,6 +22,5 @@ require (
 	github.com/bytemare/hash2curve v0.1.3 // indirect
 	github.com/gtank/ristretto255 v0.1.2 // indirect
 	golang.org/x/crypto v0.54.0 // indirect
-	golang.org/x/sync v0.22.0 // indirect
 	gopkg.in/ini.v1 v1.68.0 // indirect
 )
