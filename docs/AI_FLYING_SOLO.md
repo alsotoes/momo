@@ -151,12 +151,18 @@ git checkout -b <type>/<N>-<short-slug>
 - Bug fix: `fix/bug-<N>-<short-slug>`
 - Feature: `feature/<N>-<short-slug>`
 
-### Step 3: Implement + Test
-Implement the fix or feature and any necessary tests. Run:
+### Step 3: Implement + Test (Goal-Driven Development & Mutation Loop)
+Implement the fix or feature and any necessary tests using the **Goal-Driven Development (GDD)** loop. Every task in `openspec/changes/<change-id>/tasks.md` (or bugfix checklist) should define an executable `Verify:` fitness check rather than stopping at basic compilation:
+
+1. **Approval & Characterization Tests (`approval-tests` / `bdd-with-approvals`)**: Lock down complex wire outputs (S3 XML documents, SigV4 canonical strings, CRUSH placement tables) against `testdata/<name>.approved.txt` snapshots instead of partial `strings.Contains` checks.
+2. **Kill Boundary & Errno Mutants (`mutation-testing` / `golang-approval-mutation`)**: Test exact inclusive/exclusive boundaries (`N-1`, `N`, `N+1`), control-character edges, `errors.Is(err, syscall.E...)` POSIX errno mappings (Rule 10 / Rule 37), and `testing.AllocsPerRun == 0` on ⚡ Bolt hot paths.
+3. **Run the Unified Fitness Gates**:
 ```bash
 go build ./...
 go test ./...
 gofmt -w <modified files>
+make mutation-check
+make goal-check
 ```
 
 **Rule 74 (adaptive/mutating behavior):** if the change is an adaptive or

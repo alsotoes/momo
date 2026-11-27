@@ -1,0 +1,34 @@
+# Gremlins mutation testing configuration for Momo (Go)
+# Run on changed packages: make mutation-check
+unleash:
+  tags: ""
+  integration: false
+  dry-run: false
+  exclude-files:
+    - "_test\\.go$"
+    - "src/momo\\.go$"
+  threshold:
+    efficacy: 80
+    mutant-coverage: 80
+
+mutants:
+  arithmetic-base:
+    enabled: true
+  conditionals-boundary:
+    enabled: true
+  conditionals-negation:
+    enabled: true
+  increment-decrement:
+    enabled: true
+  invert-assignments:
+    enabled: false
+  invert-bitwise:
+    enabled: false
+  invert-bwassign:
+    enabled: false
+  invert-logical:
+    enabled: false
+  invert-loopctrl:
+    enabled: false
+  invert-negatives:
+    enabled: true

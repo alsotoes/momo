@@ -14,7 +14,7 @@ MAIN := src/momo.go
 COVERAGE_MODULES = $(filter-out ./src,$(MODULES))
 MODULES := ./src ./src/common ./src/crypto ./src/transport ./src/client ./src/metrics ./src/p2p ./src/replication_order ./src/server ./src/storage ./src/momofs
 
-.PHONY: all build clean tidy vendor test vet lint coverage doc doc-live benchmark test-e2e smoke-tcp smoke-quic smoke-s3-client smoke-encryption-tcp smoke-encryption-quic smoke-encryption-s3-tcp smoke-encryption-s3-quic smoke-scale-cas test-contract test-load test-stress test-chaos test-metrics test-external-client blog-check adr-sync adr-sync-check ai-workflow-check monitoring-up monitoring-down pentest
+.PHONY: all build clean tidy vendor test vet lint coverage doc doc-live benchmark test-e2e smoke-tcp smoke-quic smoke-s3-client smoke-encryption-tcp smoke-encryption-quic smoke-encryption-s3-tcp smoke-encryption-s3-quic smoke-scale-cas test-contract test-load test-stress test-chaos test-metrics test-external-client blog-check adr-sync adr-sync-check ai-workflow-check eval-reviewer mutation-check goal-check monitoring-up monitoring-down pentest
 
 all: build
 
@@ -171,3 +171,31 @@ adr-sync-check:
 
 ai-workflow-check:
 	@python3 .github/scripts/ai_workflow_check.py
+
+eval-reviewer:
+	@echo "Running AI reviewer golden evaluation suite..."
+	@python3 .github/scripts/eval_ai_reviewer.py --mode offline
+	@python3 .github/scripts/test_ai_reviewer_approval.py
+	@python3 .github/scripts/test_ai_reviewer_ecc.py
+	@python3 .github/scripts/test_ai_reviewer_gates.py
+	@python3 .github/scripts/test_ai_reviewer_sonar.py
+
+# mutation-check runs diff-scoped mutation testing via gremlins when installed,
+# or falls back to running unit tests on changed packages.
+mutation-check:
+	@if command -v gremlins >/dev/null 2>&1; then \
+		gremlins unleash --config .gremlins.yaml --diff "origin/master"; \
+	else \
+		echo "gremlins not found; install with:"; \
+		echo "  go install github.com/go-gremlins/gremlins/cmd/gremlins@latest"; \
+		echo "running unit tests on transport/common boundary suites instead..."; \
+		$(GO) test -race ./src/common/... ./src/transport/...; \
+	fi
+
+# goal-check is the unified Goal-Driven Development (GDD) local fitness oracle.
+goal-check: vet lint
+	@$(MAKE) ai-workflow-check
+	@$(MAKE) adr-sync-check
+	@$(MAKE) blog-check
+	@$(MAKE) eval-reviewer
+	@echo "All Goal-Driven Development (GDD) fitness gates passed."
