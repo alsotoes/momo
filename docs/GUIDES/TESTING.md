@@ -870,3 +870,16 @@ SonarCloud is configured (via both `sonar-project.properties` and `.sonarcloud.p
 
 - **Automated CI Analysis**: Executed automatically on every push to `master` and pull request in `.github/workflows/go.yml` via `SonarSource/sonarqube-scan-action`. Tests run through `make coverage`, generating `coverage.out` which is uploaded directly to SonarCloud.
 - **Local Troubleshooting**: Developer script [`tools/run_sonarq_scan.sh`](../../tools/run_sonarq_scan.sh) is reserved for local, on-demand debugging.
+
+---
+
+## Goal-Driven Development (GDD), Approval Tests & Mutation Testing
+
+Momo pairs **Goal-Driven Development (GDD)** with zero-dependency Go approval testing, diff-scoped mutation testing, and offline AI reviewer evaluations so autonomous agents verify test strength rather than line coverage alone.
+
+| Target / Helper | Command / Location | What it verifies |
+|---|---|---|
+| **Approval Snapshots** | `verifyApprovedText` (`src/transport/s3_tagging_test.go`, `src/transport/testdata/*.approved.txt`) | Locks down full S3 XML wire responses (`GET ?tagging`) and compares against committed `.approved.txt` golden files (writing `.received.txt` on diff) with zero external Go dependencies (Rule 1) |
+| **Mutation Testing** | `make mutation-check` (`.gremlins.yaml`) | Runs `gremlins unleash --config .gremlins.yaml --diff "origin/master"` when `gremlins` is installed, targeting `CONDITIONALS_BOUNDARY`, `CONDITIONALS_NEGATION`, `ARITHMETIC_BASE`, `INCREMENT_DECREMENT`, and `INVERT_NEGATIVES` |
+| **AI Reviewer Golden Evals** | `make eval-reviewer` (`.github/scripts/eval_ai_reviewer.py`) | Offline golden evaluation suite verifying `ai_reviewer.py` approval parsing, Sentinel/Bolt blocker detection, deterministic artifact gate facts, and Sonar wait verdicts |
+| **Unified GDD Fitness Gate** | `make goal-check` | Runs `vet`, `lint` (`gocognit` <= 15), `check-notsecret.sh`, `ai-workflow-check`, `adr-sync-check`, `blog-check`, and `eval-reviewer` in a single local command |

@@ -1,8 +1,11 @@
 package transport
 
 import (
+	"errors"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
@@ -10,6 +13,27 @@ import (
 
 	"github.com/alsotoes/momo/src/common"
 )
+
+// verifyApprovedText compares got against testdata/<name>.approved.txt. On
+// mismatch it writes testdata/<name>.received.txt so diffs are inspectable.
+func verifyApprovedText(t *testing.T, name, got string) {
+	t.Helper()
+	approvedPath := filepath.Join("testdata", name+".approved.txt")
+	receivedPath := filepath.Join("testdata", name+".received.txt")
+	wantBytes, err := os.ReadFile(approvedPath)
+	if err != nil {
+		_ = os.WriteFile(receivedPath, []byte(got), 0o600)
+		t.Fatalf("missing approved file %s (wrote %s): %v", approvedPath, receivedPath, err)
+	}
+	want := strings.TrimRight(string(wantBytes), "\r\n")
+	actual := strings.TrimRight(got, "\r\n")
+	if actual != want {
+		_ = os.WriteFile(receivedPath, []byte(got), 0o600)
+		t.Fatalf("approval mismatch for %s (wrote %s):\n--- want ---\n%s\n--- got ---\n%s",
+			name, receivedPath, want, actual)
+	}
+	_ = os.Remove(receivedPath)
+}
 
 // taggingStack boots an s3-tcp gateway over a mock store that keeps S3 metadata.
 func taggingStack(t *testing.T) (addr, auth string) {
@@ -49,6 +73,11 @@ func TestObjectTaggingRoundTrip(t *testing.T) {
 	if !strings.Contains(got, "<TagSet>") || !strings.Contains(got, "xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"") {
 		t.Fatalf("GET tagging shape is wrong: %s", truncate(got, 300))
 	}
+	_, xmlBody, found := strings.Cut(got, "\r\n\r\n")
+	if !found {
+		t.Fatalf("GET tagging missing HTTP body separator: %s", truncate(got, 300))
+	}
+	verifyApprovedText(t, "s3_tagging_roundtrip", xmlBody)
 
 	del := taggingRequest(t, "DELETE", addr, auth, "obj.txt", "")
 	if !strings.Contains(del, "204") {
@@ -246,5 +275,46 @@ func TestUploadRejectsInvalidTaggingHeader(t *testing.T) {
 	}
 }
 
-// tagStore is a store double whose S3 metadata survives a put/get cycle, so the
-// tagging handler's write can be read back.
+// makeTagSetN builds a valid tagSet of n distinct tags.
+func makeTagSetN(n int) tagSet {
+	ts := make(tagSet, n)
+	for i := 0; i < n; i++ {
+		ts[i] = objectTag{Key: "k" + itoaTest(i), Value: "v"}
+	}
+	return ts
+}
+
+// TestTagSetValidateBoundariesAndErrno kills boundary (> vs >=), control-char
+// (< 0x20, == 0x7f), and POSIX syscall.EINVAL mutants in tagSet.validate().
+func TestTagSetValidateBoundariesAndErrno(t *testing.T) {
+	validCases := map[string]tagSet{
+		"exact max 10 tags":      makeTagSetN(s3MaxTags),
+		"exact max 128-byte key": {{Key: strings.Repeat("k", s3MaxTagKeyLen), Value: "v"}},
+		"exact max 256-byte val": {{Key: "k", Value: strings.Repeat("v", s3MaxTagValueLen)}},
+		"empty value allowed":    {{Key: "k", Value: ""}},
+		"printable space and ~":  {{Key: "a b~", Value: "c d~"}},
+	}
+	for name, ts := range validCases {
+		if err := ts.validate(); err != nil {
+			t.Fatalf("%s: expected valid tagSet, got err=%v", name, err)
+		}
+	}
+
+	invalidCases := map[string]tagSet{
+		"11 tags over max":      makeTagSetN(s3MaxTags + 1),
+		"empty key":             {{Key: "", Value: "v"}},
+		"129-byte key over max": {{Key: strings.Repeat("k", s3MaxTagKeyLen+1), Value: "v"}},
+		"257-byte val over max": {{Key: "k", Value: strings.Repeat("v", s3MaxTagValueLen+1)}},
+		"duplicate key":         {{Key: "dup", Value: "1"}, {Key: "dup", Value: "2"}},
+		"key control char 0x1f": {{Key: "bad\x1fkey", Value: "v"}},
+		"key delete char 0x7f":  {{Key: "bad\x7fkey", Value: "v"}},
+		"val control char 0x1f": {{Key: "k", Value: "bad\x1fval"}},
+		"val delete char 0x7f":  {{Key: "k", Value: "bad\x7fval"}},
+	}
+	for name, ts := range invalidCases {
+		err := ts.validate()
+		if !errors.Is(err, syscall.EINVAL) || !errors.Is(err, errInvalidTag) {
+			t.Fatalf("%s: expected errors.Is(EINVAL & errInvalidTag), got %v", name, err)
+		}
+	}
+}
