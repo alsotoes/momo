@@ -30,3 +30,8 @@ jobs:
           # Only report findings on lines added/changed by this PR, matching
           # .golangci.yml `issues.new: true` and Sonar's new-code gate.
           only-new-issues: true
+      - name: Diff-scoped mutation report (advisory)
+        continue-on-error: true
+        run: |
+          go install github.com/go-gremlins/gremlins/cmd/gremlins@latest
+          "$(go env GOPATH)/bin/gremlins" unleash --config .gremlins.yaml --diff "origin/master"

@@ -14,6 +14,7 @@ on:
       - ".github/scripts/test_ai_reviewer_ecc.py"
       - ".github/scripts/test_ai_reviewer_sonar.py"
       - ".github/scripts/test_ai_reviewer_gates.py"
+      - ".github/scripts/eval_ai_reviewer.py"
       - ".github/workflows/ai_workflow_check.yml"
       - ".github/ecc-tools.yml"
   push:
@@ -29,6 +30,7 @@ on:
       - ".github/scripts/test_ai_reviewer_ecc.py"
       - ".github/scripts/test_ai_reviewer_sonar.py"
       - ".github/scripts/test_ai_reviewer_gates.py"
+      - ".github/scripts/eval_ai_reviewer.py"
       - ".github/workflows/ai_workflow_check.yml"
       - ".github/ecc-tools.yml"
 
@@ -64,4 +66,5 @@ jobs:
             .github/scripts/test_ai_reviewer_approval.py \
             .github/scripts/test_ai_reviewer_ecc.py \
             .github/scripts/test_ai_reviewer_sonar.py \
-            .github/scripts/test_ai_reviewer_gates.py -v
+            .github/scripts/test_ai_reviewer_gates.py \
+            .github/scripts/eval_ai_reviewer.py -v
